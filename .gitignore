@@ -1,0 +1,32 @@
+# Ambiente Python e build
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+
+# Dati di chi usa l'app: restano sul suo PC, mai nel repository
+personalizzazione.json
+config.json
+*.rotto-*
+calendars_cache.json
+events_cache.json
+fired_reminders.json
+local_events.json
+teams_tenants.json
+google_token_*.bin
+pulizia_*.json
+ics_cache/
+.tmp_*
+
+# Log
+*.log
+*.log.*
+
+# Estensioni personali: codice scritto per una persona sola
+personale/
+web/personale/
+
+# Loghi delle aziende di chi usa l'app: resta solo l'icona generica
+web/logos/*
+!web/logos/personale.png

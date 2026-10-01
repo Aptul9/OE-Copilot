@@ -1,0 +1,42 @@
+{
+  "_istruzioni": [
+    "Copia questo file come personalizzazione.json, nella stessa cartella dell'app, e mettici i tuoi dati.",
+    "personalizzazione.json resta sul tuo PC: e' escluso dal repository. Qui sotto ci sono solo dati di esempio.",
+    "Tutte le voci sono facoltative: senza il file l'app funziona e i calendari prendono il nome dal dominio della casella.",
+    "nomi_per_indirizzo: nome da mostrare per una casella precisa (vince su nomi_per_dominio).",
+    "nomi_per_dominio: nome da mostrare per tutte le caselle di quel dominio.",
+    "domini_aziendali: domini di aziende vere. Un invito organizzato da uno di questi domini prende il nome dell'azienda anche se Outlook lo archivia nel calendario di un'altra casella.",
+    "caselle_di_colleghi: caselle di altre persone aperte in Outlook; i loro eventi restano loro.",
+    "ordine_calendari: ordine dei calendari nella barra laterale, per nome mostrato.",
+    "azienda_per_cartella: cartelle calendario dedicate a un'azienda, riconosciute da un testo nel loro nome.",
+    "account_nascosti: caselle da non mostrare mai.",
+    "calendari_google: calendari Google letti direttamente, per esempio [{\"indirizzo\": \"tu@azienda.example\", \"nome\": \"Azienda\"}]. Vedi il README.",
+    "aziende_inoltrate: aziende senza casella in Outlook, le cui riunioni arrivano copiate in un'altra casella con un prefisso nel titolo. Vedi il README.",
+    "interfaccia: sigle e loghi delle aziende, calendari secondari (mostrati sbiaditi), calendari senza il pulsante Apri in Teams, schede della sezione Timesheet."
+  ],
+  "nomi_per_indirizzo": {
+    "mario.rossi@alfa.example": "Alfa",
+    "supporto@alfa.example": "Alfa - Supporto"
+  },
+  "nomi_per_dominio": {
+    "beta.example": "Beta",
+    "outlook.com": "Personale"
+  },
+  "domini_aziendali": ["alfa.example", "beta.example"],
+  "caselle_di_colleghi": [],
+  "ordine_calendari": ["Alfa", "Beta", "Alfa - Supporto", "Personale", "Eventi personali", "Festività"],
+  "azienda_per_cartella": {},
+  "account_nascosti": [],
+  "calendari_google": [],
+  "aziende_inoltrate": {},
+  "interfaccia": {
+    "sigle": {"Alfa": "AL", "Beta": "BE", "Alfa - Supporto": "AS", "Personale": "PE"},
+    "loghi": {},
+    "calendari_secondari": ["Alfa - Supporto"],
+    "calendari_senza_teams": ["Alfa - Supporto"],
+    "schede_timesheet": [
+      {"nome": "Beta", "colore": "#2563eb", "logo": null,
+       "url": "https://gestionale.beta.example"}
+    ]
+  }
+}

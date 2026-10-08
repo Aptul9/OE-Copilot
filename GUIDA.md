@@ -253,6 +253,29 @@ curl -s -H "Authorization: Bearer $(sudo grep ^API_KEY= /opt/oe-copilot/.env | c
   http://127.0.0.1:3180/api/calendari | python3 -m json.tool | head
 ```
 
+### 4.6 Aggiornamento automatico (facoltativo)
+La GitHub Action `.github/workflows/server.yml` porta `server/` sul server a ogni push su `main`
+che lo tocca: controlla la sintassi, copia il codice con rsync e lancia
+`strumenti/aggiorna_server.sh`, che ricostruisce l'agente, riavvia il servizio e verifica che
+l'agente risponda e che il battito sia fresco. Se la verifica fallisce rimette la versione di
+prima. `.env`, `agent/fonti.json`, `telefono/` e `stato/` non vengono mai toccati. Il telefono si
+riavvia solo se cambia la sua parte di `docker-compose.yml`.
+
+Sul server serve, una volta sola, un utente dedicato che entra solo con una chiave SSH:
+```bash
+sudo useradd -m -s /bin/bash -G docker oecopilot
+sudo chown oecopilot:oecopilot /opt/oe-copilot /opt/oe-copilot/.env
+sudo chown -R oecopilot:oecopilot /opt/oe-copilot/agent /opt/oe-copilot/strumenti /opt/oe-copilot/docker-compose.yml
+# la unit punta al file nel repository: così si aggiorna anche lei
+sudo ln -sf /opt/oe-copilot/strumenti/oe-copilot-sincronizza.service /etc/systemd/system/
+echo 'oecopilot ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload, /usr/bin/systemctl restart oe-copilot-sincronizza' \
+  | sudo tee /etc/sudoers.d/oe-copilot >/dev/null && sudo chmod 440 /etc/sudoers.d/oe-copilot
+```
+La chiave pubblica della Action va in `/home/oecopilot/.ssh/authorized_keys`. Nel repository
+servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiave privata) e
+`DEPLOY_KNOWN_HOSTS` (la riga di `ssh-keyscan -t ed25519 <server>`). Senza i secret
+l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la Action.
+
 ---
 
 ## 5. Collegare il PC al server
@@ -322,8 +345,9 @@ e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un c
 - **Log dell'app** (sul PC): `debug.log`; del tunnel: `agente_tunnel.log`.
 - **Vedere cosa fa l'agente**: `curl` su `http://127.0.0.1:3180/api/calendari` dal server (con la
   chiave, vedi 4.5), oppure `agente_remoto.py prova` dal PC.
-- **Aggiornare il codice del server**: `git pull`, ricopia `server/` in `/opt/oe-copilot`
-  (mantieni `.env` e `agent/fonti.json`), `sudo docker compose up -d --build`, riavvia il servizio.
+- **Aggiornare il codice del server**: con l'aggiornamento automatico (sezione 4.6) basta un push
+  su `main`. A mano: `git pull`, ricopia `server/` in `/opt/oe-copilot` (mantieni `.env` e
+  `agent/fonti.json`), `sudo docker compose up -d --build`, riavvia il servizio.
 - **Backup**: i dati del telefono stanno in `/opt/oe-copilot/telefono/data` (contengono i login:
   trattali come un segreto). Uno snapshot coerente si fa con il telefono in `docker pause` per
   pochi secondi.

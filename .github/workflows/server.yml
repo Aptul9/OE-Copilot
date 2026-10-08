@@ -1,0 +1,74 @@
+name: Server
+
+# Il codice in server/ va sul server a ogni push su main. L'app del PC non passa da qui.
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/server.yml"]
+  pull_request:
+    paths: ["server/**", ".github/workflows/server.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controlli:
+    name: Controlli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sintassi Python
+        run: python3 -m py_compile server/agent/*.py server/strumenti/*.py
+
+      - name: Sintassi shell
+        run: for f in server/strumenti/*.sh; do bash -n "$f"; done
+
+      - name: Compose
+        working-directory: server
+        env:
+          API_KEY: prova
+        run: docker compose config -q
+
+      - name: Immagine dell'agente
+        run: docker build -q -t oe-copilot-agent server/agent
+
+  aggiorna:
+    name: Aggiorna il server
+    needs: controlli
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # un aggiornamento alla volta, senza interrompere quello in corso
+    concurrency:
+      group: aggiorna-server
+      cancel-in-progress: false
+    env:
+      SERVER: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+      OE_DIR: /opt/oe-copilot
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chiave SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # chiave dell'host fissata: niente StrictHostKeyChecking=no
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Copia della versione in esecuzione
+        run: ssh "$SERVER" "test ! -x $OE_DIR/strumenti/aggiorna_server.sh || $OE_DIR/strumenti/aggiorna_server.sh salva"
+
+      - name: Carica il codice
+        run: |
+          # caselle, chiave dell'API, dati del telefono e segni di vita restano sul server
+          rsync -rlptz --delete \
+            --exclude /.env --exclude /agent/fonti.json \
+            --exclude /telefono/ --exclude /stato/ --exclude /.versione \
+            server/ "$SERVER:$OE_DIR/"
+
+      - name: Ricostruisci e riavvia
+        run: ssh "$SERVER" "$OE_DIR/strumenti/aggiorna_server.sh avvia ${{ github.sha }}"

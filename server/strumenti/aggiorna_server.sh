@@ -29,6 +29,7 @@ avvia() {
     # container continuerebbe a leggere i vecchi. Per questo l'agente si ricrea sempre.
     docker compose up -d --build --force-recreate agent
     sudo -n systemctl daemon-reload
+    riavvio=$(date +%s)
     sudo -n systemctl restart "$SERVIZIO"
 }
 
@@ -37,11 +38,15 @@ sano() {
     for _ in $(seq 1 20); do
         if curl -fsS --max-time 5 -H "Authorization: Bearer $chiave" \
                 http://127.0.0.1:3180/api/salute >/dev/null 2>&1; then
-            # il servizio scrive il battito a ogni giro: dev'essere di adesso
-            sleep 15
-            eta=$(( $(date +%s) - $(stat -c %Y stato/battito.json 2>/dev/null || echo 0) ))
-            [ "$eta" -lt 90 ] && return 0
-            echo "battito.json fermo da ${eta}s: il servizio $SERVIZIO non gira" >&2
+            # il servizio scrive il battito a ogni giro: ne serve uno scritto dopo il
+            # riavvio, quello di prima non dice niente
+            for _ in $(seq 1 30); do
+                [ "$(stat -c %Y stato/battito.json 2>/dev/null || echo 0)" -ge "$riavvio" ] \
+                    && systemctl is-active -q "$SERVIZIO" && return 0
+                sleep 3
+            done
+            echo "nessun battito dopo il riavvio: il servizio $SERVIZIO non gira" >&2
+            systemctl status "$SERVIZIO" --no-pager -n 5 >&2 || true
             return 1
         fi
         sleep 3

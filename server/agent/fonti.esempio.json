@@ -1,0 +1,4 @@
+[
+  {"tipo": "android", "id": "android::mario.rossi@alfa.example", "nome": "Alfa", "account": "mario.rossi@alfa.example"},
+  {"tipo": "android", "id": "android::mario.rossi@beta.example", "nome": "Beta", "account": "mario.rossi@beta.example"}
+]

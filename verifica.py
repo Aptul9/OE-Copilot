@@ -323,6 +323,7 @@ def controlla_dati_personali():
         metti(*(p.get(sezione) or []))
     for c in p.get("calendari_google") or []:
         metti(c.get("indirizzo"), c.get("nome"))
+    metti((p.get("agente_remoto") or {}).get("ssh"))
     for nome, d in (p.get("aziende_inoltrate") or {}).items():
         metti(nome, d.get("via"), d.get("oggetto_posta"))
     ui = p.get("interfaccia") or {}
@@ -355,7 +356,7 @@ def controlla_dati_personali():
 # ----------------------------------------------------------------- dati ------
 def controlla_dati():
     sys.path.insert(0, QUI)
-    import config, google_cal, outlook_com          # noqa: E402
+    import agente_remoto, config, google_cal, outlook_com   # noqa: E402
     import app as appmod                            # noqa: E402
 
     cfg = config.load_config()
@@ -364,10 +365,25 @@ def controlla_dati():
           f"calendari spenti={len(cfg.get('disabled_calendars') or [])}")
 
     api = appmod.Api()
-    cal = api.get_calendars()
-    n_out = len([c for c in cal.get("calendars", []) if not c.get("extra")])
-    esito("Outlook risponde", not cal.get("error") and n_out > 0,
-          cal.get("error") or f"{len(cal.get('calendars', []))} calendari")
+    remoto = agente_remoto.attivo()
+    # Al server si chiede una lettura vera (force): senza, quando non risponde
+    # l'app da' l'ultimo elenco salvato e qui sembrerebbe tutto a posto.
+    cal = api.get_calendars(force=remoto)
+    # Le caselle: tutto cio' che non e' un link, un calendario Google, il
+    # calendario locale o la voce di un'azienda inoltrata.
+    letti = [c for c in cal.get("calendars", [])
+             if not any(c.get(k) for k in ("is_ics", "is_google", "is_local", "is_inoltro"))]
+    esito("Il server dei calendari risponde" if remoto else "Outlook risponde",
+          not cal.get("error") and bool(letti),
+          cal.get("error") or f"{len(letti)} calendari delle caselle")
+    if remoto and letti:
+        # Il server risponde anche con i dati fermi (un accesso scaduto, il
+        # servizio che aggiorna le caselle spento): lo dice lo stato di ognuna.
+        fermi = [c for c in letti if c.get("stato") != "ok"]
+        esito("Caselle aggiornate sul server", not fermi,
+              " ; ".join(f"{c.get('alias') or c['account']}: {c.get('stato_msg')}"
+                         for c in fermi),
+              avviso=all(c.get("stato") == "avviso" for c in fermi))
 
     integr = api.get_integrazioni(verifica=True).get("integrazioni", [])
     guasti = [i for i in integr if i.get("stato") not in ("ok", None)]

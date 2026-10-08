@@ -132,6 +132,51 @@ def scrivi_json(percorso, dati):
         raise
 
 
+def proteggi(testo):
+    """Cifra con DPAPI: il risultato lo apre solo questo utente su questo PC."""
+    import ctypes
+    from ctypes import wintypes
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD),
+                    ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    grezzo = testo.encode("utf-8")
+    dentro = BLOB(len(grezzo), ctypes.cast(ctypes.create_string_buffer(grezzo),
+                                           ctypes.POINTER(ctypes.c_char)))
+    fuori = BLOB()
+    if not ctypes.windll.crypt32.CryptProtectData(
+            ctypes.byref(dentro), "OE Copilot", None, None, None, 0,
+            ctypes.byref(fuori)):
+        raise OSError("CryptProtectData non riuscita")
+    try:
+        return bytes(ctypes.string_at(fuori.pbData, fuori.cbData))
+    finally:
+        ctypes.windll.kernel32.LocalFree(fuori.pbData)
+
+
+def svela(dati):
+    """Decifra quanto scritto da proteggi. Solleva se non e' il nostro utente."""
+    import ctypes
+    from ctypes import wintypes
+
+    class BLOB(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD),
+                    ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    dentro = BLOB(len(dati), ctypes.cast(ctypes.create_string_buffer(dati),
+                                         ctypes.POINTER(ctypes.c_char)))
+    fuori = BLOB()
+    if not ctypes.windll.crypt32.CryptUnprotectData(
+            ctypes.byref(dentro), None, None, None, None, 0,
+            ctypes.byref(fuori)):
+        raise OSError("CryptUnprotectData non riuscita")
+    try:
+        return bytes(ctypes.string_at(fuori.pbData, fuori.cbData)).decode("utf-8")
+    finally:
+        ctypes.windll.kernel32.LocalFree(fuori.pbData)
+
+
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     if os.path.exists(CONFIG_PATH):
@@ -369,6 +414,17 @@ CALENDARI_GOOGLE = [
 # Aspetto dell'interfaccia: sigle e loghi delle aziende, calendari "secondari"
 # (mostrati sbiaditi), schede della sezione Timesheet. Li legge app.js all'avvio.
 INTERFACCIA = dict(_P.get("interfaccia") or {})
+
+# Agente remoto: le caselle si leggono da un agente su un server invece che da
+# Outlook su questo PC (vedi agente_remoto.py). Voci:
+#   "ssh":          destinazione per ssh (un alias di ~/.ssh/config o utente@host)
+#   "porta_remota": porta dell'agente sul localhost del server (3180)
+#   "porta_locale": porta di questo PC su cui aprire il tunnel (31800)
+# Senza la voce "ssh" l'agente remoto e' spento e si legge da Outlook.
+AGENTE_REMOTO = dict(_P.get("agente_remoto") or {})
+# La chiave dell'API dell'agente non sta nella personalizzazione: e' un segreto,
+# e si conserva cifrata (vedi proteggi/svela) accanto ai dati dell'app.
+AGENTE_CHIAVE_PATH = os.path.join(DATA_DIR, "agente_chiave.bin")
 
 
 # Cartelle "cestino": tutto quello che ci sta dentro e' roba eliminata e non va

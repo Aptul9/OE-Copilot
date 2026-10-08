@@ -7,6 +7,8 @@ dist/
 
 # Dati di chi usa l'app: restano sul suo PC, mai nel repository
 personalizzazione.json
+personalizzazione.*.json
+!personalizzazione.esempio.json
 config.json
 *.rotto-*
 calendars_cache.json
@@ -15,6 +17,8 @@ fired_reminders.json
 local_events.json
 teams_tenants.json
 google_token_*.bin
+agente_chiave.bin
+agente_caselle.json
 pulizia_*.json
 ics_cache/
 .tmp_*

@@ -30,7 +30,7 @@ import recurring_ical_events
 import requests
 
 import config
-from ics_feed import MEETING_URL_RE, _fuso_locale, _naive_locale, _testo
+from ics_feed import MEETING_URL_RE, _con_fuso, _naive_locale, _testo
 
 log = logging.getLogger(__name__)
 
@@ -65,49 +65,9 @@ def _segna(indirizzo, stato, messaggio, scade=None, ok=False):
     return voce
 
 
-def _protetto(testo):
-    """Cifra con DPAPI: il risultato lo apre solo questo utente su questo PC."""
-    import ctypes
-    from ctypes import wintypes
-
-    class BLOB(ctypes.Structure):
-        _fields_ = [("cbData", wintypes.DWORD),
-                    ("pbData", ctypes.POINTER(ctypes.c_char))]
-
-    grezzo = testo.encode("utf-8")
-    dentro = BLOB(len(grezzo), ctypes.cast(ctypes.create_string_buffer(grezzo),
-                                           ctypes.POINTER(ctypes.c_char)))
-    fuori = BLOB()
-    if not ctypes.windll.crypt32.CryptProtectData(
-            ctypes.byref(dentro), "OE Copilot", None, None, None, 0,
-            ctypes.byref(fuori)):
-        raise OSError("CryptProtectData non riuscita")
-    try:
-        return bytes(ctypes.string_at(fuori.pbData, fuori.cbData))
-    finally:
-        ctypes.windll.kernel32.LocalFree(fuori.pbData)
-
-
-def _svelato(dati):
-    """Decifra quanto scritto da _protetto. Solleva se non e' il nostro utente."""
-    import ctypes
-    from ctypes import wintypes
-
-    class BLOB(ctypes.Structure):
-        _fields_ = [("cbData", wintypes.DWORD),
-                    ("pbData", ctypes.POINTER(ctypes.c_char))]
-
-    dentro = BLOB(len(dati), ctypes.cast(ctypes.create_string_buffer(dati),
-                                         ctypes.POINTER(ctypes.c_char)))
-    fuori = BLOB()
-    if not ctypes.windll.crypt32.CryptUnprotectData(
-            ctypes.byref(dentro), None, None, None, None, 0,
-            ctypes.byref(fuori)):
-        raise OSError("CryptUnprotectData non riuscita")
-    try:
-        return bytes(ctypes.string_at(fuori.pbData, fuori.cbData)).decode("utf-8")
-    finally:
-        ctypes.windll.kernel32.LocalFree(fuori.pbData)
+# Cifratura DPAPI: sta in config, la usa anche la chiave dell'agente remoto.
+_protetto = config.proteggi
+_svelato = config.svela
 
 
 def _percorso_riserva(indirizzo):
@@ -424,7 +384,6 @@ def fetch_events(cfg, start, end):
     start/end sono datetime locali naive, come per la lettura da Outlook.
     """
     disabled = set(cfg.get("disabled_calendars", []))
-    fuso = _fuso_locale()
     eventi, errori = [], []
 
     for c in config.CALENDARI_GOOGLE:
@@ -456,8 +415,8 @@ def fetch_events(cfg, start, end):
         try:
             testi = _query_caldav(
                 c["indirizzo"], token,
-                (start.replace(tzinfo=fuso) - margine).astimezone(timezone.utc).replace(tzinfo=None),
-                (end.replace(tzinfo=fuso) + margine).astimezone(timezone.utc).replace(tzinfo=None))
+                (_con_fuso(start) - margine).astimezone(timezone.utc).replace(tzinfo=None),
+                (_con_fuso(end) + margine).astimezone(timezone.utc).replace(tzinfo=None))
         except Exception as e:
             _segna(c["indirizzo"], "problema", f"Lettura calendario fallita ({e})")
             errori.append(f"{nome}: {e}")
@@ -471,7 +430,7 @@ def fetch_events(cfg, start, end):
             try:
                 cal = icalendar.Calendar.from_ical(testo)
                 trovati = recurring_ical_events.of(cal).between(
-                    start.replace(tzinfo=fuso), end.replace(tzinfo=fuso))
+                    _con_fuso(start), _con_fuso(end))
             except Exception:
                 # Un singolo oggetto malformato non ferma gli altri, ma va
                 # contato: se sono tanti, il calendario sembra mezzo vuoto e

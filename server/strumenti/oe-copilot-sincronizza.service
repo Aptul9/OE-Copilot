@@ -1,0 +1,12 @@
+[Unit]
+Description=Oe Copilot - sincronizzazione dei calendari del telefono ogni minuto
+After=docker.service
+Requires=docker.service
+
+[Service]
+ExecStart=/opt/oe-copilot/strumenti/sincronizza_telefono.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

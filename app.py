@@ -7,6 +7,7 @@ import webbrowser
 
 import webview
 
+import caselle
 import config
 import eventi as raccolta_eventi
 import google_cal
@@ -82,7 +83,7 @@ class Api:
         return {"ok": True}
 
     def get_calendars(self, force=False):
-        """Calendari di Outlook + quelli sottoscritti da link ICS."""
+        """Calendari delle caselle + quelli sottoscritti da link ICS."""
         t0 = time.time()
         log.info("get_calendars: inizio (force=%s)", force)
         cfg = config.load_config()
@@ -95,26 +96,29 @@ class Api:
             self._integrazioni_viste = True
         except Exception:
             log.exception("get_calendars: verifica integrazioni fallita")
-        extra = raccolta_eventi.calendari_extra(cfg)
         def _ordina(lista):
             # Ordine scelto dall'utente per nome mostrato; stabile per il resto.
             return sorted(lista, key=lambda c: config.ordine_calendario(
                 c.get("alias") or c.get("account") or ""))
+        cals, errore = [], None
         try:
-            cals = outlook_com.list_calendars(cfg, force=bool(force))
-            log.info("get_calendars: %d Outlook + %d extra in %.1fs",
-                     len(cals), len(extra), time.time() - t0)
-            return {"calendars": _ordina(cals + extra), "error": None}
-        except outlook_com.OutlookUnavailable as e:
-            log.warning("get_calendars: Outlook non disponibile: %s", e)
-            # I calendari da link e locali restano leggibili anche senza Outlook.
-            return {"calendars": _ordina(extra), "error": str(e)}
+            cals = raccolta_eventi.calendari_caselle(cfg, force=bool(force))
+        except raccolta_eventi.SORGENTE_NON_DISPONIBILE as e:
+            log.warning("get_calendars: caselle non disponibili: %s", e)
+            errore = str(e)
         except Exception as e:
             log.exception("get_calendars: eccezione")
-            return {"calendars": _ordina(extra), "error": str(e)}
+            errore = str(e)
+        # Dopo le caselle, non prima: il pallino di un'azienda inoltrata dipende
+        # da com'e' andata la lettura della casella che ne ospita le copie.
+        # I calendari da link e locali restano leggibili anche senza le caselle.
+        extra = raccolta_eventi.calendari_extra(cfg)
+        log.info("get_calendars: %d delle caselle + %d extra in %.1fs",
+                 len(cals), len(extra), time.time() - t0)
+        return {"calendars": _ordina(cals + extra), "error": errore}
 
     def set_calendar_enabled(self, cal_id, enabled):
-        outlook_com.set_calendar_enabled(config.load_config(), cal_id, bool(enabled))
+        caselle.set_calendar_enabled(config.load_config(), cal_id, bool(enabled))
         return {"ok": True}
 
     def set_account_enabled(self, account, enabled):
@@ -124,13 +128,13 @@ class Api:
         # altrimenti le voci che arrivano da Google o dal calendario locale
         # restano accese qualunque cosa si clicchi.
         try:
-            outlook = outlook_com.list_calendars(cfg)
-        except outlook_com.OutlookUnavailable:
-            outlook = []   # senza Outlook si spengono comunque le altre voci
+            outlook = raccolta_eventi.calendari_caselle(cfg)
+        except raccolta_eventi.SORGENTE_NON_DISPONIBILE:
+            outlook = []   # senza le caselle si spengono comunque le altre voci
         tutti = outlook + raccolta_eventi.calendari_extra(cfg)
         for c in tutti:
             if c["account"] == account:
-                outlook_com.set_calendar_enabled(cfg, c["id"], bool(enabled))
+                caselle.set_calendar_enabled(cfg, c["id"], bool(enabled))
         return {"ok": True}
 
     def set_azienda_enabled(self, azienda, enabled):
@@ -144,8 +148,8 @@ class Api:
         """
         cfg = config.load_config()
         try:
-            outlook = outlook_com.list_calendars(cfg)
-        except outlook_com.OutlookUnavailable:
+            outlook = raccolta_eventi.calendari_caselle(cfg)
+        except raccolta_eventi.SORGENTE_NON_DISPONIBILE:
             outlook = []
         tutti = outlook + raccolta_eventi.calendari_extra(cfg)
         spenti = set(cfg.get("disabled_calendars", []))
@@ -216,6 +220,22 @@ class Api:
             log.exception("open_in_outlook: eccezione")
             return {"ok": False, "error": str(e)}
 
+    def apri_in_outlook_remoto(self, account, start_iso, titolo):
+        """Apre in Outlook un evento letto dall'agente remoto.
+
+        Quegli eventi non portano un EntryID di Outlook: lo si cerca nella
+        casella per ora d'inizio e titolo. Serve Outlook aperto su questo PC,
+        che in questa modalita' non e' piu' necessario per il calendario.
+        """
+        try:
+            ok = outlook_com.open_item_by(config.load_config(), account, start_iso, titolo)
+            return {"ok": ok, "error": None if ok else "Evento non trovato in Outlook"}
+        except outlook_com.OutlookUnavailable as e:
+            return {"ok": False, "error": str(e)}
+        except Exception as e:
+            log.exception("apri_in_outlook_remoto: eccezione")
+            return {"ok": False, "error": str(e)}
+
     def apri_in_teams(self, online_url, account):
         """Apre Teams sul calendario dell'account dell'evento e poi la riunione."""
         try:
@@ -276,7 +296,9 @@ class Api:
         aziende. Con il file assente l'interfaccia parte con i valori neutri.
         """
         return {"interfaccia": config.INTERFACCIA,
-                "estensioni": sorted(_ESTENSIONI_CARICATE)}
+                "estensioni": sorted(_ESTENSIONI_CARICATE),
+                # Da dove arrivano le caselle: l'interfaccia adatta i testi.
+                "sorgente": "remota" if raccolta_eventi.agente_remoto.attivo() else "outlook"}
 
     def test_notification(self):
         return {"message": reminders.send_test_notification(config.load_config())}

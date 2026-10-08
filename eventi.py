@@ -1,17 +1,23 @@
 """Raccolta degli eventi da tutte le sorgenti, in un posto solo.
 
-Le sorgenti sono quattro (Outlook via COM, calendari Google via CalDAV, link
-ICS, calendario locale) e vanno lette insieme, non a due a due: prima questa
+Le sorgenti sono quattro (le caselle, calendari Google via CalDAV, link ICS,
+calendario locale) e vanno lette insieme, non a due a due: prima questa
 unione stava scritta dentro l'interfaccia, mentre il servizio promemoria leggeva
 per conto suo solo Outlook e gli ICS. Risultato: le riunioni che arrivano da
 un calendario Google e gli eventi aggiunti a mano si vedevano in griglia ma
 non producevano nessun promemoria. Con una funzione sola le due strade non
 possono piu' divergere.
+
+Le caselle si leggono da Outlook su questo PC (outlook_com) oppure, se la
+personalizzazione lo dice, da un agente remoto (agente_remoto): i due moduli
+espongono le stesse funzioni e qui si sceglie quale usare.
 """
 
 import logging
 import time
 
+import agente_remoto
+import caselle
 import google_cal
 import ics_feed
 import local_events
@@ -19,9 +25,23 @@ import outlook_com
 
 log = logging.getLogger(__name__)
 
+# Le caselle non rispondono: Outlook chiuso, oppure agente remoto irraggiungibile.
+SORGENTE_NON_DISPONIBILE = (outlook_com.OutlookUnavailable,
+                            agente_remoto.AgenteNonDisponibile)
+
+
+def sorgente_caselle():
+    """Il modulo da cui si leggono le caselle: agente remoto se configurato."""
+    return agente_remoto if agente_remoto.attivo() else outlook_com
+
+
+def calendari_caselle(cfg, force=False):
+    """Elenco dei calendari delle caselle; solleva SORGENTE_NON_DISPONIBILE."""
+    return sorgente_caselle().list_calendars(cfg, force=force)
+
 
 def calendari_extra(cfg):
-    """Le voci della barra laterale che non sono cartelle di Outlook.
+    """Le voci della barra laterale che non sono calendari delle caselle.
 
     Un elenco solo, usato da tutti: prima ogni punto (barra laterale, pallini,
     interruttori, filtro per azienda) sommava le sorgenti per conto suo, e una
@@ -30,7 +50,7 @@ def calendari_extra(cfg):
     """
     return (ics_feed.list_feeds(cfg) + google_cal.calendari(cfg)
             + local_events.list_calendars(cfg)
-            + outlook_com.calendari_inoltrati(cfg))
+            + sorgente_caselle().calendari_inoltrati(cfg))
 
 
 def senza_doppioni(eventi):
@@ -73,11 +93,11 @@ def raccogli(cfg, start_iso, end_iso, allow_cache=True):
     `allow_cache=False` vieta di rispondere con l'ultima lettura salvata: lo usa
     il servizio promemoria, che non deve avvisare per riunioni gia' spostate.
     """
-    eventi, errori, meta = outlook_com.fetch_all_events(
+    eventi, errori, meta = sorgente_caselle().fetch_all_events(
         cfg, start_iso, end_iso, allow_cache=allow_cache)
     try:
-        inizio = outlook_com._parse_bound(start_iso)
-        fine = outlook_com._parse_bound(end_iso)
+        inizio = caselle.parse_bound(start_iso)
+        fine = caselle.parse_bound(end_iso)
     except (ValueError, AttributeError) as e:
         return eventi, errori + [f"Intervallo non valido: {e}"], meta
 
@@ -123,11 +143,19 @@ def _stato_fonti(cfg, meta, errori=()):
     """
     ora = time.strftime("%H:%M")
     outlook_ok = not meta.get("outlook_starting")
+    # Chi legge le caselle puo' dire da se' com'e' andata, azienda per azienda
+    # (l'agente remoto lo fa: sa se una casella manca o se l'aggiornamento sul
+    # server e' fermo). Outlook non lo dice: o risponde, o no.
+    propri = meta.get("stato_aziende")
     fonti = {}
     for azienda in (meta.get("aziende") or {}):
-        fonti[azienda] = ({"stato": "ok", "msg": f"Outlook letto alle {ora}"}
-                          if outlook_ok else
-                          {"stato": "errore", "msg": "Outlook non risponde"})
+        if propri is not None:
+            fonti[azienda] = dict(propri.get(azienda)
+                                  or {"stato": "ok", "msg": f"Letto alle {ora}"})
+        else:
+            fonti[azienda] = ({"stato": "ok", "msg": f"Outlook letto alle {ora}"}
+                              if outlook_ok else
+                              {"stato": "errore", "msg": "Outlook non risponde"})
     try:
         altri = calendari_extra(cfg)
     except Exception:
@@ -137,9 +165,10 @@ def _stato_fonti(cfg, meta, errori=()):
         nome = c.get("alias") or c.get("account")
         stato = c.get("stato") or "ok"
         msg = c.get("stato_msg") or ""
-        if c.get("is_inoltro"):
+        if c.get("is_inoltro") and propri is None:
             # Le copie si leggono dal calendario di un'altra casella di
             # Outlook: se Outlook non risponde non arrivano nemmeno loro.
+            # (Con l'agente remoto il pallino segue gia' la casella che le ospita.)
             if not outlook_ok:
                 stato, msg = "errore", "Outlook non risponde"
             else:

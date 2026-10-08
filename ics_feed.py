@@ -175,15 +175,23 @@ def _testo_calendario(feed_id, url):
 # --------------------------------------------------------------------------
 # Lettura eventi
 # --------------------------------------------------------------------------
-def _fuso_locale():
-    return datetime.now().astimezone().tzinfo
+def _con_fuso(locale):
+    """Da' a un orario locale senza fuso lo scarto da UTC valido QUEL giorno.
+
+    Prendere lo scarto di oggi e applicarlo a ogni data spostava di un'ora tutto
+    cio' che cade dall'altra parte del cambio dell'ora: a ottobre le riunioni di
+    novembre uscivano un'ora avanti. `astimezone()` senza argomenti chiede
+    invece al sistema lo scarto della data che riceve.
+    """
+    return locale.astimezone()
 
 
 def _naive_locale(valore):
     """Porta qualunque data/ora ICS a datetime locale senza fuso."""
     if isinstance(valore, datetime):
         if valore.tzinfo is not None:
-            return valore.astimezone(_fuso_locale()).replace(tzinfo=None)
+            # Senza argomenti, per lo stesso motivo di _con_fuso.
+            return valore.astimezone().replace(tzinfo=None)
         return valore
     if isinstance(valore, date):
         return datetime(valore.year, valore.month, valore.day)
@@ -209,7 +217,6 @@ def fetch_events(cfg, start, end):
     # Le festività italiane sono un feed fisso, oltre a quelli aggiunti dall'utente.
     feeds = [_feed_festivita()] + list(cfg.get("ics_calendars", []))
     disabled = set(cfg.get("disabled_calendars", []))
-    fuso = _fuso_locale()
     eventi, errori = [], []
 
     for feed in feeds:
@@ -238,7 +245,7 @@ def fetch_events(cfg, start, end):
             # La libreria espande le ricorrenze (RRULE, eccezioni comprese):
             # farlo a mano sarebbe una fonte inesauribile di bachi.
             trovati = recurring_ical_events.of(cal).between(
-                start.replace(tzinfo=fuso), end.replace(tzinfo=fuso))
+                _con_fuso(start), _con_fuso(end))
         except Exception as e:  # ICS malformato: non deve far cadere il resto
             errori.append(f"{nome}: calendario illeggibile ({e})")
             continue

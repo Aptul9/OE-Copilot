@@ -1,0 +1,52 @@
+# Oe Copilot sulla VM: i calendari si leggono da qui, non piu' dal PC.
+# telefono = Android virtuale con Outlook (caselle Microsoft) e DAVx5 (calendari Google),
+# agent = legge il calendario del telefono e lo serve all'app del PC.
+name: oe-copilot
+services:
+  # agent = legge il calendario del telefono e lo serve all'app del PC con
+  # un'API a chiave.
+  agent:
+    build: ./agent
+    container_name: oe-copilot-agent
+    environment:
+      - API_KEY=${API_KEY}
+    volumes:
+      - ./agent/agent.py:/app/agent.py:ro
+      - ./agent/comune.py:/app/comune.py:ro
+      - ./agent/fonte_android.py:/app/fonte_android.py:ro
+      - ./agent/fonti.json:/app/fonti.json:ro
+      # Calendario di sistema del telefono, in sola lettura: Outlook e DAVx5 ci
+      # copiano le caselle, l'agente ne legge una copia.
+      - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
+      # Segno di vita del servizio che aggiorna il telefono (battito.json).
+      - ./stato:/stato:ro
+    # Solo localhost: l'app del PC ci arriva con un tunnel SSH, niente e'
+    # esposto su internet.
+    ports:
+      - "127.0.0.1:3180:8180"
+    restart: unless-stopped
+
+  # Telefono Android virtuale con le app ufficiali: Outlook per le caselle
+  # Microsoft (app di Microsoft, gia' autorizzata in tutti i tenant: dove
+  # TbSync chiede l'approvazione dell'amministratore, Outlook no) e DAVx5 per i
+  # calendari Google (Outlook non li esporta nel calendario di Android).
+  # Entrambi copiano i calendari nel calendario del telefono, che l'agente legge.
+  # Il servizio systemd oe-copilot-sincronizza li tiene aggiornati ogni 30 secondi
+  # (da solo Android sincronizzerebbe ogni 15 minuti).
+  # La VM e' ARM come i telefoni: Android gira nativo, senza emulazione.
+  # Serve il modulo binder_linux caricato sulla VM.
+  telefono:
+    image: redroid/redroid:13.0.0_64only-latest
+    container_name: oe-copilot-telefono
+    privileged: true
+    command:
+      - androidboot.redroid_width=720
+      - androidboot.redroid_height=1280
+      - androidboot.redroid_dpi=320
+      - androidboot.redroid_gpu_mode=guest
+    volumes:
+      - ./telefono/data:/data
+    # adb solo su localhost: lo schermo si vede da PC col tunnel SSH.
+    ports:
+      - "127.0.0.1:5555:5555"
+    restart: unless-stopped

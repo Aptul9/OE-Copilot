@@ -332,7 +332,12 @@ l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la 
        User      mario
        IdentityFile ~/.ssh/id_ed25519
    ```
-   Prova: `ssh oecopilot hostname` deve entrare senza chiedere nulla.
+   Prova: `ssh oecopilot hostname` deve entrare senza chiedere nulla. Provalo dal prompt dei
+   comandi e non da Git Bash: l'app usa l'OpenSSH di Windows, che rifiuta una chiave leggibile da
+   altri utenti ("UNPROTECTED PRIVATE KEY FILE", nell'app "Permission denied"), mentre l'ssh di
+   Git la accetta. Una chiave in una cartella sincronizzata (OneDrive) eredita spesso permessi in
+   più: tienine una copia in `%USERPROFILE%\.ssh` e sistemala con
+   `icacls <chiave> /inheritance:r /grant:r "%USERNAME%:R"`.
 
 2. **Chiave dell'API**, salvata cifrata per il tuo utente Windows (non passa mai dallo schermo):
    ```bat

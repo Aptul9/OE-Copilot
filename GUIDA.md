@@ -113,7 +113,8 @@ Il codice del server sta nella cartella **`server/`** del repository.
 - Windows 10/11.
 - **Outlook desktop classico** installato e configurato (serve per la modalità PC e per il pulsante
   "Apri in Outlook"; non il "Nuovo Outlook").
-- **Python 3.12** (da python.org).
+- **Python 3.12** (da python.org, oppure con [scoop](https://scoop.sh):
+  `scoop bucket add versions` e `scoop install python312`).
 - Runtime **Microsoft Edge WebView2** (di norma già presente su Windows 11).
 - Connessione a internet al primo avvio (FullCalendar arriva da una CDN).
 
@@ -125,6 +126,9 @@ py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python strumenti\applica_patch_pywebview.py
 ```
+
+Se Python 3.12 arriva da scoop il lanciatore `py` non lo vede: al posto di `py -3.12` usa
+`%USERPROFILE%\scoop\apps\python312\current\python.exe`.
 
 L'ultimo comando applica a pywebview due correzioni che servono all'app (icona nella barra delle
 applicazioni, finestra senza cornice). Va ripetuto se si reinstalla pywebview.
@@ -138,6 +142,8 @@ voce nel [README](README.md).
 - Prima volta: doppio clic su **`start.bat`** (gli errori finiscono in `debug.log`/`crash.log`).
 - Uso quotidiano: **`Calendar Hub (silenzioso).vbs`** (senza finestre di prompt).
 - Controllo di salute: `.venv\Scripts\python verifica.py` (con `--avvio` lancia anche l'app).
+  Se Outlook era chiuso lo avvia e quel giro segna rosso "Outlook risponde": rilancialo dopo
+  una ventina di secondi.
 
 A questo punto, in **modalità PC**, hai finito. Se vuoi la modalità server, continua.
 
@@ -202,37 +208,74 @@ Il primo avvio scarica le immagini. Se il telefono non parte, quasi sempre manca
 (vedi 4.1).
 
 ### 4.4 Configurare il telefono virtuale
-Lo schermo del telefono si vede dal **tuo PC** con [scrcpy](https://github.com/Genymobile/scrcpy),
-attraverso un tunnel SSH verso la porta adb del telefono:
+**Impostazioni e Outlook.** Fuso orario, lingua, schermo sempre acceso, l'app Outlook e niente
+risparmio batteria per Outlook e DAVx⁵ li mette lo script, senza toccare lo schermo:
+```bash
+sudo /opt/oe-copilot/strumenti/prepara_telefono.sh
+# altro fuso o altra lingua: sudo FUSO=Europe/London LINGUA=en-GB .../prepara_telefono.sh
+```
+Si può rilanciare quanto si vuole (fa solo quello che manca) e l'aggiornamento automatico della
+[sezione 4.6](#46-aggiornamento-automatico-facoltativo) lo lancia a ogni giro: un telefono ricreato
+da zero torna a posto da solo, restano da rifare solo i login.
+
+L'app Outlook esiste solo sul Play Store e il telefono non ha i servizi Google, quindi l'APK
+(**arm64‑v8a**: redroid qui è 64‑bit, gli APK armeabi‑v7a falliscono) sta fra i file della release
+[`apk`](../../releases/tag/apk) del repository. Pesa più dei 100 MB che GitHub accetta per un file
+nel repository, per questo è lì e non fra i sorgenti. L'aggiornamento automatico lo scarica e lo
+porta in `/opt/oe-copilot/apk/`; a mano:
+```bash
+gh release download apk --repo <proprietario>/OE-Copilot --pattern '*.apk' --dir /opt/oe-copilot/apk
+```
+Lo script installa solo l'APK elencato in `apk/SHA256SUMS` (che è nel repository) e solo se
+l'impronta coincide. Che sia davvero l'app di Microsoft lo dice la firma, che Android controlla
+all'installazione: il certificato ha SHA‑1 (base64) `fcg80qvoM1YMKJZibjBwQcDfOno=` (è pubblico, lo
+stesso del redirect `msauth://com.microsoft.office.outlook/…`).
+
+Per passare a una versione nuova di Outlook: carica l'APK nella release
+(`gh release upload apk <file>`), sostituisci la riga in `server/apk/SHA256SUMS` con
+`sha256sum <file>` e fai push. Su un telefono che ha già Outlook lo script non lo reinstalla:
+lì l'app si aggiorna con `docker cp` e `pm install -r`, i login restano.
+
+> Aurora Store in sessione anonima, da un server in cloud, non funziona: il suo servizio di accesso
+> risponde 403 agli indirizzi dei datacenter (provato da Oracle Cloud il 09/10/2026).
+
+**Schermo.** Il telefono si vede dal **tuo PC** con [scrcpy](https://github.com/Genymobile/scrcpy)
+(`scoop install scrcpy`, oppure lo zip dal sito: contiene anche `adb`). Dalla cartella dell'app:
 ```bat
-rem sul PC, in un prompt:
+.venv\Scripts\python strumenti\schermo_telefono.py <utente@server>
+```
+Lo script mette in pausa il servizio che altrimenti ti "ruberebbe" lo schermo (file `PAUSA`), apre
+un tunnel SSH verso la porta adb del telefono (la `5555`, esposta solo sul localhost del server),
+collega adb e apre la finestra. Quando la chiudi toglie la pausa e chiude il tunnel. Se
+`agente_remoto` è già nella personalizzazione l'indirizzo si può omettere.
+
+<details><summary>Gli stessi passi a mano</summary>
+
+```bat
+ssh <utente@server> "sudo touch /opt/oe-copilot/telefono/PAUSA"
 ssh -N -L 15555:127.0.0.1:5555 <utente@server>
-rem in un altro prompt, nella cartella di scrcpy:
+rem in un altro prompt:
 adb connect 127.0.0.1:15555
 scrcpy -s 127.0.0.1:15555
+rem alla fine:
+ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
 ```
-(la porta adb `5555` è esposta solo sul localhost del server, come l'agente: si raggiunge solo col
-tunnel).
+</details>
 
-Nel telefono:
-1. **Impostazioni Android**: lingua e fuso orario corretti; schermo sempre acceso
-   (`adb shell svc power stayon true`); togli l'ottimizzazione batteria (doze) a Outlook e DAVx⁵.
-2. **Installa l'app Outlook** (prima parte Microsoft). L'APK va preso **arm64‑v8a** (redroid qui è
-   64‑bit: gli APK armeabi‑v7a falliscono). Prima di installarlo conviene verificare che sia davvero
-   l'app di Microsoft: la firma ha SHA‑1 (base64) `fcg80qvoM1YMKJZibjBwQcDfOno=` (è pubblica, la
-   stessa del redirect `msauth://com.microsoft.office.outlook/…`). Poi la validità della firma la
-   controlla Android all'installazione.
-3. **Login delle caselle Microsoft** in Outlook. Per **ogni** casella, dopo averla aggiunta, apri
+**Login**, nella finestra del telefono:
+1. **Caselle Microsoft** in Outlook. Per **ogni** casella, dopo averla aggiunta, apri
    *Impostazioni → Calendario → Sincronizza calendari* e **accendi l'interruttore**: è **per
    account**, e le caselle aggiunte dopo partono **spente** (è il motivo tipico per cui un
    calendario "non arriva").
-4. **Calendari Google** (se ne hai): installa **DAVx⁵** e un browser vero (es. **Firefox**, perché
-   Google blocca il login nella WebView interna). In DAVx⁵ aggiungi l'account Google via login nel
-   browser, poi attiva la collezione del calendario come **sola lettura**.
+2. **Calendari Google** (se ne hai): installa **DAVx⁵** e un browser vero (es. **Firefox**, perché
+   Google blocca il login nella WebView interna); gli APK si copiano nel telefono come quello di
+   Outlook (`docker cp`, poi `pm install`). In DAVx⁵ aggiungi l'account Google via login nel
+   browser, poi attiva la collezione del calendario come **sola lettura**, e rilancia
+   `prepara_telefono.sh` per togliere il risparmio batteria a DAVx⁵.
+3. Scrivi le caselle in `agent/fonti.json` ([sezione 4.2](#42-prendere-il-codice)) e riavvia
+   l'agente: `sudo docker compose restart agent`.
 
-> I login (password e MFA) li fai **tu**, dalla finestra di scrcpy. Durante un login crea il file
-> `PAUSA` così il servizio non ti "ruba" lo schermo:
-> `ssh <server> "sudo touch /opt/oe-copilot/telefono/PAUSA"` e rimuovilo alla fine.
+> I login (password e MFA) li fai **tu**, dalla finestra del telefono.
 
 ### 4.5 Il servizio di sincronizzazione
 Installa la unit systemd (tiene aggiornato il telefono ogni 30 s e scrive i segni di vita):
@@ -256,7 +299,8 @@ curl -s -H "Authorization: Bearer $(sudo grep ^API_KEY= /opt/oe-copilot/.env | c
 ### 4.6 Aggiornamento automatico (facoltativo)
 La GitHub Action `.github/workflows/server.yml` porta `server/` sul server a ogni push su `main`
 che lo tocca: controlla la sintassi, copia il codice con rsync e lancia
-`strumenti/aggiorna_server.sh`, che ricostruisce l'agente, riavvia il servizio e verifica che
+`strumenti/aggiorna_server.sh`, che rimette a posto impostazioni e app del telefono
+(`prepara_telefono.sh`, con l'APK di Outlook preso dalla release `apk`), ricostruisce l'agente, riavvia il servizio e verifica che
 l'agente risponda e che il battito sia fresco. Se la verifica fallisce rimette la versione di
 prima. `.env`, `agent/fonti.json`, `telefono/` e `stato/` non vengono mai toccati. Il telefono si
 riavvia solo se cambia la sua parte di `docker-compose.yml`.
@@ -300,6 +344,11 @@ l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la 
    ```json
    "agente_remoto": {"ssh": "oecopilot", "porta_remota": 3180, "porta_locale": 31800}
    ```
+   Con la voce `ssh` presente l'app legge **solo** dal server e non più da Outlook del PC:
+   aggiungila quando sul telefono i login sono fatti e `fonti.json` è compilato, altrimenti il
+   calendario resta vuoto. Per provare il collegamento prima, senza toccare la personalizzazione
+   vera: metti la voce in un file a parte e lancia la prova con
+   `set OE_PERSONALIZZAZIONE=<quel file>`.
    Riavvia l'app. Prova dal prompt: `.venv\Scripts\python agente_remoto.py prova` deve elencare le
    caselle.
 
@@ -338,8 +387,8 @@ e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un c
 
 ## 7. Manutenzione e diagnostica
 
-- **Rifare un login scaduto**: crea `telefono/PAUSA`, apri scrcpy, rifai il login nell'app, togli
-  `PAUSA`.
+- **Rifare un login scaduto**: `strumenti\schermo_telefono.py` sul PC (mette e toglie `PAUSA` da
+  solo), rifai il login nell'app, chiudi la finestra.
 - **Segni di vita** (sul server): `stato/battito.json` (il servizio è vivo? Outlook è davanti?) e
   `stato/accessi.json` (stato di ogni casella).
 - **Log dell'app** (sul PC): `debug.log`; del tunnel: `agente_tunnel.log`.

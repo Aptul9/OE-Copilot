@@ -62,6 +62,15 @@ jobs:
       - name: Copia della versione in esecuzione
         run: ssh "$SERVER" "test ! -x $OE_DIR/strumenti/aggiorna_server.sh || $OE_DIR/strumenti/aggiorna_server.sh salva"
 
+      - name: APK delle app del telefono
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # pesano più del limite di GitHub per un file: stanno nella release "apk",
+          # nel repository c'è solo l'impronta
+          gh release download apk --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir server/apk
+          cd server/apk && sha256sum -c SHA256SUMS
+
       - name: Carica il codice
         run: |
           # caselle, chiave dell'API, dati del telefono e segni di vita restano sul server

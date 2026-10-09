@@ -34,3 +34,6 @@ web/personale/
 # Loghi delle aziende di chi usa l'app: resta solo l'icona generica
 web/logos/*
 !web/logos/personale.png
+
+# APK delle app del telefono: stanno fra i file della release "apk", non nel repository
+server/apk/*.apk

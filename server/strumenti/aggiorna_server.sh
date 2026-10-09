@@ -25,6 +25,8 @@ avvia() {
     done
     [ "$(docker exec "$T" getprop sys.boot_completed 2>/dev/null)" = 1 ] \
         || { echo "il telefono non ha finito di avviarsi" >&2; return 1; }
+    # impostazioni del telefono e negozio delle app: stanno nello script, non a mano
+    "$DIR/strumenti/prepara_telefono.sh"
     # I file .py sono montati uno per uno: rsync li sostituisce con file nuovi e il
     # container continuerebbe a leggere i vecchi. Per questo l'agente si ricrea sempre.
     docker compose up -d --build --force-recreate agent
@@ -59,7 +61,8 @@ case "${1:-}" in
     salva)
         # tutto tranne i dati che vivono solo sul server
         tar -czf "$COPIA" --exclude=./.env --exclude=./agent/fonti.json \
-            --exclude=./telefono --exclude=./stato --exclude=./.versione . 2>/dev/null || true
+            --exclude=./telefono --exclude=./stato --exclude=./.versione \
+            --exclude='./apk/*.apk' . 2>/dev/null || true
         echo "copia: $COPIA"
         ;;
     avvia)

@@ -72,8 +72,13 @@ def accessi_outlook():
     try:
         reauth = {e: False for (e,) in c.execute(
             "select distinct lower(email) from mailAccounts where email is not null")}
+        # Il servizio MFA di Microsoft (adnotifications.windowsazure.com) chiede
+        # spesso un nuovo accesso per registrare le informazioni di sicurezza: non
+        # riguarda posta e calendario, che continuano a funzionare.
         for acc, _nr in c.execute("select accountId, needsReauth from tokenStore "
-                                  "where needsReauth is not null and needsReauth != 0"):
+                                  "where needsReauth is not null and needsReauth != 0 "
+                                  "and (resource is null "
+                                  "or resource not like '%adnotifications.windowsazure.com%')"):
             try:
                 chiaro = base64.b64decode(acc + "=" * (-len(acc) % 4),
                                           altchars=b"-_").decode("latin-1").lower()

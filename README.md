@@ -67,6 +67,7 @@ il nome dal dominio della sua casella.
 | `ordine_calendari` | Ordine dei calendari nella barra laterale |
 | `azienda_per_cartella` | Cartelle calendario dedicate a un'azienda, riconosciute dal nome |
 | `account_nascosti` | Caselle da non mostrare mai |
+| `mostra_tutto_il_giorno` | `true` mostra gli eventi di un giorno intero delle caselle (per esempio i "Home" di Google Calendar); senza la voce non si mostrano. Le festività non cambiano |
 | `calendari_google` | Calendari Google letti direttamente (vedi sotto) |
 | `aziende_inoltrate` | Aziende le cui riunioni arrivano copiate in un'altra casella (vedi sotto) |
 | `agente_remoto` | Caselle lette da un server invece che da Outlook su questo PC (vedi sotto) |

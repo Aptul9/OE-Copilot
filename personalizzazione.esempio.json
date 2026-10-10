@@ -13,6 +13,7 @@
     "calendari_google: calendari Google letti direttamente, per esempio [{\"indirizzo\": \"tu@azienda.example\", \"nome\": \"Azienda\"}]. Vedi il README.",
     "aziende_inoltrate: aziende senza casella in Outlook, le cui riunioni arrivano copiate in un'altra casella con un prefisso nel titolo. Vedi il README.",
     "agente_remoto: per leggere le caselle da un agente su un server invece che da Outlook su questo PC, per esempio {\"ssh\": \"utente@server.example\"}. Vuoto = si legge da Outlook. Vedi il README.",
+    "mostra_tutto_il_giorno: true mostra gli eventi di un giorno intero delle caselle (per esempio i \"Home\" di Google Calendar); senza la voce, o con false, non si mostrano. Le festività non cambiano.",
     "interfaccia: sigle e loghi delle aziende, calendari secondari (mostrati sbiaditi), calendari senza il pulsante Apri in Teams, schede della sezione Timesheet."
   ],
   "nomi_per_indirizzo": {
@@ -31,6 +32,7 @@
   "calendari_google": [],
   "aziende_inoltrate": {},
   "agente_remoto": {},
+  "mostra_tutto_il_giorno": false,
   "interfaccia": {
     "sigle": {"Alfa": "AL", "Beta": "BE", "Alfa - Supporto": "AS", "Personale": "PE"},
     "loghi": {},

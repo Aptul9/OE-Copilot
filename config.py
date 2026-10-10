@@ -384,6 +384,12 @@ def azienda_da_email(email):
 # Account da non mostrare mai in elenco (nascosti a monte, non solo deselezionati).
 ACCOUNT_NASCOSTI = _minuscole(_P.get("account_nascosti"))
 
+# Gli eventi di un giorno intero delle caselle ("Home" di Google Calendar, fuori
+# sede dei colleghi, avvisi) stanno sotto l'intestazione del giorno e di solito
+# sono rumore: per impostazione predefinita non si mostrano. Con true tornano.
+# Le festività, i link ICS e gli eventi personali non cambiano.
+MOSTRA_TUTTO_IL_GIORNO = bool(_P.get("mostra_tutto_il_giorno"))
+
 # Calendario locale per gli eventi aggiunti a mano dentro l'app.
 ACCOUNT_LOCALE = "Eventi personali"
 LOCAL_EVENTS_PATH = os.path.join(APP_DIR, "local_events.json")

@@ -18,6 +18,7 @@ import time
 
 import agente_remoto
 import caselle
+import config
 import google_cal
 import ics_feed
 import local_events
@@ -95,6 +96,8 @@ def raccogli(cfg, start_iso, end_iso, allow_cache=True):
     """
     eventi, errori, meta = sorgente_caselle().fetch_all_events(
         cfg, start_iso, end_iso, allow_cache=allow_cache)
+    if not config.MOSTRA_TUTTO_IL_GIORNO:
+        eventi = [e for e in eventi if not e.get("allDay")]
     try:
         inizio = caselle.parse_bound(start_iso)
         fine = caselle.parse_bound(end_iso)

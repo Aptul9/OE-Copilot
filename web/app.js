@@ -767,15 +767,22 @@ function refreshLegend() {
                   style="--c:${d.color}" title="${escapeHtml(dettaglio)}">
           <span class="acct-box">${spunta}</span>
           <span class="acct-name">${escapeHtml(d.alias)}</span>
+          <span class="acct-only" role="button" title="Mostra solo ${escapeHtml(d.alias)}">only</span>
           ${salute}
         </button>`;
       }).join("");
-      legend.querySelectorAll(".acct").forEach((b) =>
+      legend.querySelectorAll(".acct").forEach((b) => {
         b.addEventListener("click", () => {
           const attivo = b.classList.contains("on");
           api.set_azienda_enabled(b.dataset.azienda, !attivo)
             .then(refreshLegend);
-        }));
+        });
+        // "only": resta accesa solo questa azienda, senza spegnere le altre a mano.
+        b.querySelector(".acct-only").addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          api.mostra_solo_azienda(b.dataset.azienda).then(refreshLegend);
+        });
+      });
     }
     // Al primo giro il calendario sta già caricando da sé: un refetch qui
     // significherebbe interrogare Outlook due volte per gli stessi eventi.
@@ -1006,6 +1013,8 @@ function setupUI() {
 
   // Azioni calendario spostate sotto "I miei calendari".
   $("#mycal-all").addEventListener("click", () => openCalendarsModal(false));
+  $("#mycal-tutti").addEventListener("click", () =>
+    api.mostra_solo_azienda("").then(refreshLegend));
   $("#open-cal-settings").addEventListener("click", openSettings);
 
   // ---- Trascinamento finestra e controlli (barra del titolo nostra) ----

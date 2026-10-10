@@ -428,7 +428,10 @@ def fetch_all_events(cfg, start_iso, end_iso, allow_cache=True):
         account = str(e.get("account") or "").lower()
         if account not in mie or not e.get("start"):
             continue
-        label = f"{account} · Calendario"
+        # Il nome del calendario lo dice l'agente: una casella ne può portare più
+        # d'uno (i calendari condivisi da altre aziende), e azienda_per_cartella
+        # li riconosce da lì.
+        label = e.get("calendar") or f"{account} · Calendario"
         ev = {
             "id": e.get("id") or f"{account}|{e.get('start')}",
             "account": account,

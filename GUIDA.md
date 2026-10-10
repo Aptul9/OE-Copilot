@@ -199,6 +199,19 @@ sudoedit agent/fonti.json
 `account` è l'indirizzo esatto come lo vedi in Outlook/DAVx⁵ sul telefono; `nome` è l'etichetta che
 vuoi mostrare; `id` è un identificativo qualsiasi ma univoco.
 
+Di una casella Outlook l'agente legge solo il calendario principale. Per leggerne altri (i
+calendari che altre caselle o altre aziende condividono con quella, "People's calendars") elencali
+per nome nella voce, **principale compreso**:
+```json
+{"tipo": "android", "id": "android::mario.rossi@azienda.example", "nome": "Azienda",
+ "account": "mario.rossi@azienda.example", "calendari": ["Calendar", "Beta", "Gamma"]}
+```
+Il nome è quello che si vede in Outlook. Ogni evento porta con sé il nome del suo calendario, e sul
+PC `azienda_per_cartella` lo usa per mostrarlo come l'azienda giusta, per esempio
+`"azienda_per_cartella": {"· Beta": "Beta"}`. Per dare a quell'azienda una voce, un colore e un
+pallino propri serve anche una voce in `aziende_inoltrate` con `via` uguale alla casella che la
+ospita.
+
 ### 4.3 Avviare lo stack
 ```bash
 sudo docker compose up -d        # avvia 'telefono' (redroid) e 'agent'
@@ -267,6 +280,10 @@ ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
    *Impostazioni → Calendario → Sincronizza calendari* e **accendi l'interruttore**: è **per
    account**, e le caselle aggiunte dopo partono **spente** (è il motivo tipico per cui un
    calendario "non arriva").
+   Dei calendari **secondari e condivisi** Outlook passa al telefono solo quelli **spuntati**
+   nell'elenco dei calendari (vista Calendario → menu in alto a sinistra → la casella): senza
+   spunta il calendario esiste sul telefono ma resta vuoto. Spunta quelli che vuoi leggere, poi
+   elencali in `fonti.json` ([sezione 4.2](#42-prendere-il-codice)).
 2. **Calendari Google** (se ne hai): installa **DAVx⁵** e un browser vero (es. **Firefox**, perché
    Google blocca il login nella WebView interna); gli APK si copiano nel telefono come quello di
    Outlook (`docker cp`, poi `pm install`). In DAVx⁵ aggiungi l'account Google via login nel

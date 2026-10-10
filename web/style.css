@@ -412,6 +412,21 @@ html, body {
 .acct-health {
   flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; margin-left: auto;
 }
+/* "only": compare passando sulla riga, e lascia accesa solo quell'azienda. */
+.acct-only {
+  flex: none; margin-left: auto; padding: 1px 6px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; color: var(--ink-2);
+  visibility: hidden;
+}
+.acct:hover .acct-only { visibility: visible; }
+.acct-only:hover { background: var(--line-strong); color: var(--ink); }
+.acct-only + .acct-health { margin-left: 0; }
+.mycal-tutti {
+  border: none; background: none; cursor: pointer; padding: 2px 6px; border-radius: 4px;
+  font-family: inherit; font-size: 11px; font-weight: 600; color: var(--ink-2);
+  text-transform: none; letter-spacing: 0;
+}
+.mycal-tutti:hover { background: var(--hover); color: var(--ink); }
 .acct-health.good { background: #16a34a; }
 .acct-health.bad {
   background: #dc2626;

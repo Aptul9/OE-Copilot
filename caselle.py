@@ -8,6 +8,7 @@ sola: prima erano dentro la lettura di Outlook.
 import json
 import logging
 import os
+import re
 import time
 from datetime import datetime
 
@@ -66,6 +67,12 @@ def scrivi_cache_eventi(chiave, eventi):
 # --------------------------------------------------------------------------
 # Di che azienda e' un appuntamento
 # --------------------------------------------------------------------------
+# Prefisso che il programma di posta mette davanti al titolo di un invito
+# inoltrato, nelle lingue che capitano (FW/Fwd inglese, I italiano, WG tedesco,
+# TR francese, RV spagnolo), anche ripetuto.
+INOLTRO_RE = re.compile(r"^\s*(?:(?:fwd?|i|wg|tr|rv)\s*:\s*)+", re.I)
+
+
 def accoda(events, seen, ev, etichetta_calendario, invitato):
     """Aggiunge `ev` a `events`, riconoscendo le copie e scartando i doppioni.
 
@@ -87,7 +94,20 @@ def accoda(events, seen, ev, etichetta_calendario, invitato):
             or config.azienda_da_cartella(etichetta_calendario)
             or config.azienda_da_email(ev.get("organizer_email"))):
         ev["invitato_come"] = invitato()
-    key = (ev["account"], ev["title"], ev["start"], ev["end"])
+    # Un invito inoltrato ("FW: ...") e la stessa riunione letta dal calendario
+    # condiviso di chi l'ha organizzata sono una riunione sola: il prefisso non
+    # conta per riconoscerle. Resta quella col titolo pulito, col link dell'altra
+    # se il suo manca.
+    titolo_pulito = INOLTRO_RE.sub("", ev["title"]) or ev["title"]
+    key = (ev["account"], titolo_pulito, ev["start"], ev["end"])
+    if key in seen and not inoltrata and not events[seen[key]].get("inoltrata_da"):
+        prima = events[seen[key]]
+        if INOLTRO_RE.match(prima["title"]) and titolo_pulito == ev["title"]:
+            ev["online_url"] = ev.get("online_url") or prima.get("online_url")
+            events[seen[key]] = ev
+        else:
+            prima["online_url"] = prima.get("online_url") or ev.get("online_url")
+        return
     if key in seen:
         # La stessa riunione arrivata sia come invito vero sia come copia del
         # flusso: vince l'invito, che ha il link per partecipare e

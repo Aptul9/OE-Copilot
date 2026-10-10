@@ -168,6 +168,29 @@ class Api:
                  azienda, "acceso" if enabled else "spento", toccati)
         return {"ok": True, "calendari": toccati}
 
+    def mostra_solo_azienda(self, azienda):
+        """Lascia accesa una sola azienda, o tutte se `azienda` è vuota.
+
+        In un colpo solo: spegnere le altre una per una dalla barra laterale
+        vorrebbe un clic e una rilettura per ciascuna.
+        """
+        cfg = config.load_config()
+        try:
+            outlook = raccolta_eventi.calendari_caselle(cfg)
+        except raccolta_eventi.SORGENTE_NON_DISPONIBILE:
+            outlook = []
+        tutti = outlook + raccolta_eventi.calendari_extra(cfg)
+        spenti = set(cfg.get("disabled_calendars", []))
+        for c in tutti:
+            if not azienda or (c.get("alias") or c.get("account")) == azienda:
+                spenti.discard(c["id"])
+            else:
+                spenti.add(c["id"])
+        cfg["disabled_calendars"] = sorted(spenti)
+        config.save_config(cfg)
+        log.info("mostra_solo_azienda: %s", azienda or "tutte")
+        return {"ok": True}
+
     def set_account_alias(self, account, alias):
         """Nome da mostrare per un account. Vuoto = torna a quello automatico."""
         cfg = config.load_config()

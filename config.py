@@ -7,7 +7,8 @@ una cartella di sola lettura.
   - DATA_DIR: file scrivibili (config, cache, log, eventi locali). Da eseguibile
     è %LOCALAPPDATA%\CalendarHub, così sopravvive agli aggiornamenti dell'exe e
     funziona anche se l'app è installata in una cartella protetta. Da sorgente
-    resta la cartella del progetto, come prima.
+    resta la cartella del progetto, come prima. Sul server (interfaccia web)
+    OE_DATI la sposta fuori dall'immagine.
 """
 import json
 import logging
@@ -29,7 +30,7 @@ if getattr(sys, "frozen", False):
         os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "CalendarHub")
 else:
     RESOURCE_DIR = _QUI
-    DATA_DIR = _QUI
+    DATA_DIR = os.environ.get("OE_DATI") or _QUI
 
 os.makedirs(DATA_DIR, exist_ok=True)
 

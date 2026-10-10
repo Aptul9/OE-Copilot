@@ -37,3 +37,6 @@ web/logos/*
 
 # APK delle app del telefono: stanno fra i file della release "apk", non nel repository
 server/apk/*.apk
+
+# server/ui/app/: copia dei moduli e della pagina dell'app del PC, la rifa server/strumenti/prepara_ui.sh
+server/ui/app/

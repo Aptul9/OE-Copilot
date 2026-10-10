@@ -37,6 +37,10 @@ log = logging.getLogger(__name__)
 
 PORTA_REMOTA = int(config.AGENTE_REMOTO.get("porta_remota") or 3180)
 PORTA_LOCALE = int(config.AGENTE_REMOTO.get("porta_locale") or 31800)
+# Sul server (interfaccia web) l'agente è un altro container della stessa rete:
+# niente tunnel, indirizzo e chiave arrivano dall'ambiente.
+URL_DIRETTO = os.environ.get("OE_AGENTE_URL", "").rstrip("/")
+CHIAVE_DIRETTA = os.environ.get("OE_AGENTE_CHIAVE", "").strip()
 TUNNEL_LOG = os.path.join(config.DATA_DIR, "agente_tunnel.log")
 CASELLE_NOTE_PATH = os.path.join(config.DATA_DIR, "agente_caselle.json")
 
@@ -53,7 +57,7 @@ class AgenteNonDisponibile(RuntimeError):
 
 def attivo():
     """Vero se le caselle vanno lette dall'agente remoto e non da Outlook."""
-    return bool(str(config.AGENTE_REMOTO.get("ssh") or "").strip())
+    return bool(URL_DIRETTO or str(config.AGENTE_REMOTO.get("ssh") or "").strip())
 
 
 # --------------------------------------------------------------------------
@@ -159,6 +163,8 @@ _chiave_in_memoria = None
 
 def _chiave(rileggi=False):
     global _chiave_in_memoria
+    if CHIAVE_DIRETTA:
+        return CHIAVE_DIRETTA
     if _chiave_in_memoria is None or rileggi:
         try:
             with open(config.AGENTE_CHIAVE_PATH, "rb") as f:
@@ -173,8 +179,9 @@ def _chiave(rileggi=False):
 
 def _chiedi(percorso, parametri=None, attesa=20):
     """GET all'agente attraverso il tunnel. -> dati JSON, o AgenteNonDisponibile."""
-    _apri_tunnel()
-    url = f"http://127.0.0.1:{PORTA_LOCALE}{percorso}"
+    if not URL_DIRETTO:
+        _apri_tunnel()
+    url = (URL_DIRETTO or f"http://127.0.0.1:{PORTA_LOCALE}") + percorso
     for tentativo in (1, 2):
         try:
             r = _sessione.get(url, params=parametri, timeout=(3, attesa),

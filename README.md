@@ -141,6 +141,9 @@ Sul PC:
 
 Per tornare a Outlook basta togliere la voce `ssh`.
 
+Le stesse caselle si possono vedere anche da un browser, senza app: il server serve la stessa
+pagina dietro HTTPS e password (servizi `ui` e `caddy-ui`, vedi **GUIDA.md**, sezione 4.7).
+
 Cosa cambia nell'app: il pallino di ogni azienda dice anche se sul server l'aggiornamento è
 fermo; se il server non risponde l'app mostra l'ultima lettura salvata e riprova da sola;
 *Apri in Outlook* cerca l'evento nell'Outlook del PC per ora e titolo. Limiti: gli appuntamenti

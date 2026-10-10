@@ -108,6 +108,8 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
   `accessi.json`).
 - **app sul PC** = apre il tunnel SSH e chiede gli eventi all'agent; per il resto funziona come in
   modalità PC (griglia, colori, promemoria).
+- **interfaccia nel browser** (facoltativa, 4.7) = la stessa pagina servita dal server dietro
+  HTTPS e password; chiede gli eventi all'agent sulla rete di Docker.
 
 Il codice del server sta nella cartella **`server/`** del repository.
 
@@ -331,8 +333,10 @@ che lo tocca: controlla la sintassi, copia il codice con rsync e lancia
 `strumenti/aggiorna_server.sh`, che rimette a posto impostazioni e app del telefono
 (`prepara_telefono.sh`, con l'APK di Outlook preso dalla release `apk`), ricostruisce l'agente, riavvia il servizio e verifica che
 l'agente risponda e che il battito sia fresco. Se la verifica fallisce rimette la versione di
-prima. `.env`, `agent/fonti.json`, `telefono/` e `stato/` non vengono mai toccati. Il telefono si
-riavvia solo se cambia la sua parte di `docker-compose.yml`.
+prima. `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/` non vengono mai toccati. Il
+telefono si riavvia solo se cambia la sua parte di `docker-compose.yml`. Se in `.env` c'è
+`UI_HOST`, a fine aggiornamento parte anche l'interfaccia nel browser (4.7): un suo guasto rende
+rossa la Action ma non riporta indietro l'agente né il telefono.
 
 Sul server serve, una volta sola, un utente dedicato che entra solo con una chiave SSH:
 ```bash
@@ -348,6 +352,55 @@ La chiave pubblica della Action va in `/home/oecopilot/.ssh/authorized_keys`. Ne
 servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiave privata) e
 `DEPLOY_KNOWN_HOSTS` (la riga di `ssh-keyscan -t ed25519 <server>`). Senza i secret
 l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la Action.
+
+### 4.7 L'interfaccia nel browser (facoltativa)
+La stessa pagina e la stessa logica dell'app per Windows, servite dal server a un browser
+qualunque, con HTTPS e password: stesse caselle, stessi colori, pallini e filtri. Gli interruttori
+(calendari, aziende, alias, calendari da link ICS, eventi personali) restano sul server. Non ci
+sono i promemoria (restano all'app per Windows), i controlli della finestra, l'avvio con Windows
+e *Apri in Outlook*; i link delle riunioni si aprono nel browser.
+
+Come è fatta, in `server/docker-compose.yml`:
+- **`ui`**: un piccolo server Python (`server/ui/server.py`) che serve `web/` e chiama la classe
+  `Api` di `app.py`, la stessa che la finestra di Windows chiama con pywebview. I moduli e la
+  pagina dell'app li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola):
+  il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose
+  (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci
+  arriva solo `caddy-ui`.
+- **`caddy-ui`**: Caddy con HTTPS e password (basic auth), solo su `127.0.0.1:4445`. Indirizzo,
+  utente e hash della password arrivano da `.env`, non dal repository.
+- **`ui-dati/`**: configurazione, interruttori, cache e `personalizzazione.json` (nomi, sigle e
+  colori delle aziende: stesso file e stessa forma dell'app sul PC). Sta solo sul server.
+
+Messa in funzione, una volta sola, sul server:
+```bash
+# dati dell'interfaccia: il container li scrive come utente 10001, senza privilegi
+sudo install -d -o 10001 -g 10001 -m 700 /opt/oe-copilot/ui-dati
+sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-dati/
+# password: l'hash bcrypt va in .env tra apici singoli (i $ non sono variabili)
+read -rs PW && printf '%s' "$PW" | docker run --rm -i caddy:2.11.4-alpine caddy hash-password
+```
+In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`, `UI_USER=<utente>`,
+`UI_HASH='<hash>'`. Il prossimo aggiornamento costruisce e avvia `ui` e `caddy-ui`.
+
+**HTTPS.** Caddy ottiene da solo il certificato, e per farlo il suo nome deve arrivargli da
+internet. Dove la 443 è libera basta pubblicare `caddy-ui` su `443:443` e `80:80` al posto di
+`127.0.0.1:4445:443`. Sulla VM della guida la 443 è di sslh (SSH e HTTPS sulla stessa porta): si
+aggiunge a `/etc/sslh.cfg`, **sopra** la voce che prende tutto il resto, una voce per nome
+```
+{ name: "tls"; host: "127.0.0.1"; port: "4445"; sni_hostnames: [ "oe.<IP con i trattini>.sslip.io" ]; },
+```
+e si riavvia sslh (`KillMode=process`: le connessioni aperte non cadono). sslip.io risolve da
+solo il nome nell'indirizzo, non serve DNS. La porta 80 è di un altro Caddy, quindi il certificato
+arriva col TLS-ALPN, che passa da sslh: il primo tentativo HTTP-01 fallisce ed è previsto.
+
+Prova: senza credenziali `curl -I https://<UI_HOST>/` risponde 401 con `WWW-Authenticate: Basic`;
+con `-u utente` risponde 200.
+
+**Personalizzazione.** Senza `personalizzazione.json` in `ui-dati/` le aziende prendono il nome dal
+dominio della casella e i colori dalla tavolozza. Per averle come sul PC si copia lo stesso file e
+si riavvia il servizio (`docker restart oe-copilot-ui`). I colori già assegnati sul PC stanno in
+`config.json` (`account_colors`): copiare anche quella voce in `ui-dati/config.json` dà gli stessi.
 
 ---
 
@@ -447,6 +500,9 @@ e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un c
   (`/opt/oe-copilot/telefono/data`) contengono i token degli accessi: proteggili come credenziali.
 - **Niente esposto su internet**: l'agente e l'adb ascoltano solo sul localhost del server; il PC
   arriva con un tunnel SSH (chiave SSH) e una chiave dell'API cifrata per il tuo utente Windows.
+  L'unica eccezione, facoltativa, è l'interfaccia nel browser (4.7): HTTPS e password davanti a
+  una pagina che mostra i calendari, quindi la password va lunga e casuale. Il servizio `ui` in sé
+  non è pubblicato e non ha password: ci arriva solo il Caddy che la chiede.
 - **I token non si leggono**: il rilevatore degli accessi guarda solo bandierine ed età di
   sincronizzazione, mai il contenuto di un token.
 - Non estrarre token/cookie dai browser e non usare client ID di altre app per aggirare un consenso.

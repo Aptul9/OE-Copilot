@@ -52,3 +52,47 @@ services:
     ports:
       - "127.0.0.1:5555:5555"
     restart: unless-stopped
+
+  # Interfaccia web (facoltativa, GUIDA.md 4.7): la stessa pagina e la stessa logica
+  # dell'app per Windows, servite al browser. Non è pubblicata e non ha password: ci
+  # arriva solo caddy-ui. Le copie del codice dell'app le mette strumenti/prepara_ui.sh.
+  ui:
+    build: ./ui
+    container_name: oe-copilot-ui
+    environment:
+      - OE_AGENTE_URL=http://agent:8180
+      - OE_AGENTE_CHIAVE=${API_KEY}
+    volumes:
+      # configurazione, interruttori, cache e personalizzazione.json: solo sul server
+      - ./ui-dati:/dati
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8181/salute', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # HTTPS e password (basic auth) davanti a ui. Indirizzo, utente e hash vengono da
+  # .env (UI_HOST, UI_USER, UI_HASH). Solo localhost: sslh della VM gli gira il TLS
+  # del suo nome (SNI) sulla 4445, e da lì passa anche il certificato (TLS-ALPN).
+  caddy-ui:
+    build: ./caddy-ui
+    container_name: oe-copilot-caddy
+    environment:
+      - UI_HOST=${UI_HOST:-}
+      - UI_USER=${UI_USER:-}
+      - UI_HASH=${UI_HASH:-}
+    depends_on:
+      ui:
+        condition: service_healthy
+    volumes:
+      # certificati e account ACME: non si perdono ricreando il container
+      - caddy_dati:/data
+      - caddy_config:/config
+    ports:
+      - "127.0.0.1:4445:443"
+    restart: unless-stopped
+
+volumes:
+  caddy_dati:
+  caddy_config:

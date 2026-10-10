@@ -937,3 +937,6 @@ html, body {
 
 /* ---------------- Schede Timesheet: sottotitolo ---------------- */
 .ts-name .ts-sub { display: block; font-size: 11px; color: var(--ink-3); font-weight: 400; margin-top: 2px; }
+
+/* ---------------- Interfaccia web: parti che servono solo all'app per Windows ---------------- */
+.nel-browser .solo-app { display: none !important; }

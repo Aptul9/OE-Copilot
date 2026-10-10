@@ -2,8 +2,8 @@
 # Oe Copilot - aggiornamento del server, lanciato dalla GitHub Action via SSH.
 #   aggiorna_server.sh salva        mette da parte il codice attuale (per tornare indietro)
 #   aggiorna_server.sh avvia <sha>  ricostruisce e riavvia; se l'agente non risponde torna alla versione salvata
-# Il codice arriva con rsync dalla Action; .env, agent/fonti.json, telefono/ e stato/
-# restano sul server e non vengono toccati.
+# Il codice arriva con rsync dalla Action; .env, agent/fonti.json, telefono/, stato/ e
+# ui-dati/ restano sul server e non vengono toccati.
 set -euo pipefail
 DIR="${OE_DIR:-/opt/oe-copilot}"
 COPIA=/var/tmp/oe-copilot-prima.tgz
@@ -35,6 +35,23 @@ avvia() {
     sudo -n systemctl restart "$SERVIZIO"
 }
 
+# Interfaccia web (facoltativa, GUIDA.md 4.7): il servizio ui e il Caddy che le mette
+# HTTPS e password davanti. Parte solo se in .env c'è UI_HOST. Gira dopo che agente e
+# battito sono a posto e non fa tornare indietro niente: se la web non parte, la
+# Action diventa rossa ma l'agente e il telefono restano come sono.
+avvia_ui() {
+    grep -q '^UI_HOST=.' .env || { echo "interfaccia web non configurata (UI_HOST in .env): salto"; return 0; }
+    [ -d ui-dati ] || { echo "manca $DIR/ui-dati (vedi GUIDA.md, 4.7)" >&2; return 1; }
+    docker compose up -d --build ui caddy-ui
+    for _ in $(seq 1 30); do
+        [ "$(docker inspect -f '{{.State.Health.Status}}' oe-copilot-ui 2>/dev/null)" = healthy ] && return 0
+        sleep 2
+    done
+    echo "il servizio ui non risponde" >&2
+    docker compose logs --tail 40 ui >&2 || true
+    return 1
+}
+
 sano() {
     chiave="$(grep '^API_KEY=' .env | cut -d= -f2)"
     for _ in $(seq 1 20); do
@@ -61,7 +78,7 @@ case "${1:-}" in
     salva)
         # tutto tranne i dati che vivono solo sul server
         tar -czf "$COPIA" --exclude=./.env --exclude=./agent/fonti.json \
-            --exclude=./telefono --exclude=./stato --exclude=./.versione \
+            --exclude=./telefono --exclude=./stato --exclude=./ui-dati --exclude=./.versione \
             --exclude='./apk/*.apk' . 2>/dev/null || true
         echo "copia: $COPIA"
         ;;
@@ -73,9 +90,12 @@ case "${1:-}" in
         echo "aggiornamento a $sha"
         if avvia && sano; then
             echo "$sha" > .versione
+            ui_fallita=0
+            avvia_ui || ui_fallita=1
             docker image prune -f >/dev/null
             docker ps --filter name=oe-copilot- --format '{{.Names}}: {{.Status}}'
             echo "ok: $sha in esecuzione"
+            [ "$ui_fallita" = 0 ] || { echo "l'interfaccia web non è partita (agente e telefono a posto)" >&2; exit 1; }
             exit 0
         fi
         echo "aggiornamento a $sha fallito: si torna alla versione di prima" >&2

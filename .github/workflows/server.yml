@@ -1,12 +1,37 @@
 name: Server
 
-# Il codice in server/ va sul server a ogni push su main. L'app del PC non passa da qui.
+# Il codice in server/ va sul server a ogni push su main. L'app del PC non passa da qui,
+# tranne i file che l'interfaccia web riusa così come sono (vedi strumenti/prepara_ui.sh).
 on:
   push:
     branches: [main]
-    paths: ["server/**", ".github/workflows/server.yml"]
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+      - "web/**"
+      - "app.py"
+      - "config.py"
+      - "caselle.py"
+      - "eventi.py"
+      - "agente_remoto.py"
+      - "ics_feed.py"
+      - "google_cal.py"
+      - "local_events.py"
+      - "outlook_com.py"
   pull_request:
-    paths: ["server/**", ".github/workflows/server.yml"]
+    paths:
+      - "server/**"
+      - ".github/workflows/server.yml"
+      - "web/**"
+      - "app.py"
+      - "config.py"
+      - "caselle.py"
+      - "eventi.py"
+      - "agente_remoto.py"
+      - "ics_feed.py"
+      - "google_cal.py"
+      - "local_events.py"
+      - "outlook_com.py"
   workflow_dispatch:
 
 permissions:
@@ -20,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Sintassi Python
-        run: python3 -m py_compile server/agent/*.py server/strumenti/*.py
+        run: python3 -m py_compile server/agent/*.py server/strumenti/*.py server/ui/server.py
 
       - name: Sintassi shell
         run: for f in server/strumenti/*.sh; do bash -n "$f"; done
@@ -33,6 +58,31 @@ jobs:
 
       - name: Immagine dell'agente
         run: docker build -q -t oe-copilot-agent server/agent
+
+      - name: Interfaccia web
+        run: |
+          # l'immagine parte davvero: pagina, controllo di Docker, una chiamata all'API
+          # e i rifiuti (metodo non esposto, percorso fuori dalla pagina, altro tipo)
+          bash server/strumenti/prepara_ui.sh
+          docker build -q -t oe-copilot-ui server/ui
+          id=$(docker run -d -p 8181:8181 oe-copilot-ui)
+          trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
+          for _ in $(seq 1 20); do curl -fsS localhost:8181/salute >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS localhost:8181/ | grep -q 'OE<span'
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '[]' \
+            localhost:8181/api/get_personalizzazione | grep -q '"interfaccia"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '[]' localhost:8181/api/win_close)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is localhost:8181/../server.py)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '[]' localhost:8181/api/get_config)" = 415
+          # un rifiuto non deve sporcare la connessione: la richiesta dopo, sulla stessa, risponde
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '[]' localhost:8181/api/get_config --next -s -o /dev/null -w '%{http_code}' localhost:8181/salute)" = 415200
+
+      - name: Caddy dell'interfaccia web
+        run: |
+          docker build -q -t oe-copilot-caddy server/caddy-ui
+          hash=$(docker run --rm oe-copilot-caddy caddy hash-password --plaintext prova)
+          docker run --rm -e UI_HOST=oe.example.com -e UI_USER=oe -e UI_HASH="$hash" \
+            oe-copilot-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
   aggiorna:
     name: Aggiorna il server
@@ -71,12 +121,16 @@ jobs:
           gh release download apk --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir server/apk
           cd server/apk && sha256sum -c SHA256SUMS
 
+      - name: Prepara l'interfaccia web
+        run: bash server/strumenti/prepara_ui.sh
+
       - name: Carica il codice
         run: |
-          # caselle, chiave dell'API, dati del telefono e segni di vita restano sul server
+          # caselle, chiave dell'API, dati del telefono, segni di vita e dati
+          # dell'interfaccia web restano sul server
           rsync -rlptz --delete \
             --exclude /.env --exclude /agent/fonti.json \
-            --exclude /telefono/ --exclude /stato/ --exclude /.versione \
+            --exclude /telefono/ --exclude /stato/ --exclude /ui-dati/ --exclude /.versione \
             server/ "$SERVER:$OE_DIR/"
 
       - name: Ricostruisci e riavvia

@@ -1,0 +1,24 @@
+# HTTPS e password davanti all'interfaccia web. Indirizzo, utente e hash della
+# password arrivano da .env (UI_HOST, UI_USER, UI_HASH): non stanno nel repository.
+#
+# Sulla VM la porta 443 è di sslh, che gira il TLS per nome (SNI) a questo Caddy sulla
+# 4445 del localhost, e la porta 80 è di un altro Caddy: il certificato arriva col
+# TLS-ALPN, passando da sslh. Il tentativo HTTP-01 fallisce prima: è previsto.
+{
+	servers {
+		# UDP non è pubblicato: niente HTTP/3 da annunciare ai browser
+		protocols h1 h2
+	}
+}
+
+{$UI_HOST} {
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+	}
+	basic_auth {
+		{$UI_USER} {$UI_HASH}
+	}
+	reverse_proxy ui:8181
+}

@@ -1,5 +1,5 @@
 # Oe Copilot sulla VM: i calendari si leggono da qui, non piu' dal PC.
-# telefono = Android virtuale con Outlook (caselle Microsoft) e DAVx5 (calendari Google),
+# telefono = Android virtuale con Outlook (caselle Microsoft) e i servizi Google (calendari Google),
 # agent = legge il calendario del telefono e lo serve all'app del PC.
 name: oe-copilot
 services:
@@ -28,15 +28,17 @@ services:
 
   # Telefono Android virtuale con le app ufficiali: Outlook per le caselle
   # Microsoft (app di Microsoft, gia' autorizzata in tutti i tenant: dove
-  # TbSync chiede l'approvazione dell'amministratore, Outlook no) e DAVx5 per i
-  # calendari Google (Outlook non li esporta nel calendario di Android).
+  # TbSync chiede l'approvazione dell'amministratore, Outlook no) e i servizi
+  # Google per i calendari Google (Outlook non li esporta nel calendario di
+  # Android; l'immagine con i servizi Google si costruisce da immagine-telefono/).
   # Entrambi copiano i calendari nel calendario del telefono, che l'agente legge.
   # Il servizio systemd oe-copilot-sincronizza li tiene aggiornati ogni 30 secondi
   # (da solo Android sincronizzerebbe ogni 15 minuti).
   # La VM e' ARM come i telefoni: Android gira nativo, senza emulazione.
   # Serve il modulo binder_linux caricato sulla VM.
   telefono:
-    image: redroid/redroid:13.0.0_64only-latest
+    build: ./immagine-telefono
+    image: oe-copilot-telefono
     container_name: oe-copilot-telefono
     privileged: true
     command:

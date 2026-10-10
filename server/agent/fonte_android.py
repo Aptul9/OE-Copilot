@@ -35,9 +35,10 @@ log = logging.getLogger("android")
 
 DB = "calendar.db"
 # Chi scrive nel calendario del telefono (prefissi di Calendars.account_type):
-# Outlook per le caselle Microsoft, DAVx5 per i calendari Google (Outlook non
-# esporta gli account Google nel calendario di Android).
-TIPI_ACCOUNT = ("com.microsoft.office.outlook", "bitfire.at.davdroid")
+# Outlook per le caselle Microsoft; per i calendari Google i servizi Google del
+# telefono (com.google) o DAVx5 (Outlook non esporta gli account Google nel
+# calendario di Android).
+TIPI_ACCOUNT = ("com.microsoft.office.outlook", "bitfire.at.davdroid", "com.google")
 ANNULLATO = 2                                     # Events.STATUS_CANCELED
 ORGANIZZATORE = 2                                 # Attendees.RELATIONSHIP_ORGANIZER
 
@@ -142,7 +143,8 @@ class CalendarioAndroid:
         self.calendari = [c.strip().lower() for c in (calendari or [])]
         self.stato = {"stato": "avviso", "msg": "Non ancora letto"}
         # Chi tiene aggiornata la casella sul telefono: "outlook" o "caldav"
-        # (DAVx5). All'app serve per sapere se e' una casella Microsoft.
+        # (DAVx5 o servizi Google: il nome resta "caldav" perché l'app sul PC lo
+        # conosce). All'app serve per sapere se è una casella Microsoft.
         self.tipo = None
         self.conteggio = None             # appuntamenti presenti sul telefono
 
@@ -172,7 +174,7 @@ class CalendarioAndroid:
                 continue
             if cancellato:
                 continue
-            self.tipo = "caldav" if tipo.startswith("bitfire") else "outlook"
+            self.tipo = "caldav" if tipo.startswith(("bitfire", "com.google")) else "outlook"
             if sincr:
                 sincronizzati[_id] = nome or "Calendario"
             scelto = ((nome or "").lower() in self.calendari) if self.calendari else bool(primario)

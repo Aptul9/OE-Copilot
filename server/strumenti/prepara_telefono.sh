@@ -60,6 +60,14 @@ for voce in $APP; do
 done
 
 installate=$(e pm list packages)
+# I servizi Google arrivano con l'immagine. Un telefono già in uso non riceve i
+# permessi di default, e senza il permesso sul calendario il sincronizzatore di
+# Google non scrive niente. Su un telefono nuovo sono già dati.
+if grep -qx "package:com.google.android.syncadapters.calendar" <<<"$installate"; then
+    for permesso in READ_CALENDAR WRITE_CALENDAR; do
+        e pm grant com.google.android.syncadapters.calendar "android.permission.$permesso"
+    done
+fi
 for app in $SVEGLIE; do
     if grep -qx "package:$app" <<<"$installate"; then
         e dumpsys deviceidle whitelist "+$app" >/dev/null

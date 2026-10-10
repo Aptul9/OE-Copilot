@@ -28,6 +28,9 @@ STATO=/opt/oe-copilot/stato
 # Ogni quanti giri rilevare gli accessi scaduti: gli accessi scadono di rado, e
 # il controllo copia due piccoli database, quindi non serve a ogni giro.
 ACCESSI_OGNI=${ACCESSI_OGNI:-10}
+# Ogni quanti giri forzare il sincronizzatore dei calendari Google: si sveglia da
+# solo con le notifiche push, forzarlo copre il caso che una notifica non arrivi.
+GOOGLE_OGNI=${GOOGLE_OGNI:-4}
 mkdir -p "$STATO"
 
 conta=0
@@ -37,7 +40,11 @@ while true; do
     if docker exec "$T" true 2>/dev/null; then
         telefono=true
         lavori=$(docker exec "$T" dumpsys jobscheduler 2>/dev/null)
-        for id in $(grep -oE 'JOB #1000/[0-9]+: [0-9a-f]+ com\.android\.calendar/com\.microsoft\.office\.outlook' <<<"$lavori" \
+        # Outlook e Google si sincronizzano con gli stessi lavori di Android: si
+        # forzano sempre quelli di Outlook e, ogni GOOGLE_OGNI giri, quelli di Google.
+        modelli='com\.microsoft\.office\.outlook'
+        [ $((conta % GOOGLE_OGNI)) -eq 0 ] && modelli="$modelli|com\.google"
+        for id in $(grep -oE "JOB #1000/[0-9]+: [0-9a-f]+ com\.android\.calendar/($modelli)" <<<"$lavori" \
                     | sed -E 's|JOB #1000/([0-9]+).*|\1|' | sort -u); do
             docker exec "$T" cmd jobscheduler run -f android "$id" >/dev/null 2>&1
         done

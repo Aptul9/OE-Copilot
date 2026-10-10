@@ -88,6 +88,10 @@ Due modi per averlo comunque:
    Google. L'app riusa il suo token: basta aggiungere in `personalizzazione.json`
    `"calendari_google": [{"indirizzo": "tu@azienda.example", "nome": "Azienda"}]`.
 
+Con i calendari letti da un server (sezione sotto) c'è un terzo modo, che non richiede né il link
+né l'add-in: l'account Google si aggiunge nel telefono del server e il suo calendario arriva come
+quelli di Outlook.
+
 ### Aziende inoltrate
 
 Se un account si apre solo dal browser, un flusso (per esempio Power Automate) può copiarne le
@@ -105,8 +109,8 @@ completa passo per passo (PC + server) e il perché delle scelte, vedi **[GUIDA.
 
 Come funziona: sul server gira un telefono Android virtuale
 ([redroid](https://github.com/remote-android/redroid-doc), in Docker) con le app ufficiali,
-**Outlook** per le caselle Microsoft e **DAVx⁵** per i calendari Google, in cui si fanno gli
-accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge
+**Outlook** per le caselle Microsoft e i **servizi Google** per i calendari Google, in cui si
+fanno gli accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge
 quel calendario e lo espone con una piccola API, in ascolto **solo sul localhost del server**.
 L'app la raggiunge con un **tunnel SSH** che apre da sola: su internet non è esposto nulla e
 l'accesso passa dalla tua chiave SSH, più una chiave dell'API.
@@ -115,10 +119,11 @@ Sul server (provato su Ubuntu ARM64; servono Docker e il modulo del kernel `bind
 
 1. copia `server/` in `/opt/oe-copilot`; crea `.env` da `.env.esempio` con una `API_KEY`
    lunga e casuale e `agent/fonti.json` da `agent/fonti.esempio.json` con le tue caselle;
-2. `docker compose up -d`, poi installa nel telefono Outlook e DAVx⁵ e fai gli accessi (lo
-   schermo si vede dal PC con [scrcpy](https://github.com/Genymobile/scrcpy) attraverso un
-   tunnel SSH verso la porta 5555). In Outlook va acceso, casella per casella,
-   *Impostazioni → Calendario → Sincronizza calendari*;
+2. `docker compose up -d` (costruisce l'immagine del telefono, con i servizi Google), poi installa
+   nel telefono Outlook e fai gli accessi: in Outlook per le caselle Microsoft, in
+   *Impostazioni → Password e account* per quelle Google (lo schermo si vede dal PC con
+   [scrcpy](https://github.com/Genymobile/scrcpy) attraverso un tunnel SSH verso la porta 5555).
+   In Outlook va acceso, casella per casella, *Impostazioni → Calendario → Sincronizza calendari*;
 3. installa `strumenti/oe-copilot-sincronizza.service` come servizio systemd: tiene
    aggiornato il telefono ogni 30 secondi (da solo Android lo farebbe ogni 15 minuti).
 

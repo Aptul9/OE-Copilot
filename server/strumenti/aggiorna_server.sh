@@ -16,7 +16,7 @@ avvia() {
         || { echo "modulo binder_linux non caricato (vedi GUIDA.md, 4.1)" >&2; return 1; }
     # Il telefono si ricrea solo se la sua configurazione è cambiata: un riavvio
     # inutile fermerebbe le sincronizzazioni per un paio di minuti.
-    docker compose up -d telefono
+    docker compose up -d --build telefono
     # L'agente monta la cartella del calendario del telefono: deve esistere prima,
     # altrimenti Docker la crea vuota e di root al posto di Android.
     for _ in $(seq 1 60); do

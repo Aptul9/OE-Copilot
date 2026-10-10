@@ -52,10 +52,16 @@ diventa la copia che l'agente legge. Niente Azure, niente scraping, niente conse
 virtualizzazione annidata). Su un host ARM64 un telefono ARM gira a velocità piena. Serve solo il
 modulo del kernel `binder_linux`.
 
-**Perché DAVx⁵ per i calendari Google.** Outlook per Android **non esporta** gli account Google nel
-calendario di sistema di Android (l'interruttore "Sincronizza calendari" è disattivato per loro).
-Per i calendari Google si usa quindi [DAVx⁵](https://www.davx5.com/) (CalDAV), con il login Google
-fatto in un browser vero dentro il telefono (Google vieta il login nelle WebView interne).
+**Perché i servizi Google sul telefono per i calendari Google.** Outlook per Android **non esporta**
+gli account Google nel calendario di sistema di Android (l'interruttore "Sincronizza calendari" è
+disattivato per loro). Un telefono con i servizi Google li sincronizza invece da sé: l'account Google
+si aggiunge nelle impostazioni come su un telefono vero e il sincronizzatore di Google copia i
+calendari in quello di sistema, dove l'agente li legge come quelli di Outlook. L'immagine redroid
+non li ha: [`server/immagine-telefono/`](server/immagine-telefono/Dockerfile) ci aggiunge
+[MindTheGapps](https://github.com/MindTheGapps) (release ufficiale, impronta controllata, app con la
+firma di Google). [DAVx⁵](https://www.davx5.com/) (CalDAV) resta supportato dall'agente, ma il suo
+login Google richiede un client OAuth proprio: quello della build OSE non è più accettato da Google
+(`Error 401: invalid_client`).
 
 **Perché un servizio che forza la sincronizzazione.** Due vincoli di Android:
 - la sincronizzazione periodica ha un **minimo di 15 minuti**;
@@ -86,7 +92,7 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
  │   interfaccia (FullCalendar)     │          │   ┌───────────────┐   ┌────────────────┐ │
  │   eventi.py  ──►  agente_remoto ─┼─ tunnel ─┼─► │ agent (HTTP)  │◄──┤ telefono       │ │
  │                                  │   SSH    │   │ 127.0.0.1:3180│   │ (redroid)      │ │
- │   (promemoria Windows/Telegram)  │          │   └──────┬────────┘   │  Outlook+DAVx⁵ │ │
+ │   (promemoria Windows/Telegram)  │          │   └──────┬────────┘   │ Outlook+Google │ │
  └─────────────────────────────────┘          │          │ legge      └───────┬────────┘ │
                                                │   calendar.db (sola lettura) │          │
                                                │   servizio oe-copilot-sincronizza ◄──────┘
@@ -94,8 +100,8 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
                                                └──────────────────────────────────────────┘
 ```
 
-- **telefono** = container redroid con l'app Outlook (caselle Microsoft) e DAVx⁵ (calendari
-  Google). Le app copiano gli appuntamenti nel calendario di sistema di Android.
+- **telefono** = container redroid con l'app Outlook (caselle Microsoft) e i servizi Google
+  (calendari Google). Le app copiano gli appuntamenti nel calendario di sistema di Android.
 - **agent** = piccolo server HTTP che legge quel calendario e lo espone con un'API a chiave, in
   ascolto solo su `127.0.0.1:3180` del server.
 - **servizio** = tiene aggiornato il telefono e scrive i "segni di vita" (`battito.json`,
@@ -221,8 +227,9 @@ Il primo avvio scarica le immagini. Se il telefono non parte, quasi sempre manca
 (vedi 4.1).
 
 ### 4.4 Configurare il telefono virtuale
-**Impostazioni e app.** Fuso orario, lingua, schermo sempre acceso, le app (Outlook, DAVx⁵, Firefox) e niente
-risparmio batteria per Outlook e DAVx⁵ li mette lo script, senza toccare lo schermo:
+**Impostazioni e app.** Fuso orario, lingua, schermo sempre acceso, le app (Outlook, DAVx⁵, Firefox), niente
+risparmio batteria per Outlook e DAVx⁵ e il permesso sul calendario del sincronizzatore di Google li
+mette lo script, senza toccare lo schermo:
 ```bash
 sudo /opt/oe-copilot/strumenti/prepara_telefono.sh
 # altro fuso o altra lingua: sudo FUSO=Europe/London LINGUA=en-GB .../prepara_telefono.sh
@@ -231,7 +238,7 @@ Si può rilanciare quanto si vuole (fa solo quello che manca) e l'aggiornamento 
 [sezione 4.6](#46-aggiornamento-automatico-facoltativo) lo lancia a ogni giro: un telefono ricreato
 da zero torna a posto da solo, restano da rifare solo i login.
 
-L'app Outlook esiste solo sul Play Store e il telefono non ha i servizi Google, quindi l'APK
+L'app Outlook esiste solo sul Play Store, quindi l'APK
 (**arm64‑v8a**: redroid qui è 64‑bit, gli APK armeabi‑v7a falliscono) sta fra i file della release
 [`apk`](../../releases/tag/apk) del repository. Pesa più dei 100 MB che GitHub accetta per un file
 nel repository, per questo è lì e non fra i sorgenti. L'aggiornamento automatico lo scarica e lo
@@ -286,10 +293,14 @@ ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
    elencali in `fonti.json` ([sezione 4.2](#42-prendere-il-codice)).
 2. **Calendari Google.** Serve quando l'indirizzo segreto iCal non c'è (l'amministratore del
    dominio può toglierlo: in *Integra calendario* resta solo l'indirizzo pubblico); se c'è, il link
-   nell'app è più semplice e il telefono non serve. **DAVx⁵** e **Firefox** li installa già
-   `prepara_telefono.sh`, dagli APK della release `apk` (Firefox serve perché Google rifiuta il
-   login nel browser interno delle app). In DAVx⁵ aggiungi l'account Google via login nel browser,
-   poi attiva la collezione del calendario come **sola lettura**.
+   nell'app è più semplice e il telefono non serve. Aggiungi l'account Google come su un telefono
+   vero: *Impostazioni → Password e account → Aggiungi account → Google* (la schermata si apre
+   anche con `adb shell am start -a android.settings.ADD_ACCOUNT_SETTINGS --esa account_types com.google`).
+   Il sincronizzatore di Google copia nel calendario del telefono solo i calendari **spuntati**
+   (app Calendario del telefono → *Calendari da sincronizzare*): quelli condivisi da altri account
+   esistono sul telefono ma restano a 0 eventi finché non li spunti. Se Google dice che il
+   dispositivo non è certificato, l'ID del dispositivo (GSF) si registra su
+   https://www.google.com/android/uncertified/; con l'account provato non è servito.
 3. Scrivi le caselle in `agent/fonti.json` ([sezione 4.2](#42-prendere-il-codice)) e riavvia
    l'agente: `sudo docker compose restart agent`.
 

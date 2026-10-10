@@ -378,8 +378,10 @@ Messa in funzione, una volta sola, sul server:
 sudo install -d -o 10001 -g 10001 -m 700 /opt/oe-copilot/ui-dati
 sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-dati/
 # password: l'hash bcrypt va in .env tra apici singoli (i $ non sono variabili)
-read -rs PW && printf '%s' "$PW" | docker run --rm -i caddy:2.11.4-alpine caddy hash-password
+read -rs PW && docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext "$PW"
 ```
+Con la password su stdin `hash-password` si ferma con `EOF`, oppure cifra anche l'a capo e poi la
+password giusta non entra: si usa `--plaintext`.
 In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`, `UI_USER=<utente>`,
 `UI_HASH='<hash>'`. Il prossimo aggiornamento costruisce e avvia `ui` e `caddy-ui`.
 

@@ -221,7 +221,7 @@ Il primo avvio scarica le immagini. Se il telefono non parte, quasi sempre manca
 (vedi 4.1).
 
 ### 4.4 Configurare il telefono virtuale
-**Impostazioni e Outlook.** Fuso orario, lingua, schermo sempre acceso, l'app Outlook e niente
+**Impostazioni e app.** Fuso orario, lingua, schermo sempre acceso, le app (Outlook, DAVx⁵, Firefox) e niente
 risparmio batteria per Outlook e DAVx⁵ li mette lo script, senza toccare lo schermo:
 ```bash
 sudo /opt/oe-copilot/strumenti/prepara_telefono.sh
@@ -284,11 +284,12 @@ ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
    nell'elenco dei calendari (vista Calendario → menu in alto a sinistra → la casella): senza
    spunta il calendario esiste sul telefono ma resta vuoto. Spunta quelli che vuoi leggere, poi
    elencali in `fonti.json` ([sezione 4.2](#42-prendere-il-codice)).
-2. **Calendari Google** (se ne hai): installa **DAVx⁵** e un browser vero (es. **Firefox**, perché
-   Google blocca il login nella WebView interna); gli APK si copiano nel telefono come quello di
-   Outlook (`docker cp`, poi `pm install`). In DAVx⁵ aggiungi l'account Google via login nel
-   browser, poi attiva la collezione del calendario come **sola lettura**, e rilancia
-   `prepara_telefono.sh` per togliere il risparmio batteria a DAVx⁵.
+2. **Calendari Google.** Serve quando l'indirizzo segreto iCal non c'è (l'amministratore del
+   dominio può toglierlo: in *Integra calendario* resta solo l'indirizzo pubblico); se c'è, il link
+   nell'app è più semplice e il telefono non serve. **DAVx⁵** e **Firefox** li installa già
+   `prepara_telefono.sh`, dagli APK della release `apk` (Firefox serve perché Google rifiuta il
+   login nel browser interno delle app). In DAVx⁵ aggiungi l'account Google via login nel browser,
+   poi attiva la collezione del calendario come **sola lettura**.
 3. Scrivi le caselle in `agent/fonti.json` ([sezione 4.2](#42-prendere-il-codice)) e riavvia
    l'agente: `sudo docker compose restart agent`.
 

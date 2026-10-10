@@ -30,22 +30,34 @@ e settings put system system_locales "$LINGUA"
 # e l'impostazione resta a 0. Scritta direttamente tiene.
 e settings put global stay_on_while_plugged_in 7
 
-# Outlook esiste solo sul Play Store e il telefono non ha i servizi Google:
-# l'APK sta fra i file della release "apk" del repository e arriva in apk/ con
-# l'aggiornamento. Si installa solo quello elencato in apk/SHA256SUMS, e solo se
-# l'impronta coincide; che sia davvero firmato da Microsoft lo controlla Android.
-if ! e pm list packages | grep -qx "package:$OUTLOOK"; then
-    apk=$(awk '$2 ~ /^\*?Outlook-.*\.apk$/ {sub(/^\*/, "", $2); print $2}' "$DIR/apk/SHA256SUMS" | head -1)
+# Le app non arrivano da un negozio (il telefono non ha i servizi Google e
+# Outlook esiste solo sul Play Store): gli APK stanno fra i file della release
+# "apk" del repository e arrivano in apk/ con l'aggiornamento. Si installa solo
+# quello che è elencato in apk/SHA256SUMS, e solo se l'impronta coincide; che la
+# firma sia quella di chi pubblica l'app lo controlla Android.
+#   Outlook: caselle Microsoft. DAVx5: calendari Google (CalDAV). Firefox: serve
+#   al login Google di DAVx5, che Google rifiuta nel browser interno delle app.
+APP="$OUTLOOK:Outlook-*.apk at.bitfire.davdroid:davx5-*.apk org.mozilla.firefox:fenix-*.apk"
+installate=$(e pm list packages)
+for voce in $APP; do
+    app=${voce%%:*}; modello=${voce#*:}
+    grep -qx "package:$app" <<<"$installate" && continue
+    apk=""
+    while read -r _ nome; do
+        nome=${nome#\*}
+        # shellcheck disable=SC2254
+        case "$nome" in $modello) apk=$nome; break ;; esac
+    done < "$DIR/apk/SHA256SUMS"
     if [ -n "$apk" ] && [ -f "$DIR/apk/$apk" ]; then
         (cd "$DIR/apk" && grep -F "$apk" SHA256SUMS | sha256sum -c --quiet -)
-        docker cp "$DIR/apk/$apk" "$T:/data/local/tmp/outlook.apk" >/dev/null
-        e pm install -r /data/local/tmp/outlook.apk >/dev/null
-        e rm -f /data/local/tmp/outlook.apk
-        echo "installato Outlook da $apk"
+        docker cp "$DIR/apk/$apk" "$T:/data/local/tmp/app.apk" >/dev/null
+        e pm install -r /data/local/tmp/app.apk >/dev/null
+        e rm -f /data/local/tmp/app.apk
+        echo "installato $app da $apk"
     else
-        echo "Outlook non installato e APK assente in $DIR/apk (vedi GUIDA.md, 4.4)" >&2
+        echo "$app non installato e APK assente in $DIR/apk (vedi GUIDA.md, 4.4)" >&2
     fi
-fi
+done
 
 installate=$(e pm list packages)
 for app in $SVEGLIE; do

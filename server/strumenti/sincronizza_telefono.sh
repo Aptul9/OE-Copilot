@@ -2,14 +2,16 @@
 # Ogni 30 secondi tiene aggiornati i calendari del telefono virtuale. Da solo
 # Android sincronizzerebbe al massimo ogni 15 minuti.
 #
-# - Outlook scarica le novita' dal server SOLO se la sua schermata principale e'
-#   davanti: senza i servizi Google non riceve le notifiche push. Fermo nelle
-#   impostazioni non ha ricevuto una riunione nuova in 6 minuti; in primo piano
-#   la riceve in ~20 s (prove del 05/10/2026). Per questo a ogni giro lo si
-#   rimette davanti. Si forzano anche i lavori di sincronizzazione di Android
-#   per ogni casella (cmd jobscheduler run -f), che copiano subito nel calendario
-#   del telefono; gli ID si rileggono a ogni giro perche' cambiano quando si
-#   aggiunge una casella o si riavvia il telefono.
+# - Outlook senza i servizi Google scaricava dal server SOLO con la schermata
+#   principale davanti (prove del 05/10/2026: fermo nelle impostazioni nessuna
+#   riunione nuova in 6 minuti, in primo piano ~20 s). Con i servizi Google riceve
+#   le notifiche push (FCM) e scarica anche a telefono bloccato (verificato
+#   l'11/10/2026: push ricevuti a schermo bloccato, appuntamenti riscritti nel
+#   calendario subito dopo). A ogni giro lo si rimette comunque davanti quando lo
+#   schermo lo permette: copre il caso di una push persa. Si forzano anche i lavori
+#   di sincronizzazione di Android per ogni casella (cmd jobscheduler run -f), che
+#   copiano subito nel calendario del telefono; gli ID si rileggono a ogni giro
+#   perché cambiano quando si aggiunge una casella o si riavvia il telefono.
 # - Calendari Google (DAVx5): DAVx5 usa WorkManager, che scarta le esecuzioni
 #   anticipate dei lavori periodici; si usa la sua scorciatoia ufficiale
 #   "Sincronizzazione di tutti gli account" (azione android.intent.action.SYNC),
@@ -19,15 +21,16 @@
 # tocca lo schermo: si forzano solo le sincronizzazioni di Android.
 #
 # A ogni giro lascia un segno di vita in stato/battito.json, che l'agente passa
-# all'app: se il servizio si ferma, il telefono e' spento o Outlook non e'
-# davanti, l'app lo dice invece di mostrare per buoni dati fermi.
+# all'app: se il servizio si ferma o il telefono è spento, l'app lo dice invece
+# di mostrare per buoni dati fermi. Che Outlook risponda casella per casella e
+# che le sue push funzionino lo controlla rileva_accessi.py (stato/accessi.json).
 T=oe-copilot-telefono
 OGNI=${OGNI:-30}
 PAUSA=/opt/oe-copilot/telefono/PAUSA
 STATO=/opt/oe-copilot/stato
-# Ogni quanti giri rilevare gli accessi scaduti: gli accessi scadono di rado, e
-# il controllo copia due piccoli database, quindi non serve a ogni giro.
-ACCESSI_OGNI=${ACCESSI_OGNI:-10}
+# Ogni quanti giri rilevare accessi scaduti e freschezza (un minuto): il controllo
+# copia due piccoli database e legge la coda di due log, costa poco.
+ACCESSI_OGNI=${ACCESSI_OGNI:-2}
 # Ogni quanti giri forzare il sincronizzatore dei calendari Google: si sveglia da
 # solo con le notifiche push, forzarlo copre il caso che una notifica non arrivi.
 GOOGLE_OGNI=${GOOGLE_OGNI:-4}

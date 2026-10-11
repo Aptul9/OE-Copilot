@@ -77,8 +77,7 @@ def _servizio():
         with open(BATTITO, "r", encoding="utf-8") as f:
             b = json.load(f)
         return {"eta_s": max(0, int(time.time() - float(b["quando"]))),
-                "pausa": bool(b.get("pausa")), "telefono": bool(b.get("telefono", True)),
-                "outlook_davanti": bool(b.get("outlook_davanti", True))}
+                "pausa": bool(b.get("pausa")), "telefono": bool(b.get("telefono", True))}
     except (OSError, ValueError, KeyError, TypeError):
         return None
 

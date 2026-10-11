@@ -277,11 +277,11 @@ class CalendarioAndroid:
             self.stato = {"stato": "errore", "msg": msg}
             return None, ["%s: %s" % (self.nome, msg)]
         self.conteggio = len(grezzi[1])
-        aggiornato = datetime.fromtimestamp(os.path.getmtime(os.path.join(self.cartella, DB)))
-        # Si dice cosa si e' verificato davvero: lettura riuscita e ultima
-        # scrittura nel calendario del telefono.
-        self.stato = {"stato": "ok", "msg": "Letto dal telefono alle %s, calendario aggiornato il %s"
-                      % (time.strftime("%H:%M"), aggiornato.strftime("%d/%m %H:%M"))}
+        # Si dice solo cosa si è verificato davvero: la lettura è riuscita. L'ora di
+        # scrittura di calendar.db non dice niente di Outlook (la muove ogni 2 minuti
+        # la sincronizzazione Google): la freschezza di ogni casella la misura
+        # strumenti/rileva_accessi.py.
+        self.stato = {"stato": "ok", "msg": "Letto dal telefono alle %s" % time.strftime("%H:%M")}
         self._applica_stato_accesso()
         return grezzi, []
 

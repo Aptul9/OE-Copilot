@@ -318,8 +318,8 @@ sudo systemctl enable --now oe-copilot-sincronizza
 systemctl status oe-copilot-sincronizza        # deve essere "active (running)"
 ```
 Cosa fa, a ogni giro: forza i lavori di sincronizzazione del calendario per ogni casella, spinge
-DAVx⁵, **riporta Outlook sulla schermata principale** (altrimenti non scarica), e scrive
-`stato/battito.json`. Ogni ~5 minuti lancia anche il **rilevatore degli accessi** (sezione 6).
+DAVx⁵, **riporta Outlook sulla schermata principale** (quando lo schermo lo permette), e scrive
+`stato/battito.json`. Ogni minuto lancia anche il **rilevatore degli accessi** (sezione 6).
 
 Verifica che l'agente risponda (dal server):
 ```bash
@@ -457,12 +457,33 @@ computer") né i compleanni dei contatti, e le riunioni annullate spariscono inv
 ## 6. Il rilevatore degli accessi scaduti
 
 Chiude il "falso verde" (vedi [ragionamenti](#1-i-ragionamenti-perché-è-fatto-così)).
-`strumenti/rileva_accessi.py`, lanciato dal servizio ogni ~5 minuti, scrive in `stato/accessi.json`
+`strumenti/rileva_accessi.py`, lanciato dal servizio ogni minuto, scrive in `stato/accessi.json`
 lo stato di ogni casella, che l'agente usa per il pallino — **senza mai leggere un token**:
 
-- **Caselle Microsoft (Outlook):** legge la bandierina "login da rifare" (`needsReauth`) nel
+- **Caselle Microsoft (Outlook), accesso:** la bandierina "login da rifare" (`needsReauth`) nel
   registro di Outlook. Quando c'è → pallino **rosso** "Accesso scaduto sul telefono". Segnale netto.
-- **Calendario Google (DAVx⁵):** DAVx⁵ non ha una bandierina simile e un login scaduto dà lo stesso
+- **Caselle Microsoft (Outlook), freschezza:** Outlook non scrive da nessuna parte quando ha
+  scaricato dal server. Dalla versione coi servizi Google non ha più bisogno di stare in primo
+  piano: riceve le notifiche push (FCM) e scarica anche a telefono bloccato (verificato il
+  2026-10-11: quattro push ricevuti a schermo bloccato, l'ultimo seguito da 94 appuntamenti
+  riscritti nel calendario in 9 secondi). Per questo "Outlook non è davanti" non è più un
+  avviso. Si misura quello che Outlook dice davvero: a ogni giro il servizio forza la
+  sincronizzazione e Outlook risponde con una riga per casella in `calendarSync.log`
+  (`isSyncingForAccount`); se una casella tace oltre `OUTLOOK_GIALLO_S` (10 min) è **gialla**
+  ("Outlook non conferma la sincronizzazione della casella da N min"), oltre `OUTLOOK_ROSSO_S`
+  (30 min) **rossa**; **gialla** anche se Outlook ha sospeso la casella. Se le push non sono
+  disponibili (`notifications.log`, "FCM push sync is unavailable") **e** Outlook non è in
+  primo piano, **giallo** "non riceve le notifiche push": a telefono bloccato le novità non
+  arrivano. Limite: una novità che non genera una push resta ferma finché il telefono è
+  bloccato, e non c'è modo di saperlo da qui.
+- **Calendario Google (servizi Google del telefono):** da `dumpsys content`, l'esito
+  dell'ultima sincronizzazione di `com.android.calendar` per l'account. Un fallimento isolato è
+  la rete; senza un successo in mezzo oltre `GOOGLE_GIALLO_S` (15 min) è **giallo**, oltre
+  `GOOGLE_ROSSO_S` (45 min) **rosso** ("probabile accesso scaduto, rifai il login Google"); la
+  sincronizzazione che non parte da oltre 15 min è gialla. L'ora dell'ultimo successo si ricorda
+  in `stato/google-sync.json`. L'adattatore dei contatti segna sempre `OTHER FAILURE
+  internal-error`: non conta.
+- **Calendario Google (DAVx⁵), se in uso:** DAVx⁵ non ha una bandierina simile e un login scaduto dà lo stesso
   errore di una rete assente. Ma il servizio lo spinge ogni 30 s e DAVx⁵ sincronizza da sé ogni
   15 min: se la sua ultima sincronizzazione **riuscita** si ferma molto oltre (mentre le caselle
   Outlook continuano, quindi non è la rete) la causa è quasi sempre il login scaduto →
@@ -478,7 +499,7 @@ e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un c
 
 - **Rifare un login scaduto**: `strumenti\schermo_telefono.py` sul PC (mette e toglie `PAUSA` da
   solo), rifai il login nell'app, chiudi la finestra.
-- **Segni di vita** (sul server): `stato/battito.json` (il servizio è vivo? Outlook è davanti?) e
+- **Segni di vita** (sul server): `stato/battito.json` (il servizio è vivo? il telefono è acceso? Outlook è in primo piano?) e
   `stato/accessi.json` (stato di ogni casella).
 - **Log dell'app** (sul PC): `debug.log`; del tunnel: `agente_tunnel.log`.
 - **Vedere cosa fa l'agente**: `curl` su `http://127.0.0.1:3180/api/calendari` dal server (con la

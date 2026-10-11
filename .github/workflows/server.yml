@@ -47,6 +47,9 @@ jobs:
       - name: Sintassi Python
         run: python3 -m py_compile server/agent/*.py server/strumenti/*.py server/ui/server.py
 
+      - name: Prova del rilevatore
+        run: python3 server/strumenti/prova_rileva_accessi.py
+
       - name: Sintassi shell
         run: for f in server/strumenti/*.sh; do bash -n "$f"; done
 

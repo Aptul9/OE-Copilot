@@ -253,7 +253,9 @@ def _guasto_servizio(servizio, tipo):
 
     L'agente legge una copia che altri programmi tengono aggiornata sul server:
     se quelli si fermano, la lettura riesce lo stesso ma i dati sono fermi.
-    Un pallino verde in quel caso mentirebbe.
+    Un pallino verde in quel caso mentirebbe. Se Outlook stesso non risponde o non
+    riceve più le notifiche lo dice il rilevatore del server, casella per casella
+    (strumenti/rileva_accessi.py): "Outlook non è davanti" non è più un guasto.
     """
     if not servizio:
         return "avviso", "Dal server non arriva il segno di vita dell'aggiornamento"
@@ -266,8 +268,6 @@ def _guasto_servizio(servizio, tipo):
         return "avviso", "Sul server l'aggiornamento è in ritardo di %d minuti" % (eta // 60)
     if servizio.get("pausa"):
         return "avviso", "Sul server l'aggiornamento è in pausa (accesso in corso?)"
-    if tipo != "caldav" and not servizio.get("outlook_davanti", True):
-        return "avviso", "Sul server Outlook non si sta aggiornando"
     return None
 
 

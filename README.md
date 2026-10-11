@@ -48,7 +48,7 @@ Se un account si apre solo dal browser, un flusso (per esempio Power Automate) p
 
 ### Caselle lette dal server
 
-Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede attraverso il servizio `ui`. Il codice dell'agente e di tutto il server è nella cartella `server/`. Per l'installazione completa passo per passo e il perché delle scelte, vedi **[GUIDA.md](GUIDA.md)**.
+Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede attraverso il gateway (le scritture passano dal servizio `ui`). Il codice dell'agente e di tutto il server è nella cartella `server/`. Per l'installazione completa passo per passo e il perché delle scelte, vedi **[GUIDA.md](GUIDA.md)**.
 
 Come funziona: sul server gira un telefono Android virtuale ([redroid](https://github.com/remote-android/redroid-doc), in Docker) con le app ufficiali, **Outlook** per le caselle Microsoft e i **servizi Google** per i calendari Google, in cui si fanno gli accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge quel calendario e lo espone con una piccola API, in ascolto **solo sul localhost del server** e sulla rete di Docker. Il browser passa da HTTPS e dalla pagina di accesso (servizi `ui`, `gateway` e `caddy-ui`, GUIDA.md, 4.7); il telefono si vede e si comanda dalla pagina `/telefono/` (GUIDA.md, 4.8), dietro lo stesso accesso. Dal PC l'agente si interroga con un tunnel SSH (GUIDA.md, sezione 5).
 
@@ -72,7 +72,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 ## Controlli prima di un push
 
 - `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>`: cerca i dati della personalizzazione nei file del repository e fallisce se ne trova.
-- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/`, l'agente su un calendario di Android inventato (`prova_agente_golden.py`, GUIDA.md, sezione 7), gateway (`npm test`), schermo, immagini e il cancello dell'accesso.
+- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/`, l'agente su un calendario di Android inventato (`prova_agente_golden.py`) e la lettura del servizio `ui` (`prova_ui_golden.py`, GUIDA.md, sezione 7), gateway (`npm test`, con le stesse risposte registrate), schermo, immagini e il cancello dell'accesso.
 
 ## File principali
 
@@ -100,4 +100,4 @@ I log dei servizi: `docker logs oe-copilot-<servizio>` sul server (GUIDA.md, sez
 
 - **La pagina resta vuota o chiede di nuovo l'accesso**: il cookie di sessione dura 30 giorni; dopo un cambio di `ADMIN_PASSWORD` e un riavvio del gateway le sessioni si chiudono.
 - **Non compare un calendario appena aggiunto**: **Gestisci calendari → Ricerca calendari nuovi** rilegge l'elenco dal server (è memorizzato). Se manca ancora: sul telefono Outlook passa solo i calendari spuntati, con *Sincronizza calendari* acceso per quella casella, e l'agente legge solo quelli elencati in `agent/fonti.json` (GUIDA.md, 4.2 e 4.4).
-- **"Il server dei calendari non risponde"**: l'agente non risponde al servizio `ui`; `docker logs oe-copilot-agent` e `docker logs oe-copilot-ui` dal server, e dal PC la prova della GUIDA.md, sezione 5. Un pallino giallo o rosso su un'azienda dice nel suo suggerimento cosa è fermo sul server.
+- **"Il server dei calendari non risponde"**: l'agente non risponde al gateway o al servizio `ui`; `docker logs oe-copilot-agent`, `docker logs oe-copilot-gateway` e `docker logs oe-copilot-ui` dal server, e dal PC la prova della GUIDA.md, sezione 5. Un pallino giallo o rosso su un'azienda dice nel suo suggerimento cosa è fermo sul server.

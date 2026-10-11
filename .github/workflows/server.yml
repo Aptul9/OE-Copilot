@@ -62,21 +62,22 @@ jobs:
 
       - name: Interfaccia web
         run: |
-          # l'immagine parte davvero: pagina, controllo di Docker, una chiamata all'API
-          # e i rifiuti (metodo non esposto, percorso fuori dalla pagina, altro tipo)
+          # l'immagine parte davvero: un logo, controllo di Docker, una chiamata all'API
+          # e i rifiuti (metodo non esposto, percorso fuori dai loghi, altro tipo)
           bash server/strumenti/prepara_ui.sh
           docker build -q -t oe-copilot-ui server/ui
           id=$(docker run -d -p 8181:8181 oe-copilot-ui)
           trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
           for _ in $(seq 1 20); do curl -fsS localhost:8181/salute >/dev/null 2>&1 && break; sleep 1; done
-          curl -fsS localhost:8181/ | grep -q 'OE<span'
+          test "$(curl -s -o /dev/null -w '%{http_code} %{content_type}' localhost:8181/logos/personale.png)" = "200 image/png"
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8181/)" = 404
           curl -fsS -X POST -H 'Content-Type: application/json' -d '[]' \
             localhost:8181/api/get_personalizzazione | grep -q '"interfaccia"'
           # un gruppo di calendari che non esiste si rifiuta (e il metodo è tra quelli esposti)
           curl -fsS -X POST -H 'Content-Type: application/json' -d '["nessuno"]' \
             localhost:8181/api/mostra_solo_gruppo | grep -q '"ok": false'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '[]' localhost:8181/api/win_close)" = 404
-          test "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is localhost:8181/../server.py)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is localhost:8181/logos/../../server.py)" = 404
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '[]' localhost:8181/api/get_config)" = 415
           # un rifiuto non deve sporcare la connessione: la richiesta dopo, sulla stessa, risponde
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '[]' localhost:8181/api/get_config --next -s -o /dev/null -w '%{http_code}' localhost:8181/salute)" = 415200
@@ -149,7 +150,7 @@ jobs:
           json=(-H 'Content-Type: application/json' -H "Origin: $G")
           # senza sessione: la pagina rimanda a /login, l'API risponde 401, /login e /salute sono aperti
           test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $G/)" = "307 $G/login?next=%2F"
-          test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $G/index.html)" = "302 $G/login?next=%2Findex.html"
+          test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $G/logos/personale.png)" = "302 $G/login?next=%2Flogos%2Fpersonale.png"
           test "$(codice -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401
           curl -fsS "$G/login?next=%2F" | grep -q 'Accedi a OE Copilot'
           # la disponibilità è pubblica: la pagina e i suoi dati si raggiungono senza sessione (qui il servizio non ha caselle:
@@ -164,9 +165,10 @@ jobs:
           test "$(codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email)" = 401
           curl -fsS -c jar -D intest -o /dev/null -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email
           grep -qi 'set-cookie: .*HttpOnly' intest
-          # la pagina principale è l'interfaccia in TypeScript; quella di web/ resta a /index.html
+          # la pagina principale è l'interfaccia in TypeScript; la pagina vecchia di web/ non si serve più
           curl -fsS -b jar $G/ | grep -q 'Cerca tra le riunioni'
-          curl -fsS -b jar $G/index.html | grep -q 'OE<span'
+          test "$(codice -b jar $G/logos/personale.png)" = 200
+          test "$(codice -b jar $G/index.html)" = 404
           curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_personalizzazione | grep -q '"interfaccia"'
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/win_close)" = 404
           test "$(codice -b jar -X POST -d '[]' $G/api/get_config)" = 415

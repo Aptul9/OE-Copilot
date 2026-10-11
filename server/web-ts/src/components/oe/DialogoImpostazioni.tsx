@@ -74,11 +74,6 @@ export function DialogoImpostazioni({ aperto, onChiudi }: Props) {
           <section>
             <h3 className="mb-1 font-semibold">Info</h3>
             <p className="text-xs text-muted-foreground">OE Copilot, la vista unica su calendari e timesheet di più aziende. I dati restano sul server.</p>
-            <p className="mt-1.5 text-xs">
-              <a id="link-precedente" className="text-primary underline-offset-4 hover:underline" href="/index.html">
-                Apri l&apos;interfaccia precedente
-              </a>
-            </p>
           </section>
         </div>
         <DialogFooter>

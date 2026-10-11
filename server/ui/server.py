@@ -1,10 +1,10 @@
-"""OE Copilot: la stessa interfaccia dell'app per Windows, servita al browser.
+"""OE Copilot: la logica dell'app per Windows, servita al gateway.
 
-La pagina (web/) e la logica (app.Api, la classe che la finestra di Windows chiama
-con pywebview) sono quelle dell'app del PC, copiate qui da strumenti/prepara_ui.sh.
-Questo file è solo il server HTTP: la pagina in GET, ogni metodo di Api in
-POST /api/<metodo> con gli argomenti in una lista JSON. Non ha password: ci arriva
-solo Caddy, che la chiede (vedi docker-compose.yml).
+La logica (app.Api, la classe che la finestra di Windows chiama con pywebview) è quella
+dell'app del PC, copiata qui da strumenti/prepara_ui.sh. Questo file è solo il server HTTP:
+ogni metodo di Api in POST /api/<metodo> con gli argomenti in una lista JSON, e i loghi
+delle aziende in GET /logos/<file>. La pagina la serve il gateway. Non ha password: ci
+arriva solo il gateway, che la chiede (vedi docker-compose.yml).
 """
 import json
 import logging
@@ -71,17 +71,19 @@ class Gestore(BaseHTTPRequestHandler):
         percorso = unquote(urlsplit(self.path).path)
         if percorso == "/salute":
             return self._rispondi(200, b"ok", "text/plain")
-        file = os.path.realpath(os.path.join(WEB, "index.html" if percorso == "/" else percorso.lstrip("/")))
-        radice = WEB
-        if percorso.startswith("/logos/"):
-            proprio = os.path.realpath(os.path.join(LOGHI, percorso[len("/logos/"):]))
-            if os.path.commonpath([LOGHI, proprio]) == LOGHI and os.path.isfile(proprio):
-                file, radice = proprio, LOGHI
-        if os.path.commonpath([radice, file]) != radice or not os.path.isfile(file):
+        # Solo i loghi: prima quelli del server (cartella dati), poi quello che sta nella pagina
+        # dell'app (web/logos). Mai fuori da queste due cartelle.
+        nome = percorso[len("/logos/"):] if percorso.startswith("/logos/") else None
+        file = None
+        for radice in (LOGHI, os.path.join(WEB, "logos")) if nome is not None else ():
+            radice = os.path.realpath(radice)
+            prova = os.path.realpath(os.path.join(radice, nome))
+            if os.path.commonpath([radice, prova]) == radice and os.path.isfile(prova):
+                file = prova
+                break
+        if file is None:
             return self._json(404, {"error": "non trovato"})
         tipo = mimetypes.guess_type(file)[0] or "application/octet-stream"
-        if tipo.startswith("text/") or tipo.endswith("javascript"):
-            tipo += "; charset=utf-8"
         with open(file, "rb") as f:
             self._rispondi(200, f.read(), tipo)
 

@@ -41,10 +41,10 @@ describe("senza sessione", () => {
 describe("con la sessione", () => {
   it("inoltra la pagina senza il cookie di sessione e senza set-cookie in risposta", async () => {
     const { deps, calls } = setup({ id: "u" });
-    const r = await handle(req("/index.html?x=1", { headers: { cookie: "better-auth.session_token=segreto", accept: "text/html" } }), deps);
+    const r = await handle(req("/logos/personale.png?x=1", { headers: { cookie: "better-auth.session_token=segreto", accept: "text/html" } }), deps);
     expect(r.status).toBe(200);
     expect(await r.text()).toBe("pagina");
-    expect(calls[0].url).toBe("http://ui:8181/index.html?x=1");
+    expect(calls[0].url).toBe("http://ui:8181/logos/personale.png?x=1");
     const h = new Headers(calls[0].init.headers);
     expect(h.get("cookie")).toBeNull();
     expect(h.get("accept")).toBe("text/html");

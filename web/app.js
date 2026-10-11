@@ -26,43 +26,13 @@ function reportJs(msg) {
     }
   } catch (e) { /* niente da fare */ }
 }
-// Interfaccia web: la stessa pagina, servita dal server al browser. L'app per
-// Windows la apre come file://; qualunque altro indirizzo vuol dire browser, dove
-// pywebview non c'è e le stesse chiamate vanno al server via HTTP.
-const NEL_BROWSER = location.protocol !== "file:";
-if (NEL_BROWSER) document.documentElement.classList.add("nel-browser");
-// Funzioni che hanno senso solo nella finestra dell'app per Windows: nel browser
-// non fanno niente (e gli elementi che le usano sono nascosti, classe solo-app).
-const SOLO_APP = new Set(["win_minimize", "win_maximize_toggle", "win_close", "win_nudge",
-  "win_resize", "get_autostart", "set_autostart", "test_notification",
-  "apri_in_outlook_remoto", "log_js", "log_ui"]);
-// I link li apre il browser, subito: serve il gesto dell'utente, non una risposta.
-const LINK_NEL_BROWSER = new Set(["open_external", "apri_in_teams"]);
-const ponteBrowser = new Proxy({}, {
-  get: (_, nome) => (...args) => {
-    if (LINK_NEL_BROWSER.has(nome)) {
-      if (args[0]) window.open(args[0], "_blank", "noopener");
-      return { ok: true };
-    }
-    if (SOLO_APP.has(nome)) return { ok: false };
-    return fetch("api/" + String(nome), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(args),
-    }).then((r) => r.json().catch(() => ({})).then((dati) => {
-      if (!r.ok) throw new Error((dati && dati.error) || ("HTTP " + r.status));
-      return dati;
-    }));
-  },
-});
-
 // Tutte le chiamate a Python passano di qui. Prima ognuna gestiva l'errore per
 // conto suo, e in 25 punti su 27 non lo gestiva affatto: se la chiamata falliva,
 // il pezzo di interfaccia che dipendeva da lei restava com'era (elenco vuoto,
 // "Lettura da Outlook..." per sempre) senza che niente lo dicesse.
 const api = new Proxy({}, {
   get: (_, nome) => (...args) => {
-    const ponte = NEL_BROWSER ? ponteBrowser : (window.pywebview && window.pywebview.api);
+    const ponte = window.pywebview && window.pywebview.api;
     const funzione = ponte && ponte[nome];
     if (typeof funzione !== "function") {
       const e = new Error("collegamento con l'app non disponibile (" + String(nome) + ")");
@@ -86,11 +56,11 @@ window.addEventListener("unhandledrejection", (e) =>
 // pywebview espone l'API Python solo dopo questo evento.
 window.addEventListener("pywebviewready", init);
 // Fallback: se l'evento è già passato, riprova dopo il load.
-window.addEventListener("load", () => setTimeout(() => { if (!apiReady) init(); }, NEL_BROWSER ? 0 : 800));
+window.addEventListener("load", () => setTimeout(() => { if (!apiReady) init(); }, 800));
 
 function init() {
   if (apiReady) return;
-  if (!NEL_BROWSER && (!window.pywebview || !window.pywebview.api)) return;
+  if (!window.pywebview || !window.pywebview.api) return;
   apiReady = true;
   // Le impostazioni personali servono prima di disegnare qualunque cosa (sigle,
   // calendari secondari...): si chiedono per prime. Se la richiesta fallisce,
@@ -779,7 +749,7 @@ function onEventClick(arg) {
   if (p.online_url)
     azioni.push(`<button class="join" data-url="${encodeURI(p.online_url)}">Partecipa</button>`);
   if (casellaRemota)
-    azioni.push(`<button class="ghost solo-app" data-outlook-remoto="1">Apri in Outlook</button>`);
+    azioni.push(`<button class="ghost" data-outlook-remoto="1">Apri in Outlook</button>`);
   // Teams ha piu' account collegati: si passa la casella dell'evento cosi'
   // l'app si posiziona su quella prima di aprire la riunione. Il pulsante c'è
   // per le caselle Outlook e comunque per ogni riunione con un link Teams
@@ -789,10 +759,8 @@ function onEventClick(arg) {
   const linkTeams = /teams\.(microsoft\.com|live\.com)/i.test(p.online_url || "");
   // Nemmeno per le copie di un'azienda inoltrata: stanno nella casella di
   // un'altra azienda, e il pulsante porterebbe sul calendario sbagliato.
-  // Nel browser il pulsante apre il link della riunione: senza link non c'è niente da aprire.
   if ((casellaRemota || linkTeams) && String(p.account || "").includes("@")
-      && !CALENDARI_SENZA_TEAMS.has(p.alias) && !p.inoltrata_da
-      && !(NEL_BROWSER && !p.online_url))
+      && !CALENDARI_SENZA_TEAMS.has(p.alias) && !p.inoltrata_da)
     azioni.push(`<button class="ghost" data-teams="${escapeHtml(p.account)}"
       data-teams-url="${escapeHtml(p.online_url || "")}">Apri in Teams</button>`);
   if (p.is_local)
@@ -1164,7 +1132,6 @@ function setupUI() {
   // Il sole/luna cambia tema chiaro↔scuro; l'ingranaggio apre le impostazioni.
   $("#nav-theme").addEventListener("click", toggleTema);
   $("#nav-settings").addEventListener("click", openAppSettings);
-  $("#nav-logout").addEventListener("click", esci);
 
   // Azioni calendario spostate sotto "I miei calendari".
   $("#mycal-all").addEventListener("click", () => openCalendarsModal(false));
@@ -1193,7 +1160,7 @@ function setupUI() {
   });
 
   // Nel browser i bordi sono del browser: intercettarli bloccherebbe i clic.
-  if (!NEL_BROWSER) setupResizeBordi();
+  setupResizeBordi();
 
   // Mostra/nascondi il pannello con il mini-calendario. Il calendario deve
   // riprendersi lo spazio subito, non al prossimo aggiornamento.
@@ -1252,15 +1219,6 @@ function setupUI() {
   $$(".modal").forEach((m) =>
     m.addEventListener("click", (e) => { if (e.target === m) chiudiModali(); }));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") chiudiModali(); });
-}
-
-/** Chiude la sessione del gateway (solo nel browser) e porta alla pagina di accesso. */
-function esci() {
-  fetch("/api/auth/sign-out", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  }).catch(() => {}).finally(() => { window.location.href = "/login"; });
 }
 
 function apriModale(sel, railSel) {

@@ -83,9 +83,57 @@ jobs:
       - name: Caddy dell'interfaccia web
         run: |
           docker build -q -t oe-copilot-caddy server/caddy-ui
-          hash=$(docker run --rm oe-copilot-caddy caddy hash-password --plaintext prova)
-          docker run --rm -e UI_HOST=oe.example.com -e UI_USER=oe -e UI_HASH="$hash" \
+          docker run --rm -e UI_HOST=oe.example.com \
             oe-copilot-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: server/web-ts/package-lock.json
+
+      - name: Gateway, installazione, tipi, prove e build
+        working-directory: server/web-ts
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Gateway, accesso sul servizio vero
+        run: |
+          # il gateway davanti al servizio ui vero: il cancello, l'accesso, il blocco per account, l'uscita
+          docker build -q -t oe-copilot-gateway server/web-ts
+          docker network create prova
+          ui=$(docker run -d --network prova --network-alias ui oe-copilot-ui)
+          pw=$(openssl rand -hex 16)
+          gw=$(docker run -d --network prova -p 3190:3000 -e UI_UPSTREAM=http://ui:8181 -e GATEWAY_DB=/tmp/gw.db \
+            -e APP_URL=http://localhost:3190 -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
+            -e ADMIN_EMAIL=prova@example.com -e ADMIN_PASSWORD="$pw" oe-copilot-gateway)
+          trap 'rc=$?; [ $rc = 0 ] || { docker logs "$gw"; docker logs "$ui"; }; docker rm -f "$gw" "$ui" >/dev/null; docker network rm prova >/dev/null' EXIT
+          for _ in $(seq 1 30); do curl -fsS localhost:3190/salute >/dev/null 2>&1 && break; sleep 1; done
+          G=http://localhost:3190
+          codice() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          json=(-H 'Content-Type: application/json' -H "Origin: $G")
+          # senza sessione: la pagina rimanda a /login, l'API risponde 401, /login e /salute sono aperti
+          test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $G/)" = "302 $G/login?next=%2F"
+          test "$(codice -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401
+          curl -fsS "$G/login?next=%2F" | grep -q 'Accedi a OE Copilot'
+          # password sbagliata, poi giusta: cookie HttpOnly, e dopo l'accesso passa tutto il servizio ui
+          test "$(codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email)" = 401
+          curl -fsS -c jar -D intest -o /dev/null -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email
+          grep -qi 'set-cookie: .*HttpOnly' intest
+          curl -fsS -b jar $G/ | grep -q 'OE<span'
+          curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_personalizzazione | grep -q '"interfaccia"'
+          test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/win_close)" = 404
+          test "$(codice -b jar -X POST -d '[]' $G/api/get_config)" = 415
+          test "$(codice -b jar -X POST "${json[@]}" -H 'Sec-Fetch-Site: cross-site' -d '[]' $G/api/get_config)" = 403
+          # uscita: la sessione non vale più
+          curl -fsS -b jar -c jar -o /dev/null -X POST "${json[@]}" -d '{}' $G/api/auth/sign-out
+          test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401
+          # cinque errori bloccano l'account, anche per la password giusta
+          for i in 1 2 3 4 5; do codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email >/dev/null; done
+          test "$(codice -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email)" = 429
 
   aggiorna:
     name: Aggiorna il server

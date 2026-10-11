@@ -944,6 +944,9 @@ html, body {
 
 /* ---------------- Interfaccia web: parti che servono solo all'app per Windows ---------------- */
 .nel-browser .solo-app { display: none !important; }
+/* e quelle che servono solo nel browser (l'uscita dalla sessione del gateway) */
+.solo-browser { display: none !important; }
+.nel-browser .solo-browser { display: flex !important; }
 
 /* Vista a 3 giorni: il movimento orizzontale è nostro (un giorno alla volta, vedi
    setupScorrimentoTreGiorni), quello verticale resta allo scorrimento della griglia. */

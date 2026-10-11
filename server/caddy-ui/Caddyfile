@@ -1,5 +1,5 @@
-# HTTPS e password davanti all'interfaccia web. Indirizzo, utente e hash della
-# password arrivano da .env (UI_HOST, UI_USER, UI_HASH): non stanno nel repository.
+# HTTPS davanti al gateway dell'interfaccia web, che chiede l'accesso (pagina /login). L'indirizzo
+# arriva da .env (UI_HOST): non sta nel repository.
 #
 # Sulla VM la porta 443 è di sslh, che gira il TLS per nome (SNI) a questo Caddy sulla
 # 4445 del localhost, e la porta 80 è di un altro Caddy: il certificato arriva col
@@ -17,8 +17,5 @@
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
 	}
-	basic_auth {
-		{$UI_USER} {$UI_HASH}
-	}
-	reverse_proxy ui:8181
+	reverse_proxy gateway:3000
 }

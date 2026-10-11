@@ -109,7 +109,7 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
 - **app sul PC** = apre il tunnel SSH e chiede gli eventi all'agent; per il resto funziona come in
   modalità PC (griglia, colori, promemoria).
 - **interfaccia nel browser** (facoltativa, 4.7) = la stessa pagina servita dal server dietro
-  HTTPS e password; chiede gli eventi all'agent sulla rete di Docker.
+  HTTPS e pagina di accesso; chiede gli eventi all'agent sulla rete di Docker.
 
 Il codice del server sta nella cartella **`server/`** del repository.
 
@@ -355,7 +355,7 @@ l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la 
 
 ### 4.7 L'interfaccia nel browser (facoltativa)
 La stessa pagina e la stessa logica dell'app per Windows, servite dal server a un browser
-qualunque, con HTTPS e password: stesse caselle, stessi colori, pallini e filtri. Gli interruttori
+qualunque, con HTTPS e una pagina di accesso: stesse caselle, stessi colori, pallini e filtri. Gli interruttori
 (calendari, aziende, alias, calendari da link ICS, eventi personali) restano sul server. Non ci
 sono i promemoria (restano all'app per Windows), i controlli della finestra, l'avvio con Windows
 e *Apri in Outlook*; i link delle riunioni si aprono nel browser.
@@ -366,24 +366,41 @@ Come è fatta, in `server/docker-compose.yml`:
   pagina dell'app li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola):
   il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose
   (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci
-  arriva solo `caddy-ui`.
-- **`caddy-ui`**: Caddy con HTTPS e password (basic auth), solo su `127.0.0.1:4445`. Indirizzo,
-  utente e hash della password arrivano da `.env`, non dal repository.
-- **`ui-dati/`**: configurazione, interruttori, cache e `personalizzazione.json` (nomi, sigle e
-  colori delle aziende: stesso file e stessa forma dell'app sul PC). Sta solo sul server.
+  arriva solo il `gateway`.
+- **`gateway`** (`server/web-ts/`, Next.js e Better Auth): la pagina di accesso e il cancello
+  davanti a `ui`. Senza sessione una pagina rimanda a `/login?next=...` e l'API (`/api/*`)
+  risponde 401 in JSON; con la sessione la richiesta passa a `ui` (il cookie di sessione non ci
+  arriva). Il cookie è HttpOnly, Secure e SameSite=Lax e dura 30 giorni; dopo 5 password sbagliate
+  l'account si blocca 15 minuti, qualunque sia l'indirizzo (dietro sslh e docker-proxy tutti i
+  client hanno lo stesso, quindi un limite per indirizzo sarebbe un contatore solo). Valgono ancora
+  le regole contro le richieste partite da un altro sito di `server.py` (JSON obbligatorio per i
+  POST, `Sec-Fetch-Site` dello stesso sito). Il tasto *Esci* della barra a sinistra chiude la
+  sessione. Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD` di `.env`; le
+  sessioni e il blocco stanno in `ui-dati/gateway.db`. Porta solo su `127.0.0.1:3190`.
+- **`caddy-ui`**: Caddy con HTTPS, solo su `127.0.0.1:4445`, che passa tutto al gateway.
+  L'indirizzo arriva da `.env`, non dal repository.
+- **`ui-dati/`**: configurazione, interruttori, cache, `personalizzazione.json` (nomi, sigle e
+  colori delle aziende: stesso file e stessa forma dell'app sul PC) e `gateway.db`. Sta solo sul
+  server.
 
 Messa in funzione, una volta sola, sul server:
 ```bash
-# dati dell'interfaccia: il container li scrive come utente 10001, senza privilegi
+# dati dell'interfaccia: i container li scrivono come utente 10001, senza privilegi
 sudo install -d -o 10001 -g 10001 -m 700 /opt/oe-copilot/ui-dati
 sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-dati/
-# password: l'hash bcrypt va in .env tra apici singoli (i $ non sono variabili)
-read -rs PW && docker run --rm caddy:2.11.4-alpine caddy hash-password --plaintext "$PW"
+# segreto dei cookie di sessione
+openssl rand -hex 32
 ```
-Con la password su stdin `hash-password` si ferma con `EOF`, oppure cifra anche l'a capo e poi la
-password giusta non entra: si usa `--plaintext`.
-In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`, `UI_USER=<utente>`,
-`UI_HASH='<hash>'`. Il prossimo aggiornamento costruisce e avvia `ui` e `caddy-ui`.
+In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`, `ADMIN_EMAIL=<email>`,
+`ADMIN_PASSWORD=<password lunga e casuale, senza $>`, `BETTER_AUTH_SECRET=<il segreto>`. Il
+prossimo aggiornamento costruisce e avvia `ui`, `gateway` e `caddy-ui`. Per cambiare la password
+si cambia `ADMIN_PASSWORD` e si riavvia il gateway: le sessioni aperte si chiudono.
+
+**Tornare indietro.** Annullare la modifica del gateway e ridistribuire rimette `caddy-ui` con
+la password del browser (basic auth), che usa `UI_USER` e `UI_HASH` di `.env`: vanno tenuti.
+L'hash si fa con `caddy hash-password --plaintext "$PW"` (con la password su stdin si ferma con
+`EOF`, oppure cifra anche l'a capo e poi la password giusta non entra) e va in `.env` tra apici
+singoli: i `$` non sono variabili.
 
 **HTTPS.** Caddy ottiene da solo il certificato, e per farlo il suo nome deve arrivargli da
 internet. Dove la 443 è libera basta pubblicare `caddy-ui` su `443:443` e `80:80` al posto di
@@ -396,8 +413,10 @@ e si riavvia sslh (`KillMode=process`: le connessioni aperte non cadono). sslip.
 solo il nome nell'indirizzo, non serve DNS. La porta 80 è di un altro Caddy, quindi il certificato
 arriva col TLS-ALPN, che passa da sslh: il primo tentativo HTTP-01 fallisce ed è previsto.
 
-Prova: senza credenziali `curl -I https://<UI_HOST>/` risponde 401 con `WWW-Authenticate: Basic`;
-con `-u utente` risponde 200.
+Prova: senza sessione `curl -I https://<UI_HOST>/` risponde 302 verso `/login?next=%2F` e
+`curl -X POST -H 'Content-Type: application/json' -d '[]' https://<UI_HOST>/api/get_config`
+risponde 401; con il cookie di `POST /api/auth/sign-in/email` (`curl -c jar`, poi `-b jar`) la
+pagina risponde 200.
 
 **Personalizzazione.** Senza `personalizzazione.json` in `ui-dati/` le aziende prendono il nome dal
 dominio della casella e i colori dalla tavolozza. Per averle come sul PC si copia lo stesso file e
@@ -523,9 +542,9 @@ e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un c
   (`/opt/oe-copilot/telefono/data`) contengono i token degli accessi: proteggili come credenziali.
 - **Niente esposto su internet**: l'agente e l'adb ascoltano solo sul localhost del server; il PC
   arriva con un tunnel SSH (chiave SSH) e una chiave dell'API cifrata per il tuo utente Windows.
-  L'unica eccezione, facoltativa, è l'interfaccia nel browser (4.7): HTTPS e password davanti a
-  una pagina che mostra i calendari, quindi la password va lunga e casuale. Il servizio `ui` in sé
-  non è pubblicato e non ha password: ci arriva solo il Caddy che la chiede.
+  L'unica eccezione, facoltativa, è l'interfaccia nel browser (4.7): HTTPS e una pagina di
+  accesso davanti a una pagina che mostra i calendari, quindi la password va lunga e casuale. Il
+  servizio `ui` in sé non è pubblicato e non ha password: ci arriva solo il gateway che la chiede.
 - **I token non si leggono**: il rilevatore degli accessi guarda solo bandierine ed età di
   sincronizzazione, mai il contenuto di un token.
 - Non estrarre token/cookie dai browser e non usare client ID di altre app per aggirare un consenso.

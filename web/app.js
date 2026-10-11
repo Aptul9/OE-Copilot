@@ -1193,6 +1193,7 @@ function setupUI() {
   // Il sole/luna cambia tema chiaro↔scuro; l'ingranaggio apre le impostazioni.
   $("#nav-theme").addEventListener("click", toggleTema);
   $("#nav-settings").addEventListener("click", openAppSettings);
+  $("#nav-logout").addEventListener("click", esci);
 
   // Azioni calendario spostate sotto "I miei calendari".
   $("#mycal-all").addEventListener("click", () => openCalendarsModal(false));
@@ -1280,6 +1281,15 @@ function setupUI() {
   $$(".modal").forEach((m) =>
     m.addEventListener("click", (e) => { if (e.target === m) chiudiModali(); }));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") chiudiModali(); });
+}
+
+/** Chiude la sessione del gateway (solo nel browser) e porta alla pagina di accesso. */
+function esci() {
+  fetch("/api/auth/sign-out", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  }).catch(() => {}).finally(() => { window.location.href = "/login"; });
 }
 
 function apriModale(sel, railSel) {

@@ -1,0 +1,5676 @@
+{
+  "calendario spento": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "mario@alfa.example": "#2563eb"
+        },
+        "disabled_calendars": [
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "un secondo calendario spento (le festività)": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "mario@alfa.example": "#2563eb"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario riacceso": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "mario@alfa.example": "#2563eb"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario che non c'è, spento": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "mario@alfa.example": "#2563eb"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "non::esiste"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "account spento: i suoi calendari": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "non::esiste",
+          "remoto::mario@alfa.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "account del calendario locale spento": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "local::altro",
+          "non::esiste",
+          "remoto::mario@alfa.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "account senza calendari: non cambia niente": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "local::altro",
+          "non::esiste",
+          "remoto::mario@alfa.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "account riacceso": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "local::altro",
+          "non::esiste"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "azienda spenta: tutti i suoi calendari": {
+    "risposta": {
+      "calendari": 2,
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "azienda riaccesa": {
+    "risposta": {
+      "calendari": 2,
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "local::altro",
+          "non::esiste"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "azienda che non c'è": {
+    "risposta": {
+      "calendari": 0,
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "local::altro",
+          "non::esiste"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "una sola azienda accesa": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@gmail.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "tutte le aziende accese": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "non::esiste"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "solo le aziende di un gruppo": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::mario@gmail.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "gruppo che non c'è": {
+    "risposta": {
+      "error": "Gruppo non trovato",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::mario@gmail.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "solo le aziende di un altro gruppo": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "alias nuovo: i gruppi seguono": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@beta.example": "Beta Srl",
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa",
+            "Beta Srl"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "alias con gli spazi intorno": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@beta.example": "Beta Srl",
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa Spa",
+            "Beta Srl"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "alias uguale a quello di un altro: un solo nome nel gruppo": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@beta.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Alfa Spa"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "alias tolto: torna il nome automatico": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "alias di un account senza calendari": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario da link con il nome dato": {
+    "risposta": {
+      "feed": {
+        "id": "ics_HASH",
+        "name": "Festività di prova",
+        "url": "http://127.0.0.1:PORTA/festivita.ics"
+      },
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "lo stesso link un'altra volta": {
+    "risposta": {
+      "error": "Questo calendario è già presente.",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario da link senza nome: lo dà il calendario": {
+    "risposta": {
+      "feed": {
+        "id": "ics_HASH",
+        "name": "Riunioni di prova",
+        "url": "http://127.0.0.1:PORTA/riunioni.ics"
+      },
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario da link senza nome e senza nome nel calendario": {
+    "risposta": {
+      "feed": {
+        "id": "ics_HASH",
+        "name": "Calendario ICS",
+        "url": "http://127.0.0.1:PORTA/rotto.ics"
+      },
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Calendario ICS",
+            "url": "http://127.0.0.1:PORTA/rotto.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "link che non è http": {
+    "risposta": {
+      "error": "Il link deve iniziare con https:// (o webcal://).",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Calendario ICS",
+            "url": "http://127.0.0.1:PORTA/rotto.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "link vuoto": {
+    "risposta": {
+      "error": "Il link deve iniziare con https:// (o webcal://).",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Calendario ICS",
+            "url": "http://127.0.0.1:PORTA/rotto.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "link che risponde 404": {
+    "risposta": {
+      "error": "Il link non risponde: 404 Client Error: File not found for url: http://127.0.0.1:PORTA/non-esiste.ics",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Calendario ICS",
+            "url": "http://127.0.0.1:PORTA/rotto.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "link che non è un calendario": {
+    "risposta": {
+      "error": "Il link risponde ma non contiene un calendario iCal valido. Assicurati di aver copiato l'indirizzo segreto in formato iCal.",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Calendario ICS",
+            "url": "http://127.0.0.1:PORTA/rotto.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario da link tolto": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "ics_utente1",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_utente1",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario da link di prima tolto": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "calendario da link che non c'è": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        }
+      ]
+    }
+  },
+  "evento personale aggiunto": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        }
+      ]
+    }
+  },
+  "evento personale di un giorno intero, senza fine": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale senza titolo": {
+    "risposta": {
+      "error": "Il titolo è obbligatorio.",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale senza inizio": {
+    "risposta": {
+      "error": "Manca la data/ora di inizio.",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale con l'inizio non valido": {
+    "risposta": {
+      "error": "Data non valida: Invalid isoformat string: 'domani'",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale con la fine non valida": {
+    "risposta": {
+      "error": "Data non valida: month must be in 1..12",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale senza dati": {
+    "risposta": {
+      "error": "Il titolo è obbligatorio.",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale che non è un oggetto": {
+    "risposta": {
+      "error": "'list' object has no attribute 'get'",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale con un titolo che non è un testo": {
+    "risposta": {
+      "error": "'int' object has no attribute 'strip'",
+      "ok": false
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": true,
+          "end": "2026-10-28T00:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Ferie locali",
+          "uid": "2"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale tolto": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale che non c'è": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        }
+      ]
+    }
+  },
+  "evento personale dopo una cancellazione: l'id continua dal più alto": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "dark",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 70
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "configurazione: tema e zoom": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "bot_token": "",
+          "chat_id": "",
+          "enabled": false
+        },
+        "theme": "light",
+        "vista": "settimana",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "configurazione: una voce nuova e una annidata sostituita": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "antonio": [
+            "Beta"
+          ],
+          "samuele": [
+            "Mario G"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "configurazione: i gruppi riscritti": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "configurazione: niente": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "configurazione: un oggetto vuoto": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "la configurazione dopo le scritture": {
+    "risposta": {
+      "account_aliases": {
+        "mario@alfa.example": "Alfa Spa",
+        "mario@gmail.example": "Mario G",
+        "nuovo@gamma.example": "Gamma Srl"
+      },
+      "account_colors": {
+        "Esterna": "#0f766e",
+        "Eventi personali": "#0891b2",
+        "Riunioni di prova": "#7c3aed",
+        "assente@alfa.example": "#ea580c",
+        "mario@alfa.example": "#2563eb",
+        "mario@beta.example": "#16a34a",
+        "mario@gmail.example": "#db2777"
+      },
+      "altro": [
+        1,
+        2
+      ],
+      "disabled_calendars": [
+        "builtin::festivita-it",
+        "inoltro::esterna",
+        "local::altro",
+        "non::esiste",
+        "remoto::assente@alfa.example",
+        "remoto::mario@alfa.example",
+        "remoto::mario@beta.example"
+      ],
+      "gruppi_calendari": {
+        "nuovo": [
+          "Alfa"
+        ]
+      },
+      "ics_calendars": [
+        {
+          "id": "ics_HASH",
+          "name": "Festività di prova",
+          "url": "http://127.0.0.1:PORTA/festivita.ics"
+        },
+        {
+          "id": "ics_HASH",
+          "name": "Riunioni di prova",
+          "url": "http://127.0.0.1:PORTA/riunioni.ics"
+        }
+      ],
+      "reminder_poll_seconds": 60,
+      "telegram": {
+        "enabled": true
+      },
+      "theme": "light",
+      "vista": "mese",
+      "windows_toast": true,
+      "zoom_calendario": 64
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "i calendari dopo le scritture": {
+    "risposta": {
+      "calendars": [
+        {
+          "account": "assente@alfa.example",
+          "alias": "Alfa",
+          "color": "#ea580c",
+          "count": 0,
+          "enabled": false,
+          "id": "remoto::assente@alfa.example",
+          "label": "assente@alfa.example · Calendario",
+          "stato": "errore",
+          "stato_msg": "La casella assente@alfa.example non e' sul telefono (login da rifare?)"
+        },
+        {
+          "account": "mario@beta.example",
+          "alias": "Beta",
+          "color": "#16a34a",
+          "count": 4,
+          "enabled": false,
+          "id": "remoto::mario@beta.example",
+          "label": "mario@beta.example · Calendario",
+          "stato": "ok",
+          "stato_msg": "Letto dal telefono alle HH:MM"
+        },
+        {
+          "account": "Esterna",
+          "alias": "Esterna",
+          "color": "#0f766e",
+          "count": null,
+          "enabled": false,
+          "id": "inoltro::esterna",
+          "is_inoltro": true,
+          "label": "Riunioni Esterna",
+          "nota": "copiate da Power Automate in mario@alfa.example",
+          "stato": "ok",
+          "stato_msg": "Copie lette dal calendario di mario@alfa.example; flusso non verificabile da remoto"
+        },
+        {
+          "account": "Eventi personali",
+          "alias": "Eventi personali",
+          "color": "#0891b2",
+          "count": 5,
+          "enabled": false,
+          "id": "local::altro",
+          "is_ics": false,
+          "is_local": true,
+          "label": "Eventi personali",
+          "stato": "ok",
+          "stato_msg": "Locale",
+          "url": null
+        },
+        {
+          "account": "Festività",
+          "builtin": true,
+          "color": "#8a8a8a",
+          "count": null,
+          "enabled": false,
+          "id": "builtin::festivita-it",
+          "is_ics": true,
+          "label": "Festività",
+          "stato": "avviso",
+          "stato_msg": "Non ancora letto",
+          "url": "https://calendar.google.com/calendar/ical/it.italian%23holiday%40group.v.calendar.google.com/public/basic.ics"
+        },
+        {
+          "account": "mario@alfa.example",
+          "alias": "Alfa Spa",
+          "color": "#2563eb",
+          "count": 22,
+          "enabled": false,
+          "id": "remoto::mario@alfa.example",
+          "label": "mario@alfa.example · Calendario",
+          "stato": "ok",
+          "stato_msg": "Letto dal telefono alle HH:MM"
+        },
+        {
+          "account": "mario@gmail.example",
+          "alias": "Mario G",
+          "color": "#db2777",
+          "count": 3,
+          "enabled": true,
+          "id": "remoto::mario@gmail.example",
+          "label": "mario@gmail.example · Calendario",
+          "stato": "ok",
+          "stato_msg": "Letto dal telefono alle HH:MM"
+        },
+        {
+          "account": "Festività di prova",
+          "builtin": false,
+          "color": "#ca8a04",
+          "count": null,
+          "enabled": true,
+          "id": "ics_HASH",
+          "is_ics": true,
+          "label": "Festività di prova",
+          "stato": "avviso",
+          "stato_msg": "Non ancora letto",
+          "url": "http://127.0.0.1:PORTA/festivita.ics"
+        },
+        {
+          "account": "Riunioni di prova",
+          "builtin": false,
+          "color": "#7c3aed",
+          "count": null,
+          "enabled": true,
+          "id": "ics_HASH",
+          "is_ics": true,
+          "label": "Riunioni di prova",
+          "stato": "avviso",
+          "stato_msg": "Non ancora letto",
+          "url": "http://127.0.0.1:PORTA/riunioni.ics"
+        }
+      ],
+      "error": null
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Festività di prova": "#ca8a04",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "gli eventi dopo le scritture": {
+    "risposta": {
+      "aziende": {
+        "Alfa": false,
+        "Alfa Spa": false,
+        "Beta": false,
+        "Mario G": true
+      },
+      "errors": [
+        "Alfa: La casella assente@alfa.example non e' sul telefono (login da rifare?)"
+      ],
+      "events": [
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-20T17:00:00",
+          "id": "ics_HASH|usa@prova|2026-10-20T16:00:00",
+          "location": "https://teams.microsoft.com/l/meetup-join/abc",
+          "nascosto": false,
+          "online_url": "https://teams.microsoft.com/l/meetup-join/abc",
+          "organizer": "anna@example.org",
+          "start": "2026-10-20T16:00:00",
+          "title": "Sync USA",
+          "web_link": null
+        },
+        {
+          "account": "mario@gmail.example",
+          "alias": "Mario G",
+          "allDay": false,
+          "calendar": "mario@gmail.example · mario@gmail.example",
+          "color": "#db2777",
+          "end": "2026-10-22T11:00:00",
+          "id": "android::mario@gmail.example|a200|2026-10-22T10:00:00",
+          "invitato_come": "",
+          "is_google": true,
+          "location": "",
+          "online_url": null,
+          "organizer": "mario@gmail.example",
+          "organizer_email": "mario@gmail.example",
+          "remoto": true,
+          "start": "2026-10-22T10:00:00",
+          "title": "Dentista",
+          "web_link": null
+        },
+        {
+          "account": "mario@beta.example",
+          "alias": "Team",
+          "allDay": false,
+          "calendar": "mario@beta.example · Shared Team",
+          "color": "#16a34a",
+          "end": "2026-10-23T17:00:00",
+          "id": "android::mario@beta.example|a102|2026-10-23T09:00:00",
+          "location": "",
+          "online_url": null,
+          "organizer": "capo@beta.example",
+          "organizer_email": "capo@beta.example",
+          "remoto": true,
+          "start": "2026-10-23T09:00:00",
+          "title": "Offsite di team",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-23T10:00:00",
+          "id": "ics_HASH|quotidiana@prova|2026-10-23T09:30:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-23T09:30:00",
+          "title": "Quotidiana",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": true,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-25T00:00:00",
+          "id": "ics_HASH|compleanno@prova|2026-10-24T00:00:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-24T00:00:00",
+          "title": "Compleanno",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-24T10:00:00",
+          "id": "ics_HASH|quotidiana@prova|2026-10-24T09:30:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-24T09:30:00",
+          "title": "Quotidiana",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-25T10:00:00",
+          "id": "ics_HASH|quotidiana@prova|2026-10-25T09:30:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-25T09:30:00",
+          "title": "Quotidiana",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": true,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-29T00:00:00",
+          "id": "ics_HASH|giorni@prova|2026-10-26T00:00:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-26T00:00:00",
+          "title": "Tre giorni",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-26T10:00:00",
+          "id": "ics_HASH|quotidiana@prova|2026-10-26T09:30:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-26T09:30:00",
+          "title": "Quotidiana",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-27T16:00:00",
+          "id": "ics_HASH|usa@prova|2026-10-27T15:00:00",
+          "location": "https://teams.microsoft.com/l/meetup-join/abc",
+          "nascosto": false,
+          "online_url": "https://teams.microsoft.com/l/meetup-join/abc",
+          "organizer": "anna@example.org",
+          "start": "2026-10-27T15:00:00",
+          "title": "Sync USA",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-27T16:00:00",
+          "id": "ics_HASH|fluttuante@prova|2026-10-27T15:00:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-27T15:00:00",
+          "title": "Senza fuso",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-29T17:45:00",
+          "id": "ics_HASH|durata@prova|2026-10-29T17:00:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-29T17:00:00",
+          "title": "Solo durata",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-30T12:00:00",
+          "id": "ics_HASH|zero@prova|2026-10-30T12:00:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-30T12:00:00",
+          "title": "Senza durata",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-10-30T13:00:00",
+          "id": "ics_HASH|senza-titolo@prova|2026-10-30T12:00:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-10-30T12:00:00",
+          "title": "(senza titolo)",
+          "web_link": null
+        },
+        {
+          "account": "Riunioni di prova",
+          "alias": "Riunioni di prova",
+          "allDay": false,
+          "calendar": "Riunioni di prova",
+          "color": "#7c3aed",
+          "end": "2026-11-03T18:30:00",
+          "id": "ics_HASH|usa@prova|2026-11-03T17:30:00",
+          "location": "",
+          "nascosto": false,
+          "online_url": null,
+          "organizer": "",
+          "start": "2026-11-03T17:30:00",
+          "title": "Sync USA (spostata)",
+          "web_link": null
+        }
+      ],
+      "fonti": {
+        "Alfa": {
+          "msg": "La casella assente@alfa.example non e' sul telefono (login da rifare?)",
+          "stato": "errore"
+        },
+        "Alfa Spa": {
+          "msg": "Letto dal telefono alle HH:MM",
+          "stato": "ok"
+        },
+        "Beta": {
+          "msg": "Letto dal telefono alle HH:MM",
+          "stato": "ok"
+        },
+        "Esterna": {
+          "msg": "Copie lette dal calendario di mario@alfa.example; flusso non verificabile da remoto",
+          "stato": "ok"
+        },
+        "Eventi personali": {
+          "msg": "Locale",
+          "stato": "ok"
+        },
+        "Festività": {
+          "msg": "Aggiornato",
+          "stato": "ok"
+        },
+        "Festività di prova": {
+          "msg": "Aggiornato",
+          "stato": "ok"
+        },
+        "Mario G": {
+          "msg": "Letto dal telefono alle HH:MM",
+          "stato": "ok"
+        },
+        "Riunioni di prova": {
+          "msg": "Aggiornato",
+          "stato": "ok"
+        }
+      },
+      "outlook_starting": false,
+      "stale": false,
+      "stale_at": null,
+      "stato_aziende": {
+        "Alfa": {
+          "msg": "La casella assente@alfa.example non e' sul telefono (login da rifare?)",
+          "stato": "errore"
+        },
+        "Alfa Spa": {
+          "msg": "Letto dal telefono alle HH:MM",
+          "stato": "ok"
+        },
+        "Beta": {
+          "msg": "Letto dal telefono alle HH:MM",
+          "stato": "ok"
+        },
+        "Mario G": {
+          "msg": "Letto dal telefono alle HH:MM",
+          "stato": "ok"
+        }
+      }
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Festività di prova": "#ca8a04",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "builtin::festivita-it",
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "builtin__festivita-it.ics",
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  },
+  "le festività non si tolgono e tornano accese (la loro copia sparisce: l'ultima chiamata, o la lettura dopo la riscaricherebbe da Internet)": {
+    "risposta": {
+      "ok": true
+    },
+    "stato": {
+      "config.json": {
+        "account_aliases": {
+          "mario@alfa.example": "Alfa Spa",
+          "mario@gmail.example": "Mario G",
+          "nuovo@gamma.example": "Gamma Srl"
+        },
+        "account_colors": {
+          "Esterna": "#0f766e",
+          "Eventi personali": "#0891b2",
+          "Festività di prova": "#ca8a04",
+          "Riunioni di prova": "#7c3aed",
+          "assente@alfa.example": "#ea580c",
+          "mario@alfa.example": "#2563eb",
+          "mario@beta.example": "#16a34a",
+          "mario@gmail.example": "#db2777"
+        },
+        "altro": [
+          1,
+          2
+        ],
+        "disabled_calendars": [
+          "inoltro::esterna",
+          "local::altro",
+          "non::esiste",
+          "remoto::assente@alfa.example",
+          "remoto::mario@alfa.example",
+          "remoto::mario@beta.example"
+        ],
+        "gruppi_calendari": {
+          "nuovo": [
+            "Alfa"
+          ]
+        },
+        "ics_calendars": [
+          {
+            "id": "ics_HASH",
+            "name": "Festività di prova",
+            "url": "http://127.0.0.1:PORTA/festivita.ics"
+          },
+          {
+            "id": "ics_HASH",
+            "name": "Riunioni di prova",
+            "url": "http://127.0.0.1:PORTA/riunioni.ics"
+          }
+        ],
+        "reminder_poll_seconds": 60,
+        "telegram": {
+          "enabled": true
+        },
+        "theme": "light",
+        "vista": "mese",
+        "windows_toast": true,
+        "zoom_calendario": 64
+      },
+      "ics_cache": [
+        "ics_HASH.ics",
+        "ics_HASH.ics"
+      ],
+      "local_events.json": [
+        {
+          "allDay": false,
+          "end": "2026-10-21T09:15:00",
+          "location": "Studio",
+          "notes": "",
+          "start": "2026-10-21T08:30:00",
+          "title": "Dentista (locale)",
+          "uid": "1"
+        },
+        {
+          "allDay": false,
+          "end": "boh",
+          "start": "boh",
+          "title": "Rotto",
+          "uid": "3"
+        },
+        {
+          "allDay": false,
+          "end": "2026-10-30T22:00:00",
+          "location": "Roma",
+          "notes": "con Anna",
+          "start": "2026-10-30T20:00:00",
+          "title": "Cena",
+          "uid": "4"
+        },
+        {
+          "allDay": true,
+          "end": "2026-11-02",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-02",
+          "title": "Ponte",
+          "uid": "5"
+        },
+        {
+          "allDay": false,
+          "end": "2026-11-05T09:00:00",
+          "location": "",
+          "notes": "",
+          "start": "2026-11-05T09:00:00",
+          "title": "Ultimo",
+          "uid": "6"
+        }
+      ]
+    }
+  }
+}

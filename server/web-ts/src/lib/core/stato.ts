@@ -1,81 +1,40 @@
-import fs from "node:fs";
-import { nelleDati, scriviJson } from "./dati";
-import { oraStamp } from "./orologio";
+import { type Config, modificaConfig } from "./archivio";
 import { COLOR_PALETTE, ACCOUNT_LOCALE, personalizzazione } from "./personalizzazione";
-import { Dict, isDict, pyStr } from "./py";
+import { isDict, pyStr } from "./py";
 
-// La configurazione di chi usa l'app (config.py): calendari spenti, alias, colori, gruppi, link ICS, tema. Sta in config.json
-// nella cartella dei dati e si rilegge a ogni uso, come faceva il servizio Python: la scrivono richieste diverse.
+// La configurazione di chi usa l'app (config.py): calendari spenti, alias, colori, gruppi, link ICS, tema. Sta nel database dello stato
+// (archivio.ts); qui le regole che la leggono e la cambiano.
 
-export type Config = Dict;
+export { DEFAULT_CONFIG, loadConfig, modificaConfig, percorsoConfig, saveConfig, type Config } from "./archivio";
 
-export const DEFAULT_CONFIG: Config = {
-  // Calendari da NON mostrare: elenco di id
-  disabled_calendars: [],
-  // Calendari sottoscritti da link iCal: [{id, name, url}]
-  ics_calendars: [],
-  // Come chiamare gli account: {"mario@azienda.it": "Azienda"}
-  account_aliases: {},
-  // Ogni quanti secondi la pagina rilegge i calendari
-  reminder_poll_seconds: 60,
-  // Colore per account: {"mario@x.com": "#2563eb"}, riempito da solo
-  account_colors: {},
-  // Aspetto: "auto", "light" o "dark"
-  theme: "auto",
-  // Zoom del calendario: altezza in pixel della riga da mezz'ora
-  zoom_calendario: 58,
-};
-
-export const percorsoConfig = () => nelleDati("config.json");
-
-export function loadConfig(): Config {
-  const cfg: Config = structuredClone(DEFAULT_CONFIG);
-  const percorso = percorsoConfig();
-  if (fs.existsSync(percorso)) {
-    try {
-      const dati = JSON.parse(fs.readFileSync(percorso, "utf-8"));
-      if (!isDict(dati)) throw new TypeError("cannot convert dictionary update sequence element #0 to a sequence");
-      Object.assign(cfg, dati);
-    } catch (e) {
-      if (e instanceof SyntaxError) {
-        // File illeggibile: se ne tiene una copia PRIMA di ripartire dai valori di fabbrica, se no il primo salvataggio
-        // successivo lo sovrascriverebbe e le impostazioni sarebbero perse davvero.
-        const guasto = `${percorso}.rotto-${oraStamp()}`;
-        console.error(`configurazione illeggibile: ne salvo una copia in ${guasto} e riparto dai valori predefiniti`);
-        try {
-          fs.copyFileSync(percorso, guasto);
-        } catch {
-          console.warn("copia della configurazione rotta non riuscita");
-        }
-      } else if ((e as NodeJS.ErrnoException).code) console.warn("configurazione non leggibile", e);
-      else throw e;
-    }
+/** La tavolozza: il primo colore libero, o `preferito` se nessuno lo usa; finite le tinte si ricomincia. */
+function assegnaColore(colori: Record<string, string>, username: string, preferito?: unknown): void {
+  const usati = new Set(Object.values(colori));
+  if (preferito && !usati.has(preferito as string)) colori[username] = preferito as string;
+  else {
+    const libero = COLOR_PALETTE.find((c) => !usati.has(c));
+    colori[username] = libero ?? COLOR_PALETTE[Object.keys(colori).length % COLOR_PALETTE.length];
   }
-  // Garantisce che i sotto-dizionari esistano sempre
-  for (const [k, v] of [["account_colors", {}], ["disabled_calendars", []], ["ics_calendars", []], ["account_aliases", {}]] as const) {
-    if (!(k in cfg)) cfg[k] = structuredClone(v);
-  }
-  return cfg;
 }
 
-/** Salva la configurazione; una copia di lavoro (_sola_lettura, eventi.occupato) resta in memoria. */
-export function saveConfig(cfg: Config): void {
-  if (cfg._sola_lettura) return;
-  scriviJson(percorsoConfig(), cfg);
-}
-
-/** Il colore stabile dell'account; se manca lo assegna (il primo libero della tavolozza, o `preferito`) e lo salva. */
+/**
+ * Il colore stabile dell'account; se manca lo assegna (il primo libero della tavolozza, o `preferito`) e lo salva. Si assegna sullo
+ * stato di adesso, non su quello che chi chiede si è letto qualche istante fa: una richiesta lenta non cancella i colori (né gli
+ * interruttori) assegnati o cambiati nel frattempo.
+ */
 export function colorForAccount(cfg: Config, username: string, preferito?: unknown): string {
   if (!isDict(cfg.account_colors)) cfg.account_colors = {};
   const colori = cfg.account_colors as Record<string, string>;
   if (!(username in colori)) {
-    const usati = new Set(Object.values(colori));
-    if (preferito && !usati.has(preferito as string)) colori[username] = preferito as string;
+    if (cfg._sola_lettura) assegnaColore(colori, username, preferito); // copia di lavoro: resta in memoria
     else {
-      const libero = COLOR_PALETTE.find((c) => !usati.has(c));
-      colori[username] = libero ?? COLOR_PALETTE[Object.keys(colori).length % COLOR_PALETTE.length];
+      modificaConfig((vivo) => {
+        if (!isDict(vivo.account_colors)) vivo.account_colors = {};
+        const vivi = vivo.account_colors as Record<string, string>;
+        if (!(username in vivi)) assegnaColore(vivi, username, preferito);
+        Object.assign(colori, vivi);
+      });
     }
-    saveConfig(cfg);
   }
   return colori[username];
 }
@@ -110,6 +69,33 @@ export function membriGruppo(cfg: Config, nome: string): Set<string> | null {
   const gruppi = cfg.gruppi_calendari;
   const membri = isDict(gruppi) ? gruppi[nome] : undefined;
   return Array.isArray(membri) ? new Set(membri.map(pyStr)) : null;
+}
+
+/** Un'azienda che cambia nome resta nei suoi gruppi (senza doppioni se il nuovo nome c'era già). */
+export function rinominaNeiGruppi(cfg: Config, prima: string, dopo: string): void {
+  const gruppi = cfg.gruppi_calendari;
+  if (prima === dopo || !isDict(gruppi)) return;
+  for (const [nome, membri] of Object.entries(gruppi)) {
+    if (Array.isArray(membri) && membri.includes(prima)) gruppi[nome] = [...new Set(membri.map((m) => (m === prima ? dopo : m)))];
+  }
+}
+
+/** Accende o spegne un calendario: l'elenco di quelli spenti (disabled_calendars) resta ordinato. */
+export function impostaAcceso(cfg: Config, id: string, acceso: boolean): void {
+  const spenti = new Set<string>(Array.isArray(cfg.disabled_calendars) ? cfg.disabled_calendars : []);
+  if (acceso) spenti.delete(id);
+  else spenti.add(id);
+  cfg.disabled_calendars = [...spenti].sort(confrontaPunti);
+}
+
+/** sorted() di Python sui testi: per punto di codice, non per unità UTF-16 come fa sort() di JavaScript. */
+export function confrontaPunti(a: string, b: string): number {
+  const [pa, pb] = [Array.from(a), Array.from(b)];
+  for (let i = 0; i < Math.min(pa.length, pb.length); i++) {
+    const d = (pa[i].codePointAt(0) as number) - (pb[i].codePointAt(0) as number);
+    if (d) return d;
+  }
+  return pa.length - pb.length;
 }
 
 /** L'ordine di un calendario nella barra laterale, per nome mostrato: chi non è in elenco va in fondo. */

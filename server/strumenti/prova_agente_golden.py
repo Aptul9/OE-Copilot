@@ -496,9 +496,10 @@ def main():
             json.dump(letto, f, ensure_ascii=False, sort_keys=True, indent=1)
             f.write("\n")
         # i calendari ICS di prova, con le righe a capo di git (LF), per le prove del servizio ui e del gateway che li servono
+        # (html e rotto servono ai link che non si possono aggiungere, o che non hanno un nome)
         cartella_ics = os.path.join(os.path.dirname(REGISTRATO), "ics")
         os.makedirs(cartella_ics, exist_ok=True)
-        for nome in ("festivita", "riunioni"):
+        for nome in ("festivita", "riunioni", "html", "rotto"):
             with open(os.path.join(cartella_ics, nome + ".ics"), "w", encoding="utf-8", newline="\n") as f:
                 f.write(ICS[nome].replace("\r\n", "\n"))
         print("riscritto %s (%d eventi nella finestra più lunga)" % (

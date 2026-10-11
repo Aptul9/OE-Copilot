@@ -7,8 +7,8 @@ import { nelleDati } from "./dati";
 import { iso, type Naive } from "./fuso";
 import { adesso } from "./orologio";
 import { COLORE_FESTIVITA, FESTIVITA_ID, FESTIVITA_NOME, FESTIVITA_URL } from "./personalizzazione";
-import { messaggio } from "./py";
-import { colorForAccount, type Config } from "./stato";
+import { ErroreValore, messaggio, testoPulito } from "./py";
+import { colorForAccount, impostaAcceso, modificaConfig, type Config } from "./stato";
 
 // Calendari sottoscritti con un link ICS (ics_feed.py): Google, Apple, le festività italiane. Il link è di fatto una chiave: chi ce
 // l'ha legge il calendario, quindi sta solo nella configurazione sul server. Il testo si scarica da qui, con la sua copia su disco
@@ -33,7 +33,7 @@ export const feedId = (url: string) => "ics_" + crypto.createHash("sha1").update
 
 /** Accetta anche i link webcal:// che usano diversi calendari. */
 export function normalizzaUrl(url: unknown): string {
-  const u = String(url ?? "").trim();
+  const u = testoPulito(url);
   return u.toLowerCase().startsWith("webcal://") ? "https://" + u.slice("webcal://".length) : u;
 }
 
@@ -95,10 +95,22 @@ function decodifica(corpo: ArrayBuffer, tipo: string | null): string {
   }
 }
 
+/** Il testo con cui requests rifiuta uno stato HTTP da 400 in su (raise_for_status). */
+function erroreHttp(r: Response): string {
+  return `${r.status} ${r.status >= 500 ? "Server" : "Client"} Error: ${r.statusText} for url: ${r.url}`;
+}
+
 export async function scarica(url: string): Promise<string> {
   const r = await fetch(url, { headers: { "User-Agent": "CalendarHub/1.0" }, signal: AbortSignal.timeout(ATTESA_MS), cache: "no-store" });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for url: ${url}`);
+  if (r.status >= 400) throw new Error(erroreHttp(r));
   return decodifica(await r.arrayBuffer(), r.headers.get("content-type"));
+}
+
+/** Perché una richiesta di rete non è andata a buon fine: fetch dice solo "fetch failed", il motivo sta nella causa. */
+function motivoDiRete(e: unknown): string {
+  const causa = e instanceof Error ? (e.cause as { code?: string; message?: string } | undefined) : undefined;
+  const dettaglio = causa?.code || causa?.message;
+  return dettaglio ? `${messaggio(e)} (${dettaglio})` : messaggio(e);
 }
 
 /** Il testo ICS, dalla copia se fresca. -> [testo, errore morbido]; testo null se non c'è né rete né copia. */
@@ -124,11 +136,55 @@ export async function testoCalendario(id: string, url: string): Promise<[string 
   } catch (e) {
     // Rete assente: meglio dati vecchi che nessun dato
     try {
-      return [fs.readFileSync(percorso, "utf-8"), `aggiornamento non riuscito (${messaggio(e)})`];
+      return [fs.readFileSync(percorso, "utf-8"), `aggiornamento non riuscito (${motivoDiRete(e)})`];
     } catch {
-      return [null, messaggio(e)];
+      return [null, motivoDiRete(e)];
     }
   }
+}
+
+// ---- Aggiunta e rimozione di un calendario da link ---------------------------------------------------------------------------
+const ILLEGGIBILE = "Il link risponde ma non contiene un calendario iCal valido. Assicurati di aver copiato l'indirizzo segreto in formato iCal.";
+
+/**
+ * Aggiunge un calendario da link (ics_feed.add_feed) dopo aver controllato che il link risponda e che sia un calendario: il controllo
+ * lo fa l'agente, con la stessa libreria che poi espande le ricorrenze. Solleva ErroreValore con il testo che la pagina mostra.
+ */
+export async function aggiungiFeed(nome: unknown, url: unknown): Promise<{ id: string; name: string; url: string }> {
+  const indirizzo = normalizzaUrl(url);
+  if (!/^https?:\/\//i.test(indirizzo)) throw new ErroreValore("Il link deve iniziare con https:// (o webcal://).");
+  let testo: string;
+  try {
+    testo = await scarica(indirizzo);
+  } catch (e) {
+    throw new ErroreValore(`Il link non risponde: ${motivoDiRete(e)}`);
+  }
+  const verifica = await invia("/api/ics", { testo });
+  if (verifica.ok !== true) {
+    if (verifica.valore === true) throw new ErroreValore(ILLEGGIBILE);
+    throw new Error(String(verifica.errore ?? "risposta dell'agente non valida"));
+  }
+  const id = feedId(indirizzo);
+  // Il confronto con i calendari che ci sono e l'aggiunta sono un blocco solo, sulla configurazione di adesso: il download può essere lento
+  const feed = modificaConfig((cfg) => {
+    if (!Array.isArray(cfg.ics_calendars)) cfg.ics_calendars = [];
+    const feeds = cfg.ics_calendars as Feed[];
+    if (feeds.some((f) => f.id === id)) throw new ErroreValore("Questo calendario è già presente.");
+    const nuovo = { id, name: testoPulito(nome) || String(verifica.nome || "Calendario ICS"), url: indirizzo };
+    feeds.push(nuovo);
+    return nuovo;
+  });
+  salvaCache(id, testo);
+  return feed;
+}
+
+/** Toglie un calendario da link: la voce, l'interruttore e la copia del testo. Un id che non c'è non cambia niente. */
+export function rimuoviFeed(id: unknown): void {
+  modificaConfig((cfg) => {
+    cfg.ics_calendars = feedDi(cfg).filter((f) => f.id !== id);
+    impostaAcceso(cfg, String(id), true);
+  });
+  togliCache(String(id));
 }
 
 // ---- Lettura eventi ------------------------------------------------------------------------------------------------------

@@ -1,12 +1,24 @@
 import { AgenteNonDisponibile } from "./agente";
 import type { Ev } from "./caselle";
 import { calendariCaselle, calendariExtra, occupato, raccogli } from "./eventi";
-import { messaggio, pyBool, pyStr } from "./py";
-import { loadConfig, ordineCalendario } from "./stato";
+import { aggiungiFeed, rimuoviFeed } from "./ics";
+import { aggiungiEvento, eliminaEvento } from "./locali";
+import { ErroreValore, isDict, messaggio, pyBool, pyStr, testoPulito } from "./py";
+import {
+  aliasPerAccount,
+  confrontaPunti,
+  type Config,
+  impostaAcceso,
+  loadConfig,
+  membriGruppo,
+  modificaConfig,
+  ordineCalendario,
+  rinominaNeiGruppi,
+} from "./stato";
 import { personalizzazione } from "./personalizzazione";
 
-// I metodi di app.Api che il servizio ui esponeva alla pagina, scritti qui (app.py). Il gateway li serve da sé; gli altri passano
-// ancora al servizio ui. Ogni metodo riceve gli argomenti della lista JSON e restituisce quello che finisce nel corpo della risposta.
+// I metodi di app.Api che il servizio ui esponeva alla pagina, scritti qui (app.py): la lettura e la scrittura. Il gateway li serve da
+// sé. Ogni metodo riceve gli argomenti della lista JSON e restituisce quello che finisce nel corpo della risposta.
 
 /** Un argomento mancante o di un altro tipo: Python lo diceva con un TypeError, qui lo stesso con un testo suo. */
 export class ErroreArgomenti extends Error {}
@@ -29,6 +41,46 @@ function pyData(v: unknown): { a: number; m: number; g: number } {
   const d = new Date(Date.UTC(a, mo - 1, g));
   if (d.getUTCFullYear() !== a || d.getUTCMonth() !== mo - 1 || d.getUTCDate() !== g) throw new ErroreArgomenti("day is out of range for month");
   return { a, m: mo, g };
+}
+
+/** Tutte le sorgenti di calendari: le caselle (se l'agente non risponde si va avanti senza) e le altre voci. */
+async function tutteLeSorgenti(cfg: Config): Promise<Ev[]> {
+  let caselle: Ev[] = [];
+  try {
+    caselle = await calendariCaselle(cfg);
+  } catch (e) {
+    if (!(e instanceof AgenteNonDisponibile)) throw e;
+  }
+  return [...caselle, ...calendariExtra(cfg)];
+}
+
+/** Il nome mostrato di un calendario: l'alias, se no l'account. */
+const nomeMostrato = (c: Ev): string => c.alias || c.account;
+
+/** Dopo aver letto le sorgenti (che è lento e può assegnare colori), si cambia l'elenco dei calendari spenti sulla configurazione di adesso. */
+function cambiaSpenti(daCambiare: (cfg: Config, spenti: Set<string>) => void): void {
+  modificaConfig((cfg) => {
+    const spenti = new Set<string>(Array.isArray(cfg.disabled_calendars) ? cfg.disabled_calendars : []);
+    daCambiare(cfg, spenti);
+    cfg.disabled_calendars = [...spenti].sort(confrontaPunti);
+  });
+}
+
+/** Accende le aziende per cui `accesa(nome)` è vera e spegne tutte le altre. */
+async function accendiSolo(accesa: (nome: string) => boolean): Promise<void> {
+  const tutti = await tutteLeSorgenti(loadConfig());
+  cambiaSpenti((_, spenti) => {
+    for (const c of tutti) {
+      if (accesa(nomeMostrato(c))) spenti.delete(c.id);
+      else spenti.add(c.id);
+    }
+  });
+}
+
+/** Il corpo di un risultato che dice "no" con il testo che la pagina mostra: gli errori di Python che finivano in {"ok": False, "error": ...}. */
+function rifiuto(nome: string, e: unknown): { ok: false; error: string } {
+  if (!(e instanceof ErroreValore)) console.error(`${nome}: eccezione`, e);
+  return { ok: false, error: messaggio(e) };
 }
 
 export const apiTs = {
@@ -96,6 +148,102 @@ export const apiTs = {
       console.error("get_disponibilita: eccezione", e);
       return { ok: false, error: "Calendari non leggibili" };
     }
+  },
+
+  // ---- Scritture ----------------------------------------------------------------------------------------------------
+  /** Unisce `nuova` alla configurazione: le voci che ci sono cambiano, le altre restano. */
+  async save_config(nuova: unknown) {
+    const voci = pyBool(nuova) ? nuova : {};
+    if (!isDict(voci)) throw new TypeError("cannot convert dictionary update sequence element #0 to a sequence");
+    modificaConfig((cfg) => void Object.assign(cfg, voci));
+    return { ok: true };
+  },
+
+  async set_calendar_enabled(calId: unknown, acceso: unknown) {
+    modificaConfig((cfg) => impostaAcceso(cfg, pyStr(calId), pyBool(acceso)));
+    return { ok: true };
+  },
+
+  /** Accende o spegne in blocco tutti i calendari di un account: anche le voci che arrivano dal calendario locale, non solo caselle e link. */
+  async set_account_enabled(account: unknown, acceso: unknown) {
+    const tutti = await tutteLeSorgenti(loadConfig());
+    const ids = tutti.filter((c) => c.account === account).map((c) => c.id as string);
+    if (ids.length) modificaConfig((cfg) => ids.forEach((id) => impostaAcceso(cfg, id, pyBool(acceso))));
+    return { ok: true };
+  },
+
+  /** Accende o spegne TUTTI i calendari di un'azienda, in qualunque casella: nella barra laterale è una voce sola e deve comandarli tutti. */
+  async set_azienda_enabled(azienda: unknown, acceso: unknown) {
+    const tutti = await tutteLeSorgenti(loadConfig());
+    const suoi = tutti.filter((c) => nomeMostrato(c) === azienda);
+    cambiaSpenti((_, spenti) => {
+      for (const c of suoi) {
+        if (pyBool(acceso)) spenti.delete(c.id);
+        else spenti.add(c.id);
+      }
+    });
+    console.info(`set_azienda_enabled: ${pyStr(azienda)} -> ${pyBool(acceso) ? "acceso" : "spento"} (${suoi.length} calendari)`);
+    return { ok: true, calendari: suoi.length };
+  },
+
+  /** Lascia accesa una sola azienda, o tutte se `azienda` è vuota. */
+  async mostra_solo_azienda(azienda: unknown) {
+    await accendiSolo((nome) => !pyBool(azienda) || nome === azienda);
+    console.info(`mostra_solo_azienda: ${pyBool(azienda) ? pyStr(azienda) : "tutte"}`);
+    return { ok: true };
+  },
+
+  /** Lascia accese le aziende di un gruppo (config "gruppi_calendari"), spegne le altre. */
+  async mostra_solo_gruppo(gruppo: unknown) {
+    const membri = membriGruppo(loadConfig(), pyStr(gruppo));
+    if (membri === null) return { ok: false, error: "Gruppo non trovato" };
+    await accendiSolo((nome) => membri.has(nome));
+    console.info(`mostra_solo_gruppo: ${pyStr(gruppo)} (${membri.size} aziende)`);
+    return { ok: true };
+  },
+
+  /** Il nome da mostrare per un account. Vuoto = torna a quello automatico. Le aziende nei gruppi seguono il nuovo nome. */
+  async set_account_alias(account: unknown, alias: unknown) {
+    modificaConfig((cfg) => {
+      if (!isDict(cfg.account_aliases)) cfg.account_aliases = {};
+      const scelti = cfg.account_aliases as Record<string, string>;
+      const conto = account as string;
+      const prima = aliasPerAccount(cfg, [conto])[conto];
+      const nuovo = testoPulito(alias);
+      if (nuovo) scelti[conto] = nuovo;
+      else delete scelti[conto];
+      rinominaNeiGruppi(cfg, prima, aliasPerAccount(cfg, [conto])[conto]);
+    });
+    return { ok: true };
+  },
+
+  async add_ics_calendar(nome: unknown, url: unknown) {
+    try {
+      const feed = await aggiungiFeed(nome, url);
+      console.info(`add_ics_calendar: aggiunto ${feed.name}`);
+      return { ok: true, feed };
+    } catch (e) {
+      return rifiuto("add_ics_calendar", e);
+    }
+  },
+
+  async remove_ics_calendar(feedId: unknown) {
+    rimuoviFeed(feedId);
+    return { ok: true };
+  },
+
+  async add_local_event(dati: unknown) {
+    try {
+      aggiungiEvento(dati);
+      return { ok: true };
+    } catch (e) {
+      return rifiuto("add_local_event", e);
+    }
+  },
+
+  async delete_local_event(uid: unknown) {
+    eliminaEvento(uid);
+    return { ok: true };
   },
 };
 

@@ -1,3 +1,5 @@
+import path from "node:path";
+
 // Letta al momento dell'uso: la build importa i moduli senza database né segreti.
 export const config = {
   // Indirizzo pubblico: APP_URL, altrimenti https://UI_HOST
@@ -21,6 +23,10 @@ export const config = {
   // La cartella dei dati dell'app (config.json, personalizzazione.json, cache, eventi personali, loghi): ui-dati/ sul server
   get dati() {
     return process.env.OE_DATI || "/dati";
+  },
+  // Il database dello stato dell'app (configurazione ed eventi personali): lo stesso delle sessioni; senza GATEWAY_DB, gateway.db nella cartella dei dati
+  get dbStato() {
+    return process.env.GATEWAY_DB || path.join(this.dati, "gateway.db");
   },
   // L'agente sulla rete di Docker e la sua chiave
   get agenteUrl() {

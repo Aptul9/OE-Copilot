@@ -1,6 +1,7 @@
 import { getMigrations } from "better-auth/db/migration";
 import { auth, authOptions } from "@/lib/auth";
 import { config } from "@/lib/config";
+import { archivio } from "@/lib/core/archivio";
 import { appDb } from "@/lib/db";
 import { migrateLockout } from "@/lib/lockout";
 import { syncOwner } from "@/lib/owner";
@@ -16,6 +17,12 @@ export async function boot() {
   const { runMigrations } = await getMigrations(authOptions());
   await runMigrations();
   migrateLockout(appDb());
+  try {
+    // lo stato dell'app: la prima volta importa config.json e local_events.json; se non riesce si riprova alla prima richiesta
+    archivio();
+  } catch (e) {
+    console.error("archivio: stato dell'app non pronto", e);
+  }
   try {
     console.log(await syncOwner(auth(), appDb()));
   } catch (e) {

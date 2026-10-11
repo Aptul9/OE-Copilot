@@ -99,10 +99,11 @@ jobs:
       - name: Prova dei loghi
         run: docker run --rm -v "$PWD/server/strumenti/prova_loghi.py:/prova.py:ro" oe-copilot-ui python /prova.py
 
-      - name: Prova della lettura del servizio ui (l'oracolo del gateway)
+      - name: Prova del servizio ui, lettura e scrittura (l'oracolo del gateway)
         run: |
-          # le risposte del servizio Python a una sequenza di chiamate, con un agente finto che ripete le risposte registrate: sono
-          # quelle registrate in server/strumenti/golden/ui-lettura.json, che il gateway in TypeScript deve dare uguali (npm test)
+          # le risposte del servizio Python a una sequenza di chiamate di lettura e di modifica, con un agente finto che ripete le
+          # risposte registrate, e lo stato dopo ogni modifica: sono quelli registrati in server/strumenti/golden/ui-lettura.json e
+          # ui-scritture.json, che il gateway in TypeScript deve dare uguali (npm test)
           docker run --rm -v "$PWD/server/strumenti:/prove:ro" oe-copilot-ui python /prove/prova_ui_golden.py
 
       - name: Caddy dell'interfaccia web
@@ -191,6 +192,15 @@ jobs:
           curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_calendars | grep -q '"calendars"'
           test "$(codice -b jar -X POST "${json[@]}" -d '{"a":1}' $G/api/get_config)" = 400
           test "$(curl -s -b jar -X POST "${json[@]}" -d '["boh"]' $G/api/get_disponibilita | grep -c 'Intervallo non valido')" = 1
+          # le scritture le serve il gateway da sé: lo stato sta nel suo database e config.json con gli eventi personali si riscrivono
+          # nella cartella dei dati (qui /tmp/dati, che il gateway crea)
+          curl -fsS -b jar -X POST "${json[@]}" -d '["remoto::prova", false]' $G/api/set_calendar_enabled | grep -q '"ok":true'
+          curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config | grep -q '"disabled_calendars":\["remoto::prova"\]'
+          curl -fsS -b jar -X POST "${json[@]}" -d '[{"title":"Prova","start":"2026-10-30T20:00:00"}]' $G/api/add_local_event | grep -q '"ok":true'
+          curl -fsS -b jar -X POST "${json[@]}" -d '[{"title":"","start":"x"}]' $G/api/add_local_event | grep -q 'Il titolo è obbligatorio'
+          curl -fsS -b jar -X POST "${json[@]}" -d '[{"theme":"dark"}]' $G/api/save_config | grep -q '"ok":true'
+          docker exec "$gw" grep -q '"remoto::prova"' /tmp/dati/config.json
+          docker exec "$gw" grep -q '"title": "Prova"' /tmp/dati/local_events.json
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/win_close)" = 404
           test "$(codice -b jar -X POST -d '[]' $G/api/get_config)" = 415
           test "$(codice -b jar -X POST "${json[@]}" -H 'Sec-Fetch-Site: cross-site' -d '[]' $G/api/get_config)" = 403

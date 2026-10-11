@@ -1,28 +1,55 @@
-import fs from "node:fs";
+import { aggiungiLocale, leggiRigheLocali, togliLocali } from "./archivio";
 import type { Ev } from "./caselle";
-import { nelleDati } from "./dati";
 import { chiave, ErroreData, leggiIso, type Naive } from "./fuso";
 import { ACCOUNT_LOCALE } from "./personalizzazione";
-import { pyBool } from "./py";
+import { ErroreValore, isDict, pyBool, testoPulito, tipoPy } from "./py";
 import { colorForAccount, type Config } from "./stato";
 
-// Gli eventi aggiunti a mano dentro l'app, calendario "Altro" (local_events.py): l'unico calendario su cui l'app scrive. Sta in un
-// file JSON nella cartella dei dati, così non tocca nessuna casella di posta e non richiede permessi.
+// Gli eventi aggiunti a mano dentro l'app, calendario "Altro" (local_events.py): l'unico calendario su cui l'app scrive. Stanno nel
+// database dello stato (archivio.ts), così non toccano nessuna casella di posta e non richiedono permessi.
 
 export const ID_CALENDARIO = "local::altro";
 
-export const percorsoLocali = () => nelleDati("local_events.json");
+/** Gli eventi personali, nell'ordine in cui sono stati aggiunti. */
+export const leggiLocali = (): Ev[] => leggiRigheLocali();
 
-/** Gli eventi del file. Qui ci sono dati che esistono solo qui: un file illeggibile non deve passare inosservato. */
-export function leggiLocali(): Ev[] {
-  try {
-    const dati = JSON.parse(fs.readFileSync(percorsoLocali(), "utf-8"));
-    return Array.isArray(dati) ? dati : [];
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") console.error(`eventi personali: file non leggibile (${percorsoLocali()})`, e);
-    return []; // la prima volta: nessun evento personale, è normale
-  }
+/** Il prossimo identificativo: il più alto fra quelli fatti di sole cifre, più uno (si parte da 1). */
+function nuovoId(esistenti: Ev[]): string {
+  const numeri = esistenti.map((e) => String(e?.uid ?? "")).filter((u) => /^[0-9]+$/.test(u)).map(Number);
+  return String(numeri.length ? Math.max(...numeri) + 1 : 1);
 }
+
+/** Aggiunge un evento. dati: title, start, end, allDay, location, notes. Solleva ErroreValore con il testo che la pagina mostra. */
+export function aggiungiEvento(dati: unknown): void {
+  const d = pyBool(dati) ? dati : {};
+  if (!isDict(d)) throw new TypeError(`'${tipoPy(d)}' object has no attribute 'get'`);
+  const titolo = testoPulito(d.title);
+  if (!titolo) throw new ErroreValore("Il titolo è obbligatorio.");
+  const inizio = testoPulito(d.start);
+  if (!inizio) throw new ErroreValore("Manca la data/ora di inizio.");
+  try {
+    leggiIso(inizio);
+    if (pyBool(d.end)) {
+      if (typeof d.end !== "string") throw new TypeError("fromisoformat: argument must be str");
+      leggiIso(d.end);
+    }
+  } catch (e) {
+    if (e instanceof ErroreData) throw new ErroreValore(`Data non valida: ${e.message}`);
+    throw e;
+  }
+  aggiungiLocale((esistenti) => ({
+    uid: nuovoId(esistenti),
+    title: titolo,
+    start: inizio,
+    end: testoPulito(d.end) || inizio,
+    allDay: pyBool(d.allDay),
+    location: testoPulito(d.location),
+    notes: testoPulito(d.notes),
+  }));
+}
+
+/** Toglie l'evento con quell'identificativo; se non c'è non succede niente. */
+export const eliminaEvento = (uid: unknown): void => togliLocali(uid);
 
 /** La voce singola dell'elenco calendari: il calendario locale è sempre presente. */
 export function elencoLocali(cfg: Config): Ev[] {

@@ -32,8 +32,9 @@ calendario prende il nome dal dominio della sua casella.
 | `aziende_inoltrate` | Aziende le cui riunioni arrivano copiate in un'altra casella (vedi sotto) |
 | `interfaccia` | Sigle e loghi, calendari secondari (sbiaditi), calendari senza "Apri in Teams", schede Timesheet |
 
-I loghi si indicano come `"logos/nome.png"` e stanno sul server in `ui-dati/logos/` (GUIDA.md, 4.7).
-Dopo una modifica a `personalizzazione.json` riavvia il servizio: `docker restart oe-copilot-ui`.
+I loghi si indicano come `"logos/nome.png"` e stanno sul server in `ui-dati/logos/` (GUIDA.md, 4.7); l'icona
+degli *Eventi personali* (`personale.png`) la porta l'immagine del gateway. Il gateway legge i loghi da disco e rilegge
+`personalizzazione.json` quando cambia: dopo una modifica non si riavvia niente.
 
 ### Calendari Google
 
@@ -48,9 +49,9 @@ Se un account si apre solo dal browser, un flusso (per esempio Power Automate) p
 
 ### Caselle lette dal server
 
-Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede attraverso il gateway (le scritture passano dal servizio `ui`). Il codice dell'agente e di tutto il server è nella cartella `server/`. Per l'installazione completa passo per passo e il perché delle scelte, vedi **[GUIDA.md](GUIDA.md)**.
+Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede attraverso il gateway. Il codice dell'agente e di tutto il server è nella cartella `server/`. Per l'installazione completa passo per passo e il perché delle scelte, vedi **[GUIDA.md](GUIDA.md)**.
 
-Come funziona: sul server gira un telefono Android virtuale ([redroid](https://github.com/remote-android/redroid-doc), in Docker) con le app ufficiali, **Outlook** per le caselle Microsoft e i **servizi Google** per i calendari Google, in cui si fanno gli accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge quel calendario e lo espone con una piccola API, in ascolto **solo sul localhost del server** e sulla rete di Docker. Il browser passa da HTTPS e dalla pagina di accesso (servizi `ui`, `gateway` e `caddy-ui`, GUIDA.md, 4.7); il telefono si vede e si comanda dalla pagina `/telefono/` (GUIDA.md, 4.8), dietro lo stesso accesso. Dal PC l'agente si interroga con un tunnel SSH (GUIDA.md, sezione 5).
+Come funziona: sul server gira un telefono Android virtuale ([redroid](https://github.com/remote-android/redroid-doc), in Docker) con le app ufficiali, **Outlook** per le caselle Microsoft e i **servizi Google** per i calendari Google, in cui si fanno gli accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge quel calendario e lo espone con una piccola API, in ascolto **solo sul localhost del server** e sulla rete di Docker. Il browser passa da HTTPS e dalla pagina di accesso (servizi `gateway` e `caddy-ui`, GUIDA.md, 4.7); il telefono si vede e si comanda dalla pagina `/telefono/` (GUIDA.md, 4.8), dietro lo stesso accesso. Dal PC l'agente si interroga con un tunnel SSH (GUIDA.md, sezione 5).
 
 Sul server (provato su Ubuntu ARM64; servono Docker e il modulo del kernel `binder_linux`):
 
@@ -72,23 +73,15 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 ## Controlli prima di un push
 
 - `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>`: cerca i dati della personalizzazione nei file del repository e fallisce se ne trova.
-- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/`, l'agente su un calendario di Android inventato (`prova_agente_golden.py`) e la lettura del servizio `ui` (`prova_ui_golden.py`, GUIDA.md, sezione 7), gateway (`npm test`, con le stesse risposte registrate), schermo, immagini e il cancello dell'accesso.
+- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/` (il rilevatore degli accessi e l'agente su un calendario di Android inventato, `prova_agente_golden.py`), gateway (tipi, `npm test` con le risposte registrate in `server/strumenti/golden/`, build; GUIDA.md, sezione 7), schermo, immagini e il cancello dell'accesso.
 
 ## File principali
 
 | File | Cosa fa |
 |------|---------|
-| `app.py` | La classe `Api`: i metodi dell'app nella versione Python, che il servizio `ui` serve e che fanno da termine di paragone alle prove del gateway (che li ha riscritti in TypeScript, `server/web-ts/src/lib/core/`) |
-| `config.py` | Impostazioni, colori, lettura di `personalizzazione.json` |
-| `agente_remoto.py` | Lettura delle caselle dall'agente sul server (HTTP e chiave dell'API) |
-| `caselle.py` | Regole comuni: di che azienda è una riunione, doppioni, colori |
-| `eventi.py` | Unione delle sorgenti, doppioni, stato di ogni azienda |
-| `disponibilita.py` | Pagina pubblica di disponibilità: ogni impegno ridotto a un blocco "Occupato" |
-| `ics_feed.py` | Calendari da link iCal e festività italiane |
-| `local_events.py` | Eventi aggiunti a mano nell'app |
 | `genera_icona.py`, `icon.png` | L'icona (tre calendari sovrapposti) e lo script che la disegna |
-| `web/logos/` | L'icona generica delle aziende senza logo |
-| `server/` | Il server: agente, telefono virtuale, interfaccia nel browser (`web-ts/`, `ui/`, `caddy-ui/`), schermo del telefono (`schermo-web/`) e script (`strumenti/`); vedi *Caselle lette dal server* |
+| `server/web-ts/logos-predefiniti/` | `personale.png`, l'icona degli *Eventi personali*: il gateway la serve se in `ui-dati/logos/` non c'è un file con lo stesso nome |
+| `server/` | Il server: agente, telefono virtuale, interfaccia nel browser (`web-ts/`, `caddy-ui/`), schermo del telefono (`schermo-web/`) e script (`strumenti/`); vedi *Caselle lette dal server*. La logica dell'app è in TypeScript, nel gateway (`web-ts/src/lib/core/`): Python resta solo nell'agente (`agent/`) e negli script |
 
 Restano sul server (`ui-dati/`) e fuori dal repository: `personalizzazione.json`, le cache
 (`events_cache.json`, `ics_cache/`, `agente_caselle.json`) e il database `gateway.db`, che tiene gli accessi
@@ -101,4 +94,4 @@ I log dei servizi: `docker logs oe-copilot-<servizio>` sul server (GUIDA.md, sez
 
 - **La pagina resta vuota o chiede di nuovo l'accesso**: il cookie di sessione dura 30 giorni; dopo un cambio di `ADMIN_PASSWORD` e un riavvio del gateway le sessioni si chiudono.
 - **Non compare un calendario appena aggiunto**: **Gestisci calendari → Ricerca calendari nuovi** rilegge l'elenco dal server (è memorizzato). Se manca ancora: sul telefono Outlook passa solo i calendari spuntati, con *Sincronizza calendari* acceso per quella casella, e l'agente legge solo quelli elencati in `agent/fonti.json` (GUIDA.md, 4.2 e 4.4).
-- **"Il server dei calendari non risponde"**: l'agente non risponde al gateway o al servizio `ui`; `docker logs oe-copilot-agent`, `docker logs oe-copilot-gateway` e `docker logs oe-copilot-ui` dal server, e dal PC la prova della GUIDA.md, sezione 5. Un pallino giallo o rosso su un'azienda dice nel suo suggerimento cosa è fermo sul server.
+- **"Il server dei calendari non risponde"**: l'agente non risponde al gateway; `docker logs oe-copilot-agent` e `docker logs oe-copilot-gateway` dal server, e dal PC la prova della GUIDA.md, sezione 5. Un pallino giallo o rosso su un'azienda dice nel suo suggerimento cosa è fermo sul server.

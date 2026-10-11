@@ -31,10 +31,10 @@
 #   almeno 4 cifre, senza ripetizioni né sequenze) e senza rimuove la casella (provato
 #   l'11/10/2026: schermata "Imposta la password del dispositivo"). Con il PIN il tasto
 #   accende solo la schermata di blocco: lo sblocco lo digita sempre l'utente.
-# - Calendari Google (DAVx5): DAVx5 usa WorkManager, che scarta le esecuzioni
-#   anticipate dei lavori periodici; si usa la sua scorciatoia ufficiale
-#   "Sincronizzazione di tutti gli account" (azione android.intent.action.SYNC),
-#   che porta DAVx5 in primo piano per un attimo, poi si rimette Outlook davanti.
+# - Ogni giro Outlook esce dallo schermo (si porta davanti la schermata iniziale di Android) e subito
+#   dopo torna in primo piano. Prima l'uscita era il tocco a DAVx5, aperto a ogni giro e mai configurato.
+#   Il ritorno in primo piano resta: Outlook ha scaricato le cancellazioni quando è tornato davanti
+#   (11/10/2026, 11:42:26 UTC) e non è provato che lo faccia anche restando sempre in primo piano.
 #
 # Se esiste il file PAUSA (es. durante un login dalla finestra scrcpy) non si
 # tocca lo schermo: si forzano solo le sincronizzazioni di Android. Vale anche
@@ -86,8 +86,8 @@ while true; do
         if [ "$pausa" = false ]; then
             docker exec "$T" dumpsys power 2>/dev/null | grep -q 'mWakefulness=Awake' \
                 || { docker exec "$T" input keyevent 224 >/dev/null 2>&1; sleep 1; }
-            docker exec "$T" am start -a android.intent.action.SYNC \
-                -n at.bitfire.davdroid/.ui.AccountsActivity >/dev/null 2>&1
+            docker exec "$T" am start -a android.intent.action.MAIN \
+                -c android.intent.category.HOME >/dev/null 2>&1
             sleep 2
             docker exec "$T" am start -a android.intent.action.MAIN \
                 -c android.intent.category.LAUNCHER \

@@ -2,7 +2,7 @@
 
 L'unica fonte e' il calendario di sistema del telefono Android virtuale, tenuto
 aggiornato da client veri con i login fatti dentro di loro: Outlook per le
-caselle Microsoft, DAVx5 per i calendari Google. Il servizio
+caselle Microsoft, i servizi Google del telefono per i calendari Google. Il servizio
 oe-copilot-sincronizza della VM li tiene aggiornati ogni 30 secondi e lascia un
 segno di vita (battito.json) che l'agente riporta: cosi' l'app sa se quello che
 legge e' fresco o se il meccanismo si e' fermato.

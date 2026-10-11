@@ -239,7 +239,7 @@ jobs:
         run: |
           # pesano più del limite di GitHub per un file: stanno nella release "apk",
           # nel repository c'è solo l'impronta
-          gh release download apk --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir server/apk
+          gh release download apk --repo "$GITHUB_REPOSITORY" --pattern 'Outlook-*.apk' --dir server/apk
           cd server/apk && sha256sum -c SHA256SUMS
 
       - name: Prepara l'interfaccia web

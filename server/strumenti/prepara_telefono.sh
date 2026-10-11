@@ -15,7 +15,7 @@ FUSO=${FUSO:-Europe/Rome}
 LINGUA=${LINGUA:-it-IT}
 OUTLOOK=com.microsoft.office.outlook
 # App che non devono finire in risparmio batteria (se sono installate).
-SVEGLIE="$OUTLOOK at.bitfire.davdroid"
+SVEGLIE="$OUTLOOK"
 
 e() { docker exec "$T" "$@"; }
 
@@ -30,14 +30,11 @@ e settings put system system_locales "$LINGUA"
 # e l'impostazione resta a 0. Scritta direttamente tiene.
 e settings put global stay_on_while_plugged_in 7
 
-# Le app non arrivano da un negozio (il telefono non ha i servizi Google e
-# Outlook esiste solo sul Play Store): gli APK stanno fra i file della release
-# "apk" del repository e arrivano in apk/ con l'aggiornamento. Si installa solo
-# quello che è elencato in apk/SHA256SUMS, e solo se l'impronta coincide; che la
-# firma sia quella di chi pubblica l'app lo controlla Android.
-#   Outlook: caselle Microsoft. DAVx5: calendari Google (CalDAV). Firefox: serve
-#   al login Google di DAVx5, che Google rifiuta nel browser interno delle app.
-APP="$OUTLOOK:Outlook-*.apk at.bitfire.davdroid:davx5-*.apk org.mozilla.firefox:fenix-*.apk"
+# Outlook esiste solo sul Play Store: l'APK sta fra i file della release "apk" del repository e arriva
+# in apk/ con l'aggiornamento. Si installa solo quello che è elencato in apk/SHA256SUMS, e solo se
+# l'impronta coincide; che la firma sia quella di chi pubblica l'app lo controlla Android. I calendari
+# Google non hanno un'app da installare: li sincronizzano i servizi Google dell'immagine del telefono.
+APP="$OUTLOOK:Outlook-*.apk"
 installate=$(e pm list packages)
 for voce in $APP; do
     app=${voce%%:*}; modello=${voce#*:}

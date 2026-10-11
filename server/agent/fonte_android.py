@@ -36,9 +36,9 @@ log = logging.getLogger("android")
 DB = "calendar.db"
 # Chi scrive nel calendario del telefono (prefissi di Calendars.account_type):
 # Outlook per le caselle Microsoft; per i calendari Google i servizi Google del
-# telefono (com.google) o DAVx5 (Outlook non esporta gli account Google nel
-# calendario di Android).
-TIPI_ACCOUNT = ("com.microsoft.office.outlook", "bitfire.at.davdroid", "com.google")
+# telefono (com.google), perché Outlook non esporta gli account Google nel
+# calendario di Android.
+TIPI_ACCOUNT = ("com.microsoft.office.outlook", "com.google")
 ANNULLATO = 2                                     # Events.STATUS_CANCELED
 ORGANIZZATORE = 2                                 # Attendees.RELATIONSHIP_ORGANIZER
 
@@ -143,7 +143,7 @@ class CalendarioAndroid:
         self.calendari = [c.strip().lower() for c in (calendari or [])]
         self.stato = {"stato": "avviso", "msg": "Non ancora letto"}
         # Chi tiene aggiornata la casella sul telefono: "outlook" o "caldav"
-        # (DAVx5 o servizi Google: il nome resta "caldav" perché l'app sul PC lo
+        # (servizi Google: il nome resta "caldav" perché l'app sul PC lo
         # conosce). All'app serve per sapere se è una casella Microsoft.
         self.tipo = None
         self.conteggio = None             # appuntamenti presenti sul telefono
@@ -174,14 +174,14 @@ class CalendarioAndroid:
                 continue
             if cancellato:
                 continue
-            self.tipo = "caldav" if tipo.startswith(("bitfire", "com.google")) else "outlook"
+            self.tipo = "caldav" if tipo.startswith("com.google") else "outlook"
             if sincr:
                 sincronizzati[_id] = nome or "Calendario"
             scelto = ((nome or "").lower() in self.calendari) if self.calendari else bool(primario)
             if scelto:
                 cal[_id] = nome or "Calendario"
-        # DAVx5 non segna un calendario principale: senza scelta esplicita si
-        # prendono quelli che sincronizza (in DAVx5 si attivano uno per uno).
+        # Senza un calendario principale e senza scelta esplicita si prendono
+        # quelli che si sincronizzano.
         if not cal and not self.calendari:
             cal = sincronizzati
         if not cal:
@@ -292,7 +292,7 @@ class CalendarioAndroid:
         gia' sul telefono), quindi senza questo controllo il pallino resterebbe
         verde mentre il calendario e' fermo a prima della scadenza. Il verdetto
         (ok/avviso/errore + messaggio) arriva dal rilevatore, che guarda solo la
-        bandierina di Outlook e da quanto DAVx5 non sincronizza: nessun token
+        bandierina di Outlook e l'esito della sincronizzazione Google: nessun token
         entra mai qui. Si applica solo se peggiora lo stato della lettura.
         """
         v = _accessi().get(self.account)

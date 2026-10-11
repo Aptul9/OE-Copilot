@@ -8,14 +8,6 @@ quella copia, non se ne accorgerebbe. Qui si guardano solo fatti, mai un token:
   - Caselle Microsoft (Outlook): la bandierina "needsReauth" nel registro di
     Outlook. E' netta: quando c'e', il login e' da rifare -> rosso.
 
-  - Calendario Google (DAVx5): DAVx5 non espone una bandierina simile, e un
-    login Google scaduto da' lo stesso errore di una rete assente. Ma il servizio
-    spinge DAVx5 ogni 30 s e DAVx5 sincronizza da se' ogni 15 min: se la sua
-    ultima sincronizzazione RIUSCITA si ferma molto oltre (mentre le caselle
-    Outlook continuano, quindi non e' la rete), la causa e' quasi sempre il login
-    scaduto -> giallo se in ritardo, rosso se fermo da un pezzo. In piu', se
-    DAVx5 ha una notifica attiva che chiede di ricollegarsi, e' rosso subito.
-
   - Freschezza di Outlook. Outlook non registra da nessuna parte quando ha
     scaricato dal server, e dalla versione coi servizi Google non ha più bisogno
     di stare in primo piano: le novità gli arrivano con le notifiche push (FCM)
@@ -59,14 +51,9 @@ from datetime import datetime
 DATI = sys.argv[1] if len(sys.argv) > 1 else "/opt/oe-copilot/telefono/data"
 USCITA = sys.argv[2] if len(sys.argv) > 2 else "/opt/oe-copilot/stato/accessi.json"
 OUTLOOK = os.path.join(DATI, "data/com.microsoft.office.outlook/databases/acompliAcct.db")
-DAVX5 = os.path.join(DATI, "data/at.bitfire.davdroid/databases/services.db")
 
-# Container del telefono: serve solo per leggere le notifiche di DAVx5.
+# Container del telefono, da cui si legge dumpsys content (calendari Google).
 TELEFONO = os.environ.get("TELEFONO", "oe-copilot-telefono")
-# DAVx5 sincronizza ogni 15 min: oltre queste eta' la mancata sincronizzazione
-# non e' piu' un ritardo normale.
-DAVX5_GIALLO_S = int(os.environ.get("DAVX5_GIALLO_S", "1200"))   # 20 min: in ritardo
-DAVX5_ROSSO_S = int(os.environ.get("DAVX5_ROSSO_S", "2700"))     # 45 min: fermo davvero
 # Freschezza di Outlook: il servizio forza la sincronizzazione ogni 30 s e Outlook
 # risponde per ogni casella, quindi un silenzio di qualche minuto è già un guasto.
 LOG_OUTLOOK = os.path.join(DATI, "data/com.microsoft.office.outlook/app_logs")
@@ -82,9 +69,6 @@ _GRAVITA = {"ok": 0, "avviso": 1, "errore": 2}
 RIGA_CASELLA = re.compile(r"^\w\t(\S+)\t.*isSyncingForAccount: accountId=(\d+), "
                           r"hxAccountIsSyncing=\w+.*=> isSyncing=(true|false)")
 RIGA_PUSH = re.compile(r"^\w\t(\S+)\t.*FCM push sync is (available|unavailable)")
-# Canali su cui DAVx5 chiede attenzione all'utente (login da rifare, errore di
-# configurazione), da distinguere dai suoi avvisi di stato o di rete transitori.
-DAVX5_CANALI_PROBLEMA = ("userInteraction", "syncProblems")
 
 
 def _apri_ro(percorso):
@@ -131,64 +115,6 @@ def accessi_outlook():
     finally:
         c.close()
         shutil.rmtree(tmp, ignore_errors=True)
-
-
-def davx5_chiede_login():
-    """True se DAVx5 ha una notifica attiva che chiede di ricollegare l'account.
-
-    Best-effort: se non si riesce a leggere le notifiche, si torna False e vale
-    il solo criterio sull'eta' della sincronizzazione.
-    """
-    try:
-        out = subprocess.run(
-            ["docker", "exec", TELEFONO, "dumpsys", "notification", "--noredact"],
-            capture_output=True, text=True, timeout=25).stdout
-    except (OSError, subprocess.SubprocessError):
-        return False
-    for blocco in out.split("NotificationRecord(")[1:]:
-        if "at.bitfire.davdroid" not in blocco:
-            continue
-        if any(("channelId=" + ch) in blocco or ("mChannelId=" + ch) in blocco
-               for ch in DAVX5_CANALI_PROBLEMA):
-            return True
-    return False
-
-
-def accessi_davx5():
-    """{email: {stato, msg}} per i calendari Google, da quanto DAVx5 non sincronizza."""
-    if not os.path.exists(DAVX5):
-        return {}
-    tmp, c = _apri_ro(DAVX5)
-    try:
-        adesso = time.time()
-        eta = {}
-        for nome, ultima in c.execute(
-                "select s.accountName, max(t.lastSync) from service s "
-                "join collection col on col.serviceId = s.id "
-                "join syncstats t on t.collectionId = col.id "
-                "where s.type = 'caldav' and col.sync != 0 group by s.accountName"):
-            if nome and ultima:
-                eta[nome.lower()] = int(max(0, adesso - ultima / 1000.0))
-    finally:
-        c.close()
-        shutil.rmtree(tmp, ignore_errors=True)
-    if not eta:
-        return {}
-    problema = davx5_chiede_login()
-    out = {}
-    for email, e in eta.items():
-        if problema:
-            out[email] = {"stato": "errore",
-                          "msg": "Accesso Google da rifare: DAVx⁵ chiede di ricollegare l'account sul telefono"}
-        elif e > DAVX5_ROSSO_S:
-            out[email] = {"stato": "errore",
-                          "msg": "Calendario Google fermo da %d min sul telefono: probabile accesso scaduto, ricollega DAVx⁵" % (e // 60)}
-        elif e > DAVX5_GIALLO_S:
-            out[email] = {"stato": "avviso",
-                          "msg": "Calendario Google non sincronizzato da %d min sul telefono" % (e // 60)}
-        else:
-            out[email] = {"stato": "ok", "msg": ""}
-    return out
 
 
 def _peggiore(a, b):
@@ -386,7 +312,7 @@ def verifica_google(adesso=None):
 def main():
     caselle = {}
     for nome, controllo in (("accessi Outlook", accessi_outlook), ("freschezza Outlook", freschezza_outlook),
-                            ("DAVx5", accessi_davx5), ("Google", verifica_google)):
+                            ("Google", verifica_google)):
         try:
             fonte = controllo()
         except Exception as e:   # un controllo che si rompe non deve fermare gli altri

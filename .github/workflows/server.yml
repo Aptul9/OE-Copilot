@@ -111,6 +111,23 @@ jobs:
           npm test
           npm run build
 
+      - name: Schermo del telefono, tipi, costruzione e prova di fumo
+        working-directory: server/schermo-web
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm run dist
+          npm run smoke
+
+      - name: Schermo del telefono, immagine
+        run: |
+          # l'immagine parte davvero come in compose (sola lettura, utente senza privilegi, senza capacità) anche senza telefono
+          docker build -q -t oe-copilot-schermo server/schermo-web
+          id=$(docker run -d --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL -p 8000:8000 oe-copilot-schermo)
+          trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
+          for _ in $(seq 1 20); do curl -fsS localhost:8000/salute >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS localhost:8000/ | grep -q 'bundle.js'
+
       - name: Gateway, accesso sul servizio vero
         run: |
           # il gateway davanti al servizio ui vero: il cancello, l'accesso, il blocco per account, l'uscita

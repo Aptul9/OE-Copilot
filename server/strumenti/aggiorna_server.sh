@@ -62,6 +62,19 @@ avvia_ui() {
         || { echo "il gateway non chiude l'accesso come dovrebbe" >&2; return 1; }
 }
 
+# Schermo del telefono nel browser (schermo-web, GUIDA.md 4.8). Come la web: se non parte la Action diventa rossa,
+# agente e telefono restano come sono. Il telefono non si tocca: si costruisce e si avvia solo questo servizio.
+avvia_schermo() {
+    docker compose up -d --build schermo
+    stato=""
+    for _ in $(seq 1 30); do
+        stato="$(docker inspect -f '{{.State.Health.Status}}' oe-copilot-schermo 2>/dev/null)"
+        [ "$stato" = healthy ] && break
+        sleep 2
+    done
+    [ "$stato" = healthy ] || { echo "il servizio oe-copilot-schermo non risponde" >&2; docker logs --tail 40 oe-copilot-schermo >&2 || true; return 1; }
+}
+
 sano() {
     chiave="$(grep '^API_KEY=' .env | cut -d= -f2)"
     for _ in $(seq 1 20); do
@@ -102,6 +115,7 @@ case "${1:-}" in
             echo "$sha" > .versione
             ui_fallita=0
             avvia_ui || ui_fallita=1
+            avvia_schermo || ui_fallita=1
             docker image prune -f >/dev/null
             docker ps --filter name=oe-copilot- --format '{{.Names}}: {{.Status}}'
             echo "ok: $sha in esecuzione"

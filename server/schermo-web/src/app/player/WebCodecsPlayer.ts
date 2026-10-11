@@ -6,6 +6,7 @@ import H264Parser from 'h264-converter/dist/h264-parser';
 import NALU from 'h264-converter/dist/util/NALU';
 import ScreenInfo from '../ScreenInfo';
 import Rect from '../Rect';
+import { DEFAULT_STREAM } from './StreamDefaults';
 
 type ParametersSubSet = {
     codec: string;
@@ -22,14 +23,7 @@ export class WebCodecsPlayer extends BaseCanvasBasedPlayer {
     public static readonly playerFullName = 'WebCodecs';
     public static readonly playerCodeName = 'webcodecs';
 
-    public static readonly preferredVideoSettings: VideoSettings = new VideoSettings({
-        lockedVideoOrientation: -1,
-        bitrate: 524288,
-        maxFps: 24,
-        iFrameInterval: 5,
-        bounds: new Size(480, 480),
-        sendFrameMeta: false,
-    });
+    public static readonly preferredVideoSettings: VideoSettings = new VideoSettings(DEFAULT_STREAM);
 
     public static isSupported(): boolean {
         if (typeof VideoDecoder !== 'function' || typeof VideoDecoder.isConfigSupported !== 'function') {

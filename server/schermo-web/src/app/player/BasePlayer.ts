@@ -5,6 +5,7 @@ import Size from '../Size';
 import Util from '../Util';
 import { TypedEmitter } from '../../common/TypedEmitter';
 import { DisplayInfo } from '../DisplayInfo';
+import { DEFAULT_STREAM } from './StreamDefaults';
 
 interface BitrateStat {
     timestamp: number;
@@ -89,14 +90,7 @@ export abstract class BasePlayer extends TypedEmitter<PlayerEvents> {
     public static storageKeyPrefix = 'BaseDecoder';
     public static playerFullName = 'BasePlayer';
     public static playerCodeName = 'baseplayer';
-    public static preferredVideoSettings: VideoSettings = new VideoSettings({
-        lockedVideoOrientation: -1,
-        bitrate: 524288,
-        maxFps: 24,
-        iFrameInterval: 5,
-        bounds: new Size(480, 480),
-        sendFrameMeta: false,
-    });
+    public static preferredVideoSettings: VideoSettings = new VideoSettings(DEFAULT_STREAM);
 
     public static isSupported(): boolean {
         // Implement the check in a child class

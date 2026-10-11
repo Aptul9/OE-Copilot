@@ -104,6 +104,35 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Schermo del telefono nel browser (schermo-web/, ws-scrcpy, GUIDA.md 4.8): il flusso del video e i tocchi tra il
+  # browser e il telefono, con adb sulla rete di compose (telefono:5555). Non è pubblicato su nessuna porta e non ha
+  # password: ci arriva solo il Caddy, dopo l'accesso del gateway. adb sul telefono non chiede conferme
+  # (ro.adb.secure=0), quindi l'accesso davanti a questo servizio è l'unico cancello.
+  schermo:
+    build: ./schermo-web
+    container_name: oe-copilot-schermo
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # il telefono usa software di disegno: il suo costo si vede nella CPU del telefono, qui basta poco
+    cpus: 1.0
+    mem_limit: 256m
+    pids_limit: 128
+    environment:
+      - TELEFONO=telefono:5555
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/salute').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
   # HTTPS davanti al gateway. L'indirizzo viene da .env (UI_HOST). Solo localhost: sslh
   # della VM gli gira il TLS del suo nome (SNI) sulla 4445, e da lì passa anche il
   # certificato (TLS-ALPN).

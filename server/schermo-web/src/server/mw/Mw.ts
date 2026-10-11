@@ -26,9 +26,10 @@ export abstract class Mw {
     }
 
     protected constructor(protected readonly ws: WS | Multiplexer) {
-        // @ts-ignore
-        this.ws.addEventListener('message', this.onSocketMessage.bind(this));
-        this.ws.addEventListener('close', this.onSocketClose.bind(this));
+        // Multiplexer imita WebSocket: lo stesso addEventListener, solo tipi diversi
+        const socket = this.ws as WS;
+        socket.addEventListener('message', this.onSocketMessage.bind(this));
+        socket.addEventListener('close', this.onSocketClose.bind(this));
     }
 
     protected abstract onSocketMessage(event: WS.MessageEvent): void;

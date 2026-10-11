@@ -1,5 +1,4 @@
-import { Server as WSServer } from 'ws';
-import WS from 'ws';
+import WS, { WebSocketServer as WSServer } from 'ws';
 import { Service } from './Service';
 import { HttpServer, ServerAndPort } from './HttpServer';
 import { MwFactory } from '../mw/Mw';

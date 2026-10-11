@@ -160,7 +160,7 @@ export class StreamReceiver<P extends ParamsStream> extends ManagerClient<Params
 
     public sendEvent(event: ControlMessage): void {
         if (this.ws && this.ws.readyState === this.ws.OPEN) {
-            this.ws.send(event.toBuffer());
+            this.ws.send(event.toBuffer() as unknown as Uint8Array<ArrayBuffer>);
         } else {
             this.events.push(event);
         }

@@ -74,11 +74,17 @@ jobs:
           curl -fsS localhost:8181/ | grep -q 'OE<span'
           curl -fsS -X POST -H 'Content-Type: application/json' -d '[]' \
             localhost:8181/api/get_personalizzazione | grep -q '"interfaccia"'
+          # un gruppo di calendari che non esiste si rifiuta (e il metodo è tra quelli esposti)
+          curl -fsS -X POST -H 'Content-Type: application/json' -d '["nessuno"]' \
+            localhost:8181/api/mostra_solo_gruppo | grep -q '"ok": false'
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '[]' localhost:8181/api/win_close)" = 404
           test "$(curl -s -o /dev/null -w '%{http_code}' --path-as-is localhost:8181/../server.py)" = 404
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '[]' localhost:8181/api/get_config)" = 415
           # un rifiuto non deve sporcare la connessione: la richiesta dopo, sulla stessa, risponde
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '[]' localhost:8181/api/get_config --next -s -o /dev/null -w '%{http_code}' localhost:8181/salute)" = 415200
+
+      - name: Prova dei gruppi di calendari
+        run: docker run --rm -v "$PWD/server/strumenti/prova_gruppi.py:/prova.py:ro" oe-copilot-ui python /prova.py
 
       - name: Caddy dell'interfaccia web
         run: |

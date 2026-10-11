@@ -480,6 +480,26 @@ def alias_per_account(cfg, indirizzi):
     return out
 
 
+# Gruppi di calendari: {"nome del gruppo": ["Azienda", ...]}, con i nomi che la barra
+# laterale mostra. Un'azienda può stare in più gruppi. Si gestiscono dalla pagina nel
+# browser (finestra "Calendari") e stanno in config.json come il resto.
+def membri_gruppo(cfg, nome):
+    """Le aziende di un gruppo, o None se il gruppo non esiste."""
+    gruppi = cfg.get("gruppi_calendari")
+    membri = gruppi.get(nome) if isinstance(gruppi, dict) else None
+    return {str(m) for m in membri} if isinstance(membri, list) else None
+
+
+def rinomina_nei_gruppi(cfg, prima, dopo):
+    """Un'azienda che cambia nome resta nei suoi gruppi."""
+    gruppi = cfg.get("gruppi_calendari")
+    if prima == dopo or not isinstance(gruppi, dict):
+        return
+    for nome, membri in gruppi.items():
+        if isinstance(membri, list) and prima in membri:
+            gruppi[nome] = list(dict.fromkeys(dopo if m == prima else m for m in membri))
+
+
 def save_config(cfg):
     with _lock_config:
         scrivi_json(CONFIG_PATH, cfg)

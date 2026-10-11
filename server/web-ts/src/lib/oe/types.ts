@@ -62,10 +62,14 @@ export type CalendariRisposta = { calendars: Calendario[]; error: string | null 
 
 export type TemaConfig = "auto" | "light" | "dark";
 
+/** Gruppi di calendari: nome del gruppo -> aziende (i nomi della legenda). Un'azienda può stare in più gruppi. */
+export type GruppiCalendari = Record<string, string[]>;
+
 export type Config = {
   theme?: TemaConfig;
   zoom_calendario?: number;
   vista?: string;
+  gruppi_calendari?: GruppiCalendari;
   reminder_poll_seconds?: number;
   reminder_minutes_before?: number[];
   [chiave: string]: unknown;
@@ -127,6 +131,7 @@ export type Metodi = {
   set_account_enabled: [[string, boolean], Esito];
   set_azienda_enabled: [[string, boolean], Esito & { calendari?: number }];
   mostra_solo_azienda: [[string], Esito];
+  mostra_solo_gruppo: [[string], Esito];
   set_account_alias: [[string, string], Esito];
   add_ics_calendar: [[string, string], Esito & { feed?: { name: string } }];
   remove_ics_calendar: [[string], Esito];

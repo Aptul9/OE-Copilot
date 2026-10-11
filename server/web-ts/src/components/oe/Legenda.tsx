@@ -14,7 +14,8 @@ const COLORE_PALLINO: Record<string, string> = {
 
 /** "I miei calendari": una voce per azienda, con interruttore, "only" e il pallino di salute. */
 export function Legenda({ onGestisci }: { onGestisci: () => void }) {
-  const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda } = useOe();
+  const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo } = useOe();
+  const nomiGruppi = Object.keys(gruppiCalendari);
   return (
     <section aria-label="I miei calendari" className="px-1">
       <div className="mb-1 flex items-center justify-between px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -23,6 +24,32 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
           Tutti
         </button>
       </div>
+      {nomiGruppi.length > 0 && (
+        <div id="gruppi" role="group" aria-label="Gruppi di calendari" className="mb-1.5 flex flex-wrap gap-1 px-2">
+          {nomiGruppi.map((nome) => {
+            const acceso = gruppiAccesi.includes(nome);
+            const vuoto = !gruppiCalendari[nome].some((a) => gruppi.some((g) => g.azienda === a));
+            return (
+              <button
+                key={nome}
+                type="button"
+                data-gruppo={nome}
+                aria-pressed={acceso}
+                disabled={vuoto}
+                title={vuoto ? "Nessun calendario in questo gruppo: assegnali da Gestisci calendari" : acceso ? "Torna a tutti i calendari" : `Mostra solo i calendari del gruppo ${nome}`}
+                className={cn(
+                  "max-w-full truncate rounded-full border px-2.5 py-0.5 text-[12px] font-medium",
+                  acceso ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  vuoto && "cursor-not-allowed opacity-50 hover:bg-transparent",
+                )}
+                onClick={() => void (acceso ? soloAzienda("") : soloGruppo(nome))}
+              >
+                {nome}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div id="legend" className="flex flex-col">
         {gruppi.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun calendario. Apri “Gestisci calendari”.</span>}
         {gruppi.map((g) => {

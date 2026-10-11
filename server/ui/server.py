@@ -35,7 +35,7 @@ METODI = {
     "get_config", "save_config", "get_personalizzazione", "get_integrazioni",
     "get_calendars", "get_events",
     "set_calendar_enabled", "set_account_enabled", "set_azienda_enabled",
-    "mostra_solo_azienda", "set_account_alias",
+    "mostra_solo_azienda", "mostra_solo_gruppo", "set_account_alias",
     "add_ics_calendar", "remove_ics_calendar", "add_local_event", "delete_local_event",
 }
 MAX_CORPO = 1_000_000

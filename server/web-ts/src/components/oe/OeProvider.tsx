@@ -8,7 +8,9 @@ import {
   eATreGiorni,
   etichettaSync,
   eventiPerGriglia,
+  gruppiAttivi,
   isoLocale,
+  leggiGruppi,
   periodoLargo,
   raccogliFestivi,
   raggruppaAziende,
@@ -19,7 +21,7 @@ import {
   type GruppoAzienda,
   type InfoGiorni,
 } from "@/lib/oe/logic";
-import type { Calendario, Config, Evento, FonteStato, Personalizzazione, TemaConfig } from "@/lib/oe/types";
+import type { Calendario, Config, Evento, FonteStato, GruppiCalendari, Personalizzazione, TemaConfig } from "@/lib/oe/types";
 
 export type Periodo = { start: Date; end: Date; tipo: string };
 export type Avviso = { testo: string; tipo: "errore" | "info" };
@@ -43,6 +45,11 @@ type Valori = {
   aggiornaCalendari: (forza?: boolean) => Promise<void>;
   accendiAzienda: (azienda: string, acceso: boolean) => Promise<void>;
   soloAzienda: (azienda: string) => Promise<void>;
+  // gruppi di calendari
+  gruppiCalendari: GruppiCalendari;
+  gruppiAccesi: string[];
+  soloGruppo: (gruppo: string) => Promise<void>;
+  salvaGruppi: (gruppi: GruppiCalendari) => Promise<void>;
   // eventi
   periodo: Periodo | null;
   impostaPeriodo: (p: Periodo) => void;
@@ -309,6 +316,18 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ---- gruppi di calendari: stanno in config.gruppi_calendari, si filtra con mostra_solo_gruppo ---------
+  const gruppiCalendari = useMemo(() => leggiGruppi(config.gruppi_calendari), [config.gruppi_calendari]);
+  const gruppiAccesi = useMemo(() => gruppiAttivi(gruppiCalendari, gruppi), [gruppiCalendari, gruppi]);
+  const salvaGruppi = useCallback((g: GruppiCalendari) => salvaConfig({ gruppi_calendari: g }), [salvaConfig]);
+  const soloGruppo = useCallback(
+    async (nome: string) => {
+      await api("mostra_solo_gruppo", nome);
+      await dopoModifica();
+    },
+    [dopoModifica],
+  );
+
   const cambiaZoom = useCallback(
     (verso: 1 | -1 | 0) => {
       const nuovo = verso === 0 ? ZOOM_DEFAULT : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom + verso * ZOOM_PASSO));
@@ -339,6 +358,7 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
   const valori: Valori = {
     pronta, pers, config, vistaIniziale,
     calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, soloAzienda,
+    gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi,
     periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync,
     avviso, datiVecchi, sincronizzando: inCorso > 0, etichetta: etichettaSync(ultimaSync, adesso, inCorso),
     salvaConfig, zoom, cambiaZoom, intervalloSync, impostaIntervallo,

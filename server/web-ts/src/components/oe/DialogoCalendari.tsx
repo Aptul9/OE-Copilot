@@ -1,12 +1,14 @@
 "use client";
 
-import { PlusIcon, RotateCwIcon, XIcon } from "lucide-react";
+import { PlusIcon, RotateCwIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/oe/api";
+import { aggiungiGruppo, eliminaGruppo, GRUPPO_NOME_MAX, impostaAppartenenza, rinominaGruppo } from "@/lib/oe/logic";
 import type { CalendariRisposta, Calendario } from "@/lib/oe/types";
+import { cn } from "@/lib/utils";
 import { useOe } from "./OeProvider";
 
 type Props = { aperto: boolean; onChiudi: () => void };
@@ -93,6 +95,8 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
           </DialogDescription>
         </DialogHeader>
 
+        <GestioneGruppi />
+
         <div id="cal-list" className="flex flex-col gap-0.5 text-sm">
           {!dati && !errore && (
             <p className="text-muted-foreground">{remota ? "Lettura dal server dei calendari…" : forzata ? "Ricerca completa in Outlook, richiede qualche secondo…" : "Lettura da Outlook…"}</p>
@@ -151,6 +155,8 @@ function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Cale
   const alias = primo.alias || primo.account;
   const [valore, setValore] = useState(alias);
   useEffect(() => setValore(alias), [alias]);
+  const { gruppiCalendari, salvaGruppi } = useOe();
+  const nomiGruppi = Object.keys(gruppiCalendari);
   const salva = async () => {
     if (valore === alias) return;
     await api("set_account_alias", account, valore);
@@ -158,7 +164,7 @@ function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Cale
   };
   return (
     <>
-      <div className="cal-group flex items-center gap-2 py-1">
+      <div className="cal-group flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
         <span className="size-2.5 flex-none rounded-full" style={{ background: primo.color }} />
         {primo.is_ics ? (
           <span className="cal-group-name font-semibold">{alias}</span>
@@ -174,10 +180,34 @@ function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Cale
               onBlur={() => void salva()}
               onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
-            <span className="cal-group-mail min-w-0 truncate text-xs text-muted-foreground" title={primo.account}>
+            <span className="cal-group-mail min-w-0 flex-1 truncate text-xs text-muted-foreground" title={primo.account}>
               {primo.account}
             </span>
           </>
+        )}
+        {nomiGruppi.length > 0 && (
+          <span className="ml-auto flex flex-wrap items-center gap-1" role="group" aria-label={`Gruppi di ${alias}`}>
+            {nomiGruppi.map((g) => {
+              const dentro = gruppiCalendari[g].includes(alias);
+              return (
+                <button
+                  key={g}
+                  type="button"
+                  data-gruppo={g}
+                  data-di={alias}
+                  aria-pressed={dentro}
+                  title={dentro ? `Togli ${alias} dal gruppo ${g}` : `Metti ${alias} nel gruppo ${g}`}
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                    dentro ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background hover:text-foreground",
+                  )}
+                  onClick={() => void salvaGruppi(impostaAppartenenza(gruppiCalendari, g, alias, !dentro))}
+                >
+                  {g}
+                </button>
+              );
+            })}
+          </span>
         )}
       </div>
       {cals.map((c) => (
@@ -224,5 +254,91 @@ function RigaCalendario({ c, onModificato, onRicarica }: { c: Calendario; onModi
         </button>
       )}
     </label>
+  );
+}
+
+/** Crea, rinomina ed elimina i gruppi. L'appartenenza si sceglie sull'intestazione di ogni calendario. */
+function GestioneGruppi() {
+  const { gruppiCalendari, salvaGruppi } = useOe();
+  const [nuovo, setNuovo] = useState("");
+  const [errore, setErrore] = useState("");
+  const crea = async () => {
+    const r = aggiungiGruppo(gruppiCalendari, nuovo);
+    if ("errore" in r) return setErrore(r.errore);
+    setErrore("");
+    setNuovo("");
+    await salvaGruppi(r.gruppi);
+  };
+  return (
+    <section id="gruppi-gestione" className="rounded-lg border p-3 text-sm">
+      <h3 className="font-medium">Gruppi</h3>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Un calendario può stare in più gruppi: si sceglie con i pulsanti accanto al suo nome. Nella barra laterale un gruppo mostra solo i suoi calendari.
+      </p>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {Object.keys(gruppiCalendari).map((nome) => (
+          <RigaGruppo key={nome} nome={nome} />
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center gap-2">
+        <Input
+          id="gruppo-nuovo"
+          className="h-8 max-w-[220px]"
+          value={nuovo}
+          maxLength={GRUPPO_NOME_MAX}
+          placeholder="Nuovo gruppo"
+          onChange={(e) => setNuovo(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void crea()}
+        />
+        <Button id="gruppo-crea" variant="outline" size="sm" onClick={() => void crea()}>
+          <PlusIcon /> Crea
+        </Button>
+      </div>
+      {errore && <p className="mt-1 text-xs text-destructive">{errore}</p>}
+    </section>
+  );
+}
+
+function RigaGruppo({ nome }: { nome: string }) {
+  const { gruppiCalendari, salvaGruppi } = useOe();
+  const [valore, setValore] = useState(nome);
+  const [errore, setErrore] = useState("");
+  useEffect(() => setValore(nome), [nome]);
+  const quanti = gruppiCalendari[nome]?.length ?? 0;
+  const rinomina = async () => {
+    if (valore === nome) return;
+    const r = rinominaGruppo(gruppiCalendari, nome, valore);
+    if ("errore" in r) {
+      setErrore(r.errore);
+      setValore(nome);
+      return;
+    }
+    setErrore("");
+    await salvaGruppi(r.gruppi);
+  };
+  return (
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-0.5" data-riga-gruppo={nome}>
+      <Input
+        className="h-8 min-w-0 flex-1 font-medium sm:max-w-[220px] sm:flex-none"
+        value={valore}
+        maxLength={GRUPPO_NOME_MAX}
+        spellCheck={false}
+        aria-label={`Nome del gruppo ${nome}`}
+        onChange={(e) => setValore(e.target.value)}
+        onBlur={() => void rinomina()}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      />
+      <span className="flex-none text-xs text-muted-foreground">{quanti === 1 ? "1 calendario" : `${quanti} calendari`}</span>
+      <button
+        type="button"
+        className="flex-none rounded p-1 text-muted-foreground hover:bg-accent hover:text-destructive sm:ml-auto"
+        title={`Elimina il gruppo ${nome}`}
+        data-elimina-gruppo={nome}
+        onClick={() => void salvaGruppi(eliminaGruppo(gruppiCalendari, nome))}
+      >
+        <Trash2Icon className="size-3.5" />
+      </button>
+      {errore && <span className="basis-full text-xs text-destructive">{errore}</span>}
+    </li>
   );
 }

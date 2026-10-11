@@ -1,4 +1,4 @@
-import type { Calendario, Evento, FonteStato, SchedaTimesheet } from "./types";
+import type { Calendario, Evento, FonteStato, GruppiCalendari, SchedaTimesheet } from "./types";
 
 // Funzioni pure della pagina, portate da web/app.js: niente DOM, niente rete, provabili da sole.
 
@@ -118,6 +118,61 @@ export function salute(statoFonti: Record<string, FonteStato>, g: GruppoAzienda,
   if (g.rotto) return { classe: "bad", titolo: g.motivi.join(" · ") || "Non raggiungibile" };
   if (g.avviso) return { classe: "warn", titolo: g.motivi.join(" · ") || "Dati non aggiornati" };
   return { classe: "warn", titolo: "Non ancora letto" };
+}
+
+// ---- Gruppi di calendari -----------------------------------------------------------
+export const GRUPPO_NOME_MAX = 40;
+
+/** I gruppi del file di configurazione: solo nomi con un elenco di testi, il resto si scarta. */
+export function leggiGruppi(grezzo: unknown): GruppiCalendari {
+  const gruppi: GruppiCalendari = {};
+  if (!grezzo || typeof grezzo !== "object" || Array.isArray(grezzo)) return gruppi;
+  for (const [nome, membri] of Object.entries(grezzo)) {
+    if (Array.isArray(membri)) gruppi[nome] = membri.filter((m): m is string => typeof m === "string");
+  }
+  return gruppi;
+}
+
+export type EsitoGruppi = { gruppi: GruppiCalendari } | { errore: string };
+
+function nomeGruppo(gruppi: GruppiCalendari, nome: string, escludi?: string): { nome: string } | { errore: string } {
+  const pulito = nome.trim().replace(/\s+/g, " ");
+  if (!pulito) return { errore: "Scrivi un nome per il gruppo." };
+  if (pulito.length > GRUPPO_NOME_MAX) return { errore: `Il nome può avere al massimo ${GRUPPO_NOME_MAX} caratteri.` };
+  const minuscolo = pulito.toLowerCase();
+  if (Object.keys(gruppi).some((n) => n !== escludi && n.toLowerCase() === minuscolo)) return { errore: "Esiste già un gruppo con questo nome." };
+  return { nome: pulito };
+}
+
+export function aggiungiGruppo(gruppi: GruppiCalendari, nome: string): EsitoGruppi {
+  const v = nomeGruppo(gruppi, nome);
+  return "errore" in v ? v : { gruppi: { ...gruppi, [v.nome]: [] } };
+}
+
+/** Il nuovo nome prende il posto del vecchio, nello stesso ordine. */
+export function rinominaGruppo(gruppi: GruppiCalendari, vecchio: string, nuovo: string): EsitoGruppi {
+  const v = nomeGruppo(gruppi, nuovo, vecchio);
+  if ("errore" in v) return v;
+  return { gruppi: Object.fromEntries(Object.entries(gruppi).map(([n, m]) => [n === vecchio ? v.nome : n, m])) };
+}
+
+export const eliminaGruppo = (gruppi: GruppiCalendari, nome: string): GruppiCalendari =>
+  Object.fromEntries(Object.entries(gruppi).filter(([n]) => n !== nome));
+
+/** Mette un'azienda dentro o fuori da un gruppo. */
+export function impostaAppartenenza(gruppi: GruppiCalendari, gruppo: string, azienda: string, dentro: boolean): GruppiCalendari {
+  const membri = (gruppi[gruppo] ?? []).filter((a) => a !== azienda);
+  return { ...gruppi, [gruppo]: dentro ? [...membri, azienda] : membri };
+}
+
+/** I gruppi il cui elenco, tra le aziende che esistono, coincide con quelle accese ora. */
+export function gruppiAttivi(gruppi: GruppiCalendari, aziende: GruppoAzienda[]): string[] {
+  const esistenti = new Set(aziende.map((g) => g.azienda));
+  const accese = new Set(aziende.filter((g) => g.on > 0).map((g) => g.azienda));
+  return Object.keys(gruppi).filter((n) => {
+    const membri = new Set(gruppi[n].filter((a) => esistenti.has(a)));
+    return membri.size > 0 && membri.size === accese.size && [...membri].every((a) => accese.has(a));
+  });
 }
 
 // ---- Eventi per la griglia ---------------------------------------------------

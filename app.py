@@ -174,6 +174,21 @@ class Api:
         In un colpo solo: spegnere le altre una per una dalla barra laterale
         vorrebbe un clic e una rilettura per ciascuna.
         """
+        self._accendi_solo(lambda nome: not azienda or nome == azienda)
+        log.info("mostra_solo_azienda: %s", azienda or "tutte")
+        return {"ok": True}
+
+    def mostra_solo_gruppo(self, gruppo):
+        """Lascia accese le aziende di un gruppo (config "gruppi_calendari"), spegne le altre."""
+        membri = config.membri_gruppo(config.load_config(), gruppo)
+        if membri is None:
+            return {"ok": False, "error": "Gruppo non trovato"}
+        self._accendi_solo(lambda nome: nome in membri)
+        log.info("mostra_solo_gruppo: %s (%d aziende)", gruppo, len(membri))
+        return {"ok": True}
+
+    def _accendi_solo(self, accesa):
+        """Accende le aziende per cui `accesa(nome)` è vera e spegne tutte le altre."""
         cfg = config.load_config()
         try:
             outlook = raccolta_eventi.calendari_caselle(cfg)
@@ -182,23 +197,23 @@ class Api:
         tutti = outlook + raccolta_eventi.calendari_extra(cfg)
         spenti = set(cfg.get("disabled_calendars", []))
         for c in tutti:
-            if not azienda or (c.get("alias") or c.get("account")) == azienda:
+            if accesa(c.get("alias") or c.get("account")):
                 spenti.discard(c["id"])
             else:
                 spenti.add(c["id"])
         cfg["disabled_calendars"] = sorted(spenti)
         config.save_config(cfg)
-        log.info("mostra_solo_azienda: %s", azienda or "tutte")
-        return {"ok": True}
 
     def set_account_alias(self, account, alias):
         """Nome da mostrare per un account. Vuoto = torna a quello automatico."""
         cfg = config.load_config()
         aliases = cfg.setdefault("account_aliases", {})
+        prima = config.alias_per_account(cfg, [account])[account]
         if (alias or "").strip():
             aliases[account] = alias.strip()
         else:
             aliases.pop(account, None)
+        config.rinomina_nei_gruppi(cfg, prima, config.alias_per_account(cfg, [account])[account])
         config.save_config(cfg)
         return {"ok": True}
 

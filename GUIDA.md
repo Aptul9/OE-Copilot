@@ -424,6 +424,8 @@ Prova: senza sessione `curl -I https://<UI_HOST>/` risponde 302 verso `/login?ne
 risponde 401; con il cookie di `POST /api/auth/sign-in/email` (`curl -c jar`, poi `-b jar`) la
 pagina risponde 200.
 
+**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno in `config.json`, voce `gruppi_calendari`, per nome come li mostra la barra: `{"antonio": ["ITV", "BBVA"], "samuele": ["Prisma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome. Li ha solo l'interfaccia nel gateway: la pagina di `web/` (l'app per Windows) no.
+
 **Personalizzazione.** Senza `personalizzazione.json` in `ui-dati/` le aziende prendono il nome dal
 dominio della casella e i colori dalla tavolozza. Per averle come sul PC si copia lo stesso file e
 si riavvia il servizio (`docker restart oe-copilot-ui`). I colori già assegnati sul PC stanno in

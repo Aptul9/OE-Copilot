@@ -321,6 +321,8 @@ Cosa fa, a ogni giro: forza i lavori di sincronizzazione del calendario per ogni
 DAVx⁵, **riporta Outlook sulla schermata principale** (quando lo schermo lo permette), e scrive
 `stato/battito.json`. Ogni minuto lancia anche il **rilevatore degli accessi** (sezione 6).
 
+**Telefono sbloccato.** Outlook scarica una cancellazione o una modifica solo quando è davvero davanti, cioè a telefono sbloccato (a telefono bloccato arrivano solo le push della posta): il criterio del dispositivo di Outlook (`mMaximumScreenOffTimeoutFromDeviceAdmin`, 15 minuti, forzato) spegne lo schermo e blocca il telefono 15 minuti dopo l'ultimo input. Ogni 5 minuti (`TOCCO_OGNI`, in giri da 30 s; `0` spegne) il servizio manda un tocco sulla barra di stato a schermo acceso, che conta come attività dell'utente: dopo il PIN il telefono resta sbloccato. Il PIN lo digita sempre l'utente, a telefono spento non si manda niente, e il blocco automatico del criterio di Outlook non scatta più finché il servizio gira: chi arriva alla pagina del telefono (dopo l'accesso) trova un telefono sbloccato. Per tornare al blocco dopo 15 minuti: `TOCCO_OGNI=0` nella unit e riavvio del servizio.
+
 Verifica che l'agente risponda (dal server):
 ```bash
 curl -s -H "Authorization: Bearer $(sudo grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2)" \

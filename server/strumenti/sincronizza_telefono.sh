@@ -5,13 +5,25 @@
 # - Outlook senza i servizi Google scaricava dal server SOLO con la schermata
 #   principale davanti (prove del 05/10/2026: fermo nelle impostazioni nessuna
 #   riunione nuova in 6 minuti, in primo piano ~20 s). Con i servizi Google riceve
-#   le notifiche push (FCM) e scarica anche a telefono bloccato (verificato
-#   l'11/10/2026: push ricevuti a schermo bloccato, appuntamenti riscritti nel
-#   calendario subito dopo). A ogni giro lo si rimette comunque davanti quando lo
-#   schermo lo permette: copre il caso di una push persa. Si forzano anche i lavori
+#   le notifiche push (FCM), ma sono solo quelle della posta: a telefono bloccato
+#   una cancellazione o una modifica di un appuntamento non ha push e il telefono
+#   la applica solo quando Outlook è davvero davanti, cioè con il telefono sbloccato
+#   (11/10/2026: 7 inviti cancellati alle 09:45 UTC arrivati sul telefono alle 11:42:29,
+#   appena sbloccato; a telefono bloccato ogni giro porta Outlook davanti per 15 ms
+#   e Android lo rimette in pausa, senza scaricare niente). A ogni giro lo si rimette
+#   davanti quando lo schermo lo permette. Si forzano anche i lavori
 #   di sincronizzazione di Android per ogni casella (cmd jobscheduler run -f), che
 #   copiano subito nel calendario del telefono; gli ID si rileggono a ogni giro
 #   perché cambiano quando si aggiunge una casella o si riavvia il telefono.
+# - Telefono sbloccato: il criterio del dispositivo di Outlook (Serco) limita il tempo
+#   di schermo acceso a 15 minuti senza input (mMaximumScreenOffTimeoutFromDeviceAdmin,
+#   forzato: anche lo "schermo sempre acceso" di Android viene ignorato) e poi il
+#   telefono si blocca di nuovo. Ogni TOCCO_OGNI giri (10 = 5 minuti, 0 spegne), se
+#   lo schermo è acceso, un tocco sulla barra di stato (nessuna app lo riceve) conta
+#   come attività dell'utente e riparte il conteggio: dopo il PIN il telefono resta
+#   sbloccato e Outlook resta davanti. Un tasto da shell non basta (provato: il
+#   tocco aggiorna mLastUserActivityTime, il tasto no). Il PIN lo digita sempre
+#   l'utente; a schermo spento il tocco non si manda.
 # - Calendari Google (DAVx5): DAVx5 usa WorkManager, che scarta le esecuzioni
 #   anticipate dei lavori periodici; si usa la sua scorciatoia ufficiale
 #   "Sincronizzazione di tutti gli account" (azione android.intent.action.SYNC),
@@ -39,6 +51,8 @@ ACCESSI_OGNI=${ACCESSI_OGNI:-2}
 # Ogni quanti giri forzare il sincronizzatore dei calendari Google: si sveglia da
 # solo con le notifiche push, forzarlo copre il caso che una notifica non arrivi.
 GOOGLE_OGNI=${GOOGLE_OGNI:-4}
+# Ogni quanti giri un tocco sulla barra di stato tiene sveglio un telefono sbloccato (0 = mai).
+TOCCO_OGNI=${TOCCO_OGNI:-10}
 mkdir -p "$STATO"
 # La cartella del file PAUSA del servizio schermo (utente 10001): la crea questo servizio, che gira da root. L'utente dell'aggiornamento
 # automatico non ha sudo, e se la cartella non c'è Docker la crea di root e il servizio schermo non ci scrive.
@@ -83,6 +97,10 @@ while true; do
         fi
         fuoco=$(docker exec "$T" dumpsys window 2>/dev/null | grep -m1 mCurrentFocus)
         case "$fuoco" in *com.acompli.acompli.CentralActivity*) davanti=true ;; esac
+        if [ "$TOCCO_OGNI" -gt 0 ] && [ $((conta % TOCCO_OGNI)) -eq 0 ] \
+           && docker exec "$T" dumpsys power 2>/dev/null | grep -q 'mWakefulness=Awake'; then
+            docker exec "$T" input tap 360 5 >/dev/null 2>&1
+        fi
     fi
     # Scrittura atomica: l'agente non deve mai leggere un file a meta'.
     printf '{"quando": %s, "pausa": %s, "telefono": %s, "outlook_davanti": %s}\n' \

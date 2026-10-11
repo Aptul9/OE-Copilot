@@ -19,6 +19,10 @@ export class StreamReceiverScrcpy extends StreamReceiver<ParamsStreamScrcpy> {
         };
     }
     protected buildDirectWebSocketUrl(): URL {
-        return new URL((this.params as ParamsStreamScrcpy).ws);
+        const url = new URL((this.params as ParamsStreamScrcpy).ws);
+        if ((url.protocol !== 'ws:' && url.protocol !== 'wss:') || url.host !== location.host) {
+            throw Error('The stream must come from the same site as the page');
+        }
+        return url;
     }
 }

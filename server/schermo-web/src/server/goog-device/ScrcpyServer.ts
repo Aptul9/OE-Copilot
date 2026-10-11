@@ -4,7 +4,7 @@ import '../../../vendor/Genymobile/scrcpy/LICENSE';
 import { Device } from './Device';
 import { ARGS_STRING, SERVER_PACKAGE, SERVER_PROCESS_NAME, SERVER_VERSION } from '../../common/Constants';
 import path from 'path';
-import PushTransfer from '@dead50f7/adbkit/lib/adb/sync/pushtransfer';
+import { AdbPushTransfer } from './adb';
 import { ServerVersion } from './ServerVersion';
 
 const TEMP_PATH = '/data/local/tmp/';
@@ -16,7 +16,7 @@ type WaitForPidParams = { tryCounter: number; processExited: boolean; lookPidFil
 
 export class ScrcpyServer {
     private static PID_FILE_PATH = '/data/local/tmp/ws_scrcpy.pid';
-    private static async copyServer(device: Device): Promise<PushTransfer> {
+    private static async copyServer(device: Device): Promise<AdbPushTransfer> {
         const src = path.join(FILE_DIR, FILE_NAME);
         const dst = TEMP_PATH + FILE_NAME; // don't use path.join(): will not work on win host
         return device.push(src, dst);

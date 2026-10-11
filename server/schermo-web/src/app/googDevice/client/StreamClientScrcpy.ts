@@ -8,8 +8,6 @@ import { ControlMessage } from '../../controlMessage/ControlMessage';
 import { ClientsStats, DisplayCombinedInfo } from '../../client/StreamReceiver';
 import { CommandControlMessage } from '../../controlMessage/CommandControlMessage';
 import Util from '../../Util';
-import FilePushHandler from '../filePush/FilePushHandler';
-import DragAndPushLogger from '../DragAndPushLogger';
 import { KeyEventListener, KeyInputHandler } from '../KeyInputHandler';
 import { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
 import { BasePlayer, PlayerClass } from '../../player/BasePlayer';
@@ -25,11 +23,9 @@ import {
 import DeviceMessage from '../DeviceMessage';
 import { DisplayInfo } from '../../DisplayInfo';
 import { Attribute } from '../../Attribute';
-import { HostTracker } from '../../client/HostTracker';
 import { ACTION } from '../../../common/Action';
 import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
 import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
-import { ScrcpyFilePushStream } from '../filePush/ScrcpyFilePushStream';
 
 type StartParams = {
     udid: string;
@@ -57,7 +53,6 @@ export class StreamClientScrcpy
     private touchHandler?: FeaturedInteractionHandler;
     private moreBox?: GoogMoreBox;
     private player?: BasePlayer;
-    private filePushHandler?: FilePushHandler;
     private fitToScreen?: boolean;
     private readonly streamReceiver: StreamReceiverScrcpy;
 
@@ -263,8 +258,6 @@ export class StreamClientScrcpy
         this.streamReceiver.off('displayInfo', this.onDisplayInfo);
         this.streamReceiver.off('disconnected', this.onDisconnected);
 
-        this.filePushHandler?.release();
-        this.filePushHandler = undefined;
         this.touchHandler?.release();
         this.touchHandler = undefined;
         window.removeEventListener('resize', this.onWindowResize);
@@ -348,11 +341,6 @@ export class StreamClientScrcpy
             }
         }
         this.applyNewVideoSettings(videoSettings, false);
-        const element = player.getTouchableElement();
-        const logger = new DragAndPushLogger(element);
-        this.filePushHandler = new FilePushHandler(element, new ScrcpyFilePushStream(this.streamReceiver));
-        this.filePushHandler.addEventListener(logger);
-
         const streamReceiver = this.streamReceiver;
         streamReceiver.on('deviceMessage', this.OnDeviceMessage);
         streamReceiver.on('video', this.onVideo);
@@ -546,7 +534,7 @@ export class StreamClientScrcpy
     private static onConfigureDialogClosed = (event: { dialog: ConfigureScrcpy; result: boolean }): void => {
         event.dialog.off('closed', StreamClientScrcpy.onConfigureDialogClosed);
         if (event.result) {
-            HostTracker.getInstance().destroy();
+            DeviceTracker.destroyAll();
         }
     };
 }

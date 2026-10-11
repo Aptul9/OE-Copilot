@@ -14,7 +14,6 @@ import { Message } from '../../../types/Message';
 import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
 import { HostItem } from '../../../types/Configuration';
 import { ChannelCode } from '../../../common/ChannelCode';
-import { Tool } from '../../client/Tool';
 
 type Field = keyof GoogDeviceDescriptor | ((descriptor: GoogDeviceDescriptor) => string);
 type DescriptionColumn = { title: string; field: Field };
@@ -34,7 +33,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
     public static readonly ACTION = ACTION.GOOG_DEVICE_LIST;
     public static readonly CREATE_DIRECT_LINKS = true;
     private static instancesByUrl: Map<string, DeviceTracker> = new Map();
-    protected static tools: Set<Tool> = new Set();
     protected tableId = 'goog_device_list';
 
     public static start(hostItem: HostItem): DeviceTracker {
@@ -48,6 +46,10 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
 
     public static getInstance(hostItem: HostItem): DeviceTracker {
         return this.start(hostItem);
+    }
+
+    public static destroyAll(): void {
+        Array.from(this.instancesByUrl.values()).forEach((tracker) => tracker.destroy());
     }
 
     protected constructor(params: HostItem, directUrl: string) {
@@ -196,19 +198,6 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
             return;
         }
 
-        DeviceTracker.tools.forEach((tool) => {
-            const entry = tool.createEntryForDeviceList(device, blockClass, this.params);
-            if (entry) {
-                if (Array.isArray(entry)) {
-                    entry.forEach((item) => {
-                        item && services.appendChild(item);
-                    });
-                } else {
-                    services.appendChild(entry);
-                }
-            }
-        });
-
         const streamEntry = StreamClientScrcpy.createEntryForDeviceList(device, blockClass, fullName, this.params);
         streamEntry && services.appendChild(streamEntry);
 
@@ -270,33 +259,9 @@ export class DeviceTracker extends BaseDeviceTracker<GoogDeviceDescriptor, never
                     'name',
                     encodeURIComponent(`${DeviceTracker.AttributePrefixInterfaceSelectFor}${fullName}`),
                 );
-                /// #if SCRCPY_LISTENS_ON_ALL_INTERFACES
-                device.interfaces.forEach((value) => {
-                    const params = {
-                        ...this.params,
-                        secure: false,
-                        hostname: value.ipv4,
-                        port: SERVER_PORT,
-                    };
-                    const url = DeviceTracker.createUrl(params).toString();
-                    const optionElement = DeviceTracker.createInterfaceOption(value.name, url);
-                    optionElement.innerText = `${value.name}: ${value.ipv4}`;
-                    selectElement.appendChild(optionElement);
-                    if (lastSelected) {
-                        if (lastSelected === value.name || !selectedInterfaceName) {
-                            optionElement.selected = true;
-                            selectedInterfaceUrl = url;
-                            selectedInterfaceName = value.name;
-                        }
-                    } else if (device['wifi.interface'] === value.name) {
-                        optionElement.selected = true;
-                    }
-                });
-                /// #else
                 selectedInterfaceUrl = proxyInterfaceUrl;
                 selectedInterfaceName = proxyInterfaceName;
                 td.classList.add('hidden');
-                /// #endif
                 if (isActive) {
                     const adbProxyOption = DeviceTracker.createInterfaceOption(proxyInterfaceName, proxyInterfaceUrl);
                     if (lastSelected === proxyInterfaceName || !selectedInterfaceName) {

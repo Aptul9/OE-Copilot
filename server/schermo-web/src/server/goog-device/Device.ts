@@ -1,13 +1,11 @@
-import { AdbExtended } from './adb';
-import AdbKitClient from '@dead50f7/adbkit/lib/adb/client';
-import PushTransfer from '@dead50f7/adbkit/lib/adb/sync/pushtransfer';
+import { AdbClient, AdbPushTransfer, createClient, readAll } from './adb';
 import { spawn } from 'child_process';
 import { NetInterface } from '../../types/NetInterface';
 import { TypedEmitter } from '../../common/TypedEmitter';
 import GoogDeviceDescriptor from '../../types/GoogDeviceDescriptor';
 import { ScrcpyServer } from './ScrcpyServer';
 import { Properties } from './Properties';
-import Timeout = NodeJS.Timeout;
+type Timeout = ReturnType<typeof setTimeout>;
 
 enum PID_DETECTION {
     UNKNOWN,
@@ -26,7 +24,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
     private static readonly MAX_UPDATES_COUNT = 7;
     private connected = true;
     private pidDetectionVariant: PID_DETECTION = PID_DETECTION.UNKNOWN;
-    private client: AdbKitClient;
+    private client: AdbClient;
     private properties?: Record<string, string>;
     private spawnServer = true;
     private updateTimeoutId?: Timeout;
@@ -53,7 +51,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
             'ro.product.cpu.abi': '',
             'last.update.timestamp': 0,
         };
-        this.client = AdbExtended.createClient();
+        this.client = createClient();
         this.setState(state);
     }
 
@@ -128,11 +126,11 @@ export class Device extends TypedEmitter<DeviceEvents> {
     public async runShellCommandAdbKit(command: string): Promise<string> {
         return this.client
             .shell(this.udid, command)
-            .then(AdbExtended.util.readAll)
+            .then(readAll)
             .then((output: Buffer) => output.toString().trim());
     }
 
-    public async push(contents: string, path: string): Promise<PushTransfer> {
+    public async push(contents: string, path: string): Promise<AdbPushTransfer> {
         return this.client.push(this.udid, contents, path);
     }
 

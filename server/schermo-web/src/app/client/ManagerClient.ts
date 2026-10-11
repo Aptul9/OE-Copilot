@@ -79,27 +79,15 @@ export abstract class ManagerClient<P extends ParamsBase, TE extends EventMap> e
     }
 
     protected buildWebSocketUrl(): URL {
-        const directUrl = this.buildDirectWebSocketUrl();
-        if (this.params.useProxy && !this.supportMultiplexing()) {
-            return this.wrapInProxy(directUrl);
-        }
-        return directUrl;
+        return this.buildDirectWebSocketUrl();
     }
 
+    // Sempre lo stesso sito della pagina (anche se l'indirizzo della pagina porta altri valori): il sito sta dietro
+    // un accesso e un indirizzo costruito da altri non deve portare lo schermo e i tasti su un altro server.
     protected buildDirectWebSocketUrl(): URL {
-        const { hostname, port, secure, action } = this.params;
-        const pathname = this.params.pathname ?? location.pathname;
-        let urlString: string;
-        if (typeof hostname === 'string' && typeof port === 'number') {
-            const protocol = secure ? 'wss:' : 'ws:';
-            urlString = `${protocol}//${hostname}:${port}${pathname}`;
-        } else {
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-
-            // location.host includes hostname and port
-            urlString = `${protocol}${location.host}${pathname}`;
-        }
-        const directUrl = new URL(urlString);
+        const { action } = this.params;
+        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const directUrl = new URL(`${protocol}//${location.host}${location.pathname}`);
         if (this.supportMultiplexing()) {
             directUrl.searchParams.set('action', ACTION.MULTIPLEX);
         } else {
@@ -108,14 +96,6 @@ export abstract class ManagerClient<P extends ParamsBase, TE extends EventMap> e
             }
         }
         return directUrl;
-    }
-
-    protected wrapInProxy(directUrl: URL): URL {
-        const localProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const localUrl = new URL(`${localProtocol}//${location.host}`);
-        localUrl.searchParams.set('action', ACTION.PROXY_WS);
-        localUrl.searchParams.set('ws', directUrl.toString());
-        return localUrl;
     }
 
     protected supportMultiplexing(): boolean {

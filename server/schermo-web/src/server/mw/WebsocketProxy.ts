@@ -1,6 +1,5 @@
-import { Mw, RequestParameters } from './Mw';
+import { Mw } from './Mw';
 import WS from 'ws';
-import { ACTION } from '../../common/Action';
 import { Multiplexer } from '../../packages/multiplexer/Multiplexer';
 
 export class WebsocketProxy extends Mw {
@@ -8,30 +7,6 @@ export class WebsocketProxy extends Mw {
     private remoteSocket?: WS;
     private released = false;
     private storage: WS.MessageEvent[] = [];
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    public static processRequest(ws: WS, params: RequestParameters): WebsocketProxy | undefined {
-        const { action, url } = params;
-        if (action !== ACTION.PROXY_WS) {
-            return;
-        }
-        const wsString = url.searchParams.get('ws');
-        if (!wsString) {
-            ws.close(4003, `[${this.TAG}] Invalid value "${ws}" for "ws" parameter`);
-            return;
-        }
-        return this.createProxy(ws, wsString);
-    }
-
-    public static createProxy(ws: WS | Multiplexer, remoteUrl: string): WebsocketProxy {
-        const service = new WebsocketProxy(ws);
-        service.init(remoteUrl).catch((e) => {
-            const msg = `[${this.TAG}] Failed to start service: ${e.message}`;
-            console.error(msg);
-            ws.close(4005, msg);
-        });
-        return service;
-    }
 
     constructor(ws: WS | Multiplexer) {
         super(ws);

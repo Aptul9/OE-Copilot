@@ -6,7 +6,6 @@ import { DeviceTrackerEventList } from '../../types/DeviceTrackerEventList';
 import { html } from '../ui/HtmlTag';
 import { ParamsDeviceTracker } from '../../types/ParamsDeviceTracker';
 import { HostItem } from '../../types/Configuration';
-import { Tool } from './Tool';
 import Util from '../Util';
 import { EventMap } from '../../common/TypedEmitter';
 
@@ -23,12 +22,7 @@ export abstract class BaseDeviceTracker<DD extends BaseDeviceDescriptor, TE exte
     public static readonly AttributePlayerFullName = 'data-player-full-name';
     public static readonly AttributePlayerCodeName = 'data-player-code-name';
     public static readonly AttributePrefixPlayerFor = 'player_for_';
-    protected static tools: Set<Tool> = new Set();
     protected static instanceId = 0;
-
-    public static registerTool(tool: Tool): void {
-        this.tools.add(tool);
-    }
 
     public static buildUrl(item: HostItem): URL {
         const { secure, port, hostname } = item;
@@ -93,7 +87,7 @@ export abstract class BaseDeviceTracker<DD extends BaseDeviceDescriptor, TE exte
     public static parseParameters(params: URLSearchParams): ParamsDeviceTracker {
         const typedParams = super.parseParameters(params);
         const type = Util.parseString(params, 'type', true);
-        if (type !== 'android' && type !== 'ios') {
+        if (type !== 'android') {
             throw Error('Incorrect type');
         }
         return { ...typedParams, type };

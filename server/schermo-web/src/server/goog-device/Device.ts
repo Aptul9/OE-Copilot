@@ -125,13 +125,14 @@ export class Device extends TypedEmitter<DeviceEvents> {
 
     public async runShellCommandAdbKit(command: string): Promise<string> {
         return this.client
-            .shell(this.udid, command)
+            .getDevice(this.udid)
+            .shell(command)
             .then(readAll)
             .then((output: Buffer) => output.toString().trim());
     }
 
     public async push(contents: string, path: string): Promise<AdbPushTransfer> {
-        return this.client.push(this.udid, contents, path);
+        return this.client.getDevice(this.udid).push(contents, path);
     }
 
     public async getProperties(): Promise<Record<string, string> | undefined> {
@@ -141,7 +142,7 @@ export class Device extends TypedEmitter<DeviceEvents> {
         if (!this.connected) {
             return;
         }
-        this.properties = await this.client.getProperties(this.udid);
+        this.properties = await this.client.getDevice(this.udid).getProperties();
         return this.properties;
     }
 

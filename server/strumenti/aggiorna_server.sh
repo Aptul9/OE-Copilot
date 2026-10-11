@@ -57,7 +57,7 @@ avvia_ui() {
         [ "$stato" = healthy ] || { echo "il servizio $servizio non risponde" >&2; docker logs --tail 40 "$servizio" >&2 || true; return 1; }
     done
     # il cancello deve chiudere davvero: senza sessione la pagina rimanda a /login e l'API risponde 401
-    [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3190/)" = 302 ] \
+    [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3190/index.html)" = 302 ] \
         && [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H 'Content-Type: application/json' -d '[]' http://127.0.0.1:3190/api/get_config)" = 401 ] \
         || { echo "il gateway non chiude l'accesso come dovrebbe" >&2; return 1; }
 }

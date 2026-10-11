@@ -377,6 +377,12 @@ Come è fatta, in `server/docker-compose.yml`:
   POST, `Sec-Fetch-Site` dello stesso sito). Il tasto *Esci* della barra a sinistra chiude la
   sessione. Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD` di `.env`; le
   sessioni e il blocco stanno in `ui-dati/gateway.db`. Porta solo su `127.0.0.1:3190`.
+- **Interfaccia nel gateway**: la pagina principale (`/`) è scritta in TypeScript dentro il gateway
+  (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn): stessi dati e
+  stessa API (`POST /api/<metodo>` di `app.Api`) di quella in `web/`, in più il layout per telefono e
+  tablet. Quella di `web/` (la stessa dell'app per Windows) resta a `/index.html`, con il link
+  *Apri l'interfaccia precedente* nelle impostazioni. Una modifica a `web/` che riguarda anche il
+  browser va riportata in `web-ts` finché la pagina di `web/` non si toglie.
 - **`caddy-ui`**: Caddy con HTTPS, solo su `127.0.0.1:4445`, che passa tutto al gateway.
   L'indirizzo arriva da `.env`, non dal repository.
 - **`ui-dati/`**: configurazione, interruttori, cache, `personalizzazione.json` (nomi, sigle e

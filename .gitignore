@@ -5,7 +5,7 @@ __pycache__/
 build/
 dist/
 
-# Dati di chi usa l'app: restano sul suo PC, mai nel repository
+# Dati di chi usa l'app: restano sul server (ui-dati/) o sul PC di chi prova in locale, mai nel repository
 personalizzazione.json
 personalizzazione.*.json
 !personalizzazione.esempio.json
@@ -25,7 +25,7 @@ ics_cache/
 *.log
 *.log.*
 
-# Estensioni personali: codice scritto per una persona sola
+# Estensioni personali dell'app per Windows ritirata (codice scritto per una persona sola): mai nel repository
 personale/
 web/personale/
 
@@ -36,7 +36,7 @@ web/logos/*
 # APK delle app del telefono: stanno fra i file della release "apk", non nel repository
 server/apk/*.apk
 
-# server/ui/app/: copia dei moduli dell'app del PC e dei suoi loghi, la rifa server/strumenti/prepara_ui.sh
+# server/ui/app/: copia dei moduli dell'app e dei suoi loghi, la rifa server/strumenti/prepara_ui.sh
 server/ui/app/
 
 # Dati e segreti del server: restano sul server (GUIDA.md, sezioni 4.2 e 4.7), mai nel repository

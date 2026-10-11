@@ -1,7 +1,7 @@
 {
   "_istruzioni": [
-    "Copia questo file come personalizzazione.json, nella stessa cartella dell'app (sul server nella cartella ui-dati/), e mettici i tuoi dati.",
-    "personalizzazione.json resta sul tuo PC: è escluso dal repository. Qui sotto ci sono solo dati di esempio.",
+    "Copia questo file come personalizzazione.json nella cartella ui-dati/ del server e mettici i tuoi dati.",
+    "personalizzazione.json è escluso dal repository. Qui sotto ci sono solo dati di esempio.",
     "Tutte le voci sono facoltative: senza il file l'app funziona e i calendari prendono il nome dal dominio della casella.",
     "nomi_per_indirizzo: nome da mostrare per una casella precisa (vince su nomi_per_dominio).",
     "nomi_per_dominio: nome da mostrare per tutte le caselle di quel dominio.",
@@ -11,10 +11,9 @@
     "azienda_per_cartella: cartelle calendario dedicate a un'azienda, riconosciute da un testo nel loro nome.",
     "account_nascosti: caselle da non mostrare mai.",
     "aziende_inoltrate: aziende senza casella in Outlook, le cui riunioni arrivano copiate in un'altra casella con un prefisso nel titolo. Vedi il README.",
-    "agente_remoto: per l'app per Windows, come raggiungere l'agente sul server, per esempio {\"ssh\": \"utente@server.example\"}. Senza la voce l'app non legge nessuna casella. Vedi il README.",
     "mostra_tutto_il_giorno: true mostra gli eventi di un giorno intero delle caselle (per esempio i \"Home\" di Google Calendar); senza la voce, o con false, non si mostrano. Le festività non cambiano.",
     "interfaccia: sigle e loghi delle aziende, calendari secondari (mostrati sbiaditi), calendari senza il pulsante Apri in Teams, schede della sezione Timesheet.",
-    "interfaccia.loghi: nome mostrato -> file del logo, nella barra a sinistra accanto al nome e sugli eventi del calendario; senza logo restano le iniziali (sigle). Nell'app per Windows i file stanno in web/logos/; nell'interfaccia nel browser stanno sul server in ui-dati/logos/ e il valore resta logos/<file> (GUIDA.md, 4.7)."
+    "interfaccia.loghi: nome mostrato -> file del logo, nella barra a sinistra accanto al nome e sugli eventi del calendario; senza logo restano le iniziali (sigle). I file stanno sul server in ui-dati/logos/ e il valore resta logos/<file> (GUIDA.md, 4.7)."
   ],
   "nomi_per_indirizzo": {
     "mario.rossi@alfa.example": "Alfa",
@@ -30,7 +29,6 @@
   "azienda_per_cartella": {},
   "account_nascosti": [],
   "aziende_inoltrate": {},
-  "agente_remoto": {},
   "mostra_tutto_il_giorno": false,
   "interfaccia": {
     "sigle": {"Alfa": "AL", "Beta": "BE", "Alfa - Supporto": "AS", "Personale": "PE"},

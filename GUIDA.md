@@ -1,19 +1,17 @@
-# OE Copilot, guida completa (server e app per Windows)
+# OE Copilot, guida completa
 
-Guida per installare OE Copilot: il **server Linux** (la "VM") che legge i calendari e li mostra in un browser e, se serve, l'**app per Windows**, che li mostra con i promemoria. Spiega anche *perché* è fatto così, perché le scelte non sono ovvie e senza il ragionamento è facile rifarle male.
+Guida per installare OE Copilot: il **server Linux** (la "VM") che legge i calendari e li mostra in un browser. Spiega anche *perché* è fatto così, perché le scelte non sono ovvie e senza il ragionamento è facile rifarle male.
 
-> In breve: OE Copilot unisce in un calendario unico tutte le caselle (aziendali e personali), con un colore per azienda. Le caselle le legge un agente sul server, da un telefono Android virtuale in cui gli accessi si fanno una volta sola. Si vedono in due modi:
-> - **nel browser**: il server serve la pagina dietro HTTPS e una pagina di accesso (sezione 4.7). È il modo principale e non chiede niente al PC;
-> - **con l'app per Windows** (facoltativa): apre un tunnel SSH verso l'agente e aggiunge i promemoria di Windows e Telegram e il pulsante *Apri in Outlook*.
+> In breve: OE Copilot unisce in un calendario unico tutte le caselle (aziendali e personali), con un colore per azienda. Le caselle le legge un agente sul server, da un telefono Android virtuale in cui gli accessi si fanno una volta sola. Si vedono **nel browser**: il server serve la pagina dietro HTTPS e una pagina di accesso (sezione 4.7), e sul PC non si installa niente. L'app per Windows, in Python, è stata ritirata l'11/10/2026 (sezione 3).
 >
-> Sul PC Outlook non serve per leggere i calendari, perché gli accessi stanno sul server: serve solo al pulsante *Apri in Outlook* dell'app per Windows.
+> Sul PC Outlook non serve: gli accessi stanno sul server.
 
 Indice:
 1. [I ragionamenti (perché è fatto così)](#1-i-ragionamenti-perché-è-fatto-così)
 2. [Architettura](#2-architettura)
-3. [L'app per Windows (facoltativa)](#3-lapp-per-windows-facoltativa)
+3. [L'app per Windows (ritirata)](#3-lapp-per-windows-ritirata)
 4. [Installazione sul server](#4-installazione-sul-server)
-5. [Collegare l'app per Windows al server](#5-collegare-lapp-per-windows-al-server)
+5. [Prove dal PC: tunnel verso l'agente](#5-prove-dal-pc-tunnel-verso-lagente)
 6. [Il rilevatore degli accessi scaduti](#6-il-rilevatore-degli-accessi-scaduti)
 7. [Manutenzione e diagnostica](#7-manutenzione-e-diagnostica)
 8. [Sicurezza e privacy](#8-sicurezza-e-privacy)
@@ -65,10 +63,11 @@ Il servizio `oe-copilot-sincronizza` gira sul server e a ogni giro (circa 35 sec
 **Perché il telefono ha un PIN e resta sbloccato.** Un criterio di sicurezza del dispositivo, imposto da una delle aziende le cui caselle sono in Outlook, chiede una password del dispositivo (PIN di almeno 4 cifre, senza ripetizioni né sequenze) e altrimenti Outlook rimuove la casella: togliere il PIN l'11/10/2026 ha fatto comparire in Outlook la schermata "Imposta la password del dispositivo". Lo stesso criterio forza lo spegnimento dello schermo, e quindi il blocco, 15 minuti dopo l'ultimo input (`mMaximumScreenOffTimeoutFromDeviceAdmin`; lo "schermo sempre acceso" di Android viene ignorato). Un telefono bloccato non applica cancellazioni e modifiche, per questo il servizio manda un tocco sulla barra di stato ogni 10 giri (circa 6 minuti): conta come attività dell'utente e rimanda il blocco. Il PIN resta, lo digita l'utente e nessuno script lo scrive; una volta digitato il telefono resta sbloccato, e di questo si tiene conto nella [sezione 8](#8-sicurezza-e-privacy).
 
 **Perché un tunnel SSH (e non un'API esposta su internet).** L'agente ascolta **solo sul localhost
-del server**. L'app per Windows lo raggiunge con un tunnel SSH che apre da sola: l'accesso passa dalla
-tua chiave SSH, più una chiave dell'API, senza porte aperte e senza certificati da gestire. Il browser
-passa invece dall'interfaccia web (4.7), l'unica parte di OE Copilot raggiungibile da internet: HTTPS
-e una pagina di accesso davanti a un servizio che non ha password.
+del server** e sulla rete di Docker. Il servizio `ui` lo raggiunge dalla rete di Docker; dal PC, per le
+prove, ci si arriva con un tunnel SSH ([sezione 5](#5-prove-dal-pc-tunnel-verso-lagente)): l'accesso
+passa dalla tua chiave SSH, più una chiave dell'API, senza porte aperte e senza certificati da gestire.
+Il browser passa invece dall'interfaccia web (4.7), l'unica parte di OE Copilot raggiungibile da
+internet: HTTPS e una pagina di accesso davanti a un servizio che non ha password.
 
 **Perché il rilevatore degli accessi scaduti.** Se un login sul telefono scade (password cambiata,
 sessione revocata, MFA), il calendario Android resta com'era e la lettura **riesce lo stesso**: il
@@ -80,8 +79,6 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
 ## 2. Architettura
 
 ```
- App per Windows ──tunnel SSH─────────────────────────┐
- (facoltativa)                                        ▼
  Browser ──HTTPS──► caddy-ui ──► gateway ──► ui ──► agent ──► calendar.db del telefono (sola lettura)
                         │        (accesso)                  ▲
                         └─ /telefono/ ─► schermo ──adb──► telefono (redroid) ◄── oe-copilot-sincronizza
@@ -93,53 +90,20 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
 - **servizio** (`oe-copilot-sincronizza`) = tiene aggiornato il telefono, rileva gli accessi scaduti e scrive i "segni di vita" (`battito.json`, `accessi.json`).
 - **interfaccia nel browser** (4.7) = `caddy-ui` (HTTPS), `gateway` (pagina di accesso e pagina in TypeScript) e `ui` (la logica dell'app, che chiede gli eventi all'agent sulla rete di Docker).
 - **schermo** (4.8) = il telefono mostrato e comandato nel browser, dietro lo stesso accesso.
-- **app per Windows** (facoltativa, sezione 3) = apre il tunnel SSH e chiede gli eventi all'agent; in più dà i promemoria di Windows e Telegram.
 
 Il codice del server sta nella cartella **`server/`** del repository.
 
 ---
 
-## 3. L'app per Windows (facoltativa)
+## 3. L'app per Windows (ritirata)
 
-L'interfaccia nel browser (4.7) non chiede niente al PC. L'app per Windows serve per i **promemoria** (notifica di Windows e Telegram), per l'avvio con Windows e per il pulsante *Apri in Outlook*. Le caselle le legge dal server, attraverso un tunnel SSH ([sezione 5](#5-collegare-lapp-per-windows-al-server)).
+L'app per Windows (Python, pywebview e Outlook classico) è stata ritirata l'11/10/2026: leggeva le caselle dal server con un tunnel SSH e ci aggiungeva i promemoria di Windows e Telegram, l'avvio con Windows e il pulsante *Apri in Outlook*. L'interfaccia nel browser (4.7) fa lo stesso lavoro di lettura senza installare niente sul PC; il codice dell'app per Windows resta nella storia di git (ultimo commit con l'app: `360c5c7`).
 
-### Requisiti
-- Windows 10/11.
-- **Python 3.12** (da python.org, oppure con [scoop](https://scoop.sh):
-  `scoop bucket add versions` e `scoop install python312`).
-- Runtime **Microsoft Edge WebView2** (di norma già presente su Windows 11).
-- Connessione a internet al primo avvio (FullCalendar arriva da una CDN).
-- Un client `ssh` (OpenSSH di Windows) e l'accesso al server con una chiave: sezione 5.
-- **Outlook desktop classico**, solo per il pulsante *Apri in Outlook* (non il "Nuovo Outlook"): per leggere i calendari non serve.
-
-### Passi
-Dalla cartella dell'app, in un prompt dei comandi:
-
-```bat
-py -3.12 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt
-.venv\Scripts\python strumenti\applica_patch_pywebview.py
-```
-
-Se Python 3.12 arriva da scoop il lanciatore `py` non lo vede: al posto di `py -3.12` usa
-`%USERPROFILE%\scoop\apps\python312\current\python.exe`.
-
-L'ultimo comando applica a pywebview due correzioni che servono all'app (icona nella barra delle
-applicazioni, finestra senza cornice). Va ripetuto se si reinstalla pywebview.
-
-Poi copia `personalizzazione.esempio.json` in `personalizzazione.json` e mettici i tuoi dati
-(nomi aziende, ordine calendari, sigle, schede Timesheet…). Tutte le voci sono facoltative: senza
-il file l'app funziona e ogni calendario prende il nome dal dominio della casella. Dettaglio di ogni
-voce nel [README](README.md).
-
-### Avvio
-- Prima volta: doppio clic su **`start.bat`** (gli errori finiscono in `debug.log`/`crash.log`).
-- Uso quotidiano: **`Calendar Hub (silenzioso).vbs`** (senza finestre di prompt).
-- Controllo di salute: `.venv\Scripts\python verifica.py` (con `--avvio` lancia anche l'app).
-  Legge le caselle dal server: finché il collegamento della [sezione 5](#5-collegare-lapp-per-windows-al-server)
-  non c'è, i controlli sui dati segnano rosso.
-
-Senza il collegamento al server l'app si apre ma non mostra nessuna casella: restano i calendari da link e gli eventi personali.
+Cosa è cambiato:
+- **Promemoria**: non ci sono. Quelli dell'app partivano solo finché l'app era aperta; li riprende un servizio sul server, se e quando lo si decide.
+- **Apri in Outlook**: non c'è. Nel browser *Apri in Teams* e *Partecipa* aprono il link della riunione.
+- **Estensioni personali** (`personale/`): il meccanismo non esiste più. Una scheda Timesheet con `azione` e senza `url` non compare; con `url` apre il gestionale.
+- **Tunnel e chiave dell'agente sul PC** (`agente_remoto` in `personalizzazione.json`, `agente_chiave.bin`): non servono più. Il file locale, se c'è ancora, si può cancellare.
 
 ---
 
@@ -200,8 +164,8 @@ per nome nella voce, **principale compreso**:
 {"tipo": "android", "id": "android::mario.rossi@azienda.example", "nome": "Azienda",
  "account": "mario.rossi@azienda.example", "calendari": ["Calendar", "Beta", "Gamma"]}
 ```
-Il nome è quello che si vede in Outlook. Ogni evento porta con sé il nome del suo calendario, e sul
-PC `azienda_per_cartella` lo usa per mostrarlo come l'azienda giusta, per esempio
+Il nome è quello che si vede in Outlook. Ogni evento porta con sé il nome del suo calendario, e
+`azienda_per_cartella` (in `personalizzazione.json`) lo usa per mostrarlo come l'azienda giusta, per esempio
 `"azienda_per_cartella": {"· Beta": "Beta"}`. Per dare a quell'azienda una voce, un colore e un
 pallino propri serve anche una voce in `aziende_inoltrate` con `via` uguale alla casella che la
 ospita.
@@ -330,14 +294,14 @@ servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiav
 l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la Action.
 
 ### 4.7 L'interfaccia nel browser (facoltativa)
-La stessa logica dell'app per Windows (stesse caselle, stessi colori, pallini e filtri) con una
-pagina in TypeScript, servita dal server a un browser qualunque, con HTTPS e una pagina di accesso. Gli interruttori
+Il calendario unico (caselle, colori, pallini di stato e filtri) con una pagina in TypeScript,
+servita dal server a un browser qualunque, con HTTPS e una pagina di accesso. Gli interruttori
 (calendari, aziende, alias, calendari da link ICS, eventi personali) restano sul server. Non ci
-sono i promemoria (restano all'app per Windows), i controlli della finestra, l'avvio con Windows
-e *Apri in Outlook*; i link delle riunioni si aprono nel browser.
+sono i promemoria (li dava l'app per Windows, sezione 3) né *Apri in Outlook*; i link delle riunioni
+si aprono nel browser.
 
 Come è fatta, in `server/docker-compose.yml`:
-- **`ui`**: un piccolo server Python (`server/ui/server.py`) che chiama la classe `Api` di `app.py`, la stessa che la finestra di Windows chiama con pywebview, e serve i loghi (`/logos/<file>`). I moduli dell'app e `web/logos/` li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola): il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci arriva solo il `gateway`.
+- **`ui`**: un piccolo server Python (`server/ui/server.py`) che chiama la classe `Api` di `app.py` e serve i loghi (`/logos/<file>`). I moduli che `Api` usa (`app.py`, `config.py`, `caselle.py`, `eventi.py`, `disponibilita.py`, `agente_remoto.py`, `ics_feed.py`, `local_events.py`) e `web/logos/` li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola): il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci arriva solo il `gateway`.
 - **`gateway`** (`server/web-ts/`, Next.js e Better Auth): la pagina di accesso e il cancello
   davanti a `ui`. Senza sessione una pagina rimanda a `/login?next=...` e l'API (`/api/*`)
   risponde 401 in JSON; con la sessione la richiesta passa a `ui` (il cookie di sessione non ci
@@ -348,11 +312,11 @@ Come è fatta, in `server/docker-compose.yml`:
   POST, `Sec-Fetch-Site` dello stesso sito). Il tasto *Esci* della barra a sinistra chiude la
   sessione. Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD` di `.env`; le
   sessioni e il blocco stanno in `ui-dati/gateway.db`. Porta solo su `127.0.0.1:3190`.
-- **Interfaccia nel gateway**: la pagina (`/`) è scritta in TypeScript dentro il gateway (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn) e usa la stessa API (`POST /api/<metodo>` di `app.Api`) della pagina di `web/`, che è quella dell'app per Windows e nel browser non si serve più (`/index.html` risponde 404). In più ha il layout per telefono e tablet. Una modifica a `web/` che riguarda anche il browser va riportata in `web-ts`: le due pagine non condividono codice.
+- **Interfaccia nel gateway**: la pagina (`/`) è scritta in TypeScript dentro il gateway (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn) e usa l'API del servizio `ui` (`POST /api/<metodo>` di `app.Api`), con il layout per telefono e tablet. `web/` contiene solo `logos/`.
 - **`caddy-ui`**: Caddy con HTTPS, solo su `127.0.0.1:4445`, che passa tutto al gateway.
   L'indirizzo arriva da `.env`, non dal repository.
 - **`ui-dati/`**: configurazione, interruttori, cache, `personalizzazione.json` (nomi, sigle e
-  colori delle aziende: stesso file e stessa forma dell'app sul PC) e `gateway.db`. Sta solo sul
+  loghi delle aziende, modello in `personalizzazione.esempio.json`) e `gateway.db`. Sta solo sul
   server.
 
 Messa in funzione, una volta sola, sul server:
@@ -384,16 +348,16 @@ Prova: senza sessione `curl -I https://<UI_HOST>/` risponde 307 verso `/login?ne
 risponde 401; con il cookie di `POST /api/auth/sign-in/email` (`curl -c jar`, poi `-b jar`) la
 pagina risponde 200.
 
-**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno in `config.json`, voce `gruppi_calendari`, per nome come li mostra la barra: `{"gruppo1": ["Alfa", "Beta"], "gruppo2": ["Gamma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome. Li ha solo l'interfaccia nel gateway: la pagina di `web/` (l'app per Windows) no.
+**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno in `config.json`, voce `gruppi_calendari`, per nome come li mostra la barra: `{"gruppo1": ["Alfa", "Beta"], "gruppo2": ["Gamma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome.
 
 **Disponibilità pubblica.** `https://<UI_HOST>/disponibilita` si apre senza accesso: è lo stesso calendario (viste, minicalendario, zoom, tema) con ogni impegno ridotto a un blocco "Occupato", i soli orari. Impegni che si sovrappongono o si toccano sono un blocco solo; le festività restano. Non ci sono titoli, luoghi, partecipanti, nomi di calendari o di aziende, né ricerca, nuovo evento, legenda, timesheet e impostazioni. `?gruppo=gruppo1` conta solo i calendari di quel gruppo. Contano tutti i calendari, anche quelli spenti nella barra laterale (gli interruttori sono un filtro della vista), e i giorni interi non occupano; se una sorgente non risponde la pagina lo scrive. I dati: `GET /api/disponibilita?da=AAAA-MM-GG&a=AAAA-MM-GG[&gruppo=nome]` (al più 62 giorni), nella forma di `get_events` con solo "Occupato". Il gateway li legge a blocchi di 28 giorni, li tiene un minuto e fa al più 20 letture al minuto in tutto (dietro sslh i client non si distinguono); il servizio `ui` espone `get_disponibilita`, che dà solo orari (`disponibilita.py`).
 
 **Loghi delle aziende.** Accanto al nome di ogni azienda nella barra a sinistra, e sugli eventi del calendario (nell'angolo, e nelle righe della vista mese e agenda), compare il suo logo; senza logo restano le iniziali nel colore dell'azienda. Si dichiarano in `ui-dati/personalizzazione.json`, voce `interfaccia.loghi`: il nome come lo mostra la barra e il file, per esempio `{"interfaccia": {"loghi": {"Alfa": "logos/alfa.png"}}}`. I file stanno sul server in `ui-dati/logos/` (PNG quadrati, 128 px bastano; la cartella non è nel repository, come il resto dei dati di chi usa l'app) e il servizio `ui` li serve a `/logos/<file>` dopo l'accesso, prima di quelli della pagina (`web/logos/`). Dopo una modifica: `docker restart oe-copilot-ui`. Per aggiungere un'azienda: copiare il file, aggiungere la riga, riavviare. La pagina pubblica `/disponibilita` non mostra né nomi né loghi.
 
 **Personalizzazione.** Senza `personalizzazione.json` in `ui-dati/` le aziende prendono il nome dal
-dominio della casella e i colori dalla tavolozza. Per averle come sul PC si copia lo stesso file e
-si riavvia il servizio (`docker restart oe-copilot-ui`). I colori già assegnati sul PC stanno in
-`config.json` (`account_colors`): copiare anche quella voce in `ui-dati/config.json` dà gli stessi.
+dominio della casella e i colori dalla tavolozza. Si parte da `personalizzazione.esempio.json`, copiato
+in `ui-dati/` come `personalizzazione.json`, e si riavvia il servizio (`docker restart oe-copilot-ui`).
+I colori assegnati stanno in `ui-dati/config.json` (`account_colors`).
 
 ### 4.8 Lo schermo del telefono nel browser (facoltativo)
 Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di ws-scrcpy, provenienza e modifiche in `UPSTREAM.md`) mostra il telefono virtuale in una pagina e lo comanda con mouse e tastiera: serve per il PIN dopo un riavvio, un accesso, un codice MFA, al posto di scrcpy sul PC con un tunnel SSH (4.4).
@@ -409,37 +373,34 @@ Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di w
 
 ---
 
-## 5. Collegare l'app per Windows al server
+## 5. Prove dal PC: tunnel verso l'agente
 
-Serve solo all'app per Windows (sezione 3): il browser non passa di qui.
+L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker: dal PC ci si arriva con un tunnel SSH. Serve per interrogare l'agente a mano e per far girare in locale il servizio `ui` contro i calendari veri; il browser non passa di qui.
 
-1. **Chiave SSH**: il server dev'essere raggiungibile da `ssh` **senza password** (chiave SSH).
-   Comodo dare un alias in `~/.ssh/config` del PC, es.:
+1. **Chiave SSH**: il server dev'essere raggiungibile da `ssh` **senza password** (chiave SSH). Comodo dare un alias in `~/.ssh/config` del PC, es.:
    ```
    Host oecopilot
        HostName  198.51.100.10
        User      mario
        IdentityFile ~/.ssh/id_ed25519
    ```
-   Prova: `ssh oecopilot hostname` deve entrare senza chiedere nulla. Provalo dal prompt dei
-   comandi e non da Git Bash: l'app usa l'OpenSSH di Windows, che rifiuta una chiave leggibile da
-   altri utenti ("UNPROTECTED PRIVATE KEY FILE", nell'app "Permission denied"), mentre l'ssh di
-   Git la accetta. Una chiave in una cartella sincronizzata (OneDrive) eredita spesso permessi in
-   più: tienine una copia in `%USERPROFILE%\.ssh` e sistemala con
-   `icacls <chiave> /inheritance:r /grant:r "%USERNAME%:R"`.
+   Prova: `ssh oecopilot hostname` deve entrare senza chiedere nulla. L'OpenSSH di Windows rifiuta una chiave leggibile da altri utenti ("UNPROTECTED PRIVATE KEY FILE"): una chiave in una cartella sincronizzata (OneDrive) eredita spesso permessi in più, tienine una copia in `%USERPROFILE%\.ssh` e sistemala con `icacls <chiave> /inheritance:r /grant:r "%USERNAME%:R"`.
 
-2. **Chiave dell'API**, salvata cifrata per il tuo utente Windows (non passa mai dallo schermo):
-   ```bat
-   ssh oecopilot "grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2" | .venv\Scripts\python agente_remoto.py imposta-chiave
+2. **Tunnel**, lasciato aperto: `ssh -N -L 13180:127.0.0.1:3180 oecopilot`.
+
+3. **Chiamata all'agente**. La chiave dell'API sta in `.env` sul server: si legge in una variabile e non si stampa.
+   ```bash
+   CHIAVE=$(ssh oecopilot "sudo grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2-")
+   curl -s -H "Authorization: Bearer $CHIAVE" http://127.0.0.1:13180/api/calendari
    ```
 
-3. In **`personalizzazione.json`** (sul PC) aggiungi la voce `agente_remoto`:
-   ```json
-   "agente_remoto": {"ssh": "oecopilot", "porta_remota": 3180, "porta_locale": 31800}
+4. **Il servizio `ui` in locale**, contro l'agente vero e con una cartella dati di prova (il servizio non ha password: ascolta solo su `127.0.0.1`):
+   ```bash
+   bash server/strumenti/prepara_ui.sh
+   OE_AGENTE_URL=http://127.0.0.1:13180 OE_AGENTE_CHIAVE=$CHIAVE OE_DATI=/tmp/oe-dati OE_ASCOLTO=127.0.0.1 \
+     python server/ui/server.py
    ```
-   Senza la voce `ssh` l'app non legge nessuna casella: restano i calendari da link e gli eventi personali. Per provare il collegamento prima, senza toccare la personalizzazione vera: metti la voce in un file a parte e lancia la prova con `set OE_PERSONALIZZAZIONE=<quel file>`. Riavvia l'app. Prova dal prompt: `.venv\Scripts\python agente_remoto.py prova` deve elencare le caselle.
-
-Cosa cambia nell'app: il pallino di ogni azienda dice anche se sul server l'aggiornamento è fermo o se un accesso è scaduto; se il server non risponde l'app mostra l'ultima lettura salvata e riprova da sola; "Apri in Outlook" cerca l'evento nell'Outlook del PC per ora e titolo (serve Outlook aperto sul PC solo per quel pulsante, non per il calendario). Limiti noti: non si vedono gli appuntamenti che stanno **solo** in un calendario locale di Outlook ("solo questo computer") né i compleanni dei contatti, e le riunioni annullate spariscono invece di restare come "Annullato:".
+   Servono `requests`, `icalendar` e `recurring-ical-events` (le stesse librerie dell'immagine `ui`).
 
 ---
 
@@ -482,10 +443,9 @@ Le soglie si cambiano con le variabili d'ambiente `OUTLOOK_GIALLO_S`, `OUTLOOK_R
 - **Rifare un login scaduto**: dalla pagina `/telefono/` (4.8; finché è aperta la sincronizzazione sta in pausa), poi rifai il login nell'app Outlook o nelle impostazioni dell'account Google del telefono e chiudi la scheda.
 - **Segni di vita** (sul server): `stato/battito.json` (il servizio è vivo? il telefono è acceso? Outlook è in primo piano?) e
   `stato/accessi.json` (stato di ogni casella).
-- **Log dell'app** (sul PC): `debug.log`; del tunnel: `agente_tunnel.log`.
 - **Log dei servizi** (sul server): `docker logs oe-copilot-<servizio>` (`agent`, `ui`, `gateway`, `schermo`, `caddy`) e `journalctl -u oe-copilot-sincronizza`.
 - **Vedere cosa fa l'agente**: `curl` su `http://127.0.0.1:3180/api/calendari` dal server (con la
-  chiave, vedi 4.5), oppure `agente_remoto.py prova` dal PC.
+  chiave, vedi 4.5), oppure dal PC col tunnel della sezione 5.
 - **Aggiornare il codice del server**: con l'aggiornamento automatico (sezione 4.6) basta un push
   su `main`. A mano: `git pull`, `bash server/strumenti/prepara_ui.sh` (prepara la copia dei moduli dell'app per `ui`), ricopia `server/` in `/opt/oe-copilot` (mantieni `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/`), `sudo docker compose up -d --build`, riavvia il servizio.
 - **Backup**: i dati del telefono stanno in `/opt/oe-copilot/telefono/data` (contengono i login:
@@ -499,8 +459,8 @@ Le soglie si cambiano con le variabili d'ambiente `OUTLOOK_GIALLO_S`, `OUTLOOK_R
 - **Il telefono sbloccato ha un solo cancello: l'accesso al sito.** Il servizio tiene il telefono sbloccato dopo il PIN (4.5), il servizio `schermo` non ha password e `adb` non chiede conferme (`ro.adb.secure=0`): chi supera l'accesso davanti a `/telefono/` comanda un telefono già sbloccato, con dentro le caselle di lavoro. Il PIN non fa da secondo fattore. Per questo la password dell'interfaccia va lunga e casuale (almeno 12 caratteri); il blocco per account (5 errori, 15 minuti) e la sessione (30 giorni, cookie HttpOnly) sono le difese del sito.
 - **Il PIN c'è perché lo chiede un criterio di sicurezza aziendale**, imposto a Outlook da una delle aziende le cui caselle sono sul telefono: senza una password del dispositivo Outlook rimuove la casella (4.5). Non si toglie, non si cambia e nessuno script lo digita.
 - **Il tocco sulla barra di stato aggira apposta il blocco a 15 minuti** dello stesso criterio (`TOCCO_OGNI`, 4.5): serve perché un telefono bloccato non applica cancellazioni e modifiche. Il prezzo è quello del primo punto. Per tornare al blocco automatico: `TOCCO_OGNI=0`.
-- **Nessun segreto nel repository**, né nei file tracciati né nella storia di git (controllato l'11/10/2026 con ricerche di chiavi, token e password). La chiave dell'API e le credenziali dell'interfaccia stanno in `.env` sul server (permessi 600), i segreti dell'aggiornamento automatico nei secret della Action, la chiave dell'API sul PC in `agente_chiave.bin`, cifrata per l'utente Windows. Nomi, domini, indirizzi, calendari, sigle e schede stanno in `personalizzazione.json` (sul PC e in `ui-dati/` sul server) e in `agent/fonti.json`: file che il repository non ha mai contenuto e che `.gitignore` esclude. `verifica.py` ha un controllo apposta che cerca i dati della personalizzazione nei file tracciati e fallisce se ne trova.
+- **Nessun segreto nel repository**, né nei file tracciati né nella storia di git (controllato l'11/10/2026 con ricerche di chiavi, token e password). La chiave dell'API e le credenziali dell'interfaccia stanno in `.env` sul server (permessi 600) e i segreti dell'aggiornamento automatico nei secret della Action. Nomi, domini, indirizzi, calendari, sigle e schede stanno in `ui-dati/personalizzazione.json` e in `agent/fonti.json`: file che il repository non ha mai contenuto e che `.gitignore` esclude. `server/strumenti/controlla_dati_personali.py` cerca i dati della personalizzazione nei file tracciati e fallisce se ne trova (si lancia a mano prima di un push, con il percorso del file).
 - **I login stanno nel telefono sul server**, non sul PC. I dati del telefono (`/opt/oe-copilot/telefono/data`) contengono i token degli accessi: proteggili come credenziali.
-- **Niente esposto su internet** a parte l'interfaccia web: l'agente e l'adb ascoltano solo sul localhost del server; l'app per Windows arriva con un tunnel SSH (chiave SSH) e una chiave dell'API cifrata per il tuo utente Windows. Le eccezioni, facoltative, sono l'interfaccia nel browser (4.7) e lo schermo del telefono (4.8): HTTPS e una pagina di accesso davanti a una pagina che mostra i calendari e a una che comanda il telefono. I servizi `ui` e `schermo` in sé non sono pubblicati e non hanno password: ci arriva solo chi ha passato il gateway.
+- **Niente esposto su internet** a parte l'interfaccia web: l'agente e l'adb ascoltano solo sul localhost del server; dal PC ci si arriva con un tunnel SSH (chiave SSH) e la chiave dell'API (sezione 5). Le eccezioni, facoltative, sono l'interfaccia nel browser (4.7) e lo schermo del telefono (4.8): HTTPS e una pagina di accesso davanti a una pagina che mostra i calendari e a una che comanda il telefono. I servizi `ui` e `schermo` in sé non sono pubblicati e non hanno password: ci arriva solo chi ha passato il gateway.
 - **I token non si leggono**: il rilevatore degli accessi guarda solo bandierine ed età di sincronizzazione, mai il contenuto di un token.
 - Non estrarre token/cookie dai browser e non usare client ID di altre app per aggirare un consenso.

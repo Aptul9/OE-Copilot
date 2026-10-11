@@ -510,19 +510,19 @@ lo stato di ogni casella, che l'agente usa per il pallino — **senza mai legger
 - **Caselle Microsoft (Outlook), accesso:** la bandierina "login da rifare" (`needsReauth`) nel
   registro di Outlook. Quando c'è → pallino **rosso** "Accesso scaduto sul telefono". Segnale netto.
 - **Caselle Microsoft (Outlook), freschezza:** Outlook non scrive da nessuna parte quando ha
-  scaricato dal server. Dalla versione coi servizi Google non ha più bisogno di stare in primo
-  piano: riceve le notifiche push (FCM) e scarica anche a telefono bloccato (verificato il
-  2026-10-11: quattro push ricevuti a schermo bloccato, l'ultimo seguito da 94 appuntamenti
-  riscritti nel calendario in 9 secondi). Per questo "Outlook non è davanti" non è più un
-  avviso. Si misura quello che Outlook dice davvero: a ogni giro il servizio forza la
-  sincronizzazione e Outlook risponde con una riga per casella in `calendarSync.log`
-  (`isSyncingForAccount`); se una casella tace oltre `OUTLOOK_GIALLO_S` (10 min) è **gialla**
-  ("Outlook non conferma la sincronizzazione della casella da N min"), oltre `OUTLOOK_ROSSO_S`
-  (30 min) **rossa**; **gialla** anche se Outlook ha sospeso la casella. Se le push non sono
-  disponibili (`notifications.log`, "FCM push sync is unavailable") **e** Outlook non è in
-  primo piano, **giallo** "non riceve le notifiche push": a telefono bloccato le novità non
-  arrivano. Limite: una novità che non genera una push resta ferma finché il telefono è
-  bloccato, e non c'è modo di saperlo da qui.
+  scaricato dal server. Con i servizi Google riceve le notifiche push (FCM), ma sono quelle della
+  posta: una cancellazione o una modifica di un appuntamento non ne ha, e Outlook la scarica solo
+  quando è davvero in primo piano, cioè a telefono sbloccato (11/10/2026: sette inviti cancellati
+  alle 09:45 UTC arrivati sul telefono alle 11:42:29, appena sbloccato). Si misura quello che
+  Outlook dice davvero: a ogni giro il servizio forza la sincronizzazione e Outlook risponde con
+  una riga per casella in `calendarSync.log` (`isSyncingForAccount`); se una casella tace oltre
+  `OUTLOOK_GIALLO_S` (10 min) è **gialla** ("Outlook non conferma la sincronizzazione della casella
+  da N min"), oltre `OUTLOOK_ROSSO_S` (30 min) **rossa**; **gialla** anche se Outlook ha sospeso la
+  casella. **Gialla** "Telefono bloccato: le cancellazioni e le modifiche fatte in Outlook arrivano
+  in ritardo, sbloccalo dalla pagina Telefono" finché la schermata di blocco è su (`bloccato` in
+  `stato/battito.json`, scritto dal servizio a ogni giro); un guasto vero (casella muta) pesa di
+  più. Se le push non sono disponibili (`notifications.log`, "FCM push sync is unavailable") **e**
+  Outlook non è in primo piano, **giallo** "non riceve le notifiche push".
 - **Calendario Google (servizi Google del telefono):** da `dumpsys content`, l'esito
   dell'ultima sincronizzazione di `com.android.calendar` per l'account. Un fallimento isolato è
   la rete; senza un successo in mezzo oltre `GOOGLE_GIALLO_S` (15 min) è **giallo**, oltre

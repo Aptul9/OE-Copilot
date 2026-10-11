@@ -230,7 +230,7 @@ def _coda(percorso, byte=600_000):
     return "\n".join(pezzi[-2:])
 
 
-def _verdetto_outlook(ultima, push, davanti, adesso):
+def _verdetto_outlook(ultima, push, davanti, adesso, bloccato=False):
     """Verdetto per una casella: ultima = (secondi, sincronizza) o None, push = (secondi, disponibile) o None."""
     if ultima is None:
         return {"stato": "errore", "msg": "Outlook non conferma la sincronizzazione della casella "
@@ -245,6 +245,9 @@ def _verdetto_outlook(ultima, push, davanti, adesso):
     if eta > OUTLOOK_GIALLO_S:
         return {"stato": "avviso", "msg": "Outlook non conferma la sincronizzazione della casella "
                 "da %d min" % (eta // 60)}
+    if bloccato:
+        return {"stato": "avviso", "msg": "Telefono bloccato: le cancellazioni e le modifiche fatte in Outlook "
+                "arrivano in ritardo, sbloccalo dalla pagina Telefono"}
     if push and not push[1] and adesso - push[0] < PUSH_RECENTE_S and not davanti:
         return {"stato": "avviso", "msg": "Outlook non riceve le notifiche push dal server e non "
                 "è in primo piano: a telefono bloccato le novità non arrivano"}
@@ -275,9 +278,11 @@ def freschezza_outlook(adesso=None):
             push = (_epoca(m.group(1)), m.group(2) == "available")
     try:
         with open(BATTITO, encoding="utf-8") as f:
-            davanti = bool(json.load(f).get("outlook_davanti", True))
+            battito = json.load(f)
+        davanti = bool(battito.get("outlook_davanti", True))
+        bloccato = bool(battito.get("bloccato", False))
     except (OSError, ValueError, AttributeError):
-        davanti = True
+        davanti, bloccato = True, False
     tmp, c = _apri_ro(OUTLOOK)
     try:
         caselle = {int(i): e for i, e in c.execute(
@@ -286,7 +291,7 @@ def freschezza_outlook(adesso=None):
     finally:
         c.close()
         shutil.rmtree(tmp, ignore_errors=True)
-    return {e: _verdetto_outlook(ultima.get(str(i)), push, davanti, adesso)
+    return {e: _verdetto_outlook(ultima.get(str(i)), push, davanti, adesso, bloccato)
             for i, e in caselle.items()}
 
 

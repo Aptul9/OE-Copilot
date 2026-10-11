@@ -67,7 +67,7 @@ install -d -o 10001 -g 10001 -m 755 "$STATO/schermo"
 
 conta=0
 while true; do
-    telefono=false; davanti=false; pausa=false
+    telefono=false; davanti=false; pausa=false; bloccato=false
     [ -e "$PAUSA" ] && pausa=true
     if [ -f "$PAUSA_SCHERMO" ] && [ $(( $(date +%s) - $(stat -c %Y "$PAUSA_SCHERMO" 2>/dev/null || echo 0) )) -lt "$PAUSA_SCHERMO_SCADE" ]; then
         pausa=true
@@ -104,16 +104,19 @@ while true; do
                    sleep 3 ;;
             esac
         fi
-        fuoco=$(docker exec "$T" dumpsys window 2>/dev/null | grep -m1 mCurrentFocus)
+        finestre=$(docker exec "$T" dumpsys window 2>/dev/null)
+        fuoco=$(grep -m1 mCurrentFocus <<<"$finestre")
         case "$fuoco" in *com.acompli.acompli.CentralActivity*) davanti=true ;; esac
+        # Con il PIN, schermata di blocco su = Outlook non scarica cancellazioni e modifiche (rileva_accessi.py lo dice nell'app).
+        grep -q 'isKeyguardShowing=true' <<<"$finestre" && bloccato=true
         if [ "$TOCCO_OGNI" -gt 0 ] && [ $((conta % TOCCO_OGNI)) -eq 0 ] \
            && docker exec "$T" dumpsys power 2>/dev/null | grep -q 'mWakefulness=Awake'; then
             docker exec "$T" input tap 360 5 >/dev/null 2>&1
         fi
     fi
     # Scrittura atomica: l'agente non deve mai leggere un file a meta'.
-    printf '{"quando": %s, "pausa": %s, "telefono": %s, "outlook_davanti": %s}\n' \
-        "$(date +%s)" "$pausa" "$telefono" "$davanti" > "$STATO/battito.json.tmp" \
+    printf '{"quando": %s, "pausa": %s, "telefono": %s, "outlook_davanti": %s, "bloccato": %s}\n' \
+        "$(date +%s)" "$pausa" "$telefono" "$davanti" "$bloccato" > "$STATO/battito.json.tmp" \
         && mv -f "$STATO/battito.json.tmp" "$STATO/battito.json"
     # Ogni ACCESSI_OGNI giri: controlla se qualche accesso e' scaduto sul
     # telefono (altrimenti il pallino resterebbe verde su dati fermi).

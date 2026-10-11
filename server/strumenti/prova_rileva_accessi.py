@@ -56,10 +56,10 @@ def scrivi(nome, righe):
         f.writelines(righe)
 
 
-def battito(davanti):
+def battito(davanti, bloccato=False):
     with open(r.BATTITO, "w", encoding="utf-8") as f:
-        f.write('{"quando": %d, "pausa": false, "telefono": true, "outlook_davanti": %s}'
-                % (ADESSO, "true" if davanti else "false"))
+        f.write('{"quando": %d, "pausa": false, "telefono": true, "outlook_davanti": %s, "bloccato": %s}'
+                % (ADESSO, "true" if davanti else "false", "true" if bloccato else "false"))
 
 
 def verdetti():
@@ -169,4 +169,19 @@ a = {"stato": "avviso", "msg": "uno"}
 b = {"stato": "errore", "msg": "due"}
 assert r._peggiore(a, b) == {"stato": "errore", "msg": "uno · due"}, r._peggiore(a, b)
 print("ok   verdetti uniti")
+
+# 8. Schermata di blocco su: giallo per le caselle Outlook, con il messaggio che dice cosa fare;
+#    sbloccato: ok; e un guasto vero (casella muta) pesa più del blocco
+scrivi("calendarSync.log", [riga_casella(30, 32768), riga_casella(30, 32772)])
+scrivi("notifications.log", [riga_push(20)])
+battito(False, bloccato=True)
+controlla("telefono bloccato", verdetti(), "roar@example.com", "avviso", "Telefono bloccato")
+controlla("telefono bloccato, altra casella", verdetti(), "band@example.com", "avviso", "sbloccalo dalla pagina Telefono")
+battito(True, bloccato=False)
+controlla("telefono sbloccato", verdetti(), "roar@example.com", "ok")
+scrivi("calendarSync.log", [riga_casella(3600, 32772), riga_casella(30, 32768)])
+battito(False, bloccato=True)
+controlla("bloccato e casella muta: vince il guasto", verdetti(), "band@example.com", "errore", "fermo o sospeso")
+battito(False)
+
 print("TUTTO OK")

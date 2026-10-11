@@ -44,6 +44,8 @@ const BUTTONS = [
 export interface GoogToolBoxOptions {
     // Keyboard capture starts enabled; false leaves it off until the "Capture keyboard" checkbox is ticked.
     captureKeyboard?: boolean;
+    // The panel the "?" button shows and hides.
+    helpBox?: HTMLElement;
 }
 
 export class GoogToolBox extends ToolBox {
@@ -118,6 +120,18 @@ export class GoogToolBox extends ToolBox {
                 moreBox.style.display = element.checked ? 'block' : 'none';
             });
             elements.unshift(more);
+        }
+        const { helpBox } = options;
+        if (helpBox) {
+            const help = new ToolBoxCheckbox(
+                'Help: what the mouse, the keyboard and each button do',
+                SvgImage.Icon.HELP,
+                `show_help_${udid}_${playerName}`,
+            );
+            help.addEventListener('click', (_, el) => {
+                helpBox.style.display = el.getElement().checked ? 'block' : 'none';
+            });
+            elements.unshift(help);
         }
         return new GoogToolBox(elements);
     }

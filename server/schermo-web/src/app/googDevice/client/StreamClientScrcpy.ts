@@ -1,6 +1,7 @@
 import { BaseClient } from '../../client/BaseClient';
 import { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import { GoogMoreBox } from '../toolbox/GoogMoreBox';
+import { GoogHelpBox } from '../toolbox/GoogHelpBox';
 import { GoogToolBox } from '../toolbox/GoogToolBox';
 import VideoSettings from '../../VideoSettings';
 import Size from '../../Size';
@@ -317,6 +318,7 @@ export class StreamClientScrcpy
             if (parent) {
                 parent.removeChild(moreBox);
             }
+            helpBox.remove();
             this.streamReceiver.stop();
             if (this.player) {
                 this.player.stop();
@@ -326,8 +328,10 @@ export class StreamClientScrcpy
         const googMoreBox = (this.moreBox = new GoogMoreBox(udid, player, this));
         const moreBox = googMoreBox.getHolderElement();
         googMoreBox.setOnStop(stop);
+        const helpBox = new GoogHelpBox().getHolderElement();
         const googToolBox = GoogToolBox.createToolBox(udid, player, this, moreBox, {
             captureKeyboard: this.params.captureKeyboard,
+            helpBox,
         });
         this.controlButtons = googToolBox.getHolderElement();
         deviceView.appendChild(this.controlButtons);
@@ -335,6 +339,7 @@ export class StreamClientScrcpy
         video.className = 'video';
         deviceView.appendChild(video);
         deviceView.appendChild(moreBox);
+        deviceView.appendChild(helpBox);
         player.setParent(video);
         player.pause();
 

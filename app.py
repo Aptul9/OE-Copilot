@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import webbrowser
+from datetime import date
 
 import webview
 
@@ -298,6 +299,31 @@ class Api:
             log.exception("get_events: eccezione")
             return {"events": [], "errors": [str(e)],
                     "stale": False, "stale_at": None, "outlook_starting": False}
+
+    def get_disponibilita(self, da, giorni=7, gruppo=""):
+        """Cosa può sapere la pagina pubblica dei `giorni` giorni da `da` (AAAA-MM-GG).
+
+        La legge il gateway per la pagina senza accesso, che è il calendario di sempre con
+        gli impegni ridotti a "Occupato": escono solo gli orari ({"impegni": [[inizio, fine]]}),
+        le festività e `completo`, falso se una sorgente non ha risposto bene. Gli errori
+        restano qui nel log.
+        """
+        try:
+            primo = date.fromisoformat(str(da))
+            giorni = int(giorni)
+            if not 1 <= giorni <= 62:
+                raise ValueError
+        except (ValueError, TypeError):
+            return {"ok": False, "error": "Intervallo non valido"}
+        try:
+            impegni, festivita, completo = raccolta_eventi.occupato(
+                config.load_config(), primo, giorni, str(gruppo or ""))
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        except Exception:
+            log.exception("get_disponibilita: eccezione")
+            return {"ok": False, "error": "Calendari non leggibili"}
+        return {"ok": True, "impegni": impegni, "festivita": festivita, "completo": completo}
 
     def get_integrazioni(self, verifica=False):
         """Stato dei calendari collegati direttamente (per ora i calendari Google)."""

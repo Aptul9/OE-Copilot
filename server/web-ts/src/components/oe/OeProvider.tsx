@@ -21,7 +21,7 @@ import {
   type GruppoAzienda,
   type InfoGiorni,
 } from "@/lib/oe/logic";
-import type { Calendario, Config, Evento, FonteStato, GruppiCalendari, Personalizzazione, TemaConfig } from "@/lib/oe/types";
+import type { Calendario, Config, Evento, EventiRisposta, FonteStato, GruppiCalendari, Personalizzazione, TemaConfig } from "@/lib/oe/types";
 
 export type Periodo = { start: Date; end: Date; tipo: string };
 export type Avviso = { testo: string; tipo: "errore" | "info" };
@@ -33,6 +33,9 @@ export const ZOOM_DEFAULT = 58;
 const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un avvio a freddo di Outlook
 
 type Valori = {
+  /** La pagina pubblica (senza accesso): stessi dati e stesse viste, impegni ridotti a "Occupato", niente scritture. */
+  pubblico: boolean;
+  gruppoPubblico: string;
   pronta: boolean;
   pers: Personalizzazione;
   config: Config;
@@ -85,7 +88,9 @@ export function useOe(): Valori {
   return v;
 }
 
-export function OeProvider({ children }: { children: React.ReactNode }) {
+export function OeProvider({ children, pubblico }: { children: React.ReactNode; pubblico?: { gruppo: string } }) {
+  const inPubblico = !!pubblico;
+  const gruppoPubblico = pubblico?.gruppo ?? "";
   const { setTheme, theme, resolvedTheme } = useTheme();
   const [pronta, setPronta] = useState(false);
   const [pers, setPers] = useState<Personalizzazione>({ interfaccia: {} });
@@ -117,6 +122,10 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
 
   // ---- avvio: personalizzazione e configurazione prima di disegnare ------------------
   useEffect(() => {
+    if (inPubblico) {
+      setPronta(true);
+      return;
+    }
     let vivo = true;
     Promise.all([
       api("get_personalizzazione").catch(() => ({ interfaccia: {} }) as Personalizzazione),
@@ -172,6 +181,7 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
 
   const aggiornaCalendari = useCallback(
     async (forza = false) => {
+      if (inPubblico) return;
       try {
         const res = await api("get_calendars", forza);
         if (res.error) {
@@ -184,7 +194,7 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
         mostraAvviso({ testo: `⚠ get_calendars: ${e instanceof Error ? e.message : String(e)}`, tipo: "errore" });
       }
     },
-    [pianificaRitentativo],
+    [pianificaRitentativo, inPubblico],
   );
   aggiornaCalendariRef.current = aggiornaCalendari;
 
@@ -216,7 +226,17 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
   );
 
   // ---- eventi ----------------------------------------------------------------------------
-  const leggi = useCallback(async (da: Date, a: Date) => api("get_events", isoLocale(da), isoLocale(a)), []);
+  const leggi = useCallback(
+    async (da: Date, a: Date): Promise<EventiRisposta> => {
+      if (!inPubblico) return api("get_events", isoLocale(da), isoLocale(a));
+      const q = new URLSearchParams({ da: isoLocale(da), a: isoLocale(a), ...(gruppoPubblico ? { gruppo: gruppoPubblico } : {}) });
+      const r = await fetch(`/api/disponibilita?${q}`);
+      const dati = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((dati && dati.error) || `HTTP ${r.status}`);
+      return dati as EventiRisposta;
+    },
+    [inPubblico, gruppoPubblico],
+  );
 
   useEffect(() => {
     if (!periodo) return;
@@ -309,12 +329,13 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
   // ---- impostazioni ----------------------------------------------------------------------
   const salvaConfig = useCallback(async (patch: Partial<Config>) => {
     setConfig((c) => ({ ...c, ...patch }));
+    if (inPubblico) return;
     try {
       await api("save_config", patch);
     } catch {
       // la rete non c'è: l'impostazione vale in questa pagina, non resta salvata
     }
-  }, []);
+  }, [inPubblico]);
 
   // ---- gruppi di calendari: stanno in config.gruppi_calendari, si filtra con mostra_solo_gruppo ---------
   const gruppiCalendari = useMemo(() => leggiGruppi(config.gruppi_calendari), [config.gruppi_calendari]);
@@ -356,6 +377,7 @@ export function OeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const valori: Valori = {
+    pubblico: inPubblico, gruppoPubblico,
     pronta, pers, config, vistaIniziale,
     calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, soloAzienda,
     gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi,

@@ -15,10 +15,12 @@ espongono le stesse funzioni e qui si sceglie quale usare.
 
 import logging
 import time
+from datetime import datetime, time as ora_del_giorno, timedelta
 
 import agente_remoto
 import caselle
 import config
+import disponibilita
 import google_cal
 import ics_feed
 import local_events
@@ -131,6 +133,32 @@ def raccogli(cfg, start_iso, end_iso, allow_cache=True):
     eventi.sort(key=lambda e: e["start"] or "")
     meta["fonti"] = _stato_fonti(cfg, meta, errori)
     return eventi, errori, meta
+
+
+def occupato(cfg, primo_giorno, giorni, gruppo=""):
+    """Cosa può sapere la pagina pubblica dei `giorni` giorni da `primo_giorno`.
+    -> (impegni, festività, completo), vedi disponibilita.py: solo orari, mai cosa c'è.
+
+    Contano tutti i calendari, accesi o spenti nella barra laterale: gli interruttori sono un
+    filtro della vista, e chi guarda la disponibilità non deve vedere "libero" perché ieri sera
+    si è lasciato acceso un solo calendario. Con `gruppo` contano solo le aziende di quel gruppo
+    (ValueError se non esiste). `completo` è falso se una sorgente non ha risposto bene: il
+    chiamante lo dice, perché un calendario vuoto per un guasto sembrerebbe tutto libero.
+    """
+    membri = None
+    if gruppo:
+        membri = config.membri_gruppo(cfg, gruppo)
+        if membri is None:
+            raise ValueError("Gruppo non trovato")
+    # copia di lavoro: senza interruttori e che non va su disco (le sorgenti salvano la config
+    # quando assegnano un colore, e vi scriverebbero gli interruttori vuoti)
+    cfg = dict(cfg, disabled_calendars=[], _sola_lettura=True)
+    inizio = datetime.combine(primo_giorno, ora_del_giorno.min)
+    eventi, errori, meta = raccogli(cfg, inizio.isoformat(),
+                                    (inizio + timedelta(days=giorni)).isoformat(), allow_cache=False)
+    completo = not errori and not meta.get("outlook_starting") and not meta.get("stale")
+    return (disponibilita.impegni(eventi, primo_giorno, giorni, membri),
+            disponibilita.festivita(eventi, config.FESTIVITA_NOME), completo)
 
 
 _GRAVITA = {"ok": 0, "avviso": 1, "errore": 2}

@@ -13,6 +13,7 @@ on:
       - "config.py"
       - "caselle.py"
       - "eventi.py"
+      - "disponibilita.py"
       - "agente_remoto.py"
       - "ics_feed.py"
       - "google_cal.py"
@@ -27,6 +28,7 @@ on:
       - "config.py"
       - "caselle.py"
       - "eventi.py"
+      - "disponibilita.py"
       - "agente_remoto.py"
       - "ics_feed.py"
       - "google_cal.py"
@@ -86,6 +88,9 @@ jobs:
       - name: Prova dei gruppi di calendari
         run: docker run --rm -v "$PWD/server/strumenti/prova_gruppi.py:/prova.py:ro" oe-copilot-ui python /prova.py
 
+      - name: Prova della disponibilità
+        run: docker run --rm -v "$PWD/server/strumenti/prova_disponibilita.py:/prova.py:ro" oe-copilot-ui python /prova.py
+
       - name: Caddy dell'interfaccia web
         run: |
           docker build -q -t oe-copilot-caddy server/caddy-ui
@@ -126,6 +131,14 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $G/index.html)" = "302 $G/login?next=%2Findex.html"
           test "$(codice -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401
           curl -fsS "$G/login?next=%2F" | grep -q 'Accedi a OE Copilot'
+          # la disponibilità è pubblica: la pagina e i suoi dati si raggiungono senza sessione (qui il servizio non ha caselle:
+          # nessun impegno, ma né 401 né reindirizzamento), ed è il calendario di sempre senza le parti che scrivono
+          oggi=$(date -u +%F); fra7=$(date -u -d '+7 days' +%F)
+          code=$(codice "$G/api/disponibilita?da=$oggi&a=$fra7"); [[ $code == 200 || $code == 502 ]]
+          test "$(codice "$G/api/disponibilita?da=$oggi&a=$fra7&gruppo=nessuno")" = 404
+          test "$(codice "$G/api/disponibilita?da=ieri&a=oggi")" = 400
+          curl -fsS "$G/disponibilita" | grep -q '<title>Disponibilità'
+          test -z "$(curl -fsS "$G/disponibilita" | grep -o 'Nuovo evento')"
           # password sbagliata, poi giusta: cookie HttpOnly, e dopo l'accesso passa tutto il servizio ui
           test "$(codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email)" = 401
           curl -fsS -c jar -D intest -o /dev/null -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email

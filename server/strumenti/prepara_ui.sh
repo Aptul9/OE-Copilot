@@ -8,6 +8,6 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 rm -rf server/ui/app
 mkdir -p server/ui/app
-cp app.py config.py caselle.py eventi.py agente_remoto.py ics_feed.py google_cal.py \
+cp app.py config.py caselle.py eventi.py disponibilita.py agente_remoto.py ics_feed.py google_cal.py \
    local_events.py outlook_com.py server/ui/app/
 cp -r web server/ui/app/web

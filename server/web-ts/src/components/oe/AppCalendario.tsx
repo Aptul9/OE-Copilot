@@ -45,9 +45,10 @@ function useStretto(): boolean {
   );
 }
 
-export function AppCalendario() {
+/** `pubblico`: la pagina senza accesso, gli stessi componenti con gli impegni ridotti a "Occupato" e niente che scriva. */
+export function AppCalendario({ pubblico }: { pubblico?: { gruppo: string } }) {
   return (
-    <OeProvider>
+    <OeProvider pubblico={pubblico}>
       <Guscio />
     </OeProvider>
   );
@@ -98,9 +99,12 @@ function Guscio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [oe.impostaPeriodo],
   );
-  const onEventClick = useCallback((evento: Evento, titolo: string, inizio: Date | null, fine: Date | null, x: number, y: number) => {
-    setScheda({ evento, titolo, inizio, fine, x, y });
-  }, []);
+  const onEventClick = useCallback(
+    (evento: Evento, titolo: string, inizio: Date | null, fine: Date | null, x: number, y: number) => {
+      if (!oe.pubblico) setScheda({ evento, titolo, inizio, fine, x, y }); // pubblica: un impegno non ha altro da dire
+    },
+    [oe.pubblico],
+  );
   const chiudiScheda = useCallback(() => setScheda(null), []);
 
   const elimina = async (uid: string) => {
@@ -123,15 +127,18 @@ function Guscio() {
   };
 
   const senzaTeams = new Set(oe.pers.interfaccia.calendari_senza_teams ?? []);
+  const pub = oe.pubblico;
   const contenutoPannello = (
     <div className="flex flex-col gap-4">
-      <div className="px-3">
-        <Button id="btn-new-event" className="w-full" onClick={() => { setMenu(false); setDialogo("evento"); }}>
-          <PlusIcon /> Nuovo evento
-        </Button>
-      </div>
+      {!pub && (
+        <div className="px-3">
+          <Button id="btn-new-event" className="w-full" onClick={() => { setMenu(false); setDialogo("evento"); }}>
+            <PlusIcon /> Nuovo evento
+          </Button>
+        </div>
+      )}
       <MiniCalendario onVaiA={vaiA} />
-      <Legenda onGestisci={() => { setMenu(false); setDialogo("calendari"); }} />
+      {!pub && <Legenda onGestisci={() => { setMenu(false); setDialogo("calendari"); }} />}
     </div>
   );
 
@@ -141,19 +148,27 @@ function Guscio() {
       <VoceRail attiva={sezione === "calendario"} id="nav-calendar" etichetta="Calendario" larga={railLarga || stretto} onClick={() => { setSezione("calendario"); setMenu(false); }}>
         <CalendarDaysIcon />
       </VoceRail>
-      <VoceRail attiva={sezione === "timesheet"} id="nav-timesheet" etichetta="Timesheet" larga={railLarga || stretto} onClick={() => { setSezione("timesheet"); setMenu(false); }}>
-        <ClockIcon />
-      </VoceRail>
+      {!pub && (
+        <VoceRail attiva={sezione === "timesheet"} id="nav-timesheet" etichetta="Timesheet" larga={railLarga || stretto} onClick={() => { setSezione("timesheet"); setMenu(false); }}>
+          <ClockIcon />
+        </VoceRail>
+      )}
       <div className="flex-1" />
       <VoceRail id="nav-theme" etichetta="Tema" larga={railLarga || stretto} onClick={() => oe.impostaTema(oe.temaScuro ? "light" : "dark")} titolo="Cambia tema chiaro/scuro">
-        {oe.temaScuro ? <SunIcon /> : <MoonIcon />}
+        {/* le due icone, scelte dalla classe del tema: il tema salvato si conosce solo nel browser, e un'icona scelta in JavaScript non coinciderebbe con quella del server */}
+        <SunIcon className="hidden dark:block" />
+        <MoonIcon className="dark:hidden" />
       </VoceRail>
-      <VoceRail id="nav-settings" etichetta="Impostazioni" larga={railLarga || stretto} onClick={() => { setMenu(false); setDialogo("impostazioni"); }}>
-        <SettingsIcon />
-      </VoceRail>
-      <VoceRail id="nav-logout" etichetta="Esci" larga={railLarga || stretto} onClick={esci}>
-        <LogOutIcon />
-      </VoceRail>
+      {!pub && (
+        <>
+          <VoceRail id="nav-settings" etichetta="Impostazioni" larga={railLarga || stretto} onClick={() => { setMenu(false); setDialogo("impostazioni"); }}>
+            <SettingsIcon />
+          </VoceRail>
+          <VoceRail id="nav-logout" etichetta="Esci" larga={railLarga || stretto} onClick={esci}>
+            <LogOutIcon />
+          </VoceRail>
+        </>
+      )}
     </>
   );
 
@@ -165,11 +180,18 @@ function Guscio() {
         </Button>
         <span className="topbar-title flex flex-none items-center gap-2 text-xl font-bold tracking-tight">
           <img src="/icon.png" alt="" width={28} height={28} className="size-7 flex-none" />
-          <span>
-            OE<span className="ml-1 bg-gradient-to-br from-primary to-[#8b8ff0] bg-clip-text text-transparent">Copilot</span>
-          </span>
+          {pub ? (
+            <span className="truncate">
+              Disponibilità
+              {oe.gruppoPubblico && <span className="bg-gradient-to-br from-primary to-[#8b8ff0] bg-clip-text text-transparent">{" · "}{oe.gruppoPubblico}</span>}
+            </span>
+          ) : (
+            <span>
+              OE<span className="ml-1 bg-gradient-to-br from-primary to-[#8b8ff0] bg-clip-text text-transparent">Copilot</span>
+            </span>
+          )}
         </span>
-        <div className="mx-auto flex w-full min-w-0 max-w-[720px] flex-1 items-center">
+        <div className={cn("mx-auto flex w-full min-w-0 max-w-[720px] flex-1 items-center", pub && "invisible")}>
           <div id="search-wrap" className="search relative flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg bg-muted px-3 text-muted-foreground focus-within:bg-card focus-within:ring-2 focus-within:ring-primary">
             <SearchIcon className="size-4 flex-none" />
             <input
@@ -252,7 +274,7 @@ function Guscio() {
         </main>
       </div>
 
-      <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(uid) => void elimina(uid)} />
+      {!pub && <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(uid) => void elimina(uid)} />}
 
       <Sheet open={menu} onOpenChange={setMenu}>
         <SheetContent side="left" className="w-[19rem] overflow-y-auto p-0">
@@ -267,9 +289,13 @@ function Guscio() {
         </SheetContent>
       </Sheet>
 
-      <DialogoCalendari aperto={dialogo === "calendari"} onChiudi={() => setDialogo(null)} />
-      <DialogoNuovoEvento aperto={dialogo === "evento"} onChiudi={() => setDialogo(null)} />
-      <DialogoImpostazioni aperto={dialogo === "impostazioni"} onChiudi={() => setDialogo(null)} />
+      {!pub && (
+        <>
+          <DialogoCalendari aperto={dialogo === "calendari"} onChiudi={() => setDialogo(null)} />
+          <DialogoNuovoEvento aperto={dialogo === "evento"} onChiudi={() => setDialogo(null)} />
+          <DialogoImpostazioni aperto={dialogo === "impostazioni"} onChiudi={() => setDialogo(null)} />
+        </>
+      )}
     </div>
   );
 }

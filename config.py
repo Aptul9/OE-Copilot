@@ -501,6 +501,8 @@ def rinomina_nei_gruppi(cfg, prima, dopo):
 
 
 def save_config(cfg):
+    if cfg.get("_sola_lettura"):
+        return      # copia di lavoro (eventi.occupato): le modifiche restano in memoria
     with _lock_config:
         scrivi_json(CONFIG_PATH, cfg)
 

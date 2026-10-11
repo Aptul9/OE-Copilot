@@ -242,8 +242,8 @@ class Api:
         """Apre in Outlook un evento letto dall'agente remoto.
 
         Quegli eventi non portano un EntryID di Outlook: lo si cerca nella
-        casella per ora d'inizio e titolo. Serve Outlook aperto su questo PC,
-        che in questa modalita' non e' piu' necessario per il calendario.
+        casella per ora d'inizio e titolo. Serve Outlook aperto su questo PC, ma solo
+        per questo pulsante: per leggere il calendario non serve.
         """
         try:
             ok = outlook_com.open_item_by(config.load_config(), account, start_iso, titolo)

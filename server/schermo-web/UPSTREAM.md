@@ -17,7 +17,8 @@ La prima commit della cartella è la copia così com'è (solo i fine riga portat
 - Web view (devtools), elenco dei file, caricamento dei file con il trascinamento (`FileListing`, `filePush`, `ExtendedSync`).
 - Lettori software `Broadway` e `TinyH264` (WebAssembly, `worker-loader`): Chrome, Edge, Safari 16.4 e Firefox 130 hanno WebCodecs, e per gli altri resta il lettore MSE (`h264-converter`).
 - Host remoti (`HostTracker`), file di configurazione YAML e HTTPS nel servizio (davanti c'è Caddy), indirizzo `proxy-ws` verso un indirizzo qualunque, tunnel verso una porta qualunque del telefono.
-- `eslint`, `prettier`, `ts-node`, `tslib`, `yaml`, `file-loader` di `.asset`, e i file di esempio e la documentazione di upstream.
+- `eslint`, `prettier`, `ts-node`, `tslib`, `yaml`, `file-loader` di `.asset`, e i file di esempio e la documentazione di upstream (anche `SECURITY.md`, che dava l'indirizzo dell'autore).
+- `src/app/ErrorHandler.ts`: nessuno lo importava.
 
 ## Cambiato
 
@@ -29,7 +30,7 @@ La prima commit della cartella è la copia così com'è (solo i fine riga portat
 - Solo HTTP, porta `PORT` (8000), `/salute` per il controllo di Docker.
 - Aiuto: pulsante `?` in cima alla barra (`src/app/googDevice/toolbox/GoogHelpBox.ts`, `src/style/help.css`, icona `ic_help_678_48dp.svg`): pannello fisso con mouse, tastiera, pulsanti e sblocco, tasti evidenziati con `kbd`. Va aggiornato insieme a `KeyText.ts` e alla barra.
 - Tastiera: collegata al telefono da subito (`captureKeyboard` vale `true` se manca). I caratteri partono come testo secondo `event.key` (`src/app/googDevice/KeyText.ts`, provato in `test/tasti.test.mjs`), non come codice del tasto fisico: con la tastiera italiana il codice faceva arrivare `-` come `/`, `_` come `?` e perdeva `@`. Ctrl, Alt e F1..F12 restano al browser, Ctrl+V manda il testo degli appunti del computer (evento `paste`), i campi della pagina (la casella di `More`) scrivono per conto loro, Invio, Backspace, Tab, Esc e le frecce restano codici Android. `TextControlMessage` scrive la lunghezza in byte UTF-8, non in caratteri.
-- Strumenti: TypeScript 6, `@types/node` 26, `@types/ws` 8, Express 5, `ws` 8.22, webpack-cli 7, `@devicefarmer/adbkit` 3.3.9 al posto del fork `@dead50f7/adbkit` 2.11 (cinque punti di chiamata, tutti dietro `src/server/goog-device/adb.ts`), `tsconfig` moderno, configurazione di webpack in JavaScript (`webpack.config.cjs`). Versioni fissate.
+- Strumenti: TypeScript 6, `@types/node` 26, `@types/ws` 8, Express 5, `ws` 8.22, webpack-cli 7, `@devicefarmer/adbkit` 3.3.9 al posto del fork `@dead50f7/adbkit` 2.11 (cinque punti di chiamata, tutti dietro `src/server/goog-device/adb.ts`), `tsconfig` moderno, configurazione di webpack in JavaScript (`webpack.config.cjs`). Versioni fissate. `@types/bluebird` resta: i tipi di adbkit lo usano e senza `tsc` dà TS7006 in `ControlCenter.ts`.
 - `src/packages/multiplexer`: `// @ts-nocheck` (imita WebSocket con le vecchie tipizzazioni del DOM; il flusso vero lo prova).
 
 ## Provare e costruire
@@ -39,13 +40,14 @@ npm ci --ignore-scripts
 npm run typecheck
 npm run dist     # dist/index.js e dist/public
 npm run smoke    # senza telefono: pagina, rifiuti, impronta del jar
+npm test         # tasti (test/tasti.test.mjs) e file PAUSA (test/pausa.test.mjs)
 ```
 
 L'immagine (`Dockerfile`) fa lo stesso in due fasi e parte come utente 10001, sistema di file in sola lettura.
 
 ## Aggiornare da upstream
 
-Prendere i commit di NetrisTV dopo `cd6cea6`, riportare nella cartella solo quello che serve (le parti tolte restano tolte), `npm run typecheck`, `npm run dist`, `npm run smoke`, poi provare su telefono vero (tocco, trascinamento, tasti, accensione) con `OE-Copilot-prove/ws-*.mjs`.
+Prendere i commit di NetrisTV dopo `cd6cea6`, riportare nella cartella solo quello che serve (le parti tolte restano tolte), `npm run typecheck`, `npm run dist`, `npm run smoke`, poi provare su telefono vero (tocco, trascinamento, tasti, accensione) con gli script `ws-*.mjs` del kit di prova locale: la cartella `prove/` dentro il repository, esclusa da git con `.git/info/exclude` perché contiene accessi di prova e dati veri.
 
 ## Server sul telefono: perché resta 1.19-ws8
 

@@ -1,10 +1,9 @@
-"""Caselle lette da un agente remoto, invece che da Outlook su questo PC.
+"""Caselle lette da un agente su un server, attraverso un tunnel SSH.
 
-Chi non vuole (o non puo') far leggere i calendari al proprio PC li fa leggere a
-un agente su un server: l'agente tiene i login, legge le caselle e le espone con
-una piccola API, in ascolto solo sul localhost del server. Da qui la si
-raggiunge con un tunnel SSH aperto dall'app stessa: niente e' esposto su
-internet, e l'accesso passa dalla chiave SSH dell'utente.
+L'agente tiene i login, legge le caselle e le espone con una piccola API, in
+ascolto solo sul localhost del server. Da qui la si raggiunge con un tunnel SSH
+aperto dall'app stessa: niente è esposto su internet, e l'accesso passa dalla
+chiave SSH dell'utente.
 
 Si attiva con la voce "agente_remoto" di personalizzazione.json (vedi config).
 La chiave dell'API e' un segreto e non sta in quel file: si salva una volta,
@@ -55,7 +54,7 @@ class AgenteNonDisponibile(RuntimeError):
 
 
 def attivo():
-    """Vero se le caselle vanno lette dall'agente remoto e non da Outlook."""
+    """Vero se l'agente remoto è configurato: voce "ssh" della personalizzazione, o OE_AGENTE_URL."""
     return bool(URL_DIRETTO or str(config.AGENTE_REMOTO.get("ssh") or "").strip())
 
 

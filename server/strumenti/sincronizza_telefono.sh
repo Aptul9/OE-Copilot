@@ -1,6 +1,7 @@
 #!/bin/bash
-# Ogni 30 secondi tiene aggiornati i calendari del telefono virtuale. Da solo
-# Android sincronizzerebbe al massimo ogni 15 minuti.
+# A ogni giro (30 secondi di pausa più il lavoro del giro, circa 35 in tutto) tiene
+# aggiornati i calendari del telefono virtuale. Da solo Android sincronizzerebbe al
+# massimo ogni 15 minuti.
 #
 # - Outlook senza i servizi Google scaricava dal server SOLO con la schermata
 #   principale davanti (prove del 05/10/2026: fermo nelle impostazioni nessuna
@@ -15,10 +16,10 @@
 #   di sincronizzazione di Android per ogni casella (cmd jobscheduler run -f), che
 #   copiano subito nel calendario del telefono; gli ID si rileggono a ogni giro
 #   perché cambiano quando si aggiunge una casella o si riavvia il telefono.
-# - Telefono sbloccato: il criterio del dispositivo di Outlook (Serco) limita il tempo
+# - Telefono sbloccato: il criterio del dispositivo di Outlook limita il tempo
 #   di schermo acceso a 15 minuti senza input (mMaximumScreenOffTimeoutFromDeviceAdmin,
 #   forzato: anche lo "schermo sempre acceso" di Android viene ignorato) e poi il
-#   telefono si blocca di nuovo. Ogni TOCCO_OGNI giri (10 = 5 minuti, 0 spegne), se
+#   telefono si blocca di nuovo. Ogni TOCCO_OGNI giri (10 = circa 6 minuti, 0 spegne), se
 #   lo schermo è acceso, un tocco sulla barra di stato (nessuna app lo riceve) conta
 #   come attività dell'utente e riparte il conteggio: dopo il PIN il telefono resta
 #   sbloccato e Outlook resta davanti. Un tasto da shell non basta (provato: il
@@ -27,7 +28,7 @@
 # - Schermo spento (tasto di accensione della pagina, o il tocco mancato): se nessuna
 #   pagina è aperta lo si riaccende prima di portare Outlook davanti, perché a schermo
 #   spento Outlook resta in pausa e non scarica niente. Il PIN del telefono non si può
-#   togliere: il criterio Serco di Outlook chiede una password del dispositivo (PIN di
+#   togliere: il criterio di sicurezza di Outlook chiede una password del dispositivo (PIN di
 #   almeno 4 cifre, senza ripetizioni né sequenze) e senza rimuove la casella (provato
 #   l'11/10/2026: schermata "Imposta la password del dispositivo"). Con il PIN il tasto
 #   accende solo la schermata di blocco: lo sblocco lo digita sempre l'utente.

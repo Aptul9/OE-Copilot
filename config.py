@@ -368,12 +368,12 @@ COLORE_FESTIVITA = "#8a8a8a"
 # (mostrati sbiaditi), schede della sezione Timesheet. Li legge app.js all'avvio.
 INTERFACCIA = dict(_P.get("interfaccia") or {})
 
-# Agente remoto: le caselle si leggono da un agente su un server invece che da
-# Outlook su questo PC (vedi agente_remoto.py). Voci:
+# Agente remoto: le caselle si leggono da un agente su un server (vedi agente_remoto.py). Voci:
 #   "ssh":          destinazione per ssh (un alias di ~/.ssh/config o utente@host)
 #   "porta_remota": porta dell'agente sul localhost del server (3180)
 #   "porta_locale": porta di questo PC su cui aprire il tunnel (31800)
-# Senza la voce "ssh" l'agente remoto e' spento e si legge da Outlook.
+# Senza la voce "ssh" l'app non legge nessuna casella: restano i calendari da link e gli eventi
+# personali.
 AGENTE_REMOTO = dict(_P.get("agente_remoto") or {})
 # La chiave dell'API dell'agente non sta nella personalizzazione: e' un segreto,
 # e si conserva cifrata (vedi proteggi/svela) accanto ai dati dell'app.

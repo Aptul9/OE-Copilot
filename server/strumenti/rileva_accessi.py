@@ -9,17 +9,22 @@ quella copia, non se ne accorgerebbe. Qui si guardano solo fatti, mai un token:
     Outlook. E' netta: quando c'e', il login e' da rifare -> rosso.
 
   - Freschezza di Outlook. Outlook non registra da nessuna parte quando ha
-    scaricato dal server, e dalla versione coi servizi Google non ha più bisogno
-    di stare in primo piano: le novità gli arrivano con le notifiche push (FCM)
-    e le scarica anche a telefono bloccato (prova del 2026-10-11: quattro push
-    ricevuti a schermo bloccato, il più recente seguito da 94 appuntamenti
-    riscritti nel calendario in 9 secondi). Si misura quello che Outlook dice
-    davvero: per ogni casella l'ultima riga "isSyncingForAccount" di
-    calendarSync.log (a ogni giro il servizio forza la sincronizzazione e Outlook
-    risponde per ciascuna), e se le notifiche push sono disponibili
-    (notifications.log). Giallo se Outlook tace da più di OUTLOOK_GIALLO_S o ha
-    sospeso la casella; rosso oltre OUTLOOK_ROSSO_S; giallo anche se le push non
-    ci sono E Outlook non è in primo piano (allora scarica solo a schermo acceso).
+    scaricato dal server. Con i servizi Google riceve le notifiche push (FCM): le
+    novità che ne hanno una arrivano anche a schermo bloccato (prova del
+    2026-10-11: quattro push ricevuti a schermo bloccato, il più recente seguito
+    da 94 appuntamenti riscritti nel calendario in 9 secondi). Una cancellazione
+    o una modifica di un appuntamento non ha push: Outlook la scarica solo quando
+    è davvero in primo piano, cioè a telefono sbloccato (2026-10-11: sette inviti
+    cancellati alle 09:45 UTC arrivati sul telefono alle 11:42:29, appena
+    sbloccato). Si misura quello che Outlook dice davvero: per ogni casella
+    l'ultima riga "isSyncingForAccount" di calendarSync.log (a ogni giro il
+    servizio forza la sincronizzazione e Outlook risponde per ciascuna), e se le
+    notifiche push sono disponibili (notifications.log). Giallo se Outlook tace
+    da più di OUTLOOK_GIALLO_S o ha sospeso la casella; rosso oltre
+    OUTLOOK_ROSSO_S; giallo anche se la schermata di blocco è su ("bloccato" in
+    battito.json: le cancellazioni e le modifiche arrivano in ritardo) o se le
+    push non ci sono E Outlook non è in primo piano (allora scarica solo a
+    schermo acceso).
 
   - Calendario Google (servizi Google del telefono): da dumpsys content, per
     "Account <email> com.google" la riga di com.android.calendar con l'esito

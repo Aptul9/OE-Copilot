@@ -1,8 +1,7 @@
 """Regole comuni alle caselle lette dall'agente remoto: di che azienda è una riunione,
 quale copia tenere fra due uguali e che colore darle.
 
-Prima le caselle potevano essere lette anche da Outlook su questo PC (outlook_com): le
-regole stanno qui, in un posto solo, e non dipendono da dove arrivano gli eventi.
+Le regole stanno qui, in un posto solo, e non dipendono da dove arrivano gli eventi.
 """
 import json
 import logging

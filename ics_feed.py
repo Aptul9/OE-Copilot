@@ -216,7 +216,7 @@ def _feed_festivita():
 def fetch_events(cfg, start, end):
     """Eventi dei calendari ICS attivi nell'intervallo. Ritorna (eventi, errori).
 
-    start/end sono datetime locali naive, come per la lettura da Outlook.
+    start/end sono datetime locali naive, come per gli eventi delle caselle.
     """
     # Le festività italiane sono un feed fisso, oltre a quelli aggiunti dall'utente.
     feeds = [_feed_festivita()] + list(cfg.get("ics_calendars", []))

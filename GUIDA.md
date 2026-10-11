@@ -1,26 +1,19 @@
-# OE Copilot — guida completa (PC + server)
+# OE Copilot, guida completa (server e app per Windows)
 
-Guida per installare OE Copilot da zero su un **PC Windows** e, se si vuole, su un **server Linux**
-(la "VM") che legge i calendari al posto del PC. Spiega anche *perché* è fatto così, perché le
-scelte non sono ovvie e senza il ragionamento è facile rifarle male.
+Guida per installare OE Copilot: il **server Linux** (la "VM") che legge i calendari e li mostra in un browser e, se serve, l'**app per Windows**, che li mostra con i promemoria. Spiega anche *perché* è fatto così, perché le scelte non sono ovvie e senza il ragionamento è facile rifarle male.
 
-> In breve: l'app unisce in un calendario unico tutte le caselle (aziendali e personali), con un
-> colore per azienda e i promemoria. Può leggere le caselle in due modi:
-> - **modalità PC** — legge direttamente Outlook desktop già installato sul PC (nessun server);
-> - **modalità server** — le caselle le legge un agente su un server e il PC gliele chiede
->   attraverso un tunnel SSH. Così sul PC non serve tenere Outlook aperto né far "girare" i
->   calendari: gli accessi stanno sul server.
+> In breve: OE Copilot unisce in un calendario unico tutte le caselle (aziendali e personali), con un colore per azienda. Le caselle le legge un agente sul server, da un telefono Android virtuale in cui gli accessi si fanno una volta sola. Si vedono in due modi:
+> - **nel browser**: il server serve la pagina dietro HTTPS e una pagina di accesso (sezione 4.7). È il modo principale e non chiede niente al PC;
+> - **con l'app per Windows** (facoltativa): apre un tunnel SSH verso l'agente e aggiunge i promemoria di Windows e Telegram e il pulsante *Apri in Outlook*.
 >
-> La modalità PC basta e avanza se usi un solo computer. La modalità server serve se non vuoi (o
-> non puoi) far leggere i calendari al tuo PC, o se vuoi che i promemoria funzionino anche a PC
-> spento.
+> Sul PC Outlook non serve per leggere i calendari, perché gli accessi stanno sul server: serve solo al pulsante *Apri in Outlook* dell'app per Windows.
 
 Indice:
 1. [I ragionamenti (perché è fatto così)](#1-i-ragionamenti-perché-è-fatto-così)
 2. [Architettura](#2-architettura)
-3. [Installazione sul PC](#3-installazione-sul-pc)
-4. [Installazione sul server (modalità server)](#4-installazione-sul-server-modalità-server)
-5. [Collegare il PC al server](#5-collegare-il-pc-al-server)
+3. [L'app per Windows (facoltativa)](#3-lapp-per-windows-facoltativa)
+4. [Installazione sul server](#4-installazione-sul-server)
+5. [Collegare l'app per Windows al server](#5-collegare-lapp-per-windows-al-server)
 6. [Il rilevatore degli accessi scaduti](#6-il-rilevatore-degli-accessi-scaduti)
 7. [Manutenzione e diagnostica](#7-manutenzione-e-diagnostica)
 8. [Sicurezza e privacy](#8-sicurezza-e-privacy)
@@ -59,22 +52,23 @@ si aggiunge nelle impostazioni come su un telefono vero e il sincronizzatore di 
 calendari in quello di sistema, dove l'agente li legge come quelli di Outlook. L'immagine redroid
 non li ha: [`server/immagine-telefono/`](server/immagine-telefono/Dockerfile) ci aggiunge
 [MindTheGapps](https://github.com/MindTheGapps) (release ufficiale, impronta controllata, app con la
-firma di Google). [DAVx⁵](https://www.davx5.com/) (CalDAV) resta supportato dall'agente, ma il suo
-login Google richiede un client OAuth proprio: quello della build OSE non è più accettato da Google
-(`Error 401: invalid_client`).
+firma di Google). Un client CalDAV, [DAVx⁵](https://www.davx5.com/), fu provato e tolto dal
+repository: il suo login Google richiede un client OAuth proprio, e quello della build OSE non è
+più accettato da Google (`Error 401: invalid_client`).
 
 **Perché un servizio che forza la sincronizzazione.** Due vincoli di Android:
 - la sincronizzazione periodica ha un **minimo di 15 minuti**;
-- Outlook, senza i servizi Google (niente notifiche push), **scarica le novità dal server solo
-  quando la sua schermata principale è in primo piano**: fermo nelle impostazioni non riceve nulla.
+- Outlook riceve dai servizi Google le notifiche push (FCM), ma sono quelle della **posta**: una cancellazione o una modifica di un appuntamento non ne ha. Il telefono la applica solo quando Outlook è **davvero in primo piano**, cioè a telefono sbloccato (11/10/2026: sette inviti cancellati alle 09:45 UTC arrivati sul telefono alle 11:42:29, appena sbloccato). Prima dei servizi Google non c'erano nemmeno le push: Outlook fermo nelle impostazioni non scaricava niente (05/10/2026, nessuna riunione nuova in 6 minuti).
 
-Il servizio `oe-copilot-sincronizza` gira sul server e ogni 30 s forza i lavori di sincronizzazione,
-tiene Outlook in primo piano e spinge DAVx⁵. Così l'aggiornamento è di ~20–30 s invece di 15 min.
+Il servizio `oe-copilot-sincronizza` gira sul server e a ogni giro (circa 35 secondi: 30 di pausa più il lavoro del giro) forza i lavori di sincronizzazione, porta Outlook sulla schermata principale e tiene sveglio il telefono. Così l'aggiornamento è di ~20-30 s invece di 15 min, finché Outlook è in primo piano.
+
+**Perché il telefono ha un PIN e resta sbloccato.** Un criterio di sicurezza del dispositivo, imposto da una delle aziende le cui caselle sono in Outlook, chiede una password del dispositivo (PIN di almeno 4 cifre, senza ripetizioni né sequenze) e altrimenti Outlook rimuove la casella: togliere il PIN l'11/10/2026 ha fatto comparire in Outlook la schermata "Imposta la password del dispositivo". Lo stesso criterio forza lo spegnimento dello schermo, e quindi il blocco, 15 minuti dopo l'ultimo input (`mMaximumScreenOffTimeoutFromDeviceAdmin`; lo "schermo sempre acceso" di Android viene ignorato). Un telefono bloccato non applica cancellazioni e modifiche, per questo il servizio manda un tocco sulla barra di stato ogni 10 giri (circa 6 minuti): conta come attività dell'utente e rimanda il blocco. Il PIN resta, lo digita l'utente e nessuno script lo scrive; una volta digitato il telefono resta sbloccato, e di questo si tiene conto nella [sezione 8](#8-sicurezza-e-privacy).
 
 **Perché un tunnel SSH (e non un'API esposta su internet).** L'agente ascolta **solo sul localhost
-del server**. Il PC lo raggiunge con un tunnel SSH che l'app apre da sola: su internet non è esposto
-nulla, l'accesso passa dalla tua chiave SSH, più una chiave dell'API. Nessuna porta aperta, nessun
-certificato da gestire.
+del server**. L'app per Windows lo raggiunge con un tunnel SSH che apre da sola: l'accesso passa dalla
+tua chiave SSH, più una chiave dell'API, senza porte aperte e senza certificati da gestire. Il browser
+passa invece dall'interfaccia web (4.7), l'unica parte di OE Copilot raggiungibile da internet: HTTPS
+e una pagina di accesso davanti a un servizio che non ha password.
 
 **Perché il rilevatore degli accessi scaduti.** Se un login sul telefono scade (password cambiata,
 sessione revocata, MFA), il calendario Android resta com'era e la lettura **riesce lo stesso**: il
@@ -86,45 +80,37 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
 ## 2. Architettura
 
 ```
-                 PC Windows                                   Server Linux
- ┌─────────────────────────────────┐          ┌──────────────────────────────────────────┐
- │  OE Copilot (app Python)         │          │  Docker:                                 │
- │   interfaccia (FullCalendar)     │          │   ┌───────────────┐   ┌────────────────┐ │
- │   eventi.py  ──►  agente_remoto ─┼─ tunnel ─┼─► │ agent (HTTP)  │◄──┤ telefono       │ │
- │                                  │   SSH    │   │ 127.0.0.1:3180│   │ (redroid)      │ │
- │   (promemoria Windows/Telegram)  │          │   └──────┬────────┘   │ Outlook+Google │ │
- └─────────────────────────────────┘          │          │ legge      └───────┬────────┘ │
-                                               │   calendar.db (sola lettura) │          │
-                                               │   servizio oe-copilot-sincronizza ◄──────┘
-                                               │   (forza sync ogni 30s, rileva accessi)   │
-                                               └──────────────────────────────────────────┘
+ App per Windows ──tunnel SSH─────────────────────────┐
+ (facoltativa)                                        ▼
+ Browser ──HTTPS──► caddy-ui ──► gateway ──► ui ──► agent ──► calendar.db del telefono (sola lettura)
+                        │        (accesso)                  ▲
+                        └─ /telefono/ ─► schermo ──adb──► telefono (redroid) ◄── oe-copilot-sincronizza
+                                                                                   (ogni 35 s)
 ```
 
-- **telefono** = container redroid con l'app Outlook (caselle Microsoft) e i servizi Google
-  (calendari Google). Le app copiano gli appuntamenti nel calendario di sistema di Android.
-- **agent** = piccolo server HTTP che legge quel calendario e lo espone con un'API a chiave, in
-  ascolto solo su `127.0.0.1:3180` del server.
-- **servizio** = tiene aggiornato il telefono e scrive i "segni di vita" (`battito.json`,
-  `accessi.json`).
-- **app sul PC** = apre il tunnel SSH e chiede gli eventi all'agent; per il resto funziona come in
-  modalità PC (griglia, colori, promemoria).
-- **interfaccia nel browser** (facoltativa, 4.7) = la stessa pagina servita dal server dietro
-  HTTPS e pagina di accesso; chiede gli eventi all'agent sulla rete di Docker.
+- **telefono** = container redroid con l'app Outlook (caselle Microsoft) e i servizi Google (calendari Google). Le app copiano gli appuntamenti nel calendario di sistema di Android.
+- **agent** = piccolo server HTTP che legge quel calendario e lo espone con un'API a chiave, in ascolto solo su `127.0.0.1:3180` del server.
+- **servizio** (`oe-copilot-sincronizza`) = tiene aggiornato il telefono, rileva gli accessi scaduti e scrive i "segni di vita" (`battito.json`, `accessi.json`).
+- **interfaccia nel browser** (4.7) = `caddy-ui` (HTTPS), `gateway` (pagina di accesso e pagina in TypeScript) e `ui` (la logica dell'app, che chiede gli eventi all'agent sulla rete di Docker).
+- **schermo** (4.8) = il telefono mostrato e comandato nel browser, dietro lo stesso accesso.
+- **app per Windows** (facoltativa, sezione 3) = apre il tunnel SSH e chiede gli eventi all'agent; in più dà i promemoria di Windows e Telegram.
 
 Il codice del server sta nella cartella **`server/`** del repository.
 
 ---
 
-## 3. Installazione sul PC
+## 3. L'app per Windows (facoltativa)
+
+L'interfaccia nel browser (4.7) non chiede niente al PC. L'app per Windows serve per i **promemoria** (notifica di Windows e Telegram), per l'avvio con Windows e per il pulsante *Apri in Outlook*. Le caselle le legge dal server, attraverso un tunnel SSH ([sezione 5](#5-collegare-lapp-per-windows-al-server)).
 
 ### Requisiti
 - Windows 10/11.
-- **Outlook desktop classico** installato e configurato (serve per la modalità PC e per il pulsante
-  "Apri in Outlook"; non il "Nuovo Outlook").
 - **Python 3.12** (da python.org, oppure con [scoop](https://scoop.sh):
   `scoop bucket add versions` e `scoop install python312`).
 - Runtime **Microsoft Edge WebView2** (di norma già presente su Windows 11).
 - Connessione a internet al primo avvio (FullCalendar arriva da una CDN).
+- Un client `ssh` (OpenSSH di Windows) e l'accesso al server con una chiave: sezione 5.
+- **Outlook desktop classico**, solo per il pulsante *Apri in Outlook* (non il "Nuovo Outlook"): per leggere i calendari non serve.
 
 ### Passi
 Dalla cartella dell'app, in un prompt dei comandi:
@@ -150,14 +136,14 @@ voce nel [README](README.md).
 - Prima volta: doppio clic su **`start.bat`** (gli errori finiscono in `debug.log`/`crash.log`).
 - Uso quotidiano: **`Calendar Hub (silenzioso).vbs`** (senza finestre di prompt).
 - Controllo di salute: `.venv\Scripts\python verifica.py` (con `--avvio` lancia anche l'app).
-  Se Outlook era chiuso lo avvia e quel giro segna rosso "Outlook risponde": rilancialo dopo
-  una ventina di secondi.
+  Legge le caselle dal server: finché il collegamento della [sezione 5](#5-collegare-lapp-per-windows-al-server)
+  non c'è, i controlli sui dati segnano rosso.
 
-A questo punto, in **modalità PC**, hai finito. Se vuoi la modalità server, continua.
+Senza il collegamento al server l'app si apre ma non mostra nessuna casella: restano i calendari da link e gli eventi personali.
 
 ---
 
-## 4. Installazione sul server (modalità server)
+## 4. Installazione sul server
 
 ### 4.1 Requisiti dell'host
 - Un host **Linux** con **Docker** (e il plugin `compose`).
@@ -204,7 +190,7 @@ sudoedit agent/fonti.json
    "account": "mario.rossi@azienda.example"}
 ]
 ```
-`account` è l'indirizzo esatto come lo vedi in Outlook/DAVx⁵ sul telefono; `nome` è l'etichetta che
+`account` è l'indirizzo esatto come lo vedi in Outlook sul telefono; `nome` è l'etichetta che
 vuoi mostrare; `id` è un identificativo qualsiasi ma univoco.
 
 Di una casella Outlook l'agente legge solo il calendario principale. Per leggerne altri (i
@@ -222,16 +208,16 @@ ospita.
 
 ### 4.3 Avviare lo stack
 ```bash
-sudo docker compose up -d        # avvia 'telefono' (redroid) e 'agent'
+sudo docker compose up -d telefono agent    # avvia 'telefono' (redroid) e 'agent'
 sudo docker ps                   # devono essere "Up" entrambi
 ```
 Il primo avvio scarica le immagini. Se il telefono non parte, quasi sempre manca il modulo binder
 (vedi 4.1).
 
 ### 4.4 Configurare il telefono virtuale
-**Impostazioni e app.** Fuso orario, lingua, schermo sempre acceso, le app (Outlook, DAVx⁵, Firefox), niente
-risparmio batteria per Outlook e DAVx⁵ e il permesso sul calendario del sincronizzatore di Google li
-mette lo script, senza toccare lo schermo:
+**Impostazioni e app.** Fuso orario, lingua, schermo sempre acceso, l'app Outlook, niente
+risparmio batteria per Outlook e il permesso sul calendario del sincronizzatore di Google li mette
+lo script, senza toccare lo schermo:
 ```bash
 sudo /opt/oe-copilot/strumenti/prepara_telefono.sh
 # altro fuso o altra lingua: sudo FUSO=Europe/London LINGUA=en-GB .../prepara_telefono.sh
@@ -246,7 +232,7 @@ L'app Outlook esiste solo sul Play Store, quindi l'APK
 nel repository, per questo è lì e non fra i sorgenti. L'aggiornamento automatico lo scarica e lo
 porta in `/opt/oe-copilot/apk/`; a mano:
 ```bash
-gh release download apk --repo <proprietario>/OE-Copilot --pattern '*.apk' --dir /opt/oe-copilot/apk
+gh release download apk --repo <proprietario>/OE-Copilot --pattern 'Outlook-*.apk' --dir /opt/oe-copilot/apk
 ```
 Lo script installa solo l'APK elencato in `apk/SHA256SUMS` (che è nel repository) e solo se
 l'impronta coincide. Che sia davvero l'app di Microsoft lo dice la firma, che Android controlla
@@ -261,17 +247,7 @@ lì l'app si aggiorna con `docker cp` e `pm install -r`, i login restano.
 > Aurora Store in sessione anonima, da un server in cloud, non funziona: il suo servizio di accesso
 > risponde 403 agli indirizzi dei datacenter (provato da Oracle Cloud il 09/10/2026).
 
-**Schermo.** Il telefono si vede dal **tuo PC** con [scrcpy](https://github.com/Genymobile/scrcpy)
-(`scoop install scrcpy`, oppure lo zip dal sito: contiene anche `adb`). Dalla cartella dell'app:
-```bat
-.venv\Scripts\python strumenti\schermo_telefono.py <utente@server>
-```
-Lo script mette in pausa il servizio che altrimenti ti "ruberebbe" lo schermo (file `PAUSA`), apre
-un tunnel SSH verso la porta adb del telefono (la `5555`, esposta solo sul localhost del server),
-collega adb e apre la finestra. Quando la chiudi toglie la pausa e chiude il tunnel. Se
-`agente_remoto` è già nella personalizzazione l'indirizzo si può omettere.
-
-<details><summary>Gli stessi passi a mano</summary>
+**Schermo.** Il telefono si vede e si comanda dal browser, dalla pagina `/telefono/` dell'interfaccia web ([sezione 4.8](#48-lo-schermo-del-telefono-nel-browser-facoltativo)): è il modo per fare i login, digitare il PIN dopo un riavvio e inserire i codici MFA. Senza quel servizio il telefono si vede dal **tuo PC** con [scrcpy](https://github.com/Genymobile/scrcpy) (`scoop install scrcpy`, oppure lo zip dal sito: contiene anche `adb`), attraverso un tunnel SSH verso la porta adb del telefono (la `5555`, esposta solo sul localhost del server). Il file `PAUSA` ferma il servizio di sincronizzazione, che altrimenti porterebbe Outlook davanti a ogni giro e ti "ruberebbe" lo schermo:
 
 ```bat
 ssh <utente@server> "sudo touch /opt/oe-copilot/telefono/PAUSA"
@@ -282,9 +258,8 @@ scrcpy -s 127.0.0.1:15555
 rem alla fine:
 ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
 ```
-</details>
 
-**Login**, nella finestra del telefono:
+**Login**, sullo schermo del telefono:
 1. **Caselle Microsoft** in Outlook. Per **ogni** casella, dopo averla aggiunta, apri
    *Impostazioni → Calendario → Sincronizza calendari* e **accendi l'interruttore**: è **per
    account**, e le caselle aggiunte dopo partono **spente** (è il motivo tipico per cui un
@@ -306,24 +281,28 @@ ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
 3. Scrivi le caselle in `agent/fonti.json` ([sezione 4.2](#42-prendere-il-codice)) e riavvia
    l'agente: `sudo docker compose restart agent`.
 
-> I login (password e MFA) li fai **tu**, dalla finestra del telefono.
+> I login (password e MFA) li fai **tu**, dallo schermo del telefono.
 
 ### 4.5 Il servizio di sincronizzazione
-Installa la unit systemd (tiene aggiornato il telefono ogni 30 s e scrive i segni di vita):
+Installa la unit systemd (tiene aggiornato il telefono e scrive i segni di vita). La unit è un collegamento al file nel repository, così si aggiorna insieme al resto:
 ```bash
-sudo cp /opt/oe-copilot/server/strumenti/oe-copilot-sincronizza.service /etc/systemd/system/
-# (se hai copiato server/ in /opt/oe-copilot, lo script è già in /opt/oe-copilot/strumenti/)
+sudo ln -sf /opt/oe-copilot/strumenti/oe-copilot-sincronizza.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now oe-copilot-sincronizza
 systemctl status oe-copilot-sincronizza        # deve essere "active (running)"
 ```
-Cosa fa, a ogni giro: forza i lavori di sincronizzazione del calendario per ogni casella, spinge
-DAVx⁵, **riporta Outlook sulla schermata principale** (quando lo schermo lo permette), e scrive
-`stato/battito.json`. Ogni minuto lancia anche il **rilevatore degli accessi** (sezione 6).
+Un giro dura circa 35 secondi (30 di pausa, `OGNI`, più il lavoro del giro) e fa questo:
+- forza i lavori di sincronizzazione del calendario di Outlook per ogni casella e, ogni 4 giri (`GOOGLE_OGNI`), quelli di Google;
+- se lo schermo è spento e nessuna pagina del telefono è aperta, lo riaccende; poi Outlook esce dallo schermo (si porta davanti la schermata iniziale di Android) e subito dopo **torna sulla schermata principale**. Con quel ritorno Outlook ha scaricato le cancellazioni (11/10/2026, 11:42:26 UTC); che serva anche restando sempre davanti non è provato;
+- scrive `stato/battito.json` (`quando`, `pausa`, `telefono`, `outlook_davanti`, `bloccato`);
+- ogni 2 giri (`ACCESSI_OGNI`, circa 70 secondi) lancia il **rilevatore degli accessi** (sezione 6);
+- ogni 10 giri (`TOCCO_OGNI`, circa 6 minuti, `0` spegne) manda un tocco sulla barra di stato a schermo acceso.
 
-**Telefono sbloccato.** Outlook scarica una cancellazione o una modifica solo quando è davvero davanti, cioè a telefono sbloccato (a telefono bloccato arrivano solo le push della posta): il criterio del dispositivo di Outlook (`mMaximumScreenOffTimeoutFromDeviceAdmin`, 15 minuti, forzato) spegne lo schermo e blocca il telefono 15 minuti dopo l'ultimo input. Ogni 5 minuti (`TOCCO_OGNI`, in giri da 30 s; `0` spegne) il servizio manda un tocco sulla barra di stato a schermo acceso, che conta come attività dell'utente: dopo il PIN il telefono resta sbloccato. Il PIN lo digita sempre l'utente, a telefono spento non si manda niente, e il blocco automatico del criterio di Outlook non scatta più finché il servizio gira: chi arriva alla pagina del telefono (dopo l'accesso) trova un telefono sbloccato. Per tornare al blocco dopo 15 minuti: `TOCCO_OGNI=0` nella unit e riavvio del servizio.
+Con il file `PAUSA` (`telefono/PAUSA`, oppure `stato/schermo/PAUSA` finché una pagina `/telefono/` è aperta, 4.8) il servizio non porta Outlook in primo piano e forza solo le sincronizzazioni di Android.
 
-**Il PIN non si può togliere.** Toglierlo (`cmd lock_settings clear --old <PIN>` dal server) l'11/10/2026 ha fatto comparire in Outlook la schermata "Imposta la password del dispositivo": il criterio di Serco chiede un PIN di almeno 4 cifre, senza ripetizioni né sequenze (4444, 1234, 2468), e dice che altrimenti la casella `antonio.maritato@serco.eu` viene rimossa da Outlook. Il PIN si rimette con `cmd lock_settings set-pin <PIN>` dal server (le schermate del PIN in Impostazioni escono nere nella pagina). Con il PIN lo sblocco lo digita sempre l'utente; il servizio tiene lo schermo acceso (tocco ogni 5 minuti) e, se lo schermo è spento e nessuna pagina è aperta, lo riaccende prima di portare Outlook davanti.
+**Telefono sbloccato.** Outlook applica una cancellazione o una modifica solo quando è davvero davanti, cioè a telefono sbloccato; a telefono bloccato arrivano solo le push della posta. Il criterio del dispositivo di Outlook (sezione 1) blocca il telefono 15 minuti dopo l'ultimo input, e il tocco sulla barra di stato rimanda il blocco: dopo il PIN il telefono resta sbloccato, e chi arriva alla pagina del telefono (dopo l'accesso) lo trova sbloccato. Per tornare al blocco dopo 15 minuti si aggiunge `Environment=TOCCO_OGNI=0` alla unit, nel repository, e si ridistribuisce.
+
+**Il PIN non si può togliere.** Il criterio chiede una password del dispositivo: toglierla (`cmd lock_settings clear --old <PIN>` dal server) l'11/10/2026 ha fatto comparire in Outlook la schermata "Imposta la password del dispositivo", con l'avviso che altrimenti la casella viene rimossa. Il PIN si rimette con `cmd lock_settings set-pin <PIN>` dal server (le schermate del PIN in Impostazioni escono nere nella pagina). Lo sblocco lo digita sempre l'utente: se lo schermo è spento il servizio lo riaccende, sulla schermata di blocco, e non manda altro.
 
 Verifica che l'agente risponda (dal server):
 ```bash
@@ -332,45 +311,33 @@ curl -s -H "Authorization: Bearer $(sudo grep ^API_KEY= /opt/oe-copilot/.env | c
 ```
 
 ### 4.6 Aggiornamento automatico (facoltativo)
-La GitHub Action `.github/workflows/server.yml` porta `server/` sul server a ogni push su `main`
-che lo tocca: controlla la sintassi, copia il codice con rsync e lancia
-`strumenti/aggiorna_server.sh`, che rimette a posto impostazioni e app del telefono
-(`prepara_telefono.sh`, con l'APK di Outlook preso dalla release `apk`), ricostruisce l'agente, riavvia il servizio e verifica che
-l'agente risponda e che il battito sia fresco. Se la verifica fallisce rimette la versione di
-prima. `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/` non vengono mai toccati. Il
-telefono si riavvia solo se cambia la sua parte di `docker-compose.yml`. Se in `.env` c'è
-`UI_HOST`, a fine aggiornamento parte anche l'interfaccia nel browser (4.7): un suo guasto rende
-rossa la Action ma non riporta indietro l'agente né il telefono.
+La GitHub Action `.github/workflows/server.yml` porta `server/` sul server a ogni push su `main` che tocca `server/`, `web/` o i moduli dell'app che l'interfaccia web riusa (l'elenco è in `paths` del workflow): controlla la sintassi e le prove, copia il codice con rsync (`--delete`) e lancia `strumenti/aggiorna_server.sh`, che rimette a posto impostazioni e app del telefono (`prepara_telefono.sh`, con l'APK di Outlook preso dalla release `apk`), ricostruisce e ricrea l'agente, riavvia il servizio e verifica che l'agente risponda e che il battito sia fresco. Se la verifica fallisce rimette la versione di prima. `.env`, `agent/fonti.json`, `telefono/`, `stato/`, `ui-dati/` e `.versione` non vengono toccati dalla copia (`.versione` lo scrive lo script, con lo SHA distribuito). Il telefono si ricrea solo se cambia la sua parte di `docker-compose.yml`. Se in `.env` c'è `UI_HOST`, a fine aggiornamento partono anche l'interfaccia nel browser (4.7) e lo schermo del telefono (4.8): un loro guasto rende rossa la Action ma non riporta indietro l'agente né il telefono. Un push che tocca solo file fuori da quell'elenco (per esempio `GUIDA.md` o `README.md`) non lancia niente, e `.versione` resta indietro.
 
 Sul server serve, una volta sola, un utente dedicato che entra solo con una chiave SSH:
 ```bash
 sudo useradd -m -s /bin/bash -G docker oecopilot
+# il codice è dell'utente della Action; telefono/ e stato/ restano di root (li creano Docker e il servizio), ui-dati/ dell'utente 10001
 sudo chown oecopilot:oecopilot /opt/oe-copilot /opt/oe-copilot/.env
-sudo chown -R oecopilot:oecopilot /opt/oe-copilot/agent /opt/oe-copilot/strumenti /opt/oe-copilot/docker-compose.yml
-# la unit punta al file nel repository: così si aggiorna anche lei
-sudo ln -sf /opt/oe-copilot/strumenti/oe-copilot-sincronizza.service /etc/systemd/system/
+cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent apk caddy-ui immagine-telefono schermo-web strumenti ui web-ts docker-compose.yml .env.esempio
 echo 'oecopilot ALL=(root) NOPASSWD: /usr/bin/systemctl daemon-reload, /usr/bin/systemctl restart oe-copilot-sincronizza' \
   | sudo tee /etc/sudoers.d/oe-copilot >/dev/null && sudo chmod 440 /etc/sudoers.d/oe-copilot
 ```
+Il collegamento della unit (4.5) fa sì che l'aggiornamento sostituisca anche lei; `daemon-reload` e il riavvio del servizio sono gli unici due comandi con `sudo` che l'utente può lanciare.
+
 La chiave pubblica della Action va in `/home/oecopilot/.ssh/authorized_keys`. Nel repository
 servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiave privata) e
 `DEPLOY_KNOWN_HOSTS` (la riga di `ssh-keyscan -t ed25519 <server>`). Senza i secret
 l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la Action.
 
 ### 4.7 L'interfaccia nel browser (facoltativa)
-La stessa pagina e la stessa logica dell'app per Windows, servite dal server a un browser
-qualunque, con HTTPS e una pagina di accesso: stesse caselle, stessi colori, pallini e filtri. Gli interruttori
+La stessa logica dell'app per Windows (stesse caselle, stessi colori, pallini e filtri) con una
+pagina in TypeScript, servita dal server a un browser qualunque, con HTTPS e una pagina di accesso. Gli interruttori
 (calendari, aziende, alias, calendari da link ICS, eventi personali) restano sul server. Non ci
 sono i promemoria (restano all'app per Windows), i controlli della finestra, l'avvio con Windows
 e *Apri in Outlook*; i link delle riunioni si aprono nel browser.
 
 Come è fatta, in `server/docker-compose.yml`:
-- **`ui`**: un piccolo server Python (`server/ui/server.py`) che serve `web/` e chiama la classe
-  `Api` di `app.py`, la stessa che la finestra di Windows chiama con pywebview. I moduli e la
-  pagina dell'app li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola):
-  il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose
-  (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci
-  arriva solo il `gateway`.
+- **`ui`**: un piccolo server Python (`server/ui/server.py`) che chiama la classe `Api` di `app.py`, la stessa che la finestra di Windows chiama con pywebview, e serve i loghi (`/logos/<file>`). I moduli dell'app e `web/logos/` li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola): il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci arriva solo il `gateway`.
 - **`gateway`** (`server/web-ts/`, Next.js e Better Auth): la pagina di accesso e il cancello
   davanti a `ui`. Senza sessione una pagina rimanda a `/login?next=...` e l'API (`/api/*`)
   risponde 401 in JSON; con la sessione la richiesta passa a `ui` (il cookie di sessione non ci
@@ -381,12 +348,7 @@ Come è fatta, in `server/docker-compose.yml`:
   POST, `Sec-Fetch-Site` dello stesso sito). Il tasto *Esci* della barra a sinistra chiude la
   sessione. Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD` di `.env`; le
   sessioni e il blocco stanno in `ui-dati/gateway.db`. Porta solo su `127.0.0.1:3190`.
-- **Interfaccia nel gateway**: la pagina principale (`/`) è scritta in TypeScript dentro il gateway
-  (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn): stessi dati e
-  stessa API (`POST /api/<metodo>` di `app.Api`) di quella in `web/`, in più il layout per telefono e
-  tablet. Quella di `web/` (la stessa dell'app per Windows) resta a `/index.html`, con il link
-  *Apri l'interfaccia precedente* nelle impostazioni. Una modifica a `web/` che riguarda anche il
-  browser va riportata in `web-ts` finché la pagina di `web/` non si toglie.
+- **Interfaccia nel gateway**: la pagina (`/`) è scritta in TypeScript dentro il gateway (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn) e usa la stessa API (`POST /api/<metodo>` di `app.Api`) della pagina di `web/`, che è quella dell'app per Windows e nel browser non si serve più (`/index.html` risponde 404). In più ha il layout per telefono e tablet. Una modifica a `web/` che riguarda anche il browser va riportata in `web-ts`: le due pagine non condividono codice.
 - **`caddy-ui`**: Caddy con HTTPS, solo su `127.0.0.1:4445`, che passa tutto al gateway.
   L'indirizzo arriva da `.env`, non dal repository.
 - **`ui-dati/`**: configurazione, interruttori, cache, `personalizzazione.json` (nomi, sigle e
@@ -402,15 +364,9 @@ sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-
 openssl rand -hex 32
 ```
 In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`, `ADMIN_EMAIL=<email>`,
-`ADMIN_PASSWORD=<password lunga e casuale, senza $>`, `BETTER_AUTH_SECRET=<il segreto>`. Il
+`ADMIN_PASSWORD=<almeno 12 caratteri, lunga e casuale, senza $>`, `BETTER_AUTH_SECRET=<il segreto>`. Il
 prossimo aggiornamento costruisce e avvia `ui`, `gateway` e `caddy-ui`. Per cambiare la password
 si cambia `ADMIN_PASSWORD` e si riavvia il gateway: le sessioni aperte si chiudono.
-
-**Tornare indietro.** Annullare la modifica del gateway e ridistribuire rimette `caddy-ui` con
-la password del browser (basic auth), che usa `UI_USER` e `UI_HASH` di `.env`: vanno tenuti.
-L'hash si fa con `caddy hash-password --plaintext "$PW"` (con la password su stdin si ferma con
-`EOF`, oppure cifra anche l'a capo e poi la password giusta non entra) e va in `.env` tra apici
-singoli: i `$` non sono variabili.
 
 **HTTPS.** Caddy ottiene da solo il certificato, e per farlo il suo nome deve arrivargli da
 internet. Dove la 443 è libera basta pubblicare `caddy-ui` su `443:443` e `80:80` al posto di
@@ -423,14 +379,14 @@ e si riavvia sslh (`KillMode=process`: le connessioni aperte non cadono). sslip.
 solo il nome nell'indirizzo, non serve DNS. La porta 80 è di un altro Caddy, quindi il certificato
 arriva col TLS-ALPN, che passa da sslh: il primo tentativo HTTP-01 fallisce ed è previsto.
 
-Prova: senza sessione `curl -I https://<UI_HOST>/` risponde 302 verso `/login?next=%2F` e
+Prova: senza sessione `curl -I https://<UI_HOST>/` risponde 307 verso `/login?next=%2F` e
 `curl -X POST -H 'Content-Type: application/json' -d '[]' https://<UI_HOST>/api/get_config`
 risponde 401; con il cookie di `POST /api/auth/sign-in/email` (`curl -c jar`, poi `-b jar`) la
 pagina risponde 200.
 
-**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno in `config.json`, voce `gruppi_calendari`, per nome come li mostra la barra: `{"antonio": ["ITV", "BBVA"], "samuele": ["Prisma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome. Li ha solo l'interfaccia nel gateway: la pagina di `web/` (l'app per Windows) no.
+**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno in `config.json`, voce `gruppi_calendari`, per nome come li mostra la barra: `{"gruppo1": ["Alfa", "Beta"], "gruppo2": ["Gamma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome. Li ha solo l'interfaccia nel gateway: la pagina di `web/` (l'app per Windows) no.
 
-**Disponibilità pubblica.** `https://<UI_HOST>/disponibilita` si apre senza accesso: è lo stesso calendario (viste, minicalendario, zoom, tema) con ogni impegno ridotto a un blocco "Occupato", i soli orari. Impegni che si sovrappongono o si toccano sono un blocco solo; le festività restano. Non ci sono titoli, luoghi, partecipanti, nomi di calendari o di aziende, né ricerca, nuovo evento, legenda, timesheet e impostazioni. `?gruppo=antonio` conta solo i calendari di quel gruppo. Contano tutti i calendari, anche quelli spenti nella barra laterale (gli interruttori sono un filtro della vista), e i giorni interi non occupano; se una sorgente non risponde la pagina lo scrive. I dati: `GET /api/disponibilita?da=AAAA-MM-GG&a=AAAA-MM-GG[&gruppo=nome]` (al più 62 giorni), nella forma di `get_events` con solo "Occupato". Il gateway li legge a blocchi di 28 giorni, li tiene un minuto e fa al più 20 letture al minuto in tutto (dietro sslh i client non si distinguono); il servizio `ui` espone `get_disponibilita`, che dà solo orari (`disponibilita.py`).
+**Disponibilità pubblica.** `https://<UI_HOST>/disponibilita` si apre senza accesso: è lo stesso calendario (viste, minicalendario, zoom, tema) con ogni impegno ridotto a un blocco "Occupato", i soli orari. Impegni che si sovrappongono o si toccano sono un blocco solo; le festività restano. Non ci sono titoli, luoghi, partecipanti, nomi di calendari o di aziende, né ricerca, nuovo evento, legenda, timesheet e impostazioni. `?gruppo=gruppo1` conta solo i calendari di quel gruppo. Contano tutti i calendari, anche quelli spenti nella barra laterale (gli interruttori sono un filtro della vista), e i giorni interi non occupano; se una sorgente non risponde la pagina lo scrive. I dati: `GET /api/disponibilita?da=AAAA-MM-GG&a=AAAA-MM-GG[&gruppo=nome]` (al più 62 giorni), nella forma di `get_events` con solo "Occupato". Il gateway li legge a blocchi di 28 giorni, li tiene un minuto e fa al più 20 letture al minuto in tutto (dietro sslh i client non si distinguono); il servizio `ui` espone `get_disponibilita`, che dà solo orari (`disponibilita.py`).
 
 **Loghi delle aziende.** Accanto al nome di ogni azienda nella barra a sinistra, e sugli eventi del calendario (nell'angolo, e nelle righe della vista mese e agenda), compare il suo logo; senza logo restano le iniziali nel colore dell'azienda. Si dichiarano in `ui-dati/personalizzazione.json`, voce `interfaccia.loghi`: il nome come lo mostra la barra e il file, per esempio `{"interfaccia": {"loghi": {"Alfa": "logos/alfa.png"}}}`. I file stanno sul server in `ui-dati/logos/` (PNG quadrati, 128 px bastano; la cartella non è nel repository, come il resto dei dati di chi usa l'app) e il servizio `ui` li serve a `/logos/<file>` dopo l'accesso, prima di quelli della pagina (`web/logos/`). Dopo una modifica: `docker restart oe-copilot-ui`. Per aggiungere un'azienda: copiare il file, aggiungere la riga, riavviare. La pagina pubblica `/disponibilita` non mostra né nomi né loghi.
 
@@ -440,20 +396,22 @@ si riavvia il servizio (`docker restart oe-copilot-ui`). I colori già assegnati
 `config.json` (`account_colors`): copiare anche quella voce in `ui-dati/config.json` dà gli stessi.
 
 ### 4.8 Lo schermo del telefono nel browser (facoltativo)
-Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di ws-scrcpy, provenienza e modifiche in `UPSTREAM.md`) mostra il telefono virtuale in una pagina e lo comanda con mouse e tastiera: serve per il PIN dopo un riavvio, un accesso, un codice MFA, al posto di `strumenti/schermo_telefono.py` (scrcpy sul PC con un tunnel SSH).
+Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di ws-scrcpy, provenienza e modifiche in `UPSTREAM.md`) mostra il telefono virtuale in una pagina e lo comanda con mouse e tastiera: serve per il PIN dopo un riavvio, un accesso, un codice MFA, al posto di scrcpy sul PC con un tunnel SSH (4.4).
 - Container in sola lettura, utente 10001, senza capacità, `cpus: 1`, 256 MB. Parla con il telefono con adb su `telefono:5555` (rete di compose); un solo telefono, nessuna shell, nessun elenco o caricamento di file, il tunnel porta solo al server scrcpy del telefono (`tcp:8886`, in ascolto solo su localhost nel telefono).
 - Non è pubblicato su nessuna porta e non ha password. Il telefono non chiede conferme ad adb (`ro.adb.secure=0`): chi raggiunge il servizio comanda il telefono, quindi l'unico cancello è l'accesso davanti.
 - Qualità di partenza: 15 fotogrammi al secondo, 1 Mbit/s, 720x1280. Nel telefono costa quasi niente a schermo fermo e fino a 1,3 core mentre lo schermo si anima di continuo (misure e confronto con il server scrcpy 5 nella decisione 2026-10-11-oe-copilot-phone-browser del vault).
 - Il server di scrcpy gira nel telefono (`app_process`, circa 0,02 core fermo) dal primo avvio del servizio e resta lì anche a servizio fermo. Per spegnerlo: tasto *Kill server* nella pagina dei dispositivi, oppure `docker exec oe-copilot-telefono kill <pid>` con il pid della colonna *Server PID*.
 - **Come si usa.** Nell'app nel browser, nella barra a sinistra, il pulsante *Telefono* (non c'è nella pagina pubblica `/disponibilita`) apre in una scheda nuova `https://<UI_HOST>/telefono/`, già sul telefono e adattato alla finestra (`#!action=stream&udid=telefono%3A5555&player=webcodecs&fitToScreen=true`; la pagina dei dispositivi sta a `/telefono/` senza il resto). Tocchi e trascinamenti con il mouse; la tastiera del computer è collegata al telefono da subito (il pulsante con la tastiera, l'ultimo della barra a destra, è acceso; un clic lo spegne): lettere, maiuscole, cifre e simboli (`@ . : _ - + /` e gli altri) arrivano come caratteri qualunque sia la tastiera del computer (italiana, americana), le lettere accentate partono come accento morto più lettera (la composizione la fa Android), Ctrl+V incolla il testo del computer, Invio, Backspace, Tab, Esc e le frecce partono come tasti; Ctrl, Alt e F1..F12 restano al browser. Non arrivano i caratteri che la tastiera di Android non ha (€, £, emoji). Il pulsante `?` in cima alla barra a destra apre un promemoria dei comandi (mouse, tastiera, pulsanti, sblocco e accesso), con i tasti in evidenza. Il pulsante `...` in alto apre una casella di testo: quello che si scrive o si incolla lì parte con *Send as keys* (a pezzi di 200 caratteri), utile per una password già copiata; *Set clipboard* e *Get clipboard* non funzionano su Android 13 con questo server. Le cifre della tastiera arrivano al telefono come tasti 0..9 (provato con `dumpsys input`); sul tastierino del PIN non sono mai state provate, perché il PIN lo digita solo l'utente, e il tastierino si può premere anche con il mouse; il pulsante in alto della barra è il tasto di accensione, che accende anche lo schermo quando il telefono, bloccato, lo spegne dopo circa 10 secondi senza tocchi. Il PIN e i codici si scrivono come sempre dall'utente: nessuno script li digita.
 - **Accesso.** Caddy (`server/caddy-ui/Caddyfile`) chiede al gateway (`/api/verifica-sessione`, `forward_auth`) se la richiesta ha una sessione valida prima di passare `/telefono/*` al servizio: senza sessione una pagina va all'accesso, il resto riceve 401 e un WebSocket non si apre. Un WebSocket parte solo dalla pagina dello stesso sito (controllo dell'`Origin`, 403 altrimenti). Il percorso `/telefono` senza barra finale rimanda a `/telefono/`.
-- **Pausa della sincronizzazione.** Finché una scheda è aperta sul telefono, il servizio riscrive ogni 10 secondi `stato/schermo/PAUSA` (la cartella `stato/schermo`, di utente 10001, la crea il servizio di sincronizzazione che gira da root; `stato/` non si monta intero e `telefono/` mai); `sincronizza_telefono.sh` non porta Outlook in primo piano finché il file è più giovane di 60 secondi e lo ignora dopo, così un servizio morto non blocca niente. Il file si toglie appena si chiude l'ultima scheda; un browser sparito senza chiudere (portatile chiuso, rete caduta) viene chiuso dal servizio dopo 30 secondi senza risposta ai ping. Una scheda lasciata aperta tiene ferma la pausa: si chiude quando si è finito. Il vecchio `/opt/oe-copilot/telefono/PAUSA` di `strumenti/schermo_telefono.py` continua a valere.
+- **Pausa della sincronizzazione.** Finché una scheda è aperta sul telefono, il servizio riscrive ogni 10 secondi `stato/schermo/PAUSA` (la cartella `stato/schermo`, di utente 10001, la crea il servizio di sincronizzazione che gira da root; `stato/` non si monta intero e `telefono/` mai); `sincronizza_telefono.sh` non porta Outlook in primo piano finché il file è più giovane di 60 secondi e lo ignora dopo, così un servizio morto non blocca niente. Il file si toglie appena si chiude l'ultima scheda; un browser sparito senza chiudere (portatile chiuso, rete caduta) viene chiuso dal servizio dopo 30 secondi senza risposta ai ping. Una scheda lasciata aperta tiene ferma la pausa: si chiude quando si è finito. Il file `/opt/oe-copilot/telefono/PAUSA`, messo a mano (4.4), continua a valere.
 - **Spegnerlo.** Togliere il pulsante e la strada: `docker stop oe-copilot-schermo` (da `docker compose` si può anche togliere il servizio `schermo` e ridistribuire; con il servizio fermo `/telefono/` risponde 502 solo a chi ha la sessione). Il server di scrcpy nel telefono resta in esecuzione (circa 0,02 core): per fermarlo, prima di spegnere il servizio, tasto *Kill server* nella pagina dei dispositivi.
 - Prova senza telefono: `cd server/schermo-web && npm ci --ignore-scripts && npm run dist && npm run smoke && npm test`.
 
 ---
 
-## 5. Collegare il PC al server
+## 5. Collegare l'app per Windows al server
+
+Serve solo all'app per Windows (sezione 3): il browser non passa di qui.
 
 1. **Chiave SSH**: il server dev'essere raggiungibile da `ssh` **senza password** (chiave SSH).
    Comodo dare un alias in `~/.ssh/config` del PC, es.:
@@ -475,36 +433,20 @@ Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di w
    ssh oecopilot "grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2" | .venv\Scripts\python agente_remoto.py imposta-chiave
    ```
 
-3. In **`personalizzazione.json`** (sul PC) aggiungi la voce `agente_remoto` e togli dai
-   `calendari_google` gli account che ora legge il server:
+3. In **`personalizzazione.json`** (sul PC) aggiungi la voce `agente_remoto`:
    ```json
    "agente_remoto": {"ssh": "oecopilot", "porta_remota": 3180, "porta_locale": 31800}
    ```
-   Con la voce `ssh` presente l'app legge **solo** dal server e non più da Outlook del PC:
-   aggiungila quando sul telefono i login sono fatti e `fonti.json` è compilato, altrimenti il
-   calendario resta vuoto. Per provare il collegamento prima, senza toccare la personalizzazione
-   vera: metti la voce in un file a parte e lancia la prova con
-   `set OE_PERSONALIZZAZIONE=<quel file>`.
-   Riavvia l'app. Prova dal prompt: `.venv\Scripts\python agente_remoto.py prova` deve elencare le
-   caselle.
+   Senza la voce `ssh` l'app non legge nessuna casella: restano i calendari da link e gli eventi personali. Per provare il collegamento prima, senza toccare la personalizzazione vera: metti la voce in un file a parte e lancia la prova con `set OE_PERSONALIZZAZIONE=<quel file>`. Riavvia l'app. Prova dal prompt: `.venv\Scripts\python agente_remoto.py prova` deve elencare le caselle.
 
-Per **tornare alla modalità PC** basta togliere la voce `ssh` da `agente_remoto` (o rimettere il
-file `personalizzazione.json` di prima) e riavviare.
-
-Cosa cambia nell'app in modalità server: il pallino di ogni azienda dice anche se sul server
-l'aggiornamento è fermo o se un accesso è scaduto; se il server non risponde l'app mostra l'ultima
-lettura salvata e riprova da sola; "Apri in Outlook" cerca l'evento nell'Outlook del PC per ora e
-titolo (serve Outlook aperto sul PC solo per quel pulsante, non per il calendario). Limiti noti:
-non si vedono gli appuntamenti che stanno **solo** in un calendario locale di Outlook ("solo questo
-computer") né i compleanni dei contatti, e le riunioni annullate spariscono invece di restare come
-"Annullato:".
+Cosa cambia nell'app: il pallino di ogni azienda dice anche se sul server l'aggiornamento è fermo o se un accesso è scaduto; se il server non risponde l'app mostra l'ultima lettura salvata e riprova da sola; "Apri in Outlook" cerca l'evento nell'Outlook del PC per ora e titolo (serve Outlook aperto sul PC solo per quel pulsante, non per il calendario). Limiti noti: non si vedono gli appuntamenti che stanno **solo** in un calendario locale di Outlook ("solo questo computer") né i compleanni dei contatti, e le riunioni annullate spariscono invece di restare come "Annullato:".
 
 ---
 
 ## 6. Il rilevatore degli accessi scaduti
 
 Chiude il "falso verde" (vedi [ragionamenti](#1-i-ragionamenti-perché-è-fatto-così)).
-`strumenti/rileva_accessi.py`, lanciato dal servizio ogni minuto, scrive in `stato/accessi.json`
+`strumenti/rileva_accessi.py`, lanciato dal servizio ogni 2 giri (circa 70 secondi), scrive in `stato/accessi.json`
 lo stato di ogni casella, che l'agente usa per il pallino — **senza mai leggere un token**:
 
 - **Caselle Microsoft (Outlook), accesso:** la bandierina "login da rifare" (`needsReauth`) nel
@@ -530,30 +472,22 @@ lo stato di ogni casella, che l'agente usa per il pallino — **senza mai legger
   sincronizzazione che non parte da oltre 15 min è gialla. L'ora dell'ultimo successo si ricorda
   in `stato/google-sync.json`. L'adattatore dei contatti segna sempre `OTHER FAILURE
   internal-error`: non conta.
-- **Calendario Google (DAVx⁵), se in uso:** DAVx⁵ non ha una bandierina simile e un login scaduto dà lo stesso
-  errore di una rete assente. Ma il servizio lo spinge ogni 30 s e DAVx⁵ sincronizza da sé ogni
-  15 min: se la sua ultima sincronizzazione **riuscita** si ferma molto oltre (mentre le caselle
-  Outlook continuano, quindi non è la rete) la causa è quasi sempre il login scaduto →
-  **giallo** oltre `DAVX5_GIALLO_S` (20 min), **rosso** oltre `DAVX5_ROSSO_S` (45 min). Se DAVx⁵
-  mostra una notifica attiva che chiede di ricollegarsi, è rosso subito.
 
-Le soglie si cambiano con le variabili d'ambiente `DAVX5_GIALLO_S` / `DAVX5_ROSSO_S` (nel servizio),
-e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un controllo e l'altro).
+Le soglie si cambiano con le variabili d'ambiente `OUTLOOK_GIALLO_S`, `OUTLOOK_ROSSO_S`, `GOOGLE_GIALLO_S` e `GOOGLE_ROSSO_S` (nel servizio), e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un controllo e l'altro).
 
 ---
 
 ## 7. Manutenzione e diagnostica
 
-- **Rifare un login scaduto**: `strumenti\schermo_telefono.py` sul PC (mette e toglie `PAUSA` da
-  solo), rifai il login nell'app, chiudi la finestra.
+- **Rifare un login scaduto**: dalla pagina `/telefono/` (4.8; finché è aperta la sincronizzazione sta in pausa), poi rifai il login nell'app Outlook o nelle impostazioni dell'account Google del telefono e chiudi la scheda.
 - **Segni di vita** (sul server): `stato/battito.json` (il servizio è vivo? il telefono è acceso? Outlook è in primo piano?) e
   `stato/accessi.json` (stato di ogni casella).
 - **Log dell'app** (sul PC): `debug.log`; del tunnel: `agente_tunnel.log`.
+- **Log dei servizi** (sul server): `docker logs oe-copilot-<servizio>` (`agent`, `ui`, `gateway`, `schermo`, `caddy`) e `journalctl -u oe-copilot-sincronizza`.
 - **Vedere cosa fa l'agente**: `curl` su `http://127.0.0.1:3180/api/calendari` dal server (con la
   chiave, vedi 4.5), oppure `agente_remoto.py prova` dal PC.
 - **Aggiornare il codice del server**: con l'aggiornamento automatico (sezione 4.6) basta un push
-  su `main`. A mano: `git pull`, ricopia `server/` in `/opt/oe-copilot` (mantieni `.env` e
-  `agent/fonti.json`), `sudo docker compose up -d --build`, riavvia il servizio.
+  su `main`. A mano: `git pull`, `bash server/strumenti/prepara_ui.sh` (prepara la copia dei moduli dell'app per `ui`), ricopia `server/` in `/opt/oe-copilot` (mantieni `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/`), `sudo docker compose up -d --build`, riavvia il servizio.
 - **Backup**: i dati del telefono stanno in `/opt/oe-copilot/telefono/data` (contengono i login:
   trattali come un segreto). Uno snapshot coerente si fa con il telefono in `docker pause` per
   pochi secondi.
@@ -562,17 +496,11 @@ e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un c
 
 ## 8. Sicurezza e privacy
 
-- **Niente dati personali nel repository**: nomi, domini, indirizzi, calendari, sigle e schede
-  stanno in `personalizzazione.json` (sul PC) e in `agent/fonti.json` + `.env` (sul server), tutti
-  **esclusi da git**. `verifica.py` ha un controllo apposta che cerca i dati della personalizzazione
-  nei file tracciati e fallisce se ne trova.
-- **I login stanno nel telefono sul server**, non sul PC. I dati del telefono
-  (`/opt/oe-copilot/telefono/data`) contengono i token degli accessi: proteggili come credenziali.
-- **Niente esposto su internet**: l'agente e l'adb ascoltano solo sul localhost del server; il PC
-  arriva con un tunnel SSH (chiave SSH) e una chiave dell'API cifrata per il tuo utente Windows.
-  L'unica eccezione, facoltativa, è l'interfaccia nel browser (4.7): HTTPS e una pagina di
-  accesso davanti a una pagina che mostra i calendari, quindi la password va lunga e casuale. Il
-  servizio `ui` in sé non è pubblicato e non ha password: ci arriva solo il gateway che la chiede.
-- **I token non si leggono**: il rilevatore degli accessi guarda solo bandierine ed età di
-  sincronizzazione, mai il contenuto di un token.
+- **Il telefono sbloccato ha un solo cancello: l'accesso al sito.** Il servizio tiene il telefono sbloccato dopo il PIN (4.5), il servizio `schermo` non ha password e `adb` non chiede conferme (`ro.adb.secure=0`): chi supera l'accesso davanti a `/telefono/` comanda un telefono già sbloccato, con dentro le caselle di lavoro. Il PIN non fa da secondo fattore. Per questo la password dell'interfaccia va lunga e casuale (almeno 12 caratteri); il blocco per account (5 errori, 15 minuti) e la sessione (30 giorni, cookie HttpOnly) sono le difese del sito.
+- **Il PIN c'è perché lo chiede un criterio di sicurezza aziendale**, imposto a Outlook da una delle aziende le cui caselle sono sul telefono: senza una password del dispositivo Outlook rimuove la casella (4.5). Non si toglie, non si cambia e nessuno script lo digita.
+- **Il tocco sulla barra di stato aggira apposta il blocco a 15 minuti** dello stesso criterio (`TOCCO_OGNI`, 4.5): serve perché un telefono bloccato non applica cancellazioni e modifiche. Il prezzo è quello del primo punto. Per tornare al blocco automatico: `TOCCO_OGNI=0`.
+- **Nessun segreto nel repository**, né nei file tracciati né nella storia di git (controllato l'11/10/2026 con ricerche di chiavi, token e password). La chiave dell'API e le credenziali dell'interfaccia stanno in `.env` sul server (permessi 600), i segreti dell'aggiornamento automatico nei secret della Action, la chiave dell'API sul PC in `agente_chiave.bin`, cifrata per l'utente Windows. Nomi, domini, indirizzi, calendari, sigle e schede stanno in `personalizzazione.json` (sul PC e in `ui-dati/` sul server) e in `agent/fonti.json`: file che il repository non ha mai contenuto e che `.gitignore` esclude. `verifica.py` ha un controllo apposta che cerca i dati della personalizzazione nei file tracciati e fallisce se ne trova.
+- **I login stanno nel telefono sul server**, non sul PC. I dati del telefono (`/opt/oe-copilot/telefono/data`) contengono i token degli accessi: proteggili come credenziali.
+- **Niente esposto su internet** a parte l'interfaccia web: l'agente e l'adb ascoltano solo sul localhost del server; l'app per Windows arriva con un tunnel SSH (chiave SSH) e una chiave dell'API cifrata per il tuo utente Windows. Le eccezioni, facoltative, sono l'interfaccia nel browser (4.7) e lo schermo del telefono (4.8): HTTPS e una pagina di accesso davanti a una pagina che mostra i calendari e a una che comanda il telefono. I servizi `ui` e `schermo` in sé non sono pubblicati e non hanno password: ci arriva solo chi ha passato il gateway.
+- **I token non si leggono**: il rilevatore degli accessi guarda solo bandierine ed età di sincronizzazione, mai il contenuto di un token.
 - Non estrarre token/cookie dai browser e non usare client ID di altre app per aggirare un consenso.

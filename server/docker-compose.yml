@@ -1,10 +1,10 @@
-# Oe Copilot sulla VM: i calendari si leggono da qui, non piu' dal PC.
+# Oe Copilot sulla VM: i calendari si leggono da qui, l'app per Windows e il browser li chiedono qui.
 # telefono = Android virtuale con Outlook (caselle Microsoft) e i servizi Google (calendari Google),
-# agent = legge il calendario del telefono e lo serve all'app del PC.
+# agent = legge il calendario del telefono e lo serve con un'API a chiave.
 name: oe-copilot
 services:
-  # agent = legge il calendario del telefono e lo serve all'app del PC con
-  # un'API a chiave.
+  # agent = legge il calendario del telefono e lo serve con un'API a chiave
+  # all'app per Windows (tunnel SSH) e al servizio ui (rete di compose).
   agent:
     build: ./agent
     container_name: oe-copilot-agent
@@ -15,13 +15,13 @@ services:
       - ./agent/comune.py:/app/comune.py:ro
       - ./agent/fonte_android.py:/app/fonte_android.py:ro
       - ./agent/fonti.json:/app/fonti.json:ro
-      # Calendario di sistema del telefono, in sola lettura: Outlook e DAVx5 ci
-      # copiano le caselle, l'agente ne legge una copia.
+      # Calendario di sistema del telefono, in sola lettura: Outlook e i servizi Google ci
+      # copiano i calendari, l'agente ne legge una copia.
       - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
       # Segno di vita del servizio che aggiorna il telefono (battito.json).
       - ./stato:/stato:ro
-    # Solo localhost: l'app del PC ci arriva con un tunnel SSH, niente e'
-    # esposto su internet.
+    # Solo localhost: l'app per Windows ci arriva con un tunnel SSH e il servizio ui dalla rete di
+    # compose, niente è esposto su internet.
     ports:
       - "127.0.0.1:3180:8180"
     restart: unless-stopped
@@ -53,10 +53,9 @@ services:
       - "127.0.0.1:5555:5555"
     restart: unless-stopped
 
-  # Interfaccia web (facoltativa, GUIDA.md 4.7): la stessa pagina e la stessa logica
-  # dell'app per Windows, servite al browser. Non è pubblicata e non ha password: ci
-  # arriva solo il gateway, che chiede l'accesso. Le copie del codice dell'app le mette
-  # strumenti/prepara_ui.sh.
+  # Interfaccia web (facoltativa, GUIDA.md 4.7): la logica dell'app per Windows (app.py e i suoi moduli),
+  # che il gateway usa per la pagina del browser. Non è pubblicata e non ha password: ci arriva solo il
+  # gateway, che chiede l'accesso. Le copie del codice dell'app le mette strumenti/prepara_ui.sh.
   ui:
     build: ./ui
     container_name: oe-copilot-ui

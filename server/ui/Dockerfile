@@ -9,7 +9,7 @@ ENV TZ=Europe/Rome OE_DATI=/dati
 # cartella scrivibile e sul server è montata da fuori.
 RUN useradd --uid 10001 --no-create-home oe && mkdir /dati && chown oe /dati
 WORKDIR /app
-# app/ = moduli e pagina dell'app del PC, messi qui da strumenti/prepara_ui.sh
+# app/ = moduli dell'app del PC e i suoi loghi, messi qui da strumenti/prepara_ui.sh
 COPY app/ /app/
 COPY server.py /app/
 USER oe

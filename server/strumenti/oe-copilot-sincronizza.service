@@ -1,5 +1,5 @@
 [Unit]
-Description=Oe Copilot - sincronizzazione dei calendari del telefono ogni minuto
+Description=Oe Copilot - sincronizzazione dei calendari del telefono, un giro ogni 35 secondi
 After=docker.service
 Requires=docker.service
 

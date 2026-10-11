@@ -78,7 +78,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 
 | File | Cosa fa |
 |------|---------|
-| `app.py` | La classe `Api`: i metodi che il servizio `ui` espone al gateway |
+| `app.py` | La classe `Api`: i metodi dell'app nella versione Python, che il servizio `ui` serve e che fanno da termine di paragone alle prove del gateway (che li ha riscritti in TypeScript, `server/web-ts/src/lib/core/`) |
 | `config.py` | Impostazioni, colori, lettura di `personalizzazione.json` |
 | `agente_remoto.py` | Lettura delle caselle dall'agente sul server (HTTP e chiave dell'API) |
 | `caselle.py` | Regole comuni: di che azienda è una riunione, doppioni, colori |
@@ -90,9 +90,10 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 | `web/logos/` | L'icona generica delle aziende senza logo |
 | `server/` | Il server: agente, telefono virtuale, interfaccia nel browser (`web-ts/`, `ui/`, `caddy-ui/`), schermo del telefono (`schermo-web/`) e script (`strumenti/`); vedi *Caselle lette dal server* |
 
-Restano sul server (`ui-dati/`) e fuori dal repository: `personalizzazione.json`, `config.json`, le cache
-(`events_cache.json`, `ics_cache/`, `agente_caselle.json`), gli eventi personali (`local_events.json`) e
-il database degli accessi (`gateway.db`).
+Restano sul server (`ui-dati/`) e fuori dal repository: `personalizzazione.json`, le cache
+(`events_cache.json`, `ics_cache/`, `agente_caselle.json`) e il database `gateway.db`, che tiene gli accessi
+e lo stato dell'app (configurazione ed eventi personali; `config.json` e `local_events.json` ne sono la copia,
+riscritta a ogni modifica).
 
 ## Se qualcosa non va
 

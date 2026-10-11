@@ -90,7 +90,7 @@ pallino rosso. Vedi la [sezione 6](#6-il-rilevatore-degli-accessi-scaduti).
 - **telefono** = container redroid con l'app Outlook (caselle Microsoft) e i servizi Google (calendari Google). Le app copiano gli appuntamenti nel calendario di sistema di Android.
 - **agent** = piccolo server HTTP che legge quel calendario e lo espone con un'API a chiave, in ascolto solo su `127.0.0.1:3180` del server. Espande anche le ricorrenze dei calendari ICS (link) che il gateway gli manda (`POST /api/ics`).
 - **servizio** (`oe-copilot-sincronizza`) = tiene aggiornato il telefono, rileva gli accessi scaduti e scrive i "segni di vita" (`battito.json`, `accessi.json`).
-- **interfaccia nel browser** (4.7) = `caddy-ui` (HTTPS), `gateway` (pagina di accesso, pagina in TypeScript e i metodi di lettura: eventi, calendari, configurazione, disponibilità) e `ui` (la logica dell'app in Python che fa le scritture: interruttori, gruppi, alias, link ICS, eventi personali). Tutti e due chiedono gli eventi all'agent sulla rete di Docker.
+- **interfaccia nel browser** (4.7) = `caddy-ui` (HTTPS), `gateway` (pagina di accesso, pagina in TypeScript e tutta la logica dell'app: eventi, calendari, configurazione, disponibilità, interruttori, gruppi, alias, link ICS, eventi personali; lo stato sta nel suo database) e `ui` (il vecchio servizio Python, che serve ancora i loghi e fa da termine di paragone alle prove). Il gateway chiede gli eventi all'agent sulla rete di Docker.
 - **schermo** (4.8) = il telefono mostrato e comandato nel browser, dietro lo stesso accesso.
 
 Il codice del server sta nella cartella **`server/`** del repository.
@@ -303,29 +303,35 @@ sono i promemoria (li dava l'app per Windows, sezione 3) né *Apri in Outlook*; 
 si aprono nel browser.
 
 Come è fatta, in `server/docker-compose.yml`:
-- **`ui`**: un piccolo server Python (`server/ui/server.py`) che chiama la classe `Api` di `app.py` e serve i loghi (`/logos/<file>`). Fa le scritture (interruttori, gruppi, alias, link ICS, eventi personali, impostazioni); i cinque metodi di lettura (`get_config`, `get_personalizzazione`, `get_calendars`, `get_events`, `get_disponibilita`) li serve il gateway da sé, e quelli di `ui` restano il termine di paragone delle prove (sezione 7). I moduli che `Api` usa (`app.py`, `config.py`, `caselle.py`, `eventi.py`, `disponibilita.py`, `agente_remoto.py`, `ics_feed.py`, `local_events.py`) e `web/logos/` li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola): il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci arriva solo il `gateway`.
+- **`ui`**: un piccolo server Python (`server/ui/server.py`) che chiama la classe `Api` di `app.py` e serve i loghi (`/logos/<file>`). Dalla pagina non lo chiama più nessuno: il gateway risponde da sé a tutti i metodi, di lettura e di scrittura, e a `ui` passano solo i loghi; i suoi metodi restano il termine di paragone delle prove (sezione 7) finché il servizio non si toglie. I moduli che `Api` usa (`app.py`, `config.py`, `caselle.py`, `eventi.py`, `disponibilita.py`, `agente_remoto.py`, `ics_feed.py`, `local_events.py`) e `web/logos/` li copia nell'immagine `strumenti/prepara_ui.sh` (la Action lo lancia da sola): il codice resta uno solo. Legge le caselle dall'agente sulla rete di compose (`http://agent:8180`), senza tunnel. Non è pubblicato su nessuna porta e non ha password: ci arriva solo il `gateway`.
 - **`gateway`** (`server/web-ts/`, Next.js e Better Auth): la pagina di accesso e il cancello
   davanti a `ui`. Senza sessione una pagina rimanda a `/login?next=...` e l'API (`/api/*`)
-  risponde 401 in JSON; con la sessione i cinque metodi di lettura li serve il gateway (`server/web-ts/src/lib/core/`:
-  legge `ui-dati/` e chiede all'agente eventi e calendari), tutti gli altri passano a `ui` (il cookie di
-  sessione non ci arriva). Del testo dei link ICS (copia in `ui-dati/ics_cache/`, rinnovata ogni 30 minuti) si
+  risponde 401 in JSON; con la sessione i metodi li serve il gateway (`server/web-ts/src/lib/core/`: chiede
+  all'agente eventi e calendari e tiene lo stato in `ui-dati/gateway.db`), a `ui` passano solo i loghi (il
+  cookie di sessione non ci arriva). Del testo dei link ICS (copia in `ui-dati/ics_cache/`, rinnovata ogni 30 minuti) si
   occupa il gateway; le ricorrenze le espande l'agente (`POST /api/ics`, `server/agent/ics.py`, la stessa
   libreria che legge il telefono) e il gateway tiene in memoria l'ultima espansione riuscita di ogni link e
-  intervallo: se l'agente non risponde e il gateway è appena ripartito, un link ICS mostra l'errore. Per la
-  lettura il compose dà al gateway `OE_DATI=/dati`, `AGENTE_URL=http://agent:8180` e `AGENTE_CHIAVE` (la
-  `API_KEY` di `.env`). Il cookie è HttpOnly, Secure e SameSite=Lax e dura 30 giorni; dopo 5 password sbagliate
+  intervallo: se l'agente non risponde e il gateway è appena ripartito, un link ICS mostra l'errore. Il
+  compose dà al gateway `OE_DATI=/dati` (la cartella dei dati), `GATEWAY_DB=/dati/gateway.db`,
+  `AGENTE_URL=http://agent:8180` e `AGENTE_CHIAVE` (la `API_KEY` di `.env`). **Lo stato** (calendari
+  spenti, gruppi, alias, colori, link ICS, tema e il resto della configurazione, e gli eventi personali)
+  sta nel database, tabelle `stato_config` e `eventi_locali`: ogni modifica è una transazione. La prima
+  volta il gateway importa `config.json` e `local_events.json` di `ui-dati/` (se ci sono); da lì in poi il
+  database è la fonte e i due file non si rileggono, ma si riscrivono dopo ogni modifica nel formato di
+  sempre, così tornare alla versione precedente non perde niente (spariranno con il servizio `ui`):
+  cambiarli a mano non ha effetto. Il cookie è HttpOnly, Secure e SameSite=Lax e dura 30 giorni; dopo 5 password sbagliate
   l'account si blocca 15 minuti, qualunque sia l'indirizzo (dietro sslh e docker-proxy tutti i
   client hanno lo stesso, quindi un limite per indirizzo sarebbe un contatore solo). Valgono ancora
   le regole contro le richieste partite da un altro sito di `server.py` (JSON obbligatorio per i
   POST, `Sec-Fetch-Site` dello stesso sito). Il tasto *Esci* della barra a sinistra chiude la
   sessione. Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD` di `.env`; le
   sessioni e il blocco stanno in `ui-dati/gateway.db`. Porta solo su `127.0.0.1:3190`.
-- **Interfaccia nel gateway**: la pagina (`/`) è scritta in TypeScript dentro il gateway (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn) e chiama `POST /api/<metodo>` (i metodi di `app.Api`: la lettura la serve il gateway, il resto `ui`), con il layout per telefono e tablet. `web/` contiene solo `logos/`.
+- **Interfaccia nel gateway**: la pagina (`/`) è scritta in TypeScript dentro il gateway (`server/web-ts/src/components/oe/`, React e FullCalendar da npm, componenti shadcn) e chiama `POST /api/<metodo>` (i metodi di `app.Api`, che il gateway serve tutti), con il layout per telefono e tablet. `web/` contiene solo `logos/`.
 - **`caddy-ui`**: Caddy con HTTPS, solo su `127.0.0.1:4445`, che passa tutto al gateway.
   L'indirizzo arriva da `.env`, non dal repository.
-- **`ui-dati/`**: configurazione, interruttori, cache, `personalizzazione.json` (nomi, sigle e
-  loghi delle aziende, modello in `personalizzazione.esempio.json`) e `gateway.db`. Sta solo sul
-  server.
+- **`ui-dati/`**: `gateway.db` (sessioni, blocco degli accessi e stato dell'app), le copie
+  `config.json` e `local_events.json`, le cache, i loghi e `personalizzazione.json` (nomi, sigle e
+  loghi delle aziende, modello in `personalizzazione.esempio.json`). Sta solo sul server.
 
 Messa in funzione, una volta sola, sul server:
 ```bash
@@ -356,7 +362,7 @@ Prova: senza sessione `curl -I https://<UI_HOST>/` risponde 307 verso `/login?ne
 risponde 401; con il cookie di `POST /api/auth/sign-in/email` (`curl -c jar`, poi `-b jar`) la
 pagina risponde 200.
 
-**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno in `config.json`, voce `gruppi_calendari`, per nome come li mostra la barra: `{"gruppo1": ["Alfa", "Beta"], "gruppo2": ["Gamma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome.
+**Gruppi di calendari.** Nella finestra *Calendari da mostrare* (*Gestisci calendari*, a sinistra) si creano, rinominano ed eliminano i gruppi, e i pulsanti accanto al nome di ogni calendario lo mettono dentro o fuori da un gruppo: un calendario può stare in più gruppi. Nella barra a sinistra un pulsante per gruppo lascia accesi solo i suoi calendari (un secondo clic li riaccende tutti). Stanno nella configurazione, voce `gruppi_calendari`, per nome come li mostra la barra: `{"gruppo1": ["Alfa", "Beta"], "gruppo2": ["Gamma"]}`; se si rinomina l'azienda dalla finestra, i gruppi seguono il nuovo nome.
 
 **Disponibilità pubblica.** `https://<UI_HOST>/disponibilita` si apre senza accesso: è lo stesso calendario (viste, minicalendario, zoom, tema) con ogni impegno ridotto a un blocco "Occupato", i soli orari. Impegni che si sovrappongono o si toccano sono un blocco solo; le festività restano. Non ci sono titoli, luoghi, partecipanti, nomi di calendari o di aziende, né ricerca, nuovo evento, legenda, timesheet e impostazioni. `?gruppo=gruppo1` conta solo i calendari di quel gruppo. Contano tutti i calendari, anche quelli spenti nella barra laterale (gli interruttori sono un filtro della vista), e i giorni interi non occupano; se una sorgente non risponde la pagina lo scrive. I dati: `GET /api/disponibilita?da=AAAA-MM-GG&a=AAAA-MM-GG[&gruppo=nome]` (al più 62 giorni), nella forma di `get_events` con solo "Occupato". Il gateway li legge a blocchi di 28 giorni, li tiene un minuto e fa al più 20 letture al minuto in tutto (dietro sslh i client non si distinguono); ogni blocco lo legge il metodo `get_disponibilita` (solo orari, `server/web-ts/src/lib/core/`; il servizio `ui` ha lo stesso metodo in `disponibilita.py`, termine di paragone delle prove).
 
@@ -366,7 +372,7 @@ pagina risponde 200.
 dominio della casella e i colori dalla tavolozza. Si parte da `personalizzazione.esempio.json`, copiato
 in `ui-dati/` come `personalizzazione.json`. Il gateway rilegge il file quando cambia; `ui` lo legge
 all'avvio, quindi dopo una modifica si riavvia anche lui (`docker restart oe-copilot-ui`).
-I colori assegnati stanno in `ui-dati/config.json` (`account_colors`).
+I colori assegnati stanno nella configurazione (`account_colors`).
 
 ### 4.8 Lo schermo del telefono nel browser (facoltativo)
 Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di ws-scrcpy, provenienza e modifiche in `UPSTREAM.md`) mostra il telefono virtuale in una pagina e lo comanda con mouse e tastiera: serve per il PIN dopo un riavvio, un accesso, un codice MFA, al posto di scrcpy sul PC con un tunnel SSH (4.4).
@@ -458,10 +464,22 @@ Le soglie si cambiano con le variabili d'ambiente `OUTLOOK_GIALLO_S`, `OUTLOOK_R
 - **Aggiornare il codice del server**: con l'aggiornamento automatico (sezione 4.6) basta un push
   su `main`. A mano: `git pull`, `bash server/strumenti/prepara_ui.sh` (prepara la copia dei moduli dell'app per `ui`), ricopia `server/` in `/opt/oe-copilot` (mantieni `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/`), `sudo docker compose up -d --build`, riavvia il servizio.
 - **Prova dell'agente** (`server/strumenti/prova_agente_golden.py`, la lancia la Action): costruisce un `calendar.db` inventato come quello del telefono (serie con fusi e cambio dell'ora, occorrenze annullate e spostate, EXDATE, giorni interi, doppioni, inviti), avvia l'agente vero e confronta le sue risposte HTTP con quelle registrate in `server/strumenti/golden/agente.json`. Se una modifica all'agente o a una libreria cambia una risposta, la prova mostra la differenza; se la nuova risposta è quella giusta si riscrive il file con `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/server/agent:/app:ro" -v "$PWD/server/strumenti:/prove" oe-copilot-agent python /prove/prova_agente_golden.py --aggiorna`. Le librerie dell'agente (e di `ui`) hanno le versioni fissate in `requirements.txt`. La stessa prova controlla `POST /api/ics` su un corpus di calendari (`server/strumenti/golden/ics/*.ics`: festività, serie a New York attraverso il cambio dell'ora, esclusioni, giorni interi, orari UTC, testo non valido). Si registra in un container Linux (la VM: `docker run` come sopra con `-v "$PWD/server/strumenti:/prove"`): con `TZ=Europe/Rome` il runtime di Windows dà uno scarto fisso di un'ora e altera ogni risultato che passa da `astimezone()`.
-- **Prova della lettura** (`server/strumenti/prova_ui_golden.py`, la lancia la Action nell'immagine `ui`): il servizio `ui` risponde a una sequenza di chiamate di lettura (`get_config`, `get_personalizzazione`, `get_calendars`, `get_events`, `get_disponibilita`) con un agente finto che ripete le risposte di `golden/agente.json` in ogni stato (fermo, in pausa, caselle in errore, irraggiungibile), su una cartella dei dati costruita da `golden/ui/fixture.json`. Le risposte stanno in `golden/ui-lettura.json`. Le stesse chiamate le fa il gateway in TypeScript (`server/web-ts/test/golden-lettura.test.ts`, `npm test`) e le risposte devono essere uguali: finché `ui` esiste, una differenza è un difetto del gateway. Riscrittura: `... oe-copilot-ui python /prove/prova_ui_golden.py --aggiorna`, dopo aver letto la differenza.
+- **Prova del servizio ui** (`server/strumenti/prova_ui_golden.py`, la lancia la Action nell'immagine `ui`): il servizio `ui` risponde a una sequenza di chiamate di lettura (`get_config`, `get_personalizzazione`, `get_calendars`, `get_events`, `get_disponibilita`) con un agente finto che ripete le risposte di `golden/agente.json` in ogni stato (fermo, in pausa, caselle in errore, irraggiungibile), su una cartella dei dati costruita da `golden/ui/fixture.json`, e a una sequenza di modifiche (interruttori, gruppi, alias, calendari da link, eventi personali, configurazione), dopo ognuna delle quali si registra lo stato: `config.json`, `local_events.json` e le copie dei calendari ICS. Le risposte stanno in `golden/ui-lettura.json` e `golden/ui-scritture.json`. Le stesse chiamate le fa il gateway in TypeScript (`server/web-ts/test/golden-lettura.test.ts` e `golden-scritture.test.ts`, `npm test`) e risposte e stato devono essere uguali: finché `ui` esiste, una differenza è un difetto del gateway. Riscrittura: `... oe-copilot-ui python /prove/prova_ui_golden.py --aggiorna`, dopo aver letto la differenza.
 - **Backup**: i dati del telefono stanno in `/opt/oe-copilot/telefono/data` (contengono i login:
   trattali come un segreto). Uno snapshot coerente si fa con il telefono in `docker pause` per
   pochi secondi.
+- **Stato dell'app** (interruttori, gruppi, alias, link ICS, colori, tema, eventi personali): sta in
+  `ui-dati/gateway.db` e, come copia nel formato di sempre, in `ui-dati/config.json` e
+  `ui-dati/local_events.json`, riscritti dopo ogni modifica: per un backup basta copiare `ui-dati/`. Per
+  riportare lo stato a quello dei due file (dopo un ripristino, o dopo averli corretti a mano) si
+  fermano il gateway, si svuotano le tabelle dello stato e si riavvia: alla prima apertura il gateway
+  reimporta i file.
+  ```bash
+  docker stop oe-copilot-gateway
+  docker run --rm --user 10001:10001 -v /opt/oe-copilot/ui-dati:/dati oe-copilot-gateway \
+    node -e "new (require('better-sqlite3'))('/dati/gateway.db').exec('DROP TABLE stato_config; DROP TABLE eventi_locali; DROP TABLE stato_meta')"
+  docker start oe-copilot-gateway
+  ```
 
 ---
 

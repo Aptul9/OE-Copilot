@@ -24,7 +24,7 @@ const CONTENT = `
 <ul>
     <li><kbd>?</kbd> this help</li>
     <li><kbd>...</kbd> a text box for logins and long text (<em>Send as keys</em>), notification panel, rotate, video settings</li>
-    <li><kbd>Power</kbd> wakes the screen, or sleeps it. <kbd>Vol +</kbd> <kbd>Vol -</kbd> volume</li>
+    <li><kbd>Power</kbd> wakes the screen, or sleeps it: a sleeping phone locks and asks for the PIN again. <kbd>Vol +</kbd> <kbd>Vol -</kbd> volume</li>
     <li><kbd>Back</kbd> <kbd>Home</kbd> <kbd>Overview</kbd> the Android navigation buttons</li>
     <li>Camera takes a screenshot, the corners button goes fullscreen</li>
     <li><kbd>Keyboard</kbd> turns the computer keyboard on or off for the phone</li>

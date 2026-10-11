@@ -24,12 +24,13 @@
 #   sbloccato e Outlook resta davanti. Un tasto da shell non basta (provato: il
 #   tocco aggiorna mLastUserActivityTime, il tasto no). A schermo spento il tocco non
 #   si manda.
-# - Senza blocco dello schermo (credenziale tolta l'11/10/2026 con "cmd lock_settings
-#   clear": nessuna schermata di blocco, nemmeno dopo aver spento lo schermo): se lo
-#   schermo è spento (tasto di accensione della pagina, o il tocco mancato) e nessuna
-#   pagina è aperta, lo si riaccende prima di portare Outlook davanti: a schermo spento
-#   Outlook resta in pausa e non scarica niente. Con un blocco (PIN) il tasto
-#   accenderebbe solo la schermata di blocco: se si rimette un PIN, lo digita sempre l'utente.
+# - Schermo spento (tasto di accensione della pagina, o il tocco mancato): se nessuna
+#   pagina è aperta lo si riaccende prima di portare Outlook davanti, perché a schermo
+#   spento Outlook resta in pausa e non scarica niente. Il PIN del telefono non si può
+#   togliere: il criterio Serco di Outlook chiede una password del dispositivo (PIN di
+#   almeno 4 cifre, senza ripetizioni né sequenze) e senza rimuove la casella (provato
+#   l'11/10/2026: schermata "Imposta la password del dispositivo"). Con il PIN il tasto
+#   accende solo la schermata di blocco: lo sblocco lo digita sempre l'utente.
 # - Calendari Google (DAVx5): DAVx5 usa WorkManager, che scarta le esecuzioni
 #   anticipate dei lavori periodici; si usa la sua scorciatoia ufficiale
 #   "Sincronizzazione di tutti gli account" (azione android.intent.action.SYNC),

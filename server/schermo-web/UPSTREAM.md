@@ -27,6 +27,7 @@ La prima commit della cartella è la copia così com'è (solo i fine riga portat
 - Qualità di partenza: 15 fotogrammi al secondo, 1 Mbit/s, 720x1280 (`src/app/player/StreamDefaults.ts`; numeri nella decisione 2026-10-11-oe-copilot-phone-browser del vault).
 - Un solo telefono: `entrypoint.sh` collega adb a `TELEFONO` (`telefono:5555`) e lo riprova ogni 15 secondi.
 - Solo HTTP, porta `PORT` (8000), `/salute` per il controllo di Docker.
+- Tastiera: collegata al telefono da subito (`captureKeyboard` vale `true` se manca). I caratteri partono come testo secondo `event.key` (`src/app/googDevice/KeyText.ts`, provato in `test/tasti.test.mjs`), non come codice del tasto fisico: con la tastiera italiana il codice faceva arrivare `-` come `/`, `_` come `?` e perdeva `@`. Ctrl, Alt e F1..F12 restano al browser, Ctrl+V manda il testo degli appunti del computer (evento `paste`), i campi della pagina (la casella di `More`) scrivono per conto loro, Invio, Backspace, Tab, Esc e le frecce restano codici Android. `TextControlMessage` scrive la lunghezza in byte UTF-8, non in caratteri.
 - Strumenti: TypeScript 6, `@types/node` 26, `@types/ws` 8, Express 5, `ws` 8.22, webpack-cli 7, `@devicefarmer/adbkit` 3.3.9 al posto del fork `@dead50f7/adbkit` 2.11 (cinque punti di chiamata, tutti dietro `src/server/goog-device/adb.ts`), `tsconfig` moderno, configurazione di webpack in JavaScript (`webpack.config.cjs`). Versioni fissate.
 - `src/packages/multiplexer`: `// @ts-nocheck` (imita WebSocket con le vecchie tipizzazioni del DOM; il flusso vero lo prova).
 

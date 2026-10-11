@@ -34,6 +34,7 @@ export class GoogMoreBox {
         moreBox.appendChild(nameBox);
         const input = (this.input = document.createElement('textarea'));
         input.classList.add('text-area');
+        input.placeholder = 'Testo da scrivere nel telefono (login, password), poi Send as keys';
         const sendButton = document.createElement('button');
         sendButton.innerText = 'Send as keys';
 

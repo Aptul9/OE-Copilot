@@ -42,8 +42,7 @@ const BUTTONS = [
 ];
 
 export interface GoogToolBoxOptions {
-    // Start with keyboard capture enabled instead of requiring the user to tick
-    // the "Capture keyboard" checkbox first.
+    // Keyboard capture starts enabled; false leaves it off until the "Capture keyboard" checkbox is ticked.
     captureKeyboard?: boolean;
 }
 
@@ -96,7 +95,7 @@ export class GoogToolBox extends ToolBox {
         elements.push(fullscreen);
 
         const keyboard = new ToolBoxCheckbox(
-            'Capture keyboard',
+            'Keyboard capture: the computer keyboard types into the phone, Ctrl+V pastes (highlighted = on)',
             SvgImage.Icon.KEYBOARD,
             `capture_keyboard_${udid}_${playerName}`,
         );
@@ -104,7 +103,7 @@ export class GoogToolBox extends ToolBox {
             const element = el.getElement();
             client.setHandleKeyboardEvents(element.checked);
         });
-        if (options.captureKeyboard) {
+        if (options.captureKeyboard !== false) {
             keyboard.getElement().checked = true;
             client.setHandleKeyboardEvents(true);
         }
@@ -113,7 +112,7 @@ export class GoogToolBox extends ToolBox {
         if (moreBox) {
             const displayId = player.getVideoSettings().displayId;
             const id = `show_more_${udid}_${playerName}_${displayId}`;
-            const more = new ToolBoxCheckbox('More', SvgImage.Icon.MORE, id);
+            const more = new ToolBoxCheckbox('More: text box for logins, notifications, video settings', SvgImage.Icon.MORE, id);
             more.addEventListener('click', (_, el) => {
                 const element = el.getElement();
                 moreBox.style.display = element.checked ? 'block' : 'none';

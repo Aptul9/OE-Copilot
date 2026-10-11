@@ -19,12 +19,13 @@ export class TextControlMessage extends ControlMessage {
      * @override
      */
     public toBuffer(): Buffer {
-        const length = this.text.length;
-        const buffer = Buffer.alloc(length + 1 + TextControlMessage.TEXT_SIZE_FIELD_LENGTH);
+        // la lunghezza è in byte UTF-8: con un carattere fuori da ASCII non coincide con text.length
+        const bytes = Buffer.from(this.text, 'utf8');
+        const buffer = Buffer.alloc(bytes.length + 1 + TextControlMessage.TEXT_SIZE_FIELD_LENGTH);
         let offset = 0;
         offset = buffer.writeUInt8(this.type, offset);
-        offset = buffer.writeUInt32BE(length, offset);
-        buffer.write(this.text, offset);
+        offset = buffer.writeUInt32BE(bytes.length, offset);
+        bytes.copy(buffer, offset);
         return buffer;
     }
 

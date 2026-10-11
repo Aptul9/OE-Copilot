@@ -10,6 +10,8 @@ import { CommandControlMessage } from '../../controlMessage/CommandControlMessag
 import Util from '../../Util';
 import { KeyEventListener, KeyInputHandler } from '../KeyInputHandler';
 import { KeyCodeControlMessage } from '../../controlMessage/KeyCodeControlMessage';
+import { TextControlMessage } from '../../controlMessage/TextControlMessage';
+import { spezza } from '../KeyText';
 import { BasePlayer, PlayerClass } from '../../player/BasePlayer';
 import GoogDeviceDescriptor from '../../../types/GoogDeviceDescriptor';
 import { ConfigureScrcpy } from './ConfigureScrcpy';
@@ -161,7 +163,8 @@ export class StreamClientScrcpy
             player: Util.parseString(params, 'player', true),
             udid,
             ws: params.get('ws') || defaultStreamUrl(udid),
-            captureKeyboard: Util.parseBoolean(params, 'captureKeyboard', false),
+            // la tastiera del computer arriva al telefono da subito: captureKeyboard=false la lascia spenta
+            captureKeyboard: params.has('captureKeyboard') ? Util.parseBoolean(params, 'captureKeyboard') : true,
             fitToScreen: params.has('fitToScreen') ? Util.parseBoolean(params, 'fitToScreen') : undefined,
         };
     }
@@ -403,6 +406,10 @@ export class StreamClientScrcpy
 
     public onKeyEvent(event: KeyCodeControlMessage): void {
         this.sendMessage(event);
+    }
+
+    public onText(text: string): void {
+        spezza(text).forEach((pezzo) => this.sendMessage(new TextControlMessage(pezzo)));
     }
 
     public sendNewVideoSetting(videoSettings: VideoSettings): void {

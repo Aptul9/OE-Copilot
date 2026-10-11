@@ -1,21 +1,16 @@
-r"""Gestione configurazione e percorsi dell'app.
+"""Gestione configurazione e percorsi dell'app.
 
-Percorsi: due radici distinte, perché da eseguibile (PyInstaller) l'app gira da
-una cartella di sola lettura.
-  - RESOURCE_DIR: file inclusi nel pacchetto (web/, icona). Da eseguibile è la
-    cartella temporanea di estrazione (sys._MEIPASS); da sorgente è questa.
-  - DATA_DIR: file scrivibili (config, cache, log, eventi locali). Da eseguibile
-    è %LOCALAPPDATA%\CalendarHub, così sopravvive agli aggiornamenti dell'exe e
-    funziona anche se l'app è installata in una cartella protetta. Da sorgente
-    resta la cartella del progetto, come prima. Sul server (interfaccia web)
-    OE_DATI la sposta fuori dall'immagine.
+Percorsi: due radici distinte.
+  - RESOURCE_DIR: file inclusi nell'app (web/, icona): la cartella del progetto.
+  - DATA_DIR: file scrivibili (config, cache, log, eventi locali): la cartella
+    del progetto. Sul server (interfaccia web) OE_DATI la sposta fuori
+    dall'immagine.
 """
 import json
 import logging
 import os
 import re
 import shutil
-import sys
 import tempfile
 import threading
 import time
@@ -24,13 +19,8 @@ log = logging.getLogger(__name__)
 
 _QUI = os.path.dirname(os.path.abspath(__file__))
 
-if getattr(sys, "frozen", False):
-    RESOURCE_DIR = getattr(sys, "_MEIPASS", _QUI)
-    DATA_DIR = os.path.join(
-        os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "CalendarHub")
-else:
-    RESOURCE_DIR = _QUI
-    DATA_DIR = os.environ.get("OE_DATI") or _QUI
+RESOURCE_DIR = _QUI
+DATA_DIR = os.environ.get("OE_DATI") or _QUI
 
 os.makedirs(DATA_DIR, exist_ok=True)
 

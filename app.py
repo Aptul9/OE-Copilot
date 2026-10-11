@@ -520,8 +520,6 @@ _AUTOSTART_NOME = "OECopilot"
 
 def _comando_avvio():
     """Comando che Windows deve lanciare all'accensione per avviare l'app."""
-    if getattr(sys, "frozen", False):
-        return f'"{sys.executable}"'
     pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "avvia.pyw")
     return f'"{pyw}" "{script}"'

@@ -2,6 +2,7 @@ import { StreamReceiver } from '../../client/StreamReceiver';
 import { ParamsStreamScrcpy } from '../../../types/ParamsStreamScrcpy';
 import { ACTION } from '../../../common/Action';
 import Util from '../../Util';
+import { defaultStreamUrl } from '../StreamUrl';
 
 export class StreamReceiverScrcpy extends StreamReceiver<ParamsStreamScrcpy> {
     public static parseParameters(params: URLSearchParams): ParamsStreamScrcpy {
@@ -10,11 +11,12 @@ export class StreamReceiverScrcpy extends StreamReceiver<ParamsStreamScrcpy> {
         if (action !== ACTION.STREAM_SCRCPY) {
             throw Error('Incorrect action');
         }
+        const udid = Util.parseString(params, 'udid', true);
         return {
             ...typedParams,
             action,
-            udid: Util.parseString(params, 'udid', true),
-            ws: Util.parseString(params, 'ws', true),
+            udid,
+            ws: params.get('ws') || defaultStreamUrl(udid),
             player: Util.parseString(params, 'player', true),
         };
     }

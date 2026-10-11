@@ -25,6 +25,7 @@ import { DisplayInfo } from '../../DisplayInfo';
 import { Attribute } from '../../Attribute';
 import { ACTION } from '../../../common/Action';
 import { StreamReceiverScrcpy } from './StreamReceiverScrcpy';
+import { defaultStreamUrl } from '../StreamUrl';
 import { ParamsDeviceTracker } from '../../../types/ParamsDeviceTracker';
 
 type StartParams = {
@@ -153,12 +154,13 @@ export class StreamClientScrcpy
         if (action !== ACTION.STREAM_SCRCPY) {
             throw Error('Incorrect action');
         }
+        const udid = Util.parseString(params, 'udid', true);
         return {
             ...typedParams,
             action,
             player: Util.parseString(params, 'player', true),
-            udid: Util.parseString(params, 'udid', true),
-            ws: Util.parseString(params, 'ws', true),
+            udid,
+            ws: params.get('ws') || defaultStreamUrl(udid),
             captureKeyboard: Util.parseBoolean(params, 'captureKeyboard', false),
             fitToScreen: params.has('fitToScreen') ? Util.parseBoolean(params, 'fitToScreen') : undefined,
         };

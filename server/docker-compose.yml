@@ -125,6 +125,12 @@ services:
     pids_limit: 128
     environment:
       - TELEFONO=telefono:5555
+      - PAUSA_FILE=/pausa/PAUSA
+    volumes:
+      # solo questa cartella (di utente 10001, la crea aggiorna_server.sh), non tutto stato/ e meno che mai telefono/ (i dati
+      # del telefono): finché una pagina guarda il telefono il servizio ci riscrive PAUSA e il servizio di sincronizzazione
+      # non porta Outlook in primo piano
+      - ./stato/schermo:/pausa
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/salute').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 30s

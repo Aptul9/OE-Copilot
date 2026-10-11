@@ -65,6 +65,8 @@ avvia_ui() {
 # Schermo del telefono nel browser (schermo-web, GUIDA.md 4.8). Come la web: se non parte la Action diventa rossa,
 # agente e telefono restano come sono. Il telefono non si tocca: si costruisce e si avvia solo questo servizio.
 avvia_schermo() {
+    # la cartella del file PAUSA: del solo utente del container, il resto di stato/ resta di chi scrive il battito
+    sudo -n install -d -o 10001 -g 10001 -m 755 stato/schermo
     docker compose up -d --build schermo
     stato=""
     for _ in $(seq 1 30); do

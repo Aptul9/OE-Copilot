@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDaysIcon, ClockIcon, LogOutIcon, MenuIcon, MoonIcon, PanelLeftIcon, PlusIcon, SearchIcon, SettingsIcon, SunIcon, XIcon } from "lucide-react";
+import { CalendarDaysIcon, ClockIcon, LogOutIcon, MenuIcon, MoonIcon, PanelLeftIcon, PlusIcon, SearchIcon, SettingsIcon, SmartphoneIcon, SunIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -46,6 +46,9 @@ function useStretto(): boolean {
 }
 
 /** `pubblico`: la pagina senza accesso, gli stessi componenti con gli impegni ridotti a "Occupato" e niente che scriva. */
+/** La pagina dello schermo del telefono (servizio schermo, dietro la stessa sessione): il telefono, già adattato alla finestra. */
+const SCHERMO_TELEFONO = "/telefono/#!action=stream&udid=telefono%3A5555&player=webcodecs&fitToScreen=true";
+
 export function AppCalendario({ pubblico }: { pubblico?: { gruppo: string } }) {
   return (
     <OeProvider pubblico={pubblico}>
@@ -151,6 +154,11 @@ function Guscio() {
       {!pub && (
         <VoceRail attiva={sezione === "timesheet"} id="nav-timesheet" etichetta="Timesheet" larga={railLarga || stretto} onClick={() => { setSezione("timesheet"); setMenu(false); }}>
           <ClockIcon />
+        </VoceRail>
+      )}
+      {!pub && (
+        <VoceRail id="nav-phone" etichetta="Telefono" titolo="Schermo del telefono virtuale (PIN, accessi, codici): si apre in una scheda nuova" larga={railLarga || stretto} onClick={() => { setMenu(false); window.open(SCHERMO_TELEFONO, "_blank", "noopener"); }}>
+          <SmartphoneIcon />
         </VoceRail>
       )}
       <div className="flex-1" />

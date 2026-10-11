@@ -4,6 +4,7 @@ import WS from 'ws';
 import { RequestParameters } from '../../mw/Mw';
 import { ACTION } from '../../../common/Action';
 import { SERVER_PORT } from '../../../common/Constants';
+import { sorveglia } from '../../services/Pausa';
 
 // Il solo tunnel che serve: dal browser al server di scrcpy sul telefono (tcp:8886). Una porta qualunque
 // del telefono (adbd compreso) non si raggiunge da qui.
@@ -25,6 +26,7 @@ export class WebsocketProxyOverAdb extends WebsocketProxy {
             ws.close(4003, `[${this.TAG}] Invalid value for "udid" parameter`);
             return;
         }
+        sorveglia(ws);
         return this.createProxyOverAdb(ws, udid, remote);
     }
 

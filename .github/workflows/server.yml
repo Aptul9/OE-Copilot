@@ -118,6 +118,7 @@ jobs:
           npm run typecheck
           npm run dist
           npm run smoke
+          npm test
 
       - name: Schermo del telefono, immagine
         run: |

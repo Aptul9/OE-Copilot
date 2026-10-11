@@ -9,6 +9,10 @@ l'app, nella finestra). Fa da solo tutto il contorno:
      solo su localhost) e ci collega adb;
   3. lancia scrcpy; alla chiusura della finestra toglie PAUSA e chiude il tunnel.
 
+Dal browser, senza PC e senza tunnel: il pulsante "Telefono" dell'interfaccia nel browser
+(GUIDA.md 4.8) apre lo stesso schermo e mette in pausa la sincronizzazione da solo. Questo
+script resta per quando l'interfaccia nel browser non c'è (o il servizio schermo è fermo).
+
 Uso:
   .venv\\Scripts\\python strumenti\\schermo_telefono.py [utente@server]
 

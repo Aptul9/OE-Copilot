@@ -18,7 +18,10 @@
 #   che porta DAVx5 in primo piano per un attimo, poi si rimette Outlook davanti.
 #
 # Se esiste il file PAUSA (es. durante un login dalla finestra scrcpy) non si
-# tocca lo schermo: si forzano solo le sincronizzazioni di Android.
+# tocca lo schermo: si forzano solo le sincronizzazioni di Android. Vale anche
+# stato/schermo/PAUSA, che il servizio dello schermo nel browser (schermo-web) riscrive ogni 10
+# secondi finché c'è una pagina aperta: se è più vecchio di 60 secondi si ignora, così un
+# servizio morto non ferma la sincronizzazione.
 #
 # A ogni giro lascia un segno di vita in stato/battito.json, che l'agente passa
 # all'app: se il servizio si ferma o il telefono è spento, l'app lo dice invece
@@ -28,6 +31,8 @@ T=oe-copilot-telefono
 OGNI=${OGNI:-30}
 PAUSA=/opt/oe-copilot/telefono/PAUSA
 STATO=/opt/oe-copilot/stato
+PAUSA_SCHERMO=$STATO/schermo/PAUSA
+PAUSA_SCHERMO_SCADE=${PAUSA_SCHERMO_SCADE:-60}
 # Ogni quanti giri rilevare accessi scaduti e freschezza (un minuto): il controllo
 # copia due piccoli database e legge la coda di due log, costa poco.
 ACCESSI_OGNI=${ACCESSI_OGNI:-2}
@@ -40,6 +45,9 @@ conta=0
 while true; do
     telefono=false; davanti=false; pausa=false
     [ -e "$PAUSA" ] && pausa=true
+    if [ -f "$PAUSA_SCHERMO" ] && [ $(( $(date +%s) - $(stat -c %Y "$PAUSA_SCHERMO" 2>/dev/null || echo 0) )) -lt "$PAUSA_SCHERMO_SCADE" ]; then
+        pausa=true
+    fi
     if docker exec "$T" true 2>/dev/null; then
         telefono=true
         lavori=$(docker exec "$T" dumpsys jobscheduler 2>/dev/null)

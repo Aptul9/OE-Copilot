@@ -7,7 +7,8 @@
     "start": "npm run dist && cd dist && npm start",
     "script:dist:start": "node ./index.js",
     "smoke": "node scripts/smoke.mjs dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/pausa.test.mjs"
   },
   "author": "Sergey Volkov <drauggres@gmail.com>",
   "license": "MIT",

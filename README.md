@@ -6,7 +6,7 @@ Nessuna registrazione su Azure e nessun consenso dell'amministratore: gli access
 
 ## Nel browser
 
-Il server serve la pagina dietro HTTPS e una pagina di accesso. Come si mette in piedi il server: *Caselle lette dal server* qui sotto e **GUIDA.md**, sezione 4.7.
+Il server serve la pagina dietro HTTPS e una pagina di accesso. Come si mette in piedi il server: *Caselle lette dal server* qui sotto e **GUIDA.md**, sezione 4.7. L'accesso può avere un secondo fattore, spento di default (il codice di un'app di autenticazione con i codici di recupero, oppure le passkey): variabile `AUTH_2FA` in `.env`, attivazione e recupero in **GUIDA.md**, sezione 4.7.
 
 ---
 
@@ -93,5 +93,6 @@ riscritta a ogni modifica).
 I log dei servizi: `docker logs oe-copilot-<servizio>` sul server (GUIDA.md, sezione 7).
 
 - **La pagina resta vuota o chiede di nuovo l'accesso**: il cookie di sessione dura 30 giorni; dopo un cambio di `ADMIN_PASSWORD` e un riavvio del gateway le sessioni si chiudono.
+- **Non riesco più a entrare con il secondo fattore** (telefono perso, codici persi): sul server, in `.env`, `AUTH_2FA=off`, poi `sudo docker compose up -d gateway` dalla cartella `/opt/oe-copilot`: basta la password. I passaggi, e come ripartire da zero col codice: GUIDA.md, sezione 4.7.
 - **Non compare un calendario appena aggiunto**: **Gestisci calendari → Ricerca calendari nuovi** rilegge l'elenco dal server (è memorizzato). Se manca ancora: sul telefono Outlook passa solo i calendari spuntati, con *Sincronizza calendari* acceso per quella casella, e l'agente legge solo quelli elencati in `agent/fonti.json` (GUIDA.md, 4.2 e 4.4).
 - **"Il server dei calendari non risponde"**: l'agente non risponde al gateway; `docker logs oe-copilot-agent` e `docker logs oe-copilot-gateway` dal server, e dal PC la prova della GUIDA.md, sezione 5. Un pallino giallo o rosso su un'azienda dice nel suo suggerimento cosa è fermo sul server.

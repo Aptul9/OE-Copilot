@@ -1,6 +1,6 @@
 import { getMigrations } from "better-auth/db/migration";
 import { auth, authOptions } from "@/lib/auth";
-import { config } from "@/lib/config";
+import { config, modo2fa } from "@/lib/config";
 import { archivio } from "@/lib/core/archivio";
 import { appDb } from "@/lib/db";
 import { migrateLockout } from "@/lib/lockout";
@@ -12,9 +12,17 @@ function fatal(message: string): never {
 }
 
 export async function boot() {
+  let modo;
+  try {
+    modo = modo2fa();
+  } catch (e) {
+    fatal(e instanceof Error ? e.message : String(e));
+  }
   if (config.authSecret.length < 32) fatal("BETTER_AUTH_SECRET deve essere impostata, almeno 32 caratteri (openssl rand -hex 32)");
-  // prima le tabelle: better-auth controlla lo schema quando si crea l'istanza
-  const { runMigrations } = await getMigrations(authOptions());
+  console.log(`secondo fattore dell'accesso (AUTH_2FA): ${modo}`);
+  // prima le tabelle: better-auth controlla lo schema quando si crea l'istanza. Lo schema è quello con tutti i plugin, in
+  // ogni modo: le tabelle del secondo fattore ci sono anche con off (aggiunte, mai tolte), così cambiare AUTH_2FA non tocca il database
+  const { runMigrations } = await getMigrations(authOptions(appDb(), "passkey"));
   await runMigrations();
   migrateLockout(appDb());
   try {

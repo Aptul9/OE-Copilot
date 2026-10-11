@@ -4,6 +4,7 @@ import { CalendarDaysIcon, ClockIcon, LogOutIcon, MenuIcon, MoonIcon, PanelLeftI
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import type { Modo2fa } from "@/lib/config";
 import { api } from "@/lib/oe/api";
 import { vistaPerSchermo } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
@@ -49,15 +50,15 @@ function useStretto(): boolean {
 /** La pagina dello schermo del telefono (servizio schermo, dietro la stessa sessione): il telefono, già adattato alla finestra. */
 const SCHERMO_TELEFONO = "/telefono/#!action=stream&udid=telefono%3A5555&player=webcodecs&fitToScreen=true";
 
-export function AppCalendario({ pubblico }: { pubblico?: { gruppo: string } }) {
+export function AppCalendario({ pubblico, accesso2fa = "off" }: { pubblico?: { gruppo: string }; accesso2fa?: Modo2fa }) {
   return (
     <OeProvider pubblico={pubblico}>
-      <Guscio />
+      <Guscio accesso2fa={accesso2fa} />
     </OeProvider>
   );
 }
 
-function Guscio() {
+function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
   const oe = useOe();
   const stretto = useStretto();
   const telefono = useStrettissimo();
@@ -301,7 +302,7 @@ function Guscio() {
         <>
           <DialogoCalendari aperto={dialogo === "calendari"} onChiudi={() => setDialogo(null)} />
           <DialogoNuovoEvento aperto={dialogo === "evento"} onChiudi={() => setDialogo(null)} />
-          <DialogoImpostazioni aperto={dialogo === "impostazioni"} onChiudi={() => setDialogo(null)} />
+          <DialogoImpostazioni aperto={dialogo === "impostazioni"} onChiudi={() => setDialogo(null)} accesso2fa={accesso2fa} />
         </>
       )}
     </div>

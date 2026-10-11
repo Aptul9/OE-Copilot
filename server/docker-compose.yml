@@ -74,6 +74,8 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # secondo fattore dell'accesso (GUIDA.md 4.7): off (predefinito), totp o passkey; un altro valore ferma l'avvio
+      - AUTH_2FA=${AUTH_2FA:-off}
     volumes:
       - ./ui-dati:/dati
     ports:

@@ -1,13 +1,14 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Modo2fa } from "@/lib/config";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import { useOe } from "./OeProvider";
 
-type Props = { aperto: boolean; onChiudi: () => void };
+type Props = { aperto: boolean; onChiudi: () => void; accesso2fa?: Modo2fa };
 
 const TEMI: { valore: TemaConfig; testo: string }[] = [
   { valore: "auto", testo: "Automatico" },
@@ -22,7 +23,7 @@ const INTERVALLI = [
 ];
 
 /** Impostazioni: aspetto e ogni quanto si rilegge il calendario. */
-export function DialogoImpostazioni({ aperto, onChiudi }: Props) {
+export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Props) {
   const { tema, impostaTema, intervalloSync, impostaIntervallo } = useOe();
 
   return (
@@ -70,6 +71,18 @@ export function DialogoImpostazioni({ aperto, onChiudi }: Props) {
               </Select>
             </label>
           </section>
+
+          {accesso2fa !== "off" && (
+            <section>
+              <h3 className="mb-2 font-semibold">Sicurezza</h3>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Secondo fattore dell&apos;accesso: il codice di un&apos;app di autenticazione{accesso2fa === "passkey" ? " e le passkey" : ""}.
+              </p>
+              <a id="cfg-sicurezza" href="/sicurezza" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                Gestisci l&apos;accesso
+              </a>
+            </section>
+          )}
 
           <section>
             <h3 className="mb-1 font-semibold">Info</h3>

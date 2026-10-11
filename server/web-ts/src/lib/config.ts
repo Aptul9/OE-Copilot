@@ -1,7 +1,23 @@
 import path from "node:path";
 
+/** Il secondo fattore dell'accesso: spento, codici TOTP con codici di recupero, oppure anche le passkey (che includono il TOTP). */
+export const MODI_2FA = ["off", "totp", "passkey"] as const;
+export type Modo2fa = (typeof MODI_2FA)[number];
+
+/** AUTH_2FA: senza valore è off; un valore che non è uno dei tre è un errore, così un refuso non spegne il secondo fattore in silenzio. */
+export function modo2fa(valore: string | undefined = process.env.AUTH_2FA): Modo2fa {
+  const v = (valore ?? "").trim().toLowerCase();
+  if (!v) return "off";
+  if ((MODI_2FA as readonly string[]).includes(v)) return v as Modo2fa;
+  throw new Error(`AUTH_2FA non valido: "${valore}". Valori ammessi: ${MODI_2FA.join(", ")}`);
+}
+
 // Letta al momento dell'uso: la build importa i moduli senza database né segreti.
 export const config = {
+  // Il secondo fattore dell'accesso (AUTH_2FA, default off)
+  get auth2fa(): Modo2fa {
+    return modo2fa();
+  },
   // Indirizzo pubblico: APP_URL, altrimenti https://UI_HOST
   get appUrl() {
     const esplicito = process.env.APP_URL;

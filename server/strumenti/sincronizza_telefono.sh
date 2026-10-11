@@ -22,8 +22,14 @@
 #   lo schermo è acceso, un tocco sulla barra di stato (nessuna app lo riceve) conta
 #   come attività dell'utente e riparte il conteggio: dopo il PIN il telefono resta
 #   sbloccato e Outlook resta davanti. Un tasto da shell non basta (provato: il
-#   tocco aggiorna mLastUserActivityTime, il tasto no). Il PIN lo digita sempre
-#   l'utente; a schermo spento il tocco non si manda.
+#   tocco aggiorna mLastUserActivityTime, il tasto no). A schermo spento il tocco non
+#   si manda.
+# - Senza blocco dello schermo (credenziale tolta l'11/10/2026 con "cmd lock_settings
+#   clear": nessuna schermata di blocco, nemmeno dopo aver spento lo schermo): se lo
+#   schermo è spento (tasto di accensione della pagina, o il tocco mancato) e nessuna
+#   pagina è aperta, lo si riaccende prima di portare Outlook davanti: a schermo spento
+#   Outlook resta in pausa e non scarica niente. Con un blocco (PIN) il tasto
+#   accenderebbe solo la schermata di blocco: se si rimette un PIN, lo digita sempre l'utente.
 # - Calendari Google (DAVx5): DAVx5 usa WorkManager, che scarta le esecuzioni
 #   anticipate dei lavori periodici; si usa la sua scorciatoia ufficiale
 #   "Sincronizzazione di tutti gli account" (azione android.intent.action.SYNC),
@@ -77,6 +83,8 @@ while true; do
             docker exec "$T" cmd jobscheduler run -f android "$id" >/dev/null 2>&1
         done
         if [ "$pausa" = false ]; then
+            docker exec "$T" dumpsys power 2>/dev/null | grep -q 'mWakefulness=Awake' \
+                || { docker exec "$T" input keyevent 224 >/dev/null 2>&1; sleep 1; }
             docker exec "$T" am start -a android.intent.action.SYNC \
                 -n at.bitfire.davdroid/.ui.AccountsActivity >/dev/null 2>&1
             sleep 2

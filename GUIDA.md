@@ -448,6 +448,7 @@ Le soglie si cambiano con le variabili d'ambiente `OUTLOOK_GIALLO_S`, `OUTLOOK_R
   chiave, vedi 4.5), oppure dal PC col tunnel della sezione 5.
 - **Aggiornare il codice del server**: con l'aggiornamento automatico (sezione 4.6) basta un push
   su `main`. A mano: `git pull`, `bash server/strumenti/prepara_ui.sh` (prepara la copia dei moduli dell'app per `ui`), ricopia `server/` in `/opt/oe-copilot` (mantieni `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/`), `sudo docker compose up -d --build`, riavvia il servizio.
+- **Prova dell'agente** (`server/strumenti/prova_agente_golden.py`, la lancia la Action): costruisce un `calendar.db` inventato come quello del telefono (serie con fusi e cambio dell'ora, occorrenze annullate e spostate, EXDATE, giorni interi, doppioni, inviti), avvia l'agente vero e confronta le sue risposte HTTP con quelle registrate in `server/strumenti/golden/agente.json`. Se una modifica all'agente o a una libreria cambia una risposta, la prova mostra la differenza; se la nuova risposta è quella giusta si riscrive il file con `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/server/agent:/app:ro" -v "$PWD/server/strumenti:/prove" oe-copilot-agent python /prove/prova_agente_golden.py --aggiorna`. Le librerie dell'agente (e di `ui`) hanno le versioni fissate in `requirements.txt`.
 - **Backup**: i dati del telefono stanno in `/opt/oe-copilot/telefono/data` (contengono i login:
   trattali come un segreto). Uno snapshot coerente si fa con il telefono in `docker pause` per
   pochi secondi.

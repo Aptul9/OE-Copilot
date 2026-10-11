@@ -60,6 +60,13 @@ jobs:
       - name: Immagine dell'agente
         run: docker build -q -t oe-copilot-agent server/agent
 
+      - name: Prova dell'agente, calendario inventato
+        run: |
+          # ricorrenze, annullamenti, fusi e doppioni su un calendar.db costruito dalla prova, contro la risposta registrata
+          # in server/strumenti/golden/agente.json (l'agente vero, in HTTP, con il suo codice montato come sul server)
+          docker run --rm -v "$PWD/server/agent:/app:ro" -v "$PWD/server/strumenti:/prove:ro" \
+            oe-copilot-agent python /prove/prova_agente_golden.py
+
       - name: Interfaccia web
         run: |
           # l'immagine parte davvero: un logo, controllo di Docker, una chiamata all'API

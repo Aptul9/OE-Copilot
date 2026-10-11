@@ -72,7 +72,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 ## Controlli prima di un push
 
 - `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>`: cerca i dati della personalizzazione nei file del repository e fallisce se ne trova.
-- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/`, gateway (`npm test`), schermo, immagini e il cancello dell'accesso.
+- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/`, l'agente su un calendario di Android inventato (`prova_agente_golden.py`, GUIDA.md, sezione 7), gateway (`npm test`), schermo, immagini e il cancello dell'accesso.
 
 ## File principali
 

@@ -1,0 +1,131 @@
+/* FullCalendar nel tema di shadcn: gli stessi ritocchi di web/style.css, con i colori del tema
+   (--card, --border, --primary...) al posto di quelli del vecchio file. */
+.calendario {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: var(--card);
+  --fc-neutral-bg-color: var(--muted);
+  --fc-today-bg-color: color-mix(in oklch, var(--primary) 6%, transparent);
+  --fc-now-indicator-color: var(--destructive);
+  --fc-small-font-size: 12px;
+  --fc-list-event-hover-bg-color: var(--accent);
+  /* il riempimento degli eventi è tenue: il testo bianco predefinito sparirebbe */
+  --fc-event-text-color: var(--foreground);
+  --muted-ink: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+}
+.calendario .fc { font-family: var(--font-sans); }
+.calendario .fc .fc-scrollgrid { border-color: var(--border); border-left: none; border-top: none; }
+.calendario .fc .fc-scrollgrid-section > * { border-color: var(--border); }
+.calendario .fc td, .calendario .fc th { border-color: var(--border); }
+
+/* intestazioni dei giorni */
+.calendario .fc .fc-col-header-cell { background: transparent; padding: 6px 0; }
+.calendario .fc .fc-col-header-cell-cushion {
+  padding: 2px 6px; color: var(--muted-foreground);
+  font-size: 12px; font-weight: 600; text-decoration: none;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.calendario .fc .fc-day-today .fc-col-header-cell-cushion { color: var(--primary); }
+
+/* orari a sinistra: colonna stretta e testo compatto */
+.calendario .fc .fc-timegrid-slot-label-cushion,
+.calendario .fc .fc-timegrid-axis-cushion { color: var(--muted-ink); font-size: 10px; padding: 0 4px; }
+.calendario .fc .fc-timegrid-axis,
+.calendario .fc .fc-timegrid-slot-label { width: 38px; }
+/* slot da mezz'ora alti, così una riunione da 30 minuti mostra orario e titolo; l'altezza è una
+   variabile che i pulsanti +/- della barra alzano e abbassano */
+.calendario .fc .fc-timegrid-slot { height: var(--slot-h, 58px); }
+
+/* numeri di giorno (vista mese) */
+.calendario .fc .fc-daygrid-day-number { color: var(--muted-foreground); font-size: 12.5px; padding: 5px 7px; text-decoration: none; }
+.calendario .fc .fc-day-today .fc-daygrid-day-number {
+  background: var(--primary); color: var(--primary-foreground); border-radius: 999px;
+  min-width: 22px; text-align: center; margin: 3px; padding: 3px 6px;
+}
+
+/* eventi: blocco tenue con barretta colorata, come le riunioni di Teams.
+   Niente position/overflow su .fc-event: romperebbe il posizionamento assoluto con cui
+   FullCalendar fa riempire l'evento al suo slot. */
+.calendario .fc .fc-event { border: none; border-left: 3px solid; border-radius: 6px; box-shadow: none; padding: 0; }
+.calendario .fc .fc-timegrid-event { overflow: visible; }
+.calendario .fc .fc-timegrid-event .fc-event-main { padding: 0; height: 100%; overflow: visible; }
+.ev-body { height: 100%; overflow: hidden; position: relative; padding: 2px 8px; border-radius: 6px; }
+.calendario .fc-event.secondario { border-left-style: dashed; }
+.calendario .fc-event.secondario .fc-event-main,
+.calendario .fc-event.secondario .ev-meta { color: var(--muted-ink); }
+
+/* pallino azienda in alto a destra dell'evento: cerchio con le iniziali, o il logo intero */
+.ev-corner {
+  position: absolute; top: -8px; right: -8px; height: 28px; width: 28px;
+  border-radius: 50%; z-index: 3; overflow: hidden; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: #fff; line-height: 1;
+  box-shadow: 0 0 0 1.5px var(--card), 0 0 0 2.5px rgba(0, 0, 0, .10), 0 1px 2px rgba(0, 0, 0, .22);
+}
+.ev-corner img { height: 100%; width: 100%; object-fit: contain; padding: 3px; display: block; }
+.calendario .fc .fc-event:hover { filter: brightness(.97); }
+.calendario .fc .fc-event-main { padding: 0; color: var(--foreground); }
+.calendario .fc-event .ev-meta {
+  flex: none; font-size: 10px; font-weight: 700; color: var(--muted-foreground);
+  letter-spacing: .1px; line-height: 1.05; padding-right: 22px; margin-bottom: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.calendario .fc-event .ev-meta .ev-az { font-weight: 600; color: var(--muted-ink); }
+.calendario .fc-event .ev-title {
+  min-height: 0; font-weight: 600; font-size: 12.5px; line-height: 1.15; padding-right: 16px;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.calendario .fc-event .ev-line {
+  font-size: 12px; line-height: 1.2; font-weight: 600; padding-right: 22px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.calendario .fc-event .ev-line .ev-time { font-weight: 400; color: var(--muted-foreground); }
+.calendario .fc-daygrid-event { margin-top: 1.5px; }
+
+/* vista agenda */
+.calendario .fc .fc-list { border-color: var(--border); border-radius: 6px; }
+.calendario .fc .fc-list-day-cushion { background: var(--muted); }
+.calendario .fc .fc-list-day-text, .calendario .fc .fc-list-day-side-text { color: var(--foreground); text-decoration: none; }
+.calendario .fc .fc-list-event-title a { color: var(--foreground); text-decoration: none; }
+.calendario .fc .fc-list-event-time { color: var(--muted-foreground); }
+.calendario .fc .fc-list-empty { background: var(--card); color: var(--muted-ink); }
+
+.calendario .fc .fc-timegrid-now-indicator-arrow { display: none; }
+.calendario .fc .fc-timegrid-now-indicator-line { border-width: 2px 0 0; }
+
+/* giorni non lavorativi: il weekend è appena più scuro con la data smorta; il festivo ha la data in
+   rosso e tutta la colonna con una velatura rossa tenue */
+.calendario .fc .fc-col-header-cell.giorno-weekend,
+.calendario .fc .fc-daygrid-day.giorno-weekend,
+.calendario .fc .fc-timegrid-col.giorno-weekend { background: var(--muted); }
+.calendario .fc .fc-col-header-cell.giorno-weekend .fc-col-header-cell-cushion { color: var(--muted-ink); }
+.calendario .fc .fc-col-header-cell.giorno-festivo,
+.calendario .fc .fc-daygrid-day.giorno-festivo,
+.calendario .fc .fc-timegrid-col.giorno-festivo { background: rgba(220, 38, 38, 0.055); }
+.calendario .fc .fc-col-header-cell.giorno-festivo .fc-col-header-cell-cushion { color: #c0392b; }
+/* sabato e domenica più stretti, così i giorni feriali hanno più spazio (solo nella settimana) */
+.calendario.vista-sett .fc .fc-col-header-cell.giorno-weekend,
+.calendario.vista-sett .fc .fc-timegrid-col.giorno-weekend { width: 54px; }
+
+/* riga sotto la data: la festività come pillola, gli eventi di un giorno intero come chip */
+.fc-day-extra { padding: 2px 4px 4px; display: flex; flex-direction: column; gap: 3px; align-items: center; width: 100%; }
+.fc-festivo-pill {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  background: var(--card); color: #c0392b; border: 1px solid #eab8b8;
+  border-radius: 999px; padding: 1px 9px 1px 7px;
+  font-size: 10.5px; font-weight: 600; line-height: 1.5;
+  box-shadow: 0 1px 2px rgba(192, 57, 43, .12);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fc-festivo-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #e24b4a; flex: none; }
+.fc-allday-chip {
+  width: 100%; font-size: 10px; line-height: 1.2; text-align: left;
+  padding: 1px 5px; border-left: 3px solid; border-radius: 3px; color: var(--foreground);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* vista a 3 giorni: il movimento orizzontale è nostro (un giorno alla volta), quello verticale
+   resta allo scorrimento della griglia */
+.calendario.vista-3g .fc-timegrid-body,
+.calendario.vista-3g .fc-col-header { touch-action: pan-y; }
+.calendario.vista-3g { overscroll-behavior-x: none; }
+.calendario[data-trascina] { user-select: none; cursor: grabbing; }

@@ -1,0 +1,243 @@
+import { describe, expect, it } from "vitest";
+import { ApiError, creaApi } from "@/lib/oe/api";
+import {
+  azioniEvento,
+  chiaveGiorno,
+  corrisponde,
+  dentroLaCache,
+  eATreGiorni,
+  etichettaSync,
+  eventiPerGriglia,
+  fmtRange,
+  giorniTra,
+  iniziali,
+  isoLocale,
+  periodoLargo,
+  raccogliFestivi,
+  raggruppaAziende,
+  salute,
+  schedeTimesheet,
+  sigleScheda,
+  spostaGiorni,
+  testoDatiVecchi,
+  tintaOpaca,
+  vicinoAlBordo,
+  vistaPerSchermo,
+} from "@/lib/oe/logic";
+import type { Calendario, Evento } from "@/lib/oe/types";
+
+const ev = (extra: Partial<Evento> = {}): Evento => ({
+  id: "android::a@x.it|1|2026-10-12T09:30:00",
+  title: "Riunione",
+  start: "2026-10-12T09:30:00",
+  end: "2026-10-12T10:00:00",
+  allDay: false,
+  color: "#2563eb",
+  account: "a@x.it",
+  alias: "ROAR",
+  remoto: true,
+  online_url: "https://teams.microsoft.com/l/meetup-join/1",
+  ...extra,
+});
+
+describe("iniziali", () => {
+  it.each([
+    ["Alfa", "AL"],
+    ["Beta Servizi", "BS"],
+    ["Alfa · m.rossi", "AL"],
+    ["antonio.maritato@itv.com", "AM"],
+    ["", ""],
+  ])("%s -> %s", (nome, atteso) => expect(iniziali(nome)).toBe(atteso));
+});
+
+describe("colori", () => {
+  it("il riempimento è un mix senza trasparenza con la superficie del tema", () => {
+    expect(tintaOpaca("#2563eb", 14)).toBe("color-mix(in srgb, #2563eb 14%, var(--card))");
+    expect(tintaOpaca("#2563eb", 14)).not.toMatch(/rgba|transparent/);
+  });
+});
+
+describe("date", () => {
+  it("giorniTra e spostaGiorni passano il cambio dell'ora legale", () => {
+    const a = new Date(2026, 9, 24);
+    expect(giorniTra(a, new Date(2026, 9, 27))).toBe(3);
+    expect(giorniTra(a, spostaGiorni(a, 3))).toBe(3);
+    expect(chiaveGiorno(spostaGiorni(new Date(2026, 9, 31), 1))).toBe("2026-11-01");
+  });
+  it("isoLocale ha lo scarto orario", () => {
+    expect(isoLocale(new Date(2026, 9, 11, 0, 0, 0))).toMatch(/^2026-10-11T00:00:00[+-]\d\d:\d\d$/);
+  });
+  it("fmtRange", () => {
+    const s = new Date(2026, 9, 12, 9, 30);
+    const e = new Date(2026, 9, 12, 10, 0);
+    expect(fmtRange(s, e, false)).toMatch(/^Lunedì 12 ottobre · 09:30–10:00$/);
+    expect(fmtRange(s, e, true)).toBe("Lunedì 12 ottobre · tutto il giorno");
+  });
+});
+
+describe("festività e giorni interi", () => {
+  it("la fine esclusiva non tinge il giorno dopo", () => {
+    const r = raccogliFestivi([ev({ allDay: true, title: "Ognissanti", account: "Festività", start: "2026-11-01T00:00:00", end: "2026-11-02T00:00:00" })]);
+    expect(Object.keys(r.festivi)).toEqual(["2026-11-01"]);
+  });
+  it("un evento intero di una casella va fra i chip, e uno nascosto no", () => {
+    const r = raccogliFestivi([
+      ev({ allDay: true, title: "Ferie", start: "2026-10-12T00:00:00", end: "2026-10-14T00:00:00" }),
+      ev({ allDay: true, title: "Nascosto", nascosto: true, start: "2026-10-12T00:00:00", end: "2026-10-13T00:00:00" }),
+    ]);
+    expect(Object.keys(r.tuttoGiorno)).toEqual(["2026-10-12", "2026-10-13"]);
+    expect(r.tuttoGiorno["2026-10-12"].map((c) => c.title)).toEqual(["Ferie"]);
+  });
+});
+
+describe("legenda", () => {
+  const cal = (extra: Partial<Calendario>): Calendario => ({ id: "x", account: "a@x.it", label: "a@x.it · Calendario", color: "#111", enabled: true, stato: "ok", ...extra });
+  it("raggruppa per azienda mostrata e conta quelli accesi", () => {
+    const g = raggruppaAziende([
+      cal({ id: "1", alias: "ROAR" }),
+      cal({ id: "2", alias: "ROAR", account: "b@x.it", enabled: false }),
+      cal({ id: "3", account: "c@x.it" }),
+    ]);
+    expect(g.map((x) => [x.azienda, x.tot, x.on, x.caselle.length])).toEqual([
+      ["ROAR", 2, 1, 2],
+      ["c@x.it", 1, 1, 1],
+    ]);
+  });
+  it("basta un calendario in errore: rotto; un avviso resta avviso", () => {
+    const g = raggruppaAziende([cal({ alias: "A", stato: "avviso", stato_msg: "in ritardo" }), cal({ alias: "B", stato: "errore", stato_msg: "non risponde" })]);
+    expect([g[0].avviso, g[0].rotto, g[1].avviso, g[1].rotto]).toEqual([true, false, false, true]);
+  });
+  it("il pallino segue l'ultima lettura, poi lo stato dei calendari", () => {
+    const g = raggruppaAziende([cal({ alias: "A", stato: "errore", stato_msg: "calendario rotto" })])[0];
+    expect(salute({ A: { stato: "ok", msg: "Letto alle 07:48" } }, g)).toEqual({ classe: "good", titolo: "Letto alle 07:48" });
+    expect(salute({}, g)).toEqual({ classe: "bad", titolo: "calendario rotto" });
+    expect(salute({}, raggruppaAziende([cal({ alias: "A" })])[0])).toEqual({ classe: "warn", titolo: "Non ancora letto" });
+    expect(salute({ A: { stato: "ok", msg: "" } }, g, true).classe).toBe("attesa");
+  });
+});
+
+describe("eventi per la griglia", () => {
+  it("riempimento opaco; secondari più tenui con bordo tratteggiato dalla classe", () => {
+    const [n] = eventiPerGriglia([ev()], { secondari: new Set(), ricerca: "" });
+    expect(n.backgroundColor).toBe("color-mix(in srgb, #2563eb 14%, var(--card))");
+    expect(n.borderColor).toBe("#2563eb");
+    expect(n.classNames).toEqual([]);
+    const [s] = eventiPerGriglia([ev()], { secondari: new Set(["ROAR"]), ricerca: "" });
+    expect(s.backgroundColor).toContain("7%");
+    expect(s.borderColor).toContain("55%");
+    expect(s.classNames).toEqual(["secondario"]);
+  });
+  it("tiene fuori i nascosti e le festività, e filtra con la ricerca", () => {
+    const eventi = [ev({ id: "1" }), ev({ id: "2", nascosto: true }), ev({ id: "3", account: "Festività" }), ev({ id: "4", title: "Daily Bandpey", alias: "Bandpey" })];
+    expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "" }).map((e) => e.id)).toEqual(["1", "4"]);
+    expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "  bandpey " }).map((e) => e.id)).toEqual(["4"]);
+    expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "zzzz" })).toEqual([]);
+  });
+  it("la ricerca guarda titolo, azienda, indirizzo, calendario, luogo e organizzatore", () => {
+    const e = ev({ location: "Sala Verdi", organizer: "Mario Rossi", calendar: "a@x.it · Team" });
+    for (const q of ["riunione", "roar", "a@x.it", "team", "verdi", "rossi"]) expect(corrisponde(e, q)).toBe(true);
+    expect(corrisponde(e, "altro")).toBe(false);
+  });
+});
+
+describe("scheda dell'evento", () => {
+  it("riunione Teams di una casella: Partecipa e Apri in Teams", () => {
+    const a = azioniEvento(ev(), new Set());
+    expect(a.partecipa).toBe("https://teams.microsoft.com/l/meetup-join/1");
+    expect(a.apriInTeams).toEqual({ account: "a@x.it", url: "https://teams.microsoft.com/l/meetup-join/1" });
+    expect(a.elimina).toBeNull();
+  });
+  it("niente Apri in Teams per le caselle senza Teams, le copie inoltrate e le riunioni senza link", () => {
+    expect(azioniEvento(ev(), new Set(["ROAR"])).apriInTeams).toBeNull();
+    expect(azioniEvento(ev({ inoltrata_da: "x@y.it" }), new Set()).apriInTeams).toBeNull();
+    const senza = azioniEvento(ev({ online_url: null }), new Set());
+    expect(senza.partecipa).toBeNull();
+    expect(senza.apriInTeams).toBeNull();
+  });
+  it("una riunione Teams di un calendario Google compare, una non Teams no", () => {
+    expect(azioniEvento(ev({ is_google: true }), new Set()).apriInTeams).not.toBeNull();
+    expect(azioniEvento(ev({ is_google: true, online_url: "https://meet.google.com/abc" }), new Set()).apriInTeams).toBeNull();
+  });
+  it("un evento personale si elimina", () => {
+    expect(azioniEvento(ev({ is_local: true, uid: "u1", remoto: false, online_url: null }), new Set()).elimina).toBe("u1");
+  });
+});
+
+describe("sincronizzazione", () => {
+  it("l'etichetta", () => {
+    const t = 1_000_000;
+    expect(etichettaSync(t, t, 1)).toBe("Sincronizzo…");
+    expect(etichettaSync(null, t, 0)).toBe("—");
+    expect(etichettaSync(t, t + 4000, 0)).toBe("Sincronizzato ora");
+    expect(etichettaSync(t, t + 30_000, 0)).toBe("Sincronizzato 30 sec fa");
+    expect(etichettaSync(t, t + 5 * 60_000, 0)).toBe("Sincronizzato 5 min fa");
+    expect(etichettaSync(t, t + 3 * 3600_000, 0)).toBe("Sincronizzato 3 h fa");
+  });
+  it("i dati vecchi", () => {
+    expect(testoDatiVecchi("2026-10-11T07:23:02", "Il server non risponde")).toBe("Il server non risponde — questi sono i dati salvati delle 07:23. Aggiorno da solo…");
+    expect(testoDatiVecchi(null, null)).toBe("Outlook si sta avviando — aggiorno da solo appena è pronto…");
+  });
+});
+
+describe("vista a 3 giorni", () => {
+  it("riconosce il periodo, la cache e il bordo", () => {
+    const i = new Date(2026, 9, 12);
+    const f = new Date(2026, 9, 15);
+    expect(eATreGiorni(i, f)).toBe(true);
+    expect(eATreGiorni(i, new Date(2026, 9, 19))).toBe(false);
+    const c = periodoLargo(i, f);
+    expect(dentroLaCache(c, i, f)).toBe(true);
+    expect(dentroLaCache(c, spostaGiorni(i, 10), spostaGiorni(f, 10))).toBe(true);
+    expect(dentroLaCache(c, spostaGiorni(i, 20), spostaGiorni(f, 20))).toBe(false);
+    expect(dentroLaCache(null, i, f)).toBe(false);
+    expect(vicinoAlBordo(c, i, f)).toBe(false);
+    expect(vicinoAlBordo(c, spostaGiorni(i, 12), spostaGiorni(f, 12))).toBe(true);
+  });
+});
+
+describe("timesheet", () => {
+  it("una scheda con azione senza indirizzo non si mostra", () => {
+    const s = schedeTimesheet([{ nome: "A", url: "https://a" }, { nome: "B", azione: "x" }, { nome: "C" }]);
+    expect(s.map((x) => x.nome)).toEqual(["A", "C"]);
+    expect(sigleScheda("Beta Servizi Srl")).toBe("BS");
+  });
+});
+
+describe("client dell'API", () => {
+  const risposta = (status: number, corpo: unknown) => new Response(JSON.stringify(corpo), { status });
+  it("manda gli argomenti in una lista JSON a /api/<metodo>", async () => {
+    let chiamata: { url: string; init: RequestInit } | null = null;
+    const api = creaApi(async (url, init) => {
+      chiamata = { url: String(url), init: init! };
+      return risposta(200, { ok: true });
+    });
+    expect(await api("set_azienda_enabled", "ROAR", false)).toEqual({ ok: true });
+    expect(chiamata!.url).toBe("/api/set_azienda_enabled");
+    expect(chiamata!.init.method).toBe("POST");
+    expect(JSON.parse(chiamata!.init.body as string)).toEqual(["ROAR", false]);
+    expect(new Headers(chiamata!.init.headers).get("content-type")).toBe("application/json");
+  });
+  it("401: avvisa che la sessione è finita", async () => {
+    let finita = 0;
+    const api = creaApi(async () => risposta(401, { error: "non autenticato" }), () => finita++);
+    await expect(api("get_config")).rejects.toBeInstanceOf(ApiError);
+    expect(finita).toBe(1);
+  });
+  it("un errore del servizio porta il suo messaggio", async () => {
+    const api = creaApi(async () => risposta(500, { error: "boom" }));
+    await expect(api("get_config")).rejects.toThrow("boom");
+    const senzaCorpo = creaApi(async () => new Response("<html>", { status: 502 }));
+    await expect(senzaCorpo("get_config")).rejects.toThrow("HTTP 502");
+  });
+});
+
+describe("vista adatta allo schermo", () => {
+  it("settimana e tre giorni si adattano alla larghezza, il resto no", () => {
+    expect(vistaPerSchermo("timeGridWeek", false, false)).toBe("timeGridWeek");
+    expect(vistaPerSchermo("timeGridWeek", true, false)).toBe("timeGridTreGiorni");
+    expect(vistaPerSchermo("timeGridWeek", true, true)).toBe("timeGridDay");
+    expect(vistaPerSchermo("timeGridTreGiorni", true, false)).toBe("timeGridTreGiorni");
+    expect(vistaPerSchermo("timeGridTreGiorni", true, true)).toBe("timeGridDay");
+    for (const v of ["timeGridDay", "dayGridMonth", "listWeek"]) expect(vistaPerSchermo(v, true, true)).toBe(v);
+  });
+});

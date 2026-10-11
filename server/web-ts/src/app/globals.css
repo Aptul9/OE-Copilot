@@ -131,3 +131,8 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
+
+@keyframes scorre {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}

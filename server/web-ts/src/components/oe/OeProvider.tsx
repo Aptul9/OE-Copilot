@@ -1,0 +1,348 @@
+"use client";
+
+import { useTheme } from "next-themes";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "@/lib/oe/api";
+import {
+  dentroLaCache,
+  eATreGiorni,
+  etichettaSync,
+  eventiPerGriglia,
+  isoLocale,
+  periodoLargo,
+  raccogliFestivi,
+  raggruppaAziende,
+  testoDatiVecchi,
+  vicinoAlBordo,
+  type CacheLarga,
+  type EventoGriglia,
+  type GruppoAzienda,
+  type InfoGiorni,
+} from "@/lib/oe/logic";
+import type { Calendario, Config, Evento, FonteStato, Personalizzazione, TemaConfig } from "@/lib/oe/types";
+
+export type Periodo = { start: Date; end: Date; tipo: string };
+export type Avviso = { testo: string; tipo: "errore" | "info" };
+
+export const ZOOM_MIN = 26;
+export const ZOOM_MAX = 110;
+export const ZOOM_PASSO = 8;
+export const ZOOM_DEFAULT = 58;
+const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un avvio a freddo di Outlook
+
+type Valori = {
+  pronta: boolean;
+  pers: Personalizzazione;
+  config: Config;
+  vistaIniziale: string | null;
+  // calendari e legenda
+  calendari: Calendario[];
+  gruppi: GruppoAzienda[];
+  statoFonti: Record<string, FonteStato>;
+  pallinoInAttesa: boolean;
+  aggiornaCalendari: (forza?: boolean) => Promise<void>;
+  accendiAzienda: (azienda: string, acceso: boolean) => Promise<void>;
+  soloAzienda: (azienda: string) => Promise<void>;
+  // eventi
+  periodo: Periodo | null;
+  impostaPeriodo: (p: Periodo) => void;
+  eventi: Evento[];
+  eventiGriglia: EventoGriglia[];
+  infoGiorni: InfoGiorni;
+  ricerca: string;
+  impostaRicerca: (q: string) => void;
+  ricarica: () => void;
+  forzaSync: () => void;
+  // stato della sincronizzazione
+  avviso: Avviso | null;
+  datiVecchi: string | null;
+  sincronizzando: boolean;
+  etichetta: string;
+  // impostazioni
+  salvaConfig: (patch: Partial<Config>) => Promise<void>;
+  zoom: number;
+  cambiaZoom: (verso: 1 | -1 | 0) => void;
+  intervalloSync: number;
+  impostaIntervallo: (secondi: number) => void;
+  tema: TemaConfig;
+  temaScuro: boolean;
+  impostaTema: (t: TemaConfig) => void;
+  mostraAvviso: (a: Avviso | null) => void;
+};
+
+const Contesto = createContext<Valori | null>(null);
+
+export function useOe(): Valori {
+  const v = useContext(Contesto);
+  if (!v) throw new Error("useOe fuori da OeProvider");
+  return v;
+}
+
+export function OeProvider({ children }: { children: React.ReactNode }) {
+  const { setTheme, theme, resolvedTheme } = useTheme();
+  const [pronta, setPronta] = useState(false);
+  const [pers, setPers] = useState<Personalizzazione>({ interfaccia: {} });
+  const [config, setConfig] = useState<Config>({});
+  const [vistaIniziale, setVistaIniziale] = useState<string | null>(null);
+  const [calendari, setCalendari] = useState<Calendario[]>([]);
+  const [statoFonti, setStatoFonti] = useState<Record<string, FonteStato>>({});
+  const [pallinoInAttesa, setPallinoInAttesa] = useState(false);
+  const [periodo, impostaPeriodo] = useState<Periodo | null>(null);
+  const [eventi, setEventi] = useState<Evento[]>([]);
+  const [ricerca, impostaRicerca] = useState("");
+  const [avviso, mostraAvviso] = useState<Avviso | null>(null);
+  const [datiVecchi, setDatiVecchi] = useState<string | null>(null);
+  const [inCorso, setInCorso] = useState(0);
+  const [ultimaSync, setUltimaSync] = useState<number | null>(null);
+  const [adesso, setAdesso] = useState(() => Date.now());
+  const [token, setToken] = useState(0);
+  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const [intervalloSync, setIntervallo] = useState(60);
+
+  const cache = useRef<CacheLarga | null>(null);
+  const richiesta = useRef(0);
+  const tentativi = useRef(0);
+  const timerRitentativo = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eraFerma = useRef(false);
+  const inCorsoRef = useRef(0);
+  const rabboccoInCorso = useRef(false);
+  inCorsoRef.current = inCorso;
+
+  // ---- avvio: personalizzazione e configurazione prima di disegnare ------------------
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([
+      api("get_personalizzazione").catch(() => ({ interfaccia: {} }) as Personalizzazione),
+      api("get_config").catch(() => ({}) as Config),
+    ]).then(([p, c]) => {
+      if (!vivo) return;
+      setPers(p);
+      setConfig(c);
+      setVistaIniziale(typeof c.vista === "string" ? c.vista : null);
+      if (c.theme) setTheme(c.theme === "auto" ? "system" : c.theme);
+      if (c.zoom_calendario) setZoom(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(c.zoom_calendario))));
+      if (c.reminder_poll_seconds) setIntervallo(c.reminder_poll_seconds);
+      setPronta(true);
+    });
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ---- sincronizzazione: contatore e orologio dell'etichetta ---------------------------
+  const syncInizio = useCallback(() => setInCorso((n) => n + 1), []);
+  const syncFine = useCallback((riuscito: boolean) => {
+    setInCorso((n) => Math.max(0, n - 1));
+    if (riuscito) setUltimaSync(Date.now());
+  }, []);
+  useEffect(() => {
+    const t = setInterval(() => setAdesso(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (inCorso === 0) setAdesso(Date.now());
+  }, [inCorso]);
+
+  // ---- calendari -----------------------------------------------------------------------
+  const ricarica = useCallback(() => {
+    cache.current = null;   // una rilettura voluta scarta la memoria della vista a 3 giorni
+    setToken((t) => t + 1);
+  }, []);
+
+  const aggiornaCalendariRef = useRef<(forza?: boolean) => Promise<void>>(async () => {});
+
+  const pianificaRitentativo = useCallback(() => {
+    if (timerRitentativo.current || tentativi.current >= MAX_TENTATIVI) return;
+    tentativi.current++;
+    timerRitentativo.current = setTimeout(() => {
+      timerRitentativo.current = null;
+      // quando Outlook diventa pronto vanno recuperati entrambi: l'elenco e gli eventi
+      void aggiornaCalendariRef.current();
+      ricarica();
+    }, 10000);
+  }, [ricarica]);
+
+  const aggiornaCalendari = useCallback(
+    async (forza = false) => {
+      try {
+        const res = await api("get_calendars", forza);
+        if (res.error) {
+          // Tipicamente Outlook si sta ancora avviando: non si svuota l'elenco, si riprova da soli.
+          pianificaRitentativo();
+          if (!res.calendars.length) return;
+        }
+        setCalendari(res.calendars);
+      } catch (e) {
+        mostraAvviso({ testo: `⚠ get_calendars: ${e instanceof Error ? e.message : String(e)}`, tipo: "errore" });
+      }
+    },
+    [pianificaRitentativo],
+  );
+  aggiornaCalendariRef.current = aggiornaCalendari;
+
+  useEffect(() => {
+    if (pronta) void aggiornaCalendari();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pronta]);
+
+  const gruppi = useMemo(() => raggruppaAziende(calendari), [calendari]);
+
+  const dopoModifica = useCallback(async () => {
+    await aggiornaCalendari();
+    ricarica();
+  }, [aggiornaCalendari, ricarica]);
+
+  const accendiAzienda = useCallback(
+    async (azienda: string, acceso: boolean) => {
+      await api("set_azienda_enabled", azienda, acceso);
+      await dopoModifica();
+    },
+    [dopoModifica],
+  );
+  const soloAzienda = useCallback(
+    async (azienda: string) => {
+      await api("mostra_solo_azienda", azienda);
+      await dopoModifica();
+    },
+    [dopoModifica],
+  );
+
+  // ---- eventi ----------------------------------------------------------------------------
+  const leggi = useCallback(async (da: Date, a: Date) => api("get_events", isoLocale(da), isoLocale(a)), []);
+
+  useEffect(() => {
+    if (!periodo) return;
+    const mia = ++richiesta.current;
+    const tre = eATreGiorni(periodo.start, periodo.end);
+    if (!tre) cache.current = null;
+
+    // Vista a 3 giorni: ogni passo di un giorno cambia periodo. Per non lasciare una colonna vuota
+    // fino alla risposta si legge un intorno largo e si risponde dalla memoria finché il periodo ci sta dentro.
+    if (tre && dentroLaCache(cache.current, periodo.start, periodo.end)) {
+      const c = cache.current!;
+      if (vicinoAlBordo(c, periodo.start, periodo.end) && !rabboccoInCorso.current) {
+        rabboccoInCorso.current = true;
+        const largo = periodoLargo(periodo.start, periodo.end);
+        leggi(largo.da, largo.a)
+          .then((res) => {
+            // cache cambiata nel frattempo (aggiornamento forzato, altra vista): la lettura è vecchia
+            if (cache.current !== c || res.outlook_starting) return;
+            cache.current = largo;
+            setEventi(res.events || []);
+            setStatoFonti(res.fonti || {});
+          })
+          .catch(() => {})
+          .finally(() => {
+            rabboccoInCorso.current = false;
+          });
+      }
+      return;
+    }
+
+    const largo = tre ? periodoLargo(periodo.start, periodo.end) : { da: periodo.start, a: periodo.end };
+    mostraAvviso(null);
+    syncInizio();
+    leggi(largo.da, largo.a)
+      .then((res) => {
+        if (mia !== richiesta.current) {
+          syncFine(false);
+          return;
+        }
+        if (res.outlook_starting) {
+          // Le caselle non rispondono ancora: si mostrano i dati salvati e si riprova da soli.
+          eraFerma.current = true;
+          setDatiVecchi(testoDatiVecchi(res.stale_at, res.avviso_sorgente));
+          pianificaRitentativo();
+          syncFine(false);
+        } else {
+          tentativi.current = 0;
+          setDatiVecchi(null);
+          if (res.errors?.length) mostraAvviso({ testo: "⚠ " + res.errors.join("  ·  "), tipo: "errore" });
+          syncFine(true);
+          // le caselle sono tornate dopo un periodo di dati salvati: va riletto anche l'elenco
+          if (eraFerma.current) {
+            eraFerma.current = false;
+            void aggiornaCalendariRef.current();
+          }
+        }
+        setEventi(res.events || []);
+        setStatoFonti(res.fonti || {});
+        setPallinoInAttesa(false);
+        cache.current = tre && !res.outlook_starting ? largo : null;
+      })
+      .catch((err) => {
+        syncFine(false);
+        if (mia !== richiesta.current) return;
+        mostraAvviso({ testo: "Errore nel caricamento: " + (err instanceof Error ? err.message : String(err)), tipo: "errore" });
+        // lettura fallita: i pallini non possono restare a pulsare all'infinito
+        setStatoFonti({});
+        setPallinoInAttesa(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodo, token]);
+
+  // rilettura automatica: così un evento nuovo compare senza fare nulla
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (inCorsoRef.current === 0) ricarica();
+    }, intervalloSync * 1000);
+    return () => clearInterval(t);
+  }, [intervalloSync, ricarica]);
+
+  const forzaSync = useCallback(() => {
+    setPallinoInAttesa(true);   // i pallini si spengono subito: niente verde della lettura precedente
+    ricarica();
+  }, [ricarica]);
+
+  const secondari = useMemo(() => new Set(pers.interfaccia.calendari_secondari ?? []), [pers]);
+  const eventiGriglia = useMemo(() => eventiPerGriglia(eventi, { secondari, ricerca }), [eventi, secondari, ricerca]);
+  const infoGiorni = useMemo(() => raccogliFestivi(eventi), [eventi]);
+
+  // ---- impostazioni ----------------------------------------------------------------------
+  const salvaConfig = useCallback(async (patch: Partial<Config>) => {
+    setConfig((c) => ({ ...c, ...patch }));
+    try {
+      await api("save_config", patch);
+    } catch {
+      // la rete non c'è: l'impostazione vale in questa pagina, non resta salvata
+    }
+  }, []);
+
+  const cambiaZoom = useCallback(
+    (verso: 1 | -1 | 0) => {
+      const nuovo = verso === 0 ? ZOOM_DEFAULT : Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom + verso * ZOOM_PASSO));
+      if (nuovo === zoom) return;
+      setZoom(nuovo);
+      void salvaConfig({ zoom_calendario: nuovo });
+    },
+    [zoom, salvaConfig],
+  );
+
+  const impostaIntervallo = useCallback(
+    (secondi: number) => {
+      setIntervallo(secondi);
+      void salvaConfig({ reminder_poll_seconds: secondi });
+    },
+    [salvaConfig],
+  );
+
+  const tema: TemaConfig = theme === "light" || theme === "dark" ? theme : "auto";
+  const impostaTema = useCallback(
+    (t: TemaConfig) => {
+      setTheme(t === "auto" ? "system" : t);
+      void salvaConfig({ theme: t });
+    },
+    [setTheme, salvaConfig],
+  );
+
+  const valori: Valori = {
+    pronta, pers, config, vistaIniziale,
+    calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, soloAzienda,
+    periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync,
+    avviso, datiVecchi, sincronizzando: inCorso > 0, etichetta: etichettaSync(ultimaSync, adesso, inCorso),
+    salvaConfig, zoom, cambiaZoom, intervalloSync, impostaIntervallo,
+    tema, temaScuro: resolvedTheme === "dark", impostaTema, mostraAvviso,
+  };
+  return <Contesto.Provider value={valori}>{children}</Contesto.Provider>;
+}

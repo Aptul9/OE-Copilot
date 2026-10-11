@@ -124,10 +124,13 @@ jobs:
           curl -fsS -c jar -D intest -o /dev/null -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email
           grep -qi 'set-cookie: .*HttpOnly' intest
           curl -fsS -b jar $G/ | grep -q 'OE<span'
+          # la nuova interfaccia (TypeScript): senza sessione rimanda all'accesso, con la sessione si serve
+          curl -fsS -b jar $G/nuova | grep -q 'Cerca tra le riunioni'
           curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_personalizzazione | grep -q '"interfaccia"'
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/win_close)" = 404
           test "$(codice -b jar -X POST -d '[]' $G/api/get_config)" = 415
           test "$(codice -b jar -X POST "${json[@]}" -H 'Sec-Fetch-Site: cross-site' -d '[]' $G/api/get_config)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' $G/nuova)" = "307 $G/login?next=%2Fnuova"
           # uscita: la sessione non vale più
           curl -fsS -b jar -c jar -o /dev/null -X POST "${json[@]}" -d '{}' $G/api/auth/sign-out
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401

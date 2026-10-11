@@ -1,10 +1,9 @@
 """Gestione configurazione e percorsi dell'app.
 
 Percorsi: due radici distinte.
-  - RESOURCE_DIR: file inclusi nell'app (web/, icona): la cartella del progetto.
-  - DATA_DIR: file scrivibili (config, cache, log, eventi locali): la cartella
-    del progetto. Sul server (interfaccia web) OE_DATI la sposta fuori
-    dall'immagine.
+  - RESOURCE_DIR: file inclusi nell'immagine (web/logos): la cartella del progetto.
+  - DATA_DIR: file scrivibili (config, cache, eventi locali): sul server
+    (servizio ui) OE_DATI la sposta fuori dall'immagine, in ui-dati/.
 """
 import json
 import logging
@@ -28,7 +27,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 APP_DIR = DATA_DIR
 
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
-FIRED_REMINDERS_PATH = os.path.join(DATA_DIR, "fired_reminders.json")
 
 # Palette usata per assegnare automaticamente un colore a ogni account.
 # Deve avere piu' tinte del numero di account, altrimenti due caselle diverse
@@ -62,36 +60,27 @@ COLOR_PALETTE = [
 ]
 
 DEFAULT_CONFIG = {
-    # Nessuna credenziale: gli eventi arrivano dall'agente remoto (agente_remoto.py).
+    # Nessuna credenziale: gli eventi arrivano dall'agente (agente_remoto.py).
     # Calendari da NON mostrare: elenco di id (si gestisce dalla UI).
     "disabled_calendars": [],
-    # Profilo Outlook da usare per "Apri in Outlook". Vuoto = quello predefinito. Va
-    # valorizzato solo se sul PC ci sono più profili e si vuole imporre quale usare.
-    "outlook_profile": "",
     # Calendari sottoscritti da link iCal: [{"id", "name", "url"}].
     # Servono per Google e in generale per gli account che Outlook non porta.
     "ics_calendars": [],
     # Come chiamare gli account: {"mario@azienda.it": "Azienda"}. Vuoto = nome
     # dedotto dal dominio. Si modifica dalla finestra "Calendari".
     "account_aliases": {},
-    # Quanti minuti prima dell'evento inviare il promemoria (puoi metterne più di uno).
-    "reminder_minutes_before": [10],
-    # Ogni quanti secondi il servizio controlla gli eventi imminenti.
+    # Ogni quanti secondi la pagina rilegge i calendari (Impostazioni, Sincronizzazione).
     "reminder_poll_seconds": 60,
-    "windows_toast": True,
-    "telegram": {"enabled": False, "bot_token": "", "chat_id": ""},
     # Colore per account: {"mario@x.com": "#2563eb"}. Riempito automaticamente.
     "account_colors": {},
-    # Aspetto: "auto" (segue Windows), "light" o "dark".
+    # Aspetto: "auto" (segue il dispositivo), "light" o "dark".
     "theme": "auto",
-    # All'avvio parti ridotto a icona (utile con l'avvio automatico).
-    "start_minimized": False,
     # Zoom del calendario: altezza in pixel della riga da mezz'ora (pulsanti +/-).
     "zoom_calendario": 58,
 }
 
 
-# La configurazione la scrivono piu' thread (interfaccia e servizio promemoria,
+# La configurazione la scrivono piu' thread (ogni richiesta del servizio ui ha il suo,
 # per esempio quando a un account nuovo viene assegnato un colore): senza lock
 # due salvataggi ravvicinati possono sovrapporsi e perdere delle voci.
 _lock_config = threading.Lock()
@@ -121,51 +110,6 @@ def scrivi_json(percorso, dati):
         raise
 
 
-def proteggi(testo):
-    """Cifra con DPAPI: il risultato lo apre solo questo utente su questo PC."""
-    import ctypes
-    from ctypes import wintypes
-
-    class BLOB(ctypes.Structure):
-        _fields_ = [("cbData", wintypes.DWORD),
-                    ("pbData", ctypes.POINTER(ctypes.c_char))]
-
-    grezzo = testo.encode("utf-8")
-    dentro = BLOB(len(grezzo), ctypes.cast(ctypes.create_string_buffer(grezzo),
-                                           ctypes.POINTER(ctypes.c_char)))
-    fuori = BLOB()
-    if not ctypes.windll.crypt32.CryptProtectData(
-            ctypes.byref(dentro), "OE Copilot", None, None, None, 0,
-            ctypes.byref(fuori)):
-        raise OSError("CryptProtectData non riuscita")
-    try:
-        return bytes(ctypes.string_at(fuori.pbData, fuori.cbData))
-    finally:
-        ctypes.windll.kernel32.LocalFree(fuori.pbData)
-
-
-def svela(dati):
-    """Decifra quanto scritto da proteggi. Solleva se non e' il nostro utente."""
-    import ctypes
-    from ctypes import wintypes
-
-    class BLOB(ctypes.Structure):
-        _fields_ = [("cbData", wintypes.DWORD),
-                    ("pbData", ctypes.POINTER(ctypes.c_char))]
-
-    dentro = BLOB(len(dati), ctypes.cast(ctypes.create_string_buffer(dati),
-                                         ctypes.POINTER(ctypes.c_char)))
-    fuori = BLOB()
-    if not ctypes.windll.crypt32.CryptUnprotectData(
-            ctypes.byref(dentro), None, None, None, None, 0,
-            ctypes.byref(fuori)):
-        raise OSError("CryptUnprotectData non riuscita")
-    try:
-        return bytes(ctypes.string_at(fuori.pbData, fuori.cbData)).decode("utf-8")
-    finally:
-        ctypes.windll.kernel32.LocalFree(fuori.pbData)
-
-
 def load_config():
     cfg = dict(DEFAULT_CONFIG)
     if os.path.exists(CONFIG_PATH):
@@ -187,7 +131,6 @@ def load_config():
         except OSError:
             log.warning("configurazione non leggibile", exc_info=True)
     # Garantisce che i sotto-dizionari esistano sempre.
-    cfg.setdefault("telegram", dict(DEFAULT_CONFIG["telegram"]))
     cfg.setdefault("account_colors", {})
     cfg.setdefault("disabled_calendars", [])
     cfg.setdefault("ics_calendars", [])
@@ -365,19 +308,8 @@ COLORE_FESTIVITA = "#8a8a8a"
 
 
 # Aspetto dell'interfaccia: sigle e loghi delle aziende, calendari "secondari"
-# (mostrati sbiaditi), schede della sezione Timesheet. Li legge app.js all'avvio.
+# (mostrati sbiaditi), schede della sezione Timesheet. Li legge la pagina all'avvio.
 INTERFACCIA = dict(_P.get("interfaccia") or {})
-
-# Agente remoto: le caselle si leggono da un agente su un server (vedi agente_remoto.py). Voci:
-#   "ssh":          destinazione per ssh (un alias di ~/.ssh/config o utente@host)
-#   "porta_remota": porta dell'agente sul localhost del server (3180)
-#   "porta_locale": porta di questo PC su cui aprire il tunnel (31800)
-# Senza la voce "ssh" l'app non legge nessuna casella: restano i calendari da link e gli eventi
-# personali.
-AGENTE_REMOTO = dict(_P.get("agente_remoto") or {})
-# La chiave dell'API dell'agente non sta nella personalizzazione: e' un segreto,
-# e si conserva cifrata (vedi proteggi/svela) accanto ai dati dell'app.
-AGENTE_CHIAVE_PATH = os.path.join(DATA_DIR, "agente_chiave.bin")
 
 
 def _nome_predefinito(indirizzo):

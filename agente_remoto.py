@@ -1,29 +1,15 @@
-"""Caselle lette da un agente su un server, attraverso un tunnel SSH.
+"""Caselle lette dall'agente sul server, con una richiesta HTTP e la chiave dell'API.
 
-L'agente tiene i login, legge le caselle e le espone con una piccola API, in
-ascolto solo sul localhost del server. Da qui la si raggiunge con un tunnel SSH
-aperto dall'app stessa: niente è esposto su internet, e l'accesso passa dalla
-chiave SSH dell'utente.
+L'agente tiene i login, legge le caselle e le espone con una piccola API, in ascolto
+solo sulla rete di Docker del server (e sul localhost del server). Il servizio ui
+(server/ui/server.py) la raggiunge all'indirizzo che gli dà OE_AGENTE_URL, con la
+chiave in OE_AGENTE_CHIAVE: niente è esposto su internet.
 
-Si attiva con la voce "agente_remoto" di personalizzazione.json (vedi config).
-La chiave dell'API e' un segreto e non sta in quel file: si salva una volta,
-cifrata, leggendola dallo standard input:
-
-    <comando che stampa la chiave> | .venv\\Scripts\\python agente_remoto.py imposta-chiave
-
-Le regole su aziende, doppioni e colori sono quelle
-comuni (caselle.py).
+Le regole su aziende, doppioni e colori sono quelle comuni (caselle.py).
 """
-import atexit
 import json
 import logging
 import os
-import shutil
-import socket
-import subprocess
-import sys
-import threading
-import time
 from datetime import datetime
 
 import requests
@@ -33,13 +19,9 @@ import config
 
 log = logging.getLogger(__name__)
 
-PORTA_REMOTA = int(config.AGENTE_REMOTO.get("porta_remota") or 3180)
-PORTA_LOCALE = int(config.AGENTE_REMOTO.get("porta_locale") or 31800)
-# Sul server (interfaccia web) l'agente è un altro container della stessa rete:
-# niente tunnel, indirizzo e chiave arrivano dall'ambiente.
+# L'agente è un altro container della stessa rete: indirizzo e chiave arrivano dall'ambiente.
 URL_DIRETTO = os.environ.get("OE_AGENTE_URL", "").rstrip("/")
 CHIAVE_DIRETTA = os.environ.get("OE_AGENTE_CHIAVE", "").strip()
-TUNNEL_LOG = os.path.join(config.DATA_DIR, "agente_tunnel.log")
 CASELLE_NOTE_PATH = os.path.join(config.DATA_DIR, "agente_caselle.json")
 
 # Oltre questi secondi senza segni di vita dal servizio che aggiorna le caselle
@@ -50,156 +32,41 @@ SERVIZIO_FERMO_S = 900
 
 
 class AgenteNonDisponibile(RuntimeError):
-    """L'agente remoto non e' raggiungibile, o rifiuta la richiesta."""
+    """L'agente non e' raggiungibile, o rifiuta la richiesta."""
 
 
 def attivo():
-    """Vero se l'agente remoto è configurato: voce "ssh" della personalizzazione, o OE_AGENTE_URL."""
-    return bool(URL_DIRETTO or str(config.AGENTE_REMOTO.get("ssh") or "").strip())
-
-
-# --------------------------------------------------------------------------
-# Tunnel SSH
-# --------------------------------------------------------------------------
-_tunnel = None                 # il processo ssh avviato da qui
-_tunnel_lock = threading.Lock()
-_ultimo_tentativo = 0.0
-_ultimo_errore = ""
-RIPROVA_OGNI_S = 10            # un tunnel che non parte non si ritenta a raffica
-
-
-def _porta_aperta(attesa=0.5):
-    try:
-        with socket.create_connection(("127.0.0.1", PORTA_LOCALE), timeout=attesa):
-            return True
-    except OSError:
-        return False
-
-
-def _ssh():
-    return shutil.which("ssh") or os.path.join(
-        os.environ.get("SystemRoot", r"C:\Windows"), "System32", "OpenSSH", "ssh.exe")
-
-
-def _coda_log():
-    """Ultima riga utile scritta da ssh: e' il motivo vero di un tunnel fallito."""
-    try:
-        with open(TUNNEL_LOG, "r", encoding="utf-8", errors="replace") as f:
-            righe = [r.strip() for r in f if r.strip()]
-        return righe[-1] if righe else ""
-    except OSError:
-        return ""
-
-
-def _chiudi_tunnel():
-    global _tunnel
-    if _tunnel is not None and _tunnel.poll() is None:
-        try:
-            _tunnel.terminate()
-        except OSError:
-            pass
-    _tunnel = None
-
-
-atexit.register(_chiudi_tunnel)
-
-
-def _apri_tunnel():
-    """Garantisce il tunnel verso l'agente; solleva AgenteNonDisponibile se manca.
-
-    Se la porta locale risponde gia' (un ssh rimasto da un avvio precedente
-    dell'app, ancora collegato) la si usa cosi' com'e'.
-    """
-    global _tunnel, _ultimo_tentativo, _ultimo_errore
-    with _tunnel_lock:
-        if _porta_aperta():
-            return
-        if time.time() - _ultimo_tentativo < RIPROVA_OGNI_S:
-            raise AgenteNonDisponibile(_ultimo_errore or "Collegamento al server in corso")
-        _ultimo_tentativo = time.time()
-        _chiudi_tunnel()
-        comando = [_ssh(), "-N",
-                   "-L", f"127.0.0.1:{PORTA_LOCALE}:127.0.0.1:{PORTA_REMOTA}",
-                   "-o", "ExitOnForwardFailure=yes", "-o", "BatchMode=yes",
-                   "-o", "ConnectTimeout=8",
-                   "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
-                   str(config.AGENTE_REMOTO.get("ssh")).strip()]
-        try:
-            with open(TUNNEL_LOG, "w", encoding="utf-8") as uscita:
-                _tunnel = subprocess.Popen(
-                    comando, stdin=subprocess.DEVNULL, stdout=uscita, stderr=uscita,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        except OSError as e:
-            _ultimo_errore = f"Impossibile avviare ssh ({e})"
-            log.error("agente remoto: %s", _ultimo_errore)
-            raise AgenteNonDisponibile(_ultimo_errore) from e
-        scadenza = time.time() + 10
-        while time.time() < scadenza:
-            if _porta_aperta(0.2):
-                log.info("agente remoto: tunnel aperto sulla porta %d", PORTA_LOCALE)
-                _ultimo_errore = ""
-                return
-            if _tunnel.poll() is not None:
-                break
-            time.sleep(0.2)
-        dettaglio = _coda_log()
-        _ultimo_errore = "Collegamento al server dei calendari non riuscito" + (
-            f" ({dettaglio})" if dettaglio else "")
-        log.warning("agente remoto: %s", _ultimo_errore)
-        raise AgenteNonDisponibile(_ultimo_errore)
+    """Vero se l'agente è configurato: OE_AGENTE_URL."""
+    return bool(URL_DIRETTO)
 
 
 # --------------------------------------------------------------------------
 # Chiamate all'agente
 # --------------------------------------------------------------------------
 _sessione = requests.Session()
-# Il collegamento e' verso il proprio PC (l'imbocco del tunnel): un proxy
-# configurato nel sistema non c'entra e lo romperebbe.
+# L'agente sta sulla rete di Docker: un proxy configurato nel sistema non c'entra e lo romperebbe.
 _sessione.trust_env = False
-_chiave_in_memoria = None
-
-
-def _chiave(rileggi=False):
-    global _chiave_in_memoria
-    if CHIAVE_DIRETTA:
-        return CHIAVE_DIRETTA
-    if _chiave_in_memoria is None or rileggi:
-        try:
-            with open(config.AGENTE_CHIAVE_PATH, "rb") as f:
-                _chiave_in_memoria = config.svela(f.read()).strip()
-        except FileNotFoundError:
-            raise AgenteNonDisponibile(
-                "Chiave dell'agente remoto non impostata (agente_remoto.py imposta-chiave)")
-        except OSError as e:
-            raise AgenteNonDisponibile(f"Chiave dell'agente remoto non leggibile ({e})") from e
-    return _chiave_in_memoria
 
 
 def _chiedi(percorso, parametri=None, attesa=20):
-    """GET all'agente attraverso il tunnel. -> dati JSON, o AgenteNonDisponibile."""
+    """GET all'agente. -> dati JSON, o AgenteNonDisponibile."""
     if not attivo():
-        raise AgenteNonDisponibile("Agente remoto non configurato: manca agente_remoto.ssh nella personalizzazione")
-    if not URL_DIRETTO:
-        _apri_tunnel()
-    url = (URL_DIRETTO or f"http://127.0.0.1:{PORTA_LOCALE}") + percorso
-    for tentativo in (1, 2):
-        try:
-            r = _sessione.get(url, params=parametri, timeout=(3, attesa),
-                              headers={"Authorization": "Bearer " + _chiave(tentativo == 2)})
-        except requests.RequestException as e:
-            log.warning("agente remoto: richiesta fallita (%s)", e)
-            raise AgenteNonDisponibile(
-                "Il server dei calendari non risponde (%s)" % e.__class__.__name__) from e
-        if r.status_code == 401 and tentativo == 1:
-            continue    # la chiave puo' essere stata reimpostata: la si rilegge
-        if r.status_code == 401:
-            raise AgenteNonDisponibile("Il server dei calendari rifiuta la chiave: va reimpostata")
-        if r.status_code != 200:
-            raise AgenteNonDisponibile("Il server dei calendari ha risposto %d" % r.status_code)
-        try:
-            return r.json()
-        except ValueError as e:
-            raise AgenteNonDisponibile("Risposta del server dei calendari non valida") from e
+        raise AgenteNonDisponibile("Agente non configurato: manca OE_AGENTE_URL")
+    try:
+        r = _sessione.get(URL_DIRETTO + percorso, params=parametri, timeout=(3, attesa),
+                          headers={"Authorization": "Bearer " + CHIAVE_DIRETTA})
+    except requests.RequestException as e:
+        log.warning("agente remoto: richiesta fallita (%s)", e)
+        raise AgenteNonDisponibile(
+            "Il server dei calendari non risponde (%s)" % e.__class__.__name__) from e
+    if r.status_code == 401:
+        raise AgenteNonDisponibile("Il server dei calendari rifiuta la chiave: va reimpostata")
+    if r.status_code != 200:
+        raise AgenteNonDisponibile("Il server dei calendari ha risposto %d" % r.status_code)
+    try:
+        return r.json()
+    except ValueError as e:
+        raise AgenteNonDisponibile("Risposta del server dei calendari non valida") from e
 
 
 # --------------------------------------------------------------------------
@@ -472,45 +339,3 @@ def fetch_all_events(cfg, start_iso, end_iso, allow_cache=True):
     if allow_cache:
         caselle.scrivi_cache_eventi(chiave_cache, events)
     return events, errors, meta
-
-
-# --------------------------------------------------------------------------
-# Impostazione della chiave (una volta, da riga di comando)
-# --------------------------------------------------------------------------
-def _imposta_chiave():
-    chiave = sys.stdin.readline().strip()
-    if not chiave:
-        print("Nessuna chiave ricevuta sullo standard input.")
-        return 1
-    dati = config.proteggi(chiave)
-    tmp = config.AGENTE_CHIAVE_PATH + ".tmp"
-    with open(tmp, "wb") as f:
-        f.write(dati)
-    os.replace(tmp, config.AGENTE_CHIAVE_PATH)
-    print("Chiave salvata, cifrata per questo utente (%d caratteri)." % len(chiave))
-    return 0
-
-
-def _prova():
-    if not attivo():
-        print("Agente remoto non configurato (manca agente_remoto.ssh nella personalizzazione).")
-        return 1
-    try:
-        dati = _chiedi("/api/calendari")
-    except AgenteNonDisponibile as e:
-        print("NON raggiungibile:", e)
-        return 1
-    print("Agente raggiunto. Servizio:", dati.get("servizio"))
-    for c in dati.get("caselle") or []:
-        print("  %-40s %-8s %s" % (c.get("account"), c.get("stato"), c.get("eventi")))
-    return 0
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.WARNING)
-    azione = sys.argv[1] if len(sys.argv) > 1 else ""
-    if azione == "imposta-chiave":
-        sys.exit(_imposta_chiave())
-    if azione == "prova":
-        sys.exit(_prova())
-    print(__doc__)

@@ -3,9 +3,9 @@
 Il disegno: tre calendari sovrapposti e un po' sfasati, ognuno del suo colore (come le
 aziende nella barra laterale). Si disegna in grande e si riduce con LANCZOS per bordi netti.
 
-Scrive icon.ico e icon.png (app per Windows) e, se c'è la cartella dell'interfaccia nel
-browser, anche server/web-ts/src/app/icon.png e apple-icon.png (sfondo pieno: iOS riempie
-di nero il trasparente).
+Scrive icon.png (l'icona di partenza per ogni altro formato) e, se c'è la cartella
+dell'interfaccia nel browser, anche server/web-ts/src/app/icon.png e apple-icon.png
+(sfondo pieno: iOS riempie di nero il trasparente).
 """
 import os
 
@@ -77,11 +77,9 @@ def su_fondo(icona, lato, fondo=(248, 248, 252), scala=0.78):
 if __name__ == "__main__":
     qui = os.path.dirname(os.path.abspath(__file__))
     grande = composizione()
-    misure = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
     icona = grande.resize((256, 256), Image.LANCZOS)
-    icona.save(os.path.join(qui, "icon.ico"), format="ICO", sizes=misure)
     icona.save(os.path.join(qui, "icon.png"))
-    scritti = ["icon.ico", "icon.png"]
+    scritti = ["icon.png"]
     web = os.path.join(qui, "server", "web-ts", "src", "app")
     if os.path.isdir(web):
         grande.resize((512, 512), Image.LANCZOS).save(os.path.join(web, "icon.png"))

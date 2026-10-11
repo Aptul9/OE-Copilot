@@ -1,7 +1,0 @@
-pywebview==6.2.1
-pywin32>=306
-requests>=2.31
-win11toast>=0.35
-icalendar>=6.0
-recurring-ical-events>=3.0
-

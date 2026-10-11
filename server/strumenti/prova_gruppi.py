@@ -8,11 +8,6 @@ oppure dal repository, con le librerie dell'app installate.
 import os
 import sys
 import tempfile
-import types
-
-# app.py importa la finestra, i promemoria e Windows: qui non servono (come in server/ui/server.py)
-for nome in ("webview", "reminders", "teams_link", "outlook_com"):
-    sys.modules[nome] = types.ModuleType(nome)
 
 qui = os.path.dirname(os.path.abspath(__file__))
 for cartella in ("/app", os.path.join(qui, "..", "..")):

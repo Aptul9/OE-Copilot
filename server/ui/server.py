@@ -1,35 +1,26 @@
-"""OE Copilot: la logica dell'app per Windows, servita al gateway.
+"""OE Copilot: la logica dell'app, servita al gateway.
 
-La logica (app.Api, la classe che la finestra di Windows chiama con pywebview) è quella
-dell'app del PC, copiata qui da strumenti/prepara_ui.sh. Questo file è solo il server HTTP:
-ogni metodo di Api in POST /api/<metodo> con gli argomenti in una lista JSON, e i loghi
-delle aziende in GET /logos/<file>. La pagina la serve il gateway. Non ha password: ci
-arriva solo il gateway, che la chiede (vedi docker-compose.yml).
+La logica è la classe app.Api, copiata qui da strumenti/prepara_ui.sh con i moduli che usa.
+Questo file è solo il server HTTP: ogni metodo di Api in POST /api/<metodo> con gli
+argomenti in una lista JSON, e i loghi delle aziende in GET /logos/<file>. La pagina la
+serve il gateway. Non ha password: ci arriva solo il gateway, che la chiede (vedi
+docker-compose.yml).
 """
 import json
 import logging
 import mimetypes
 import os
-import sys
-import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlsplit
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(threadName)s] %(name)s: %(message)s")
 
-# app.py importa la finestra (pywebview), i promemoria e Windows (pywin32): qui non
-# servono e su Linux non esistono. Moduli finti, perché nessuna delle funzioni che
-# li usano è raggiungibile da METODI.
-for _nome in ("webview", "reminders", "teams_link", "outlook_com"):
-    sys.modules[_nome] = types.ModuleType(_nome)
-
 import app  # noqa: E402
 
 log = logging.getLogger("ui")
 
-# Quello che la pagina può chiamare. Il resto di Api (finestra, avvio automatico,
-# notifiche, Outlook su questo PC) non ha senso fuori da Windows.
+# Quello che la pagina può chiamare: tutti i metodi di Api.
 METODI = {
     "get_config", "save_config", "get_personalizzazione",
     "get_calendars", "get_events", "get_disponibilita",

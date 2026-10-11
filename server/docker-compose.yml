@@ -1,10 +1,10 @@
-# Oe Copilot sulla VM: i calendari si leggono da qui, l'app per Windows e il browser li chiedono qui.
+# Oe Copilot sulla VM: i calendari si leggono da qui, il browser li chiede qui.
 # telefono = Android virtuale con Outlook (caselle Microsoft) e i servizi Google (calendari Google),
 # agent = legge il calendario del telefono e lo serve con un'API a chiave.
 name: oe-copilot
 services:
   # agent = legge il calendario del telefono e lo serve con un'API a chiave
-  # all'app per Windows (tunnel SSH) e al servizio ui (rete di compose).
+  # al servizio ui (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (GUIDA.md, sezione 5).
   agent:
     build: ./agent
     container_name: oe-copilot-agent
@@ -20,7 +20,7 @@ services:
       - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
       # Segno di vita del servizio che aggiorna il telefono (battito.json).
       - ./stato:/stato:ro
-    # Solo localhost: l'app per Windows ci arriva con un tunnel SSH e il servizio ui dalla rete di
+    # Solo localhost: dal PC ci si arriva con un tunnel SSH e il servizio ui dalla rete di
     # compose, niente è esposto su internet.
     ports:
       - "127.0.0.1:3180:8180"
@@ -53,7 +53,7 @@ services:
       - "127.0.0.1:5555:5555"
     restart: unless-stopped
 
-  # Interfaccia web (facoltativa, GUIDA.md 4.7): la logica dell'app per Windows (app.py e i suoi moduli),
+  # Interfaccia web (facoltativa, GUIDA.md 4.7): la logica dell'app (app.py e i suoi moduli),
   # che il gateway usa per la pagina del browser. Non è pubblicata e non ha password: ci arriva solo il
   # gateway, che chiede l'accesso. Le copie del codice dell'app le mette strumenti/prepara_ui.sh.
   ui:

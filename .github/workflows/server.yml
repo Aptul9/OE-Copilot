@@ -1,7 +1,7 @@
 name: Server
 
-# Il codice in server/ va sul server a ogni push su main. L'app del PC non passa da qui,
-# tranne i file che l'interfaccia web riusa così come sono (vedi strumenti/prepara_ui.sh).
+# Il codice in server/ va sul server a ogni push su main, con i moduli della radice che il
+# servizio ui usa così come sono (vedi server/strumenti/prepara_ui.sh).
 on:
   push:
     branches: [main]

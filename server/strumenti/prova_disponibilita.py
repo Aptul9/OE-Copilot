@@ -13,11 +13,7 @@ import json
 import os
 import sys
 import tempfile
-import types
 from datetime import date, datetime
-
-for nome in ("webview", "reminders", "teams_link", "outlook_com"):
-    sys.modules[nome] = types.ModuleType(nome)
 
 qui = os.path.dirname(os.path.abspath(__file__))
 for cartella in ("/app", os.path.join(qui, "..", "..")):

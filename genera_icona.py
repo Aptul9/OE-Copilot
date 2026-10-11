@@ -1,60 +1,90 @@
-"""Genera icon.ico / icon.png per OE Copilot. Rilanciare solo per ritoccarla.
+"""Genera le icone di OE Copilot. Rilanciare solo per ritoccarle.
 
-Disegnato in grande e ridotto con LANCZOS per bordi netti. Motivo: quadrato
-viola sfumato (come l'app), con le lettere "OE" bianche in evidenza e un piccolo
-segno di calendario/spunta, a richiamare "OverEmployed" + agenda.
+Il disegno: tre calendari sovrapposti e un po' sfasati, ognuno del suo colore (come le
+aziende nella barra laterale). Si disegna in grande e si riduce con LANCZOS per bordi netti.
+
+Scrive icon.ico e icon.png (app per Windows) e, se c'è la cartella dell'interfaccia nel
+browser, anche server/web-ts/src/app/icon.png e apple-icon.png (sfondo pieno: iOS riempie
+di nero il trasparente).
 """
 import os
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
-VIOLA_ALTO = (124, 130, 240)
-VIOLA_BASSO = (72, 76, 168)
-BIANCO = (255, 255, 255)
-LATO = 1024
-
-
-def sfumatura(dim, alto, basso):
-    grad = Image.new("RGB", (1, dim))
-    for y in range(dim):
-        t = y / (dim - 1)
-        grad.putpixel((0, y), tuple(round(a + (b - a) * t) for a, b in zip(alto, basso)))
-    return grad.resize((dim, dim))
+# misure di lavoro: un calendario e quanto sporgono gli anelli
+L, A, RAGGIO, BORDO, TESTATA = 1120, 1200, 130, 18, 300
+# colore, rotazione in gradi (antioraria), centro: dal calendario dietro a quello davanti
+CALENDARI = [
+    ((99, 102, 241), 7, (1000, 1000)),     # indaco, il colore dell'app
+    ((16, 185, 129), 1, (1215, 1190)),     # verde
+    ((249, 115, 22), -6, (1430, 1385)),    # arancio
+]
 
 
-def _font(dimensione):
-    for nome in ("segoeuib.ttf", "arialbd.ttf", "seguisb.ttf", "Arial_Bold.ttf"):
-        try:
-            return ImageFont.truetype(nome, dimensione)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+def calendario(colore):
+    """Un calendario (testata colorata, due anelli, foglio bianco coi giorni) su fondo trasparente."""
+    pad = 200
+    img = Image.new("RGBA", (L + 2 * pad, A + 2 * pad), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    x0, y0 = pad, pad
+    scuro = tuple(int(c * 0.6) for c in colore)
+    chiaro = tuple(round(c + (255 - c) * 0.8) for c in colore)
+    # tutto del colore (bordo e testata), poi il foglio bianco che lascia scoperta la testata
+    d.rounded_rectangle([x0, y0, x0 + L, y0 + A], RAGGIO, fill=colore)
+    d.rounded_rectangle([x0 + BORDO, y0 + TESTATA, x0 + L - BORDO, y0 + A - BORDO], RAGGIO - BORDO,
+                        fill=(255, 255, 255), corners=(False, False, True, True))
+    for fx in (0.27, 0.73):
+        cx = x0 + L * fx
+        d.rounded_rectangle([cx - 36, y0 - 80, cx + 36, y0 + 130], 36, fill=scuro)
+    # tre colonne e tre righe di giorni; quello al centro è "oggi"
+    gap, margine = 56, 100
+    larg = (L * 0.74 - 2 * gap) / 3
+    alt = (A - TESTATA - 2 * margine - 2 * gap) / 3
+    for riga in range(3):
+        for col in range(3):
+            x = x0 + L * 0.13 + col * (larg + gap)
+            y = y0 + TESTATA + margine + riga * (alt + gap)
+            d.rounded_rectangle([x, y, x + larg, y + alt], 44, fill=colore if (riga, col) == (1, 1) else chiaro)
+    return img
 
 
-# Sfondo: quadrato arrotondato con sfumatura viola.
-maschera = Image.new("L", (LATO, LATO), 0)
-ImageDraw.Draw(maschera).rounded_rectangle([36, 36, LATO - 36, LATO - 36], radius=228, fill=255)
-img = Image.new("RGBA", (LATO, LATO), (0, 0, 0, 0))
-img.paste(sfumatura(LATO, VIOLA_ALTO, VIOLA_BASSO).convert("RGBA"), (0, 0), maschera)
+def composizione():
+    """I tre calendari uno sull'altro, ognuno con la sua ombra, ritagliati e centrati in un quadrato."""
+    tela = Image.new("RGBA", (2900, 2900), (0, 0, 0, 0))
+    for colore, angolo, (cx, cy) in CALENDARI:
+        c = calendario(colore).rotate(angolo, resample=Image.BICUBIC, expand=True)
+        ombra = Image.new("RGBA", c.size, (0, 0, 0, 0))
+        ombra.putalpha(c.getchannel("A").point(lambda v: v * 0.38))
+        ombra = ombra.filter(ImageFilter.GaussianBlur(28))
+        x, y = round(cx - c.width / 2), round(cy - c.height / 2)
+        tela.alpha_composite(ombra, (x - 14, y + 22))
+        tela.alpha_composite(c, (x, y))
+    tela = tela.crop(tela.getbbox())
+    lato = round(max(tela.size) * 1.1)
+    quadro = Image.new("RGBA", (lato, lato), (0, 0, 0, 0))
+    quadro.alpha_composite(tela, ((lato - tela.width) // 2, (lato - tela.height) // 2))
+    return quadro.resize((1024, 1024), Image.LANCZOS)
 
-d = ImageDraw.Draw(img)
 
-# Lettere "OE" centrate, in grassetto bianco.
-font = _font(430)
-testo = "OE"
-box = d.textbbox((0, 0), testo, font=font)
-w, h = box[2] - box[0], box[3] - box[1]
-x = (LATO - w) / 2 - box[0]
-y = (LATO - h) / 2 - box[1] - 28
-d.text((x, y), testo, font=font, fill=BIANCO)
+def su_fondo(icona, lato, fondo=(248, 248, 252), scala=0.78):
+    """L'icona più piccola, al centro di un quadrato pieno (per apple-icon)."""
+    quadro = Image.new("RGBA", (lato, lato), fondo + (255,))
+    piccola = icona.resize((round(lato * scala),) * 2, Image.LANCZOS)
+    quadro.alpha_composite(piccola, ((lato - piccola.width) // 2, (lato - piccola.height) // 2))
+    return quadro.convert("RGB")
 
-# Piccola spunta/segno agenda in basso, come accento.
-d.rounded_rectangle([past := 372, 792, LATO - 372, 792 + 34], radius=17, fill=(255, 255, 255, 205))
 
-CARTELLA = os.path.dirname(os.path.abspath(__file__))
-misure = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-grande = img.resize((256, 256), Image.LANCZOS)
-grande.save(os.path.join(CARTELLA, "icon.ico"), format="ICO", sizes=misure)
-grande.save(os.path.join(CARTELLA, "icon.png"))
-print("icon.ico e icon.png rigenerati in", CARTELLA)
-
+if __name__ == "__main__":
+    qui = os.path.dirname(os.path.abspath(__file__))
+    grande = composizione()
+    misure = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+    icona = grande.resize((256, 256), Image.LANCZOS)
+    icona.save(os.path.join(qui, "icon.ico"), format="ICO", sizes=misure)
+    icona.save(os.path.join(qui, "icon.png"))
+    scritti = ["icon.ico", "icon.png"]
+    web = os.path.join(qui, "server", "web-ts", "src", "app")
+    if os.path.isdir(web):
+        grande.resize((512, 512), Image.LANCZOS).save(os.path.join(web, "icon.png"))
+        su_fondo(grande, 180).save(os.path.join(web, "apple-icon.png"))
+        scritti += ["server/web-ts/src/app/icon.png", "server/web-ts/src/app/apple-icon.png"]
+    print("rigenerati:", ", ".join(scritti))

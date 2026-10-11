@@ -163,8 +163,11 @@ function Guscio() {
         <Button variant="ghost" size="icon" className="md:hidden" aria-label="Menu" id="menu-btn" onClick={() => setMenu(true)}>
           <MenuIcon />
         </Button>
-        <span className="topbar-title flex-none text-xl font-bold tracking-tight">
-          OE<span className="ml-1 bg-gradient-to-br from-primary to-[#8b8ff0] bg-clip-text text-transparent">Copilot</span>
+        <span className="topbar-title flex flex-none items-center gap-2 text-xl font-bold tracking-tight">
+          <img src="/icon.png" alt="" width={28} height={28} className="size-7 flex-none" />
+          <span>
+            OE<span className="ml-1 bg-gradient-to-br from-primary to-[#8b8ff0] bg-clip-text text-transparent">Copilot</span>
+          </span>
         </span>
         <div className="mx-auto flex w-full min-w-0 max-w-[720px] flex-1 items-center">
           <div id="search-wrap" className="search relative flex h-9 w-full min-w-0 items-center gap-2.5 rounded-lg bg-muted px-3 text-muted-foreground focus-within:bg-card focus-within:ring-2 focus-within:ring-primary">

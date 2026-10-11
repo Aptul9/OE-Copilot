@@ -37,7 +37,7 @@ export function LoginForm({ next }: { next: string }) {
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-[radial-gradient(ellipse_at_top,var(--color-accent),transparent_70%)]" />
       <Card className="relative w-full max-w-sm shadow-lg">
         <CardHeader className="justify-items-center gap-2 text-center">
-          <div className="mb-2 grid size-12 place-items-center rounded-2xl bg-primary text-lg font-bold text-primary-foreground">OE</div>
+          <img src="/icon.png" alt="" width={64} height={64} className="mb-2 size-16" />
           <CardTitle className="text-xl">Accedi a OE Copilot</CardTitle>
           <CardDescription>Il calendario unico delle tue caselle.</CardDescription>
         </CardHeader>

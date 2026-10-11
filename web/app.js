@@ -362,18 +362,24 @@ function loadEvents(info, success, failure) {
     raccogliFestivi(res.events || []);
     const evs = (res.events || [])
       .filter((e) => !e.nascosto && e.account !== "Festività")
-      .map((e) => ({
-        id: e.id,
-        title: e.title,
-        start: e.start,
-        end: e.end,
-        allDay: e.allDay,
-        // Riempimento tenue + barretta piena: è la resa delle riunioni in Teams.
-        backgroundColor: tinta(e.color, 0.14),
-        borderColor: e.color,
-        classNames: CALENDARI_SECONDARI.has(e.alias) ? ["secondario"] : [],
-        extendedProps: e,
-      }));
+      .map((e) => {
+        const secondario = CALENDARI_SECONDARI.has(e.alias);
+        return {
+          id: e.id,
+          title: e.title,
+          start: e.start,
+          end: e.end,
+          allDay: e.allDay,
+          // Riempimento tenue + barretta piena: è la resa delle riunioni in Teams.
+          // Il riempimento è opaco: con un rgba le righe da 30 minuti della griglia
+          // si vedrebbero attraverso l'evento. Quelli secondari sono più tenui
+          // ancora, senza opacity (che avrebbe lo stesso effetto).
+          backgroundColor: tintaOpaca(e.color, secondario ? 7 : 14),
+          borderColor: secondario ? tintaOpaca(e.color, 55) : e.color,
+          classNames: secondario ? ["secondario"] : [],
+          extendedProps: e,
+        };
+      });
     success(evs);
   }).catch((err) => {
     showBanner("Errore nel caricamento: " + err);
@@ -1466,6 +1472,17 @@ function tinta(hex, alpha) {
   if (!m) return hex;
   const [r, g, b] = [1, 2, 3].map((i) => parseInt(m[i], 16));
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+const COLOR_MIX = typeof CSS !== "undefined" && CSS.supports
+  && CSS.supports("color", "color-mix(in srgb, red 14%, white)");
+
+/** Come tinta(), ma senza trasparenza: il colore mescolato alla superficie del
+ *  tema (chiaro o scuro), così ciò che sta dietro non traspare. */
+function tintaOpaca(hex, percento) {
+  return COLOR_MIX
+    ? `color-mix(in srgb, ${hex} ${percento}%, var(--surface))`
+    : tinta(hex, percento / 100);
 }
 
 function fmtRange(ev) {

@@ -610,8 +610,12 @@ html, body {
   padding: 2px 8px; border-radius: 6px;
 }
 /* Calendari secondari (partecipazione non obbligatoria): sbiaditi e col bordo
-   tratteggiato, così si distinguono da quelli dove devi esserci. */
-.fc-event.secondario { opacity: .55; border-left-style: dashed; }
+   tratteggiato, così si distinguono da quelli dove devi esserci. Il colore più
+   tenue lo mette app.js sul riempimento e sul bordo: con opacity le righe della
+   griglia traspaiono dall'evento. */
+.fc-event.secondario { border-left-style: dashed; }
+.fc-event.secondario .fc-event-main,
+.fc-event.secondario .ev-meta { color: var(--ink-3); }
 
 /* Pallino azienda in alto a destra dell'evento: piccolo cerchio con le iniziali
    (o il logo, mostrato intero). Sostituisce la vecchia pillola col nome. */

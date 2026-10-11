@@ -42,6 +42,9 @@ MAX_CORPO = 1_000_000
 
 API = app.Api()
 WEB = os.path.realpath(app.WEB_DIR)
+# I loghi delle aziende stanno solo sul server (dati di chi usa l'app, fuori dal repository): /logos/<file> si cerca prima qui,
+# poi tra quelli della pagina (web/logos). Si dichiarano in personalizzazione.json, interfaccia.loghi.
+LOGHI = os.path.realpath(os.path.join(app.config.DATA_DIR, "logos"))
 
 
 class Gestore(BaseHTTPRequestHandler):
@@ -70,7 +73,12 @@ class Gestore(BaseHTTPRequestHandler):
         if percorso == "/salute":
             return self._rispondi(200, b"ok", "text/plain")
         file = os.path.realpath(os.path.join(WEB, "index.html" if percorso == "/" else percorso.lstrip("/")))
-        if os.path.commonpath([WEB, file]) != WEB or not os.path.isfile(file):
+        radice = WEB
+        if percorso.startswith("/logos/"):
+            proprio = os.path.realpath(os.path.join(LOGHI, percorso[len("/logos/"):]))
+            if os.path.commonpath([LOGHI, proprio]) == LOGHI and os.path.isfile(proprio):
+                file, radice = proprio, LOGHI
+        if os.path.commonpath([radice, file]) != radice or not os.path.isfile(file):
             return self._json(404, {"error": "non trovato"})
         tipo = mimetypes.guess_type(file)[0] or "application/octet-stream"
         if tipo.startswith("text/") or tipo.endswith("javascript"):

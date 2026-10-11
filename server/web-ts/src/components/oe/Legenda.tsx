@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckIcon } from "lucide-react";
-import { salute } from "@/lib/oe/logic";
+import { iniziali, salute, urlLogo } from "@/lib/oe/logic";
 import { cn } from "@/lib/utils";
 import { useOe } from "./OeProvider";
 
@@ -14,7 +14,9 @@ const COLORE_PALLINO: Record<string, string> = {
 
 /** "I miei calendari": una voce per azienda, con interruttore, "only" e il pallino di salute. */
 export function Legenda({ onGestisci }: { onGestisci: () => void }) {
-  const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo } = useOe();
+  const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo, pers } = useOe();
+  const loghi = pers.interfaccia.loghi ?? {};
+  const sigle = pers.interfaccia.sigle ?? {};
   const nomiGruppi = Object.keys(gruppiCalendari);
   return (
     <section aria-label="I miei calendari" className="px-1">
@@ -68,6 +70,17 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
                   style={{ borderColor: g.color, background: attivo ? g.color : "transparent" }}
                 >
                   {attivo && <CheckIcon className="size-3.5" strokeWidth={3} />}
+                </span>
+                {/* il logo dell'azienda (personalizzazione.json, interfaccia.loghi), o le sue iniziali nel suo colore: si riconosce a colpo d'occhio */}
+                <span className="acct-logo grid size-[22px] flex-none place-items-center overflow-hidden rounded-md bg-white ring-1 ring-black/10">
+                  {loghi[g.azienda] ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={urlLogo(loghi[g.azienda])} alt="" className="size-full object-contain p-[2px]" />
+                  ) : (
+                    <span className="grid size-full place-items-center text-[9.5px] font-extrabold leading-none text-white" style={{ background: g.color }}>
+                      {sigle[g.azienda] || iniziali(g.azienda)}
+                    </span>
+                  )}
                 </span>
                 <span className="acct-name truncate">{g.azienda}</span>
               </button>

@@ -11,6 +11,7 @@ import {
   fmtRange,
   giorniTra,
   iniziali,
+  urlLogo,
   isoLocale,
   periodoLargo,
   raccogliFestivi,
@@ -240,4 +241,13 @@ describe("vista adatta allo schermo", () => {
     expect(vistaPerSchermo("timeGridTreGiorni", true, true)).toBe("timeGridDay");
     for (const v of ["timeGridDay", "dayGridMonth", "listWeek"]) expect(vistaPerSchermo(v, true, true)).toBe(v);
   });
+});
+
+describe("urlLogo", () => {
+  it.each([
+    ["logos/serco.png", "/logos/serco.png"],
+    ["/logos/serco.png", "/logos/serco.png"],
+    ["https://esempio.example/logo.png", "https://esempio.example/logo.png"],
+    ["//cdn.example/logo.png", "//cdn.example/logo.png"],
+  ])("%s -> %s", (valore, atteso) => expect(urlLogo(valore)).toBe(atteso));
 });

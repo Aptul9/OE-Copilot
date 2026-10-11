@@ -91,6 +91,9 @@ jobs:
       - name: Prova della disponibilità
         run: docker run --rm -v "$PWD/server/strumenti/prova_disponibilita.py:/prova.py:ro" oe-copilot-ui python /prova.py
 
+      - name: Prova dei loghi
+        run: docker run --rm -v "$PWD/server/strumenti/prova_loghi.py:/prova.py:ro" oe-copilot-ui python /prova.py
+
       - name: Caddy dell'interfaccia web
         run: |
           docker build -q -t oe-copilot-caddy server/caddy-ui

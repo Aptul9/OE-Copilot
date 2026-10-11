@@ -78,6 +78,7 @@
   font-size: 12px; line-height: 1.2; font-weight: 600; padding-right: 22px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.calendario .fc-event .ev-line .ev-logo { display: inline-block; width: 13px; height: 13px; object-fit: contain; vertical-align: -2px; margin-right: 4px; border-radius: 3px; background: #fff; }
 .calendario .fc-event .ev-line .ev-time { font-weight: 400; color: var(--muted-foreground); }
 .calendario .fc-daygrid-event { margin-top: 1.5px; }
 

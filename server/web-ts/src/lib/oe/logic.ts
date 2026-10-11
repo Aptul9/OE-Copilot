@@ -13,6 +13,9 @@ export function iniziali(nome: string | null | undefined): string {
   return s.slice(0, 2).toUpperCase();
 }
 
+/** Dove sta un logo dichiarato in personalizzazione.json: "logos/serco.png" (nella cartella dei loghi del server) o un indirizzo intero. */
+export const urlLogo = (valore: string) => (/^(https?:)?\/\//.test(valore) || valore.startsWith("/") ? valore : `/${valore}`);
+
 /** Il colore mescolato alla superficie del tema, senza trasparenza: la griglia non traspare dall'evento. */
 export const tintaOpaca = (colore: string, percento: number, base = "var(--card)") =>
   `color-mix(in srgb, ${colore} ${percento}%, ${base})`;

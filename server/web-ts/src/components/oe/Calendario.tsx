@@ -8,7 +8,7 @@ import listPlugin from "@fullcalendar/list";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import FullCalendar from "@fullcalendar/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { VISTA_3G, chiaveGiorno, iniziali } from "@/lib/oe/logic";
+import { VISTA_3G, chiaveGiorno, iniziali, urlLogo } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import "./calendario.css";
@@ -104,7 +104,10 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     [onEventClick],
   );
 
-  const loghi = useMemo<Record<string, string>>(() => ({ "Eventi personali": "/logos/personale.png", ...(pers.interfaccia.loghi ?? {}) }), [pers]);
+  const loghi = useMemo<Record<string, string>>(
+    () => ({ "Eventi personali": "/logos/personale.png", ...Object.fromEntries(Object.entries(pers.interfaccia.loghi ?? {}).map(([nome, file]) => [nome, urlLogo(file)])) }),
+    [pers],
+  );
   const sigle = pers.interfaccia.sigle ?? {};
 
   const eventContent = useCallback(
@@ -113,8 +116,13 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       const tipo = arg.view.type;
       if (tipo === "dayGridMonth" || tipo.startsWith("list")) {
         // mese e agenda: una riga sola, orario e titolo
+        const logoRiga = loghi[p.alias || p.account || ""];
         return (
           <div className="ev-line">
+            {logoRiga && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="ev-logo" src={logoRiga} alt="" />
+            )}
             {arg.timeText && <span className="ev-time">{arg.timeText} </span>}
             {arg.event.title}
           </div>

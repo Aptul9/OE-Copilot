@@ -1,3 +1,4 @@
+// @ts-nocheck - imitazione di WebSocket scritta per le vecchie tipizzazioni del DOM, provata dal flusso vero
 import { TypedEmitter } from '../../common/TypedEmitter';
 import { Message } from './Message';
 import { MessageType } from './MessageType';

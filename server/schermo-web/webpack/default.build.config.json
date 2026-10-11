@@ -1,6 +1,4 @@
 {
-  "SCRCPY_LISTENS_ON_ALL_INTERFACES": false,
   "USE_WEBCODECS": true,
-  "USE_H264_CONVERTER": true,
-  "PATHNAME": "/"
+  "USE_H264_CONVERTER": true
 }

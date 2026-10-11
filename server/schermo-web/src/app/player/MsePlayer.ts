@@ -59,7 +59,6 @@ export class MsePlayer extends BasePlayer {
     private lastTime = -1;
     protected canPlay = false;
     private seekingSince = -1;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     protected readonly isSafari = !!(window as unknown as any)['safari'];
     protected readonly isChrome = navigator.userAgent.includes('Chrome');
     protected readonly isMac = navigator.platform.startsWith('Mac');
@@ -84,7 +83,6 @@ export class MsePlayer extends BasePlayer {
         };
         tag.addEventListener('error', this.onVideoError);
         tag.addEventListener('canplay', this.onVideoCanPlay);
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
         setLogger(() => {}, console.error);
     }
 
@@ -105,7 +103,6 @@ export class MsePlayer extends BasePlayer {
     }
 
     private getVideoPlaybackQuality(): QualityStats | null {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const video = this.tag as any;
         if (typeof video.mozDecodedFrames !== 'undefined') {
             return null;

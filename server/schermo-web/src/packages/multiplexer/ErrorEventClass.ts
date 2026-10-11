@@ -1,3 +1,4 @@
+// @ts-nocheck - imitazione di WebSocket scritta per le vecchie tipizzazioni del DOM, provata dal flusso vero
 import { Event2 } from './Event';
 
 export class ErrorEvent2 extends Event2 implements ErrorEvent {

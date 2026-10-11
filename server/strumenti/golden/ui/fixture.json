@@ -1,0 +1,107 @@
+{
+  "_nota": "Dati inventati per le prove del servizio ui e del gateway (prova_ui_golden.py, test/golden-lettura.test.ts): lo stesso file, la stessa sequenza di chiamate. {ICS} diventa l'indirizzo del server dei calendari ICS di prova.",
+  "profili": {
+    "base": {
+      "personalizzazione": {
+        "nomi_per_indirizzo": {"mario@alfa.example": "Alfa", "mario@beta.example": "Beta", "mario@gmail.example": "Personale", "anna@alfa.example": "Alfa", "anna.rossi@alfa.example": "Alfa"},
+        "nomi_per_dominio": {"alfa.example": "Alfa", "beta.example": "Beta", "gmail.example": "Personale", "gamma.example": "Gamma"},
+        "domini_aziendali": ["alfa.example", "beta.example", "gamma.example"],
+        "ordine_calendari": ["Alfa", "Beta", "Team", "Esterna", "Personale", "Eventi personali", "Festività"],
+        "azienda_per_cartella": {"· Shared Team": "Team"},
+        "aziende_inoltrate": {"Esterna": {"via": "mario@alfa.example", "prefisso": "^Copia\\s*:\\s*", "colore": "#0f766e"}, "_commento": {"via": "x"}, "Rotta": {"via": "x", "prefisso": "(non chiusa"}},
+        "interfaccia": {"sigle": {"Alfa": "AL"}, "loghi": {"Alfa": "logos/alfa.png"}, "calendari_secondari": ["Team"], "calendari_senza_teams": ["Team"], "schede_timesheet": [{"nome": "Alfa", "url": "https://gestionale.alfa.example"}]}
+      }
+    },
+    "colleghi_tutto": {
+      "personalizzazione": {
+        "nomi_per_indirizzo": {"mario@alfa.example": "Alfa", "mario@beta.example": "Beta Collega"},
+        "nomi_per_dominio": {"alfa.example": "Alfa", "beta.example": "Beta"},
+        "domini_aziendali": ["alfa.example", "beta.example"],
+        "caselle_di_colleghi": ["mario@beta.example"],
+        "account_nascosti": ["assente@alfa.example"],
+        "mostra_tutto_il_giorno": true,
+        "azienda_per_cartella": {"· Shared Team": "Team"}
+      }
+    }
+  },
+  "config": {
+    "disabled_calendars": [],
+    "account_aliases": {"mario@gmail.example": "Mario G"},
+    "account_colors": {"mario@alfa.example": "#2563eb"},
+    "gruppi_calendari": {"antonio": ["Alfa", "Beta"], "samuele": ["Mario G"]},
+    "theme": "dark",
+    "vista": "settimana",
+    "zoom_calendario": 70,
+    "windows_toast": true,
+    "telegram": {"enabled": false, "bot_token": "", "chat_id": ""},
+    "ics_calendars": [{"id": "ics_utente1", "name": "Riunioni di prova", "url": "{ICS}/riunioni.ics"}]
+  },
+  "locali": [
+    {"uid": "1", "title": "Dentista (locale)", "start": "2026-10-21T08:30:00", "end": "2026-10-21T09:15:00", "allDay": false, "location": "Studio", "notes": ""},
+    {"uid": "2", "title": "Ferie locali", "start": "2026-10-26T00:00:00", "end": "2026-10-28T00:00:00", "allDay": true, "location": "", "notes": ""},
+    {"uid": "3", "title": "Rotto", "start": "boh", "end": "boh", "allDay": false}
+  ],
+  "caselle_note": [{"account": "mario@alfa.example", "tipo": "outlook"}, {"account": "mario@beta.example", "tipo": "outlook"}, {"account": "mario@gmail.example", "tipo": "caldav"}],
+  "cache_eventi": {
+    "2026-09-01T00:00:00|2026-09-08T00:00:00": {"stamp": 1788000000.5, "eventi": [
+      {"id": "x|1", "account": "mario@alfa.example", "alias": "Alfa", "calendar": "mario@alfa.example · Calendar", "color": "#2563eb", "title": "Dalla copia salvata", "start": "2026-09-02T10:00:00", "end": "2026-09-02T11:00:00", "allDay": false, "location": "", "organizer": "", "organizer_email": "", "online_url": null, "web_link": null, "remoto": true}
+    ]}
+  },
+  "modi": {
+    "normale": {"servizio": {"eta_s": 20, "pausa": false, "telefono": true}},
+    "senza_servizio": {"servizio": null},
+    "in_ritardo": {"servizio": {"eta_s": 300, "pausa": false, "telefono": true}},
+    "fermo": {"servizio": {"eta_s": 1000, "pausa": false, "telefono": true}},
+    "pausa": {"servizio": {"eta_s": 20, "pausa": true, "telefono": true}},
+    "telefono_spento": {"servizio": {"eta_s": 20, "pausa": false, "telefono": false}},
+    "caselle_diverse": {
+      "servizio": {"eta_s": 20, "pausa": false, "telefono": true},
+      "stati": {"mario@beta.example": {"stato": "avviso", "msg": "Outlook non conferma la sincronizzazione"}, "mario@gmail.example": {"stato": "errore", "msg": "Accesso scaduto: rifai il login Google"}}
+    },
+    "irraggiungibile": {"http": 503},
+    "chiave_rifiutata": {"http": 401}
+  },
+  "scenari": [
+    {"profilo": "base", "modo": "normale", "nome": "config", "metodo": "get_config", "args": []},
+    {"profilo": "base", "modo": "normale", "nome": "personalizzazione", "metodo": "get_personalizzazione", "args": []},
+    {"profilo": "base", "modo": "normale", "nome": "calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "normale", "nome": "calendari con force", "metodo": "get_calendars", "args": [true]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi tre settimane (scarto del browser)", "metodo": "get_events", "args": ["2026-10-19T00:00:00+02:00", "2026-11-09T00:00:00+01:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi giorno del cambio dell'ora", "metodo": "get_events", "args": ["2026-10-25T00:00:00", "2026-10-26T00:00:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi un giorno, estremi con scarto", "metodo": "get_events", "args": ["2026-11-02T00:00:00+01:00", "2026-11-03T00:00:00+01:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi il trimestre", "metodo": "get_events", "args": ["2026-10-01T00:00:00", "2026-12-31T00:00:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi, intervallo non valido", "metodo": "get_events", "args": ["ieri", "oggi"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi, data impossibile", "metodo": "get_events", "args": ["2026-13-01T00:00:00", "2026-13-08T00:00:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi, intervallo senza risposta dell'agente e con copia salvata", "metodo": "get_events", "args": ["2026-09-01T00:00:00", "2026-09-08T00:00:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "eventi, intervallo senza risposta dell'agente e senza copia", "metodo": "get_events", "args": ["2026-08-03T00:00:00", "2026-08-10T00:00:00"]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita tre settimane", "metodo": "get_disponibilita", "args": ["2026-10-19", 21]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita gruppo antonio", "metodo": "get_disponibilita", "args": ["2026-10-19", 21, "antonio"]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita gruppo samuele, un giorno", "metodo": "get_disponibilita", "args": ["2026-10-25", 1, "samuele"]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita gruppo che non esiste", "metodo": "get_disponibilita", "args": ["2026-10-19", 21, "nessuno"]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita oltre i 62 giorni", "metodo": "get_disponibilita", "args": ["2026-10-19", 63]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita data non valida", "metodo": "get_disponibilita", "args": ["boh", 7]},
+    {"profilo": "base", "modo": "normale", "nome": "disponibilita giorni come testo", "metodo": "get_disponibilita", "args": ["2026-10-25", "1"]},
+    {"profilo": "base", "modo": "senza_servizio", "nome": "senza segno di vita: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "senza_servizio", "nome": "senza segno di vita: eventi", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "base", "modo": "in_ritardo", "nome": "in ritardo: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "in_ritardo", "nome": "in ritardo: eventi", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "base", "modo": "fermo", "nome": "fermo: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "fermo", "nome": "fermo: eventi", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "base", "modo": "fermo", "nome": "fermo: disponibilita", "metodo": "get_disponibilita", "args": ["2026-10-19", 21]},
+    {"profilo": "base", "modo": "pausa", "nome": "pausa: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "telefono_spento", "nome": "telefono spento: eventi", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "base", "modo": "caselle_diverse", "nome": "caselle in stati diversi: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "caselle_diverse", "nome": "caselle in stati diversi: eventi", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "base", "modo": "irraggiungibile", "nome": "agente irraggiungibile: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "base", "modo": "irraggiungibile", "nome": "agente irraggiungibile: calendari con force", "metodo": "get_calendars", "args": [true]},
+    {"profilo": "base", "modo": "irraggiungibile", "nome": "agente irraggiungibile: eventi con copia salvata", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "base", "modo": "irraggiungibile", "nome": "agente irraggiungibile: disponibilita", "metodo": "get_disponibilita", "args": ["2026-10-19", 21]},
+    {"profilo": "base", "modo": "chiave_rifiutata", "nome": "chiave rifiutata: eventi", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "colleghi_tutto", "modo": "normale", "nome": "colleghi: calendari", "metodo": "get_calendars", "args": []},
+    {"profilo": "colleghi_tutto", "modo": "normale", "nome": "colleghi: eventi tre settimane", "metodo": "get_events", "args": ["2026-10-19T00:00:00", "2026-11-09T00:00:00"]},
+    {"profilo": "colleghi_tutto", "modo": "normale", "nome": "colleghi: eventi il trimestre", "metodo": "get_events", "args": ["2026-10-01T00:00:00", "2026-12-31T00:00:00"]},
+    {"profilo": "colleghi_tutto", "modo": "normale", "nome": "colleghi: disponibilita tre settimane", "metodo": "get_disponibilita", "args": ["2026-10-19", 21]},
+    {"profilo": "colleghi_tutto", "modo": "normale", "nome": "colleghi: disponibilita gruppo antonio", "metodo": "get_disponibilita", "args": ["2026-10-19", 21, "antonio"]},
+    {"profilo": "colleghi_tutto", "modo": "normale", "nome": "colleghi: disponibilita un giorno", "metodo": "get_disponibilita", "args": ["2026-10-25", 1]}
+  ]
+}

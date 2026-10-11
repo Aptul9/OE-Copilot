@@ -18,6 +18,17 @@ export const config = {
   get upstream() {
     return (process.env.UI_UPSTREAM || "http://ui:8181").replace(/\/+$/, "");
   },
+  // La cartella dei dati dell'app (config.json, personalizzazione.json, cache, eventi personali, loghi): ui-dati/ sul server
+  get dati() {
+    return process.env.OE_DATI || "/dati";
+  },
+  // L'agente sulla rete di Docker e la sua chiave
+  get agenteUrl() {
+    return (process.env.AGENTE_URL || "http://agent:8180").replace(/\/+$/, "");
+  },
+  get agenteChiave() {
+    return (process.env.AGENTE_CHIAVE || "").trim();
+  },
   get adminEmail() {
     return (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   },

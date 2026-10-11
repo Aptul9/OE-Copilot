@@ -12,7 +12,7 @@ export const COLORE_OCCUPATO = "#6366f1";
 export const RANGE_MAX = 62;
 export const ANNI_MAX_GIORNI = 400;
 export const GRUPPO_MAX = 60;
-/** Le letture dal servizio ui sono a blocchi di 28 giorni fissi: chi guarda sposta le viste dentro lo stesso blocco. */
+/** Le letture sono a blocchi di 28 giorni fissi: chi guarda sposta le viste dentro lo stesso blocco. */
 export const GIORNI_BLOCCO = 28;
 const ANCORA = "2024-01-01"; // un lunedì: da qui partono i blocchi
 
@@ -102,7 +102,13 @@ export function unisci(impegni: Coppia[]): Coppia[] {
 // ---- Lettura dal servizio ui -----------------------------------------------------------------------
 export type Blocco = { impegni: Coppia[]; festivita: Festa[]; completo: boolean };
 export type Esito = ({ ok: true } & Blocco) | { ok: false; stato: 404 | 429 | 502 };
-type Deps = { fetch?: typeof fetch; upstream?: string; adesso?: () => number };
+type Deps = {
+  fetch?: typeof fetch;
+  upstream?: string;
+  adesso?: () => number;
+  /** La lettura in processo (lib/core): se c'è, non si passa dal servizio ui. */
+  core?: (da: string, giorni: number, gruppo: string) => Promise<unknown>;
+};
 
 const TTL_MS = 60_000;
 const TTL_GUASTO_MS = 15_000;
@@ -146,6 +152,7 @@ function ripulisci(dati: unknown): Esito {
 
 async function leggi(da: string, gruppo: string, deps: Deps): Promise<Esito> {
   try {
+    if (deps.core) return ripulisci(JSON.parse(JSON.stringify(await deps.core(da, GIORNI_BLOCCO, gruppo))));
     const r = await (deps.fetch ?? fetch)((deps.upstream ?? config.upstream) + "/api/get_disponibilita", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

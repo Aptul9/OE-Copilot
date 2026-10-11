@@ -63,7 +63,8 @@ jobs:
       - name: Prova dell'agente, calendario inventato
         run: |
           # ricorrenze, annullamenti, fusi e doppioni su un calendar.db costruito dalla prova, contro la risposta registrata
-          # in server/strumenti/golden/agente.json (l'agente vero, in HTTP, con il suo codice montato come sul server)
+          # in server/strumenti/golden/agente.json (l'agente vero, in HTTP, con il suo codice montato come sul server), più
+          # i calendari ICS (POST /api/ics) che il gateway gli manda da espandere
           docker run --rm -v "$PWD/server/agent:/app:ro" -v "$PWD/server/strumenti:/prove:ro" \
             oe-copilot-agent python /prove/prova_agente_golden.py
 
@@ -97,6 +98,12 @@ jobs:
 
       - name: Prova dei loghi
         run: docker run --rm -v "$PWD/server/strumenti/prova_loghi.py:/prova.py:ro" oe-copilot-ui python /prova.py
+
+      - name: Prova della lettura del servizio ui (l'oracolo del gateway)
+        run: |
+          # le risposte del servizio Python a una sequenza di chiamate, con un agente finto che ripete le risposte registrate: sono
+          # quelle registrate in server/strumenti/golden/ui-lettura.json, che il gateway in TypeScript deve dare uguali (npm test)
+          docker run --rm -v "$PWD/server/strumenti:/prove:ro" oe-copilot-ui python /prove/prova_ui_golden.py
 
       - name: Caddy dell'interfaccia web
         run: |
@@ -144,6 +151,7 @@ jobs:
           ui=$(docker run -d --network prova --network-alias ui oe-copilot-ui)
           pw=$(openssl rand -hex 16)
           gw=$(docker run -d --network prova --network-alias gateway -p 3190:3000 -e UI_UPSTREAM=http://ui:8181 -e GATEWAY_DB=/tmp/gw.db \
+            -e OE_DATI=/tmp/dati -e AGENTE_URL=http://agent:8180 -e AGENTE_CHIAVE=prova \
             -e APP_URL=http://localhost:3190 -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
             -e ADMIN_EMAIL=prova@example.com -e ADMIN_PASSWORD="$pw" oe-copilot-gateway)
           # lo schermo del telefono (senza telefono) e il Caddy vero davanti a gateway e schermo, in HTTP (UI_HOST con http://)
@@ -177,6 +185,12 @@ jobs:
           test "$(codice -b jar $G/logos/personale.png)" = 200
           test "$(codice -b jar $G/index.html)" = 404
           curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_personalizzazione | grep -q '"interfaccia"'
+          # i metodi della lettura li serve il gateway da sé (qui senza agente: nessuna casella, ma la risposta c'è, in JSON e senza cache)
+          curl -fsS -b jar -D intest2 -X POST "${json[@]}" -d '[]' $G/api/get_config | grep -q '"theme"'
+          grep -qi '^content-type: application/json' intest2
+          curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_calendars | grep -q '"calendars"'
+          test "$(codice -b jar -X POST "${json[@]}" -d '{"a":1}' $G/api/get_config)" = 400
+          test "$(curl -s -b jar -X POST "${json[@]}" -d '["boh"]' $G/api/get_disponibilita | grep -c 'Intervallo non valido')" = 1
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/win_close)" = 404
           test "$(codice -b jar -X POST -d '[]' $G/api/get_config)" = 415
           test "$(codice -b jar -X POST "${json[@]}" -H 'Sec-Fetch-Site: cross-site' -d '[]' $G/api/get_config)" = 403

@@ -22,6 +22,7 @@ import sqlite3
 import sys
 import tempfile
 import threading
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -153,7 +154,16 @@ FINESTRE = [
     ["2026-10-19T00:00:00", "2026-11-09T00:00:00"],             # tre settimane a cavallo del cambio dell'ora
     ["2026-10-25T00:00:00", "2026-10-26T00:00:00"],             # il giorno del cambio dell'ora
     ["2026-11-02T00:00:00+01:00", "2026-11-03T00:00:00+01:00"],     # con lo scarto
+    ["2026-11-02T00:00:00", "2026-11-03T00:00:00"],             # lo stesso giorno senza scarto: com'è dopo che il servizio ui l'ha convertito
     ["2026-10-01T00:00:00", "2026-12-31T00:00:00"],             # il trimestre
+]
+
+
+# finestre in più solo per i calendari ICS: le prove del servizio ui e del gateway le chiedono anche quando l'agente non ha una
+# risposta registrata per i telefoni (lì un 404 prova la copia salvata)
+FINESTRE_ICS_IN_PIU = [
+    ["2026-09-01T00:00:00", "2026-09-08T00:00:00"],
+    ["2026-08-03T00:00:00", "2026-08-10T00:00:00"],
 ]
 
 
@@ -178,6 +188,94 @@ def costruisci_db(cartella):
                   INVITATI)
     c.commit()
     c.close()
+
+
+# ---- calendari ICS (POST /api/ics): quello che l'app scarica da un link e manda all'agente per espandere le ricorrenze -----
+def ics(righe):
+    return "\r\n".join(["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Prova//IT"] + righe + ["END:VCALENDAR", ""])
+
+
+ICS = {
+    "festivita": ics([
+        "X-WR-CALNAME:Festività di prova", "X-WR-TIMEZONE:UTC",
+        "BEGIN:VEVENT", "DTSTART;VALUE=DATE:20261101", "DTEND;VALUE=DATE:20261102", "UID:festa-1@prova",
+        "SUMMARY:Ognissanti", "DESCRIPTION:Festività pubblica", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;VALUE=DATE:20261208", "DTEND;VALUE=DATE:20261209", "UID:festa-2@prova",
+        "SUMMARY:Immacolata Concezione", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;VALUE=DATE:20261225", "DTEND;VALUE=DATE:20261226", "UID:festa-3@prova",
+        "SUMMARY:Natale", "END:VEVENT",
+    ]),
+    "riunioni": ics([
+        "X-WR-CALNAME:Riunioni di prova",
+        # serie a New York con una data esclusa e una occorrenza spostata
+        "BEGIN:VEVENT", "DTSTART;TZID=America/New_York:20261020T100000", "DTEND;TZID=America/New_York:20261020T110000",
+        "RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=5", "EXDATE;TZID=America/New_York:20261110T100000", "UID:usa@prova",
+        "SUMMARY:Sync USA", "LOCATION:https://teams.microsoft.com/l/meetup-join/abc", "ORGANIZER;CN=Anna:mailto:anna@example.org",
+        "END:VEVENT",
+        "BEGIN:VEVENT", "RECURRENCE-ID;TZID=America/New_York:20261103T100000", "DTSTART;TZID=America/New_York:20261103T113000",
+        "DTEND;TZID=America/New_York:20261103T123000", "UID:usa@prova", "SUMMARY:Sync USA (spostata)", "END:VEVENT",
+        # orario UTC, ora senza fuso, solo la durata, più giorni interi, un compleanno annuale
+        "BEGIN:VEVENT", "DTSTART:20261028T080000Z", "DTEND:20261028T090000Z", "UID:utc@prova", "SUMMARY:Call UTC",
+        "DESCRIPTION:Entra: https://zoom.us/j/12345?pwd=abc).", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART:20261027T150000", "DTEND:20261027T160000", "UID:fluttuante@prova", "SUMMARY:Senza fuso", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;TZID=Europe/Rome:20261029T170000", "DURATION:PT45M", "UID:durata@prova", "SUMMARY:Solo durata",
+        "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;VALUE=DATE:20261026", "DTEND;VALUE=DATE:20261029", "UID:giorni@prova", "SUMMARY:Tre giorni", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;VALUE=DATE:20261024", "DTEND;VALUE=DATE:20261025", "RRULE:FREQ=YEARLY", "UID:compleanno@prova",
+        "SUMMARY:Compleanno", "END:VEVENT",
+        # una serie quotidiana a Roma a cavallo del cambio dell'ora: sempre alle 9:30 locali
+        "BEGIN:VEVENT", "DTSTART;TZID=Europe/Rome:20261023T093000", "DTEND;TZID=Europe/Rome:20261023T100000",
+        "RRULE:FREQ=DAILY;COUNT=4", "UID:quotidiana@prova", "SUMMARY:Quotidiana", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;TZID=Europe/Rome:20261030T120000", "DTEND;TZID=Europe/Rome:20261030T120000", "UID:zero@prova",
+        "SUMMARY:Senza durata", "END:VEVENT",
+        "BEGIN:VEVENT", "DTSTART;TZID=Europe/Rome:20261030T120000", "DTEND;TZID=Europe/Rome:20261030T130000", "UID:senza-titolo@prova",
+        "END:VEVENT",
+    ]),
+    "html": "<html><body>Accedi per vedere il calendario</body></html>",
+    "rotto": ics(["BEGIN:VEVENT", "DTSTART:non-una-data", "UID:x@prova", "SUMMARY:Rotto", "END:VEVENT"]),
+    "vuoto": "",
+}
+
+
+def chiedi_ics(base, corpo):
+    r = urllib.request.Request(base + "/api/ics", data=json.dumps(corpo).encode("utf-8"),
+                               headers={"Authorization": "Bearer " + CHIAVE, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(r, timeout=30) as risposta:
+            return risposta.status, json.loads(risposta.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8"))
+
+
+def leggi_ics(base, finestre):
+    out = {}
+    for nome, testo in ICS.items():
+        voce = {"valida": chiedi_ics(base, {"testo": testo})[1], "eventi": {}}
+        for inizio, fine in finestre:
+            voce["eventi"]["%s|%s" % (inizio, fine)] = chiedi_ics(base, {"testo": testo, "inizio": inizio, "fine": fine})[1]
+        out[nome] = voce
+    # i rifiuti: senza chiave, un solo estremo, testo che non è una stringa, estremo che non è una data, percorso sbagliato
+    senza = urllib.request.Request(base + "/api/ics", data=b"{}", headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(senza, timeout=30)
+        codice_senza = 200
+    except urllib.error.HTTPError as e:
+        codice_senza = e.code
+    sbagliato = urllib.request.Request(base + "/api/altro", data=b"{}", headers={
+        "Authorization": "Bearer " + CHIAVE, "Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(sbagliato, timeout=30)
+        codice_percorso = 200
+    except urllib.error.HTTPError as e:
+        codice_percorso = e.code
+    out["rifiuti"] = {
+        "senza chiave": codice_senza,
+        "un solo estremo": chiedi_ics(base, {"testo": ICS["festivita"], "inizio": finestre[0][0]})[0],
+        "testo non stringa": chiedi_ics(base, {"testo": 5})[0],
+        "estremo non valido": chiedi_ics(base, {"testo": ICS["festivita"], "inizio": "ieri", "fine": "oggi"})[0],
+        "percorso sconosciuto": codice_percorso,
+    }
+    return out
 
 
 # ---- l'agente vero, su una porta libera -----------------------------------------------------------------------------------
@@ -308,6 +406,57 @@ def fatti(letto):
     verifica("finestra con lo scarto (+01:00): lo standup delle 9:00 del 2/11",
              "2026-11-02T09:00:00" in [e["start"] for e in con_scarto if e["title"] == "Standup"],
              [(e["title"], e["start"]) for e in con_scarto])
+    fatti_ics(letto["ics"])
+
+
+def fatti_ics(ics_letto):
+    breve, trimestre = "2026-10-19T00:00:00|2026-11-09T00:00:00", "2026-10-01T00:00:00|2026-12-31T00:00:00"
+    festivita = ics_letto["festivita"]
+    verifica("ICS festività: il nome del calendario, e nel trimestre tre giorni interi a mezzanotte locale",
+             festivita["valida"] == {"ok": True, "nome": "Festività di prova"}
+             and [(e["titolo"], e["inizio"], e["fine"], e["tutto_giorno"]) for e in festivita["eventi"][trimestre]["eventi"]]
+             == [("Ognissanti", "2026-11-01T00:00:00", "2026-11-02T00:00:00", True),
+                 ("Immacolata Concezione", "2026-12-08T00:00:00", "2026-12-09T00:00:00", True),
+                 ("Natale", "2026-12-25T00:00:00", "2026-12-26T00:00:00", True)], festivita["eventi"][trimestre])
+    riunioni = {}
+    for e in ics_letto["riunioni"]["eventi"][breve]["eventi"]:
+        riunioni.setdefault(e["uid"], []).append(e)
+    q = lambda uid: [(e["titolo"], e["inizio"], e["fine"]) for e in riunioni.get(uid, [])]  # noqa: E731
+    verifica("ICS serie a New York: 16:00 legali, 15:00 dopo il cambio dell'ora italiano, spostata alle 17:30",
+             q("usa@prova") == [("Sync USA", "2026-10-20T16:00:00", "2026-10-20T17:00:00"),
+                                ("Sync USA", "2026-10-27T15:00:00", "2026-10-27T16:00:00"),
+                                ("Sync USA (spostata)", "2026-11-03T17:30:00", "2026-11-03T18:30:00")], q("usa@prova"))
+    usa_trimestre = [e["inizio"] for e in ics_letto["riunioni"]["eventi"][trimestre]["eventi"] if e["uid"] == "usa@prova"]
+    verifica("ICS serie a New York: la data esclusa (10/11) non c'è, l'ultima (17/11) sì alle 16:00 invernali",
+             usa_trimestre == ["2026-10-20T16:00:00", "2026-10-27T15:00:00", "2026-11-03T17:30:00", "2026-11-17T16:00:00"],
+             usa_trimestre)
+    verifica("ICS link nel luogo, organizzatore senza mailto:, link con la punteggiatura finale tolta",
+             riunioni["usa@prova"][0]["link"] == "https://teams.microsoft.com/l/meetup-join/abc"
+             and riunioni["usa@prova"][0]["organizzatore"] == "anna@example.org"
+             and riunioni["utc@prova"][0]["link"] == "https://zoom.us/j/12345?pwd=abc", riunioni["utc@prova"])
+    verifica("ICS orario UTC (9:00 dopo il 25/10), ora senza fuso (com'è), solo la durata (17:00-17:45)",
+             q("utc@prova") == [("Call UTC", "2026-10-28T09:00:00", "2026-10-28T10:00:00")]
+             and q("fluttuante@prova") == [("Senza fuso", "2026-10-27T15:00:00", "2026-10-27T16:00:00")]
+             and q("durata@prova") == [("Solo durata", "2026-10-29T17:00:00", "2026-10-29T17:45:00")],
+             (q("utc@prova"), q("fluttuante@prova"), q("durata@prova")))
+    verifica("ICS giorni interi: tre giorni e un compleanno annuale",
+             q("giorni@prova") == [("Tre giorni", "2026-10-26T00:00:00", "2026-10-29T00:00:00")]
+             and q("compleanno@prova") == [("Compleanno", "2026-10-24T00:00:00", "2026-10-25T00:00:00")],
+             (q("giorni@prova"), q("compleanno@prova")))
+    verifica("ICS serie quotidiana a cavallo del cambio dell'ora: sempre alle 9:30 locali",
+             [e[1][11:16] for e in q("quotidiana@prova")] == ["09:30"] * 4 and [e[1][:10] for e in q("quotidiana@prova")]
+             == ["2026-10-23", "2026-10-24", "2026-10-25", "2026-10-26"], q("quotidiana@prova"))
+    verifica("ICS senza durata e senza titolo: ci sono, il titolo resta vuoto",
+             q("zero@prova") == [("Senza durata", "2026-10-30T12:00:00", "2026-10-30T12:00:00")]
+             and q("senza-titolo@prova") == [("", "2026-10-30T12:00:00", "2026-10-30T13:00:00")],
+             (q("zero@prova"), q("senza-titolo@prova")))
+    verifica("ICS non è un calendario: errore di valore, in validazione e in lettura",
+             all(ics_letto[n]["valida"]["ok"] is False and ics_letto[n]["valida"]["valore"] is True for n in ("html", "vuoto"))
+             and all(v["ok"] is False and v["valore"] is True for v in ics_letto["html"]["eventi"].values())
+             and all(v["ok"] is False for v in ics_letto["rotto"]["eventi"].values()), ics_letto["html"])
+    verifica("ICS richieste sbagliate: senza chiave 401, un solo estremo, testo non stringa e data non valida 400, percorso 404",
+             ics_letto["rifiuti"] == {"senza chiave": 401, "un solo estremo": 400, "testo non stringa": 400,
+                                      "estremo non valido": 400, "percorso sconosciuto": 404}, ics_letto["rifiuti"])
 
 
 def differenza(a, b):
@@ -337,13 +486,21 @@ def main():
 
     cartella = tempfile.mkdtemp()
     costruisci_db(cartella)
-    letto = leggi_tutto(avvia_agente(cartella, FONTI), FINESTRE)
+    base = avvia_agente(cartella, FONTI)
+    letto = leggi_tutto(base, FINESTRE)
+    letto["ics"] = leggi_ics(base, FINESTRE + FINESTRE_ICS_IN_PIU)
     fatti(letto)
     if "--aggiorna" in sys.argv:
         os.makedirs(os.path.dirname(REGISTRATO), exist_ok=True)
         with open(REGISTRATO, "w", encoding="utf-8", newline="\n") as f:
             json.dump(letto, f, ensure_ascii=False, sort_keys=True, indent=1)
             f.write("\n")
+        # i calendari ICS di prova, con le righe a capo di git (LF), per le prove del servizio ui e del gateway che li servono
+        cartella_ics = os.path.join(os.path.dirname(REGISTRATO), "ics")
+        os.makedirs(cartella_ics, exist_ok=True)
+        for nome in ("festivita", "riunioni"):
+            with open(os.path.join(cartella_ics, nome + ".ics"), "w", encoding="utf-8", newline="\n") as f:
+                f.write(ICS[nome].replace("\r\n", "\n"))
         print("riscritto %s (%d eventi nella finestra più lunga)" % (
             REGISTRATO, len(letto["eventi"]["2026-10-01T00:00:00|2026-12-31T00:00:00"]["eventi"])))
     else:

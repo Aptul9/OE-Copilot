@@ -2044,6 +2044,656 @@
    },
    "generato": "ORA",
    "servizio": null
+  },
+  "2026-11-02T00:00:00|2026-11-03T00:00:00": {
+   "caselle": [
+    {
+     "account": "mario@alfa.example",
+     "eventi": 22,
+     "id": "android::mario@alfa.example",
+     "msg": "Letto dal telefono alle HH:MM",
+     "nome": "Alfa",
+     "stato": "ok",
+     "tipo": "outlook"
+    },
+    {
+     "account": "mario@beta.example",
+     "eventi": 4,
+     "id": "android::mario@beta.example",
+     "msg": "Letto dal telefono alle HH:MM",
+     "nome": "Beta",
+     "stato": "ok",
+     "tipo": "outlook"
+    },
+    {
+     "account": "mario@gmail.example",
+     "eventi": 3,
+     "id": "android::mario@gmail.example",
+     "msg": "Letto dal telefono alle HH:MM",
+     "nome": "Gmail",
+     "stato": "ok",
+     "tipo": "caldav"
+    },
+    {
+     "account": "assente@alfa.example",
+     "eventi": null,
+     "id": "android::assente@alfa.example",
+     "msg": "La casella assente@alfa.example non e' sul telefono (login da rifare?)",
+     "nome": "Assente",
+     "stato": "errore",
+     "tipo": null
+    }
+   ],
+   "errori": [
+    "Assente: La casella assente@alfa.example non e' sul telefono (login da rifare?)"
+   ],
+   "eventi": [
+    {
+     "account": "mario@alfa.example",
+     "alias": "Alfa",
+     "allDay": false,
+     "attendees": [],
+     "calendar": "mario@alfa.example · Calendar",
+     "end": "2026-11-02T09:15:00",
+     "fonte": "android",
+     "id": "android::mario@alfa.example|a12|2026-11-02T09:00:00",
+     "location": "Sala Rossa",
+     "online_url": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0",
+     "organizer": "anna@alfa.example",
+     "organizer_email": "anna@alfa.example",
+     "start": "2026-11-02T09:00:00",
+     "tipo": "outlook",
+     "title": "Standup",
+     "web_link": null
+    }
+   ],
+   "fonti": {
+    "Alfa": {
+     "msg": "Letto dal telefono alle HH:MM",
+     "stato": "ok"
+    },
+    "Assente": {
+     "msg": "La casella assente@alfa.example non e' sul telefono (login da rifare?)",
+     "stato": "errore"
+    },
+    "Beta": {
+     "msg": "Letto dal telefono alle HH:MM",
+     "stato": "ok"
+    },
+    "Gmail": {
+     "msg": "Letto dal telefono alle HH:MM",
+     "stato": "ok"
+    }
+   },
+   "generato": "ORA",
+   "servizio": null
+  }
+ },
+ "ics": {
+  "festivita": {
+   "eventi": {
+    "2026-08-03T00:00:00|2026-08-10T00:00:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-09-01T00:00:00|2026-09-08T00:00:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-10-01T00:00:00|2026-12-31T00:00:00": {
+     "eventi": [
+      {
+       "fine": "2026-11-02T00:00:00",
+       "inizio": "2026-11-01T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Ognissanti",
+       "tutto_giorno": true,
+       "uid": "festa-1@prova"
+      },
+      {
+       "fine": "2026-12-09T00:00:00",
+       "inizio": "2026-12-08T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Immacolata Concezione",
+       "tutto_giorno": true,
+       "uid": "festa-2@prova"
+      },
+      {
+       "fine": "2026-12-26T00:00:00",
+       "inizio": "2026-12-25T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Natale",
+       "tutto_giorno": true,
+       "uid": "festa-3@prova"
+      }
+     ],
+     "ok": true
+    },
+    "2026-10-19T00:00:00|2026-11-09T00:00:00": {
+     "eventi": [
+      {
+       "fine": "2026-11-02T00:00:00",
+       "inizio": "2026-11-01T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Ognissanti",
+       "tutto_giorno": true,
+       "uid": "festa-1@prova"
+      }
+     ],
+     "ok": true
+    },
+    "2026-10-25T00:00:00|2026-10-26T00:00:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-11-02T00:00:00+01:00|2026-11-03T00:00:00+01:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-11-02T00:00:00|2026-11-03T00:00:00": {
+     "eventi": [],
+     "ok": true
+    }
+   },
+   "valida": {
+    "nome": "Festività di prova",
+    "ok": true
+   }
+  },
+  "html": {
+   "eventi": {
+    "2026-08-03T00:00:00|2026-08-10T00:00:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    },
+    "2026-09-01T00:00:00|2026-09-08T00:00:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-01T00:00:00|2026-12-31T00:00:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-19T00:00:00|2026-11-09T00:00:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-25T00:00:00|2026-10-26T00:00:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    },
+    "2026-11-02T00:00:00+01:00|2026-11-03T00:00:00+01:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    },
+    "2026-11-02T00:00:00|2026-11-03T00:00:00": {
+     "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+     "ok": false,
+     "valore": true
+    }
+   },
+   "valida": {
+    "errore": "Content line could not be parsed into parts: '<html><body>Accedi per vedere il calendario</body></html>': <html><body>Accedipervedereilcalendario</body></html>",
+    "ok": false,
+    "valore": true
+   }
+  },
+  "rifiuti": {
+   "estremo non valido": 400,
+   "percorso sconosciuto": 404,
+   "senza chiave": 401,
+   "testo non stringa": 400,
+   "un solo estremo": 400
+  },
+  "riunioni": {
+   "eventi": {
+    "2026-08-03T00:00:00|2026-08-10T00:00:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-09-01T00:00:00|2026-09-08T00:00:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-10-01T00:00:00|2026-12-31T00:00:00": {
+     "eventi": [
+      {
+       "fine": "2026-10-20T17:00:00",
+       "inizio": "2026-10-20T16:00:00",
+       "link": "https://teams.microsoft.com/l/meetup-join/abc",
+       "luogo": "https://teams.microsoft.com/l/meetup-join/abc",
+       "organizzatore": "anna@example.org",
+       "titolo": "Sync USA",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-10-27T16:00:00",
+       "inizio": "2026-10-27T15:00:00",
+       "link": "https://teams.microsoft.com/l/meetup-join/abc",
+       "luogo": "https://teams.microsoft.com/l/meetup-join/abc",
+       "organizzatore": "anna@example.org",
+       "titolo": "Sync USA",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-11-03T18:30:00",
+       "inizio": "2026-11-03T17:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Sync USA (spostata)",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-11-17T17:00:00",
+       "inizio": "2026-11-17T16:00:00",
+       "link": "https://teams.microsoft.com/l/meetup-join/abc",
+       "luogo": "https://teams.microsoft.com/l/meetup-join/abc",
+       "organizzatore": "anna@example.org",
+       "titolo": "Sync USA",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-10-28T10:00:00",
+       "inizio": "2026-10-28T09:00:00",
+       "link": "https://zoom.us/j/12345?pwd=abc",
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Call UTC",
+       "tutto_giorno": false,
+       "uid": "utc@prova"
+      },
+      {
+       "fine": "2026-10-27T16:00:00",
+       "inizio": "2026-10-27T15:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Senza fuso",
+       "tutto_giorno": false,
+       "uid": "fluttuante@prova"
+      },
+      {
+       "fine": "2026-10-29T17:45:00",
+       "inizio": "2026-10-29T17:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Solo durata",
+       "tutto_giorno": false,
+       "uid": "durata@prova"
+      },
+      {
+       "fine": "2026-10-29T00:00:00",
+       "inizio": "2026-10-26T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Tre giorni",
+       "tutto_giorno": true,
+       "uid": "giorni@prova"
+      },
+      {
+       "fine": "2026-10-25T00:00:00",
+       "inizio": "2026-10-24T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Compleanno",
+       "tutto_giorno": true,
+       "uid": "compleanno@prova"
+      },
+      {
+       "fine": "2026-10-23T10:00:00",
+       "inizio": "2026-10-23T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-24T10:00:00",
+       "inizio": "2026-10-24T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-25T10:00:00",
+       "inizio": "2026-10-25T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-26T10:00:00",
+       "inizio": "2026-10-26T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-30T12:00:00",
+       "inizio": "2026-10-30T12:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Senza durata",
+       "tutto_giorno": false,
+       "uid": "zero@prova"
+      },
+      {
+       "fine": "2026-10-30T13:00:00",
+       "inizio": "2026-10-30T12:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "",
+       "tutto_giorno": false,
+       "uid": "senza-titolo@prova"
+      }
+     ],
+     "ok": true
+    },
+    "2026-10-19T00:00:00|2026-11-09T00:00:00": {
+     "eventi": [
+      {
+       "fine": "2026-10-20T17:00:00",
+       "inizio": "2026-10-20T16:00:00",
+       "link": "https://teams.microsoft.com/l/meetup-join/abc",
+       "luogo": "https://teams.microsoft.com/l/meetup-join/abc",
+       "organizzatore": "anna@example.org",
+       "titolo": "Sync USA",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-10-27T16:00:00",
+       "inizio": "2026-10-27T15:00:00",
+       "link": "https://teams.microsoft.com/l/meetup-join/abc",
+       "luogo": "https://teams.microsoft.com/l/meetup-join/abc",
+       "organizzatore": "anna@example.org",
+       "titolo": "Sync USA",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-11-03T18:30:00",
+       "inizio": "2026-11-03T17:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Sync USA (spostata)",
+       "tutto_giorno": false,
+       "uid": "usa@prova"
+      },
+      {
+       "fine": "2026-10-28T10:00:00",
+       "inizio": "2026-10-28T09:00:00",
+       "link": "https://zoom.us/j/12345?pwd=abc",
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Call UTC",
+       "tutto_giorno": false,
+       "uid": "utc@prova"
+      },
+      {
+       "fine": "2026-10-27T16:00:00",
+       "inizio": "2026-10-27T15:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Senza fuso",
+       "tutto_giorno": false,
+       "uid": "fluttuante@prova"
+      },
+      {
+       "fine": "2026-10-29T17:45:00",
+       "inizio": "2026-10-29T17:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Solo durata",
+       "tutto_giorno": false,
+       "uid": "durata@prova"
+      },
+      {
+       "fine": "2026-10-29T00:00:00",
+       "inizio": "2026-10-26T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Tre giorni",
+       "tutto_giorno": true,
+       "uid": "giorni@prova"
+      },
+      {
+       "fine": "2026-10-25T00:00:00",
+       "inizio": "2026-10-24T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Compleanno",
+       "tutto_giorno": true,
+       "uid": "compleanno@prova"
+      },
+      {
+       "fine": "2026-10-23T10:00:00",
+       "inizio": "2026-10-23T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-24T10:00:00",
+       "inizio": "2026-10-24T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-25T10:00:00",
+       "inizio": "2026-10-25T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-26T10:00:00",
+       "inizio": "2026-10-26T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      },
+      {
+       "fine": "2026-10-30T12:00:00",
+       "inizio": "2026-10-30T12:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Senza durata",
+       "tutto_giorno": false,
+       "uid": "zero@prova"
+      },
+      {
+       "fine": "2026-10-30T13:00:00",
+       "inizio": "2026-10-30T12:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "",
+       "tutto_giorno": false,
+       "uid": "senza-titolo@prova"
+      }
+     ],
+     "ok": true
+    },
+    "2026-10-25T00:00:00|2026-10-26T00:00:00": {
+     "eventi": [
+      {
+       "fine": "2026-10-29T00:00:00",
+       "inizio": "2026-10-26T00:00:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Tre giorni",
+       "tutto_giorno": true,
+       "uid": "giorni@prova"
+      },
+      {
+       "fine": "2026-10-25T10:00:00",
+       "inizio": "2026-10-25T09:30:00",
+       "link": null,
+       "luogo": "",
+       "organizzatore": "",
+       "titolo": "Quotidiana",
+       "tutto_giorno": false,
+       "uid": "quotidiana@prova"
+      }
+     ],
+     "ok": true
+    },
+    "2026-11-02T00:00:00+01:00|2026-11-03T00:00:00+01:00": {
+     "eventi": [],
+     "ok": true
+    },
+    "2026-11-02T00:00:00|2026-11-03T00:00:00": {
+     "eventi": [],
+     "ok": true
+    }
+   },
+   "valida": {
+    "nome": "Riunioni di prova",
+    "ok": true
+   }
+  },
+  "rotto": {
+   "eventi": {
+    "2026-08-03T00:00:00|2026-08-10T00:00:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    },
+    "2026-09-01T00:00:00|2026-09-08T00:00:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-01T00:00:00|2026-12-31T00:00:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-19T00:00:00|2026-11-09T00:00:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-25T00:00:00|2026-10-26T00:00:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    },
+    "2026-11-02T00:00:00+01:00|2026-11-03T00:00:00+01:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    },
+    "2026-11-02T00:00:00|2026-11-03T00:00:00": {
+     "errore": "Cannot access 'dt' on broken property 'DTSTART' (expected 'vDDDTypes'): Expected datetime, date, or time. Got: 'non-una-data'",
+     "ok": false,
+     "valore": true
+    }
+   },
+   "valida": {
+    "nome": "",
+    "ok": true
+   }
+  },
+  "vuoto": {
+   "eventi": {
+    "2026-08-03T00:00:00|2026-08-10T00:00:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    },
+    "2026-09-01T00:00:00|2026-09-08T00:00:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-01T00:00:00|2026-12-31T00:00:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-19T00:00:00|2026-11-09T00:00:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    },
+    "2026-10-25T00:00:00|2026-10-26T00:00:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    },
+    "2026-11-02T00:00:00+01:00|2026-11-03T00:00:00+01:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    },
+    "2026-11-02T00:00:00|2026-11-03T00:00:00": {
+     "errore": "Found no components where exactly one is required: ",
+     "ok": false,
+     "valore": true
+    }
+   },
+   "valida": {
+    "errore": "Found no components where exactly one is required: ",
+    "ok": false,
+    "valore": true
+   }
   }
  }
 }

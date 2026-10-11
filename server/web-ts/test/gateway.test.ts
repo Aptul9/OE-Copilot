@@ -104,6 +104,63 @@ describe("con la sessione", () => {
     }
   });
 
+  describe("metodi serviti dal gateway (lib/core)", () => {
+    const metodi = (chiamate: [string, unknown[]][] = []) => ({
+      ha: (nome: string) => nome === "get_config" || nome === "rompe",
+      chiama: async (nome: string, args: unknown[]) => {
+        chiamate.push([nome, args]);
+        if (nome === "rompe") throw new Error("guasto di prova");
+        return { theme: "dark", args };
+      },
+    });
+
+    it("un metodo del gateway risponde da sé, in JSON, senza chiamare il servizio ui", async () => {
+      const { deps, calls } = setup({ id: "u" });
+      const chiamate: [string, unknown[]][] = [];
+      const r = await handle(post("/api/get_config", '["a", 1]'), { ...deps, metodi: metodi(chiamate) });
+      expect(r.status).toBe(200);
+      expect(r.headers.get("content-type")).toBe("application/json; charset=utf-8");
+      expect(r.headers.get("cache-control")).toBe("no-store");
+      expect(r.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(await r.json()).toEqual({ theme: "dark", args: ["a", 1] });
+      expect(chiamate).toEqual([["get_config", ["a", 1]]]);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("un corpo vuoto è una lista vuota; un corpo che non è una lista, o non è JSON, è 400", async () => {
+      const { deps } = setup({ id: "u" });
+      expect(await (await handle(post("/api/get_config", ""), { ...deps, metodi: metodi() })).json()).toEqual({ theme: "dark", args: [] });
+      for (const corpo of ['{"a": 1}', "5", "non json"]) {
+        const r = await handle(post("/api/get_config", corpo), { ...deps, metodi: metodi() });
+        expect(r.status).toBe(400);
+        expect(typeof (await r.json()).error).toBe("string");
+      }
+    });
+
+    it("un metodo che solleva è 500 con il suo testo", async () => {
+      const { deps } = setup({ id: "u" });
+      const r = await handle(post("/api/rompe", "[]"), { ...deps, metodi: metodi() });
+      expect(r.status).toBe(500);
+      expect(await r.json()).toEqual({ error: "guasto di prova" });
+    });
+
+    it("gli altri metodi, e una richiesta che non è un POST, passano al servizio ui; le regole contro altri siti valgono prima", async () => {
+      const { deps, calls } = setup({ id: "u" });
+      await handle(post("/api/set_account_alias", '["a", "b"]'), { ...deps, metodi: metodi() });
+      await handle(req("/api/get_config"), { ...deps, metodi: metodi() });
+      expect(calls.map((c) => c.url)).toEqual(["http://ui:8181/api/set_account_alias", "http://ui:8181/api/get_config"]);
+      expect((await handle(post("/api/get_config", "[]", { "sec-fetch-site": "cross-site" }), { ...deps, metodi: metodi() })).status).toBe(403);
+      expect((await handle(req("/api/get_config", { method: "POST", body: "[]", headers: { "content-type": "text/plain" } }), { ...deps, metodi: metodi() })).status).toBe(415);
+    });
+
+    it("senza sessione resta 401, e il metodo non gira", async () => {
+      const { deps } = setup(null);
+      const chiamate: [string, unknown[]][] = [];
+      expect((await handle(post("/api/get_config", "[]"), { ...deps, metodi: metodi(chiamate) })).status).toBe(401);
+      expect(chiamate).toHaveLength(0);
+    });
+  });
+
   it("se il servizio ui non risponde, 502", async () => {
     const { deps } = setup({ id: "u" });
     deps.fetch = (async () => {

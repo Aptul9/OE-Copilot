@@ -14,6 +14,7 @@ services:
       - ./agent/agent.py:/app/agent.py:ro
       - ./agent/comune.py:/app/comune.py:ro
       - ./agent/fonte_android.py:/app/fonte_android.py:ro
+      - ./agent/ics.py:/app/ics.py:ro
       - ./agent/fonti.json:/app/fonti.json:ro
       # Calendario di sistema del telefono, in sola lettura: Outlook e i servizi Google ci
       # copiano i calendari, l'agente ne legge una copia.
@@ -84,6 +85,10 @@ services:
     environment:
       - UI_UPSTREAM=http://ui:8181
       - GATEWAY_DB=/dati/gateway.db
+      # i metodi della lettura (lib/core) li serve il gateway: leggono la cartella dei dati e chiedono all'agente
+      - OE_DATI=/dati
+      - AGENTE_URL=http://agent:8180
+      - AGENTE_CHIAVE=${API_KEY}
       - APP_URL=https://${UI_HOST:-localhost}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}

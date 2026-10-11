@@ -1,3 +1,4 @@
+import { apiTs } from "@/lib/core/api";
 import { fuoriFinestra, leggiDisponibilita, leggiRichiesta, oggiARoma } from "@/lib/disponibilita";
 
 // Pubblica: niente sessione, e quindi niente dettagli. Gli impegni escono come "Occupato", con i soli orari,
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
   const r = leggiRichiesta(new URL(req.url).searchParams);
   if ("errore" in r) return risposta(400, { error: r.errore });
   if (fuoriFinestra(r, oggiARoma())) return risposta(200, { events: [], errors: [] });
-  const e = await leggiDisponibilita(r);
+  const e = await leggiDisponibilita(r, { core: (da, giorni, gruppo) => apiTs.get_disponibilita(da, giorni, gruppo) });
   if (e.ok) return risposta(200, { events: e.events, errors: e.errors });
   if (e.stato === 404) return risposta(404, { error: "Non c'è nessun calendario con questo nome." });
   if (e.stato === 429) return risposta(429, { error: "Troppe richieste in poco tempo: riprova fra un minuto." }, { "Retry-After": "30" });

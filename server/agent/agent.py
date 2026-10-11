@@ -11,6 +11,8 @@ API (tutte con "Authorization: Bearer <API_KEY>"):
   GET /api/eventi?inizio=ISO&fine=ISO  eventi del periodo + stato di ogni casella
   GET /api/calendari                   le caselle, con stato e numero di appuntamenti
   GET /api/salute                      stato delle caselle, senza rileggere
+  POST /api/ics                        {"testo": ICS[, "inizio": ISO, "fine": ISO]}: il nome del calendario, o i suoi
+                                       eventi nel periodo con le ricorrenze espanse (ics.py, nessun accesso alla rete)
 """
 import hmac
 import json
@@ -22,6 +24,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import ics
 from fonte_android import CalendarioAndroid
 
 logging.basicConfig(level=logging.INFO,
@@ -31,6 +34,7 @@ log = logging.getLogger("agente")
 API_KEY = os.environ.get("API_KEY", "")
 PORTA = int(os.environ.get("PORTA", "8180"))
 CACHE_S = 15   # letture ravvicinate dello stesso periodo: una sola (il telefono si aggiorna ogni 30 s)
+MAX_CORPO = 8_000_000   # il testo di un calendario ICS da espandere (POST /api/ics)
 # Le fonti non stanno nel codice: fonti.json (solo sulla VM) elenca le caselle
 # da leggere dal calendario del telefono (tipo "android").
 FONTI_PATH = os.environ.get("FONTI", "/app/fonti.json")
@@ -124,9 +128,41 @@ class Gestore(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(corpo)
 
-    def do_GET(self):
+    def _autorizzato(self):
         atteso = "Bearer " + API_KEY
-        if not API_KEY or not hmac.compare_digest(self.headers.get("Authorization", ""), atteso):
+        return bool(API_KEY) and hmac.compare_digest(self.headers.get("Authorization", ""), atteso)
+
+    def do_POST(self):
+        if not self._autorizzato():
+            return self._json(401, {"errore": "non autorizzato"})
+        if urlparse(self.path).path != "/api/ics":
+            return self._json(404, {"errore": "sconosciuto"})
+        try:
+            lunghezza = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            lunghezza = -1
+        if not 0 < lunghezza <= MAX_CORPO:
+            self.close_connection = True     # corpo non letto: la connessione non è più allineata
+            return self._json(413 if lunghezza > MAX_CORPO else 400, {"errore": "lunghezza della richiesta non valida"})
+        try:
+            richiesta = json.loads(self.rfile.read(lunghezza))
+            testo = richiesta["testo"]
+            periodo = (richiesta.get("inizio"), richiesta.get("fine"))
+            if not isinstance(testo, str) or (None in periodo and periodo != (None, None)):
+                raise ValueError
+            intervallo = None if periodo[0] is None else (_locale(periodo[0]), _locale(periodo[1]))
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return self._json(400, {"errore": "serve {\"testo\": ..., \"inizio\": ..., \"fine\": ...}"})
+        try:
+            if intervallo is None:
+                return self._json(200, {"ok": True, "nome": ics.valida(testo)})
+            return self._json(200, {"ok": True, "eventi": ics.eventi(testo, *intervallo)})
+        except Exception as e:
+            # un testo che non è un calendario non deve fermare l'agente: lo si dice a chi l'ha mandato
+            return self._json(200, {"ok": False, "errore": str(e), "valore": isinstance(e, (ValueError, TypeError))})
+
+    def do_GET(self):
+        if not self._autorizzato():
             return self._json(401, {"errore": "non autorizzato"})
         url = urlparse(self.path)
         q = parse_qs(url.query)

@@ -15,10 +15,22 @@ export type Deps = {
   user: (headers: Headers) => Promise<unknown>;
   upstream: string;
   fetch?: typeof fetch;
+  /** I metodi di app.Api che il gateway serve da sé (lib/core): il nome e la risposta; gli altri passano al servizio ui. */
+  metodi?: { ha: (nome: string) => boolean; chiama: (nome: string, args: unknown[]) => Promise<unknown> };
 };
 
 const json = (status: number, body: unknown) =>
   Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
+
+/** La risposta di un metodo servito qui: come quella del servizio ui (JSON, senza copia in cache, senza indovinare il tipo). */
+const risposta = (status: number, body: unknown) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+  });
+
+/** Il nome del metodo di POST /api/<metodo>, o null per qualunque altro percorso. */
+const nomeMetodo = (percorso: string) => /^\/api\/([A-Za-z_][A-Za-z0-9_]*)$/.exec(percorso)?.[1] ?? null;
 
 /**
  * Il cancello davanti al servizio ui. Senza sessione una pagina rimanda a /login?next=...
@@ -43,6 +55,23 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     }
     body = Buffer.from(await req.arrayBuffer());
     if (body.length > MAX_BODY) return json(413, { error: "richiesta troppo grande" });
+    // un metodo che il gateway serve da sé: gli argomenti sono una lista JSON, come per il servizio ui
+    const metodo = nomeMetodo(url.pathname);
+    if (metodo && deps.metodi?.ha(metodo)) {
+      let args: unknown;
+      try {
+        args = JSON.parse(body.toString("utf-8") || "[]");
+        if (!Array.isArray(args)) throw new Error("gli argomenti vanno in una lista");
+      } catch (e) {
+        return risposta(400, { error: e instanceof Error ? e.message : String(e) });
+      }
+      try {
+        return risposta(200, await deps.metodi.chiama(metodo, args));
+      } catch (e) {
+        console.error(`api.${metodo}`, e);
+        return risposta(500, { error: (e instanceof Error && e.message) || (e instanceof Error ? e.constructor.name : "errore") });
+      }
+    }
   }
 
   const headers = new Headers();

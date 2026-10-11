@@ -457,9 +457,9 @@ def fetch_all_events(cfg, start_iso, end_iso, allow_cache=True):
             "remoto": True,
         }
         if e.get("tipo") == "caldav":
-            # Calendario Google: come per google_cal, e' il calendario
-            # dell'azienda e la sua etichetta vince su quella della casella in
-            # cui Outlook ha archiviato lo stesso invito.
+            # Calendario Google: è il calendario dell'azienda e la sua etichetta
+            # vince su quella della casella in cui Outlook ha archiviato lo stesso
+            # invito.
             ev["is_google"] = True
         invitati = [str(x).lower() for x in (e.get("attendees") or [])]
         caselle.accoda(events, seen, ev, label,

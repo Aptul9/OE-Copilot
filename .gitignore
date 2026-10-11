@@ -16,7 +16,6 @@ events_cache.json
 fired_reminders.json
 local_events.json
 teams_tenants.json
-google_token_*.bin
 agente_chiave.bin
 agente_caselle.json
 pulizia_*.json

@@ -11,7 +11,6 @@ import webview
 import caselle
 import config
 import eventi as raccolta_eventi
-import google_cal
 import ics_feed
 import local_events
 import outlook_com
@@ -52,7 +51,6 @@ class Api:
 
     def __init__(self):
         self._maximized = False
-        self._integrazioni_viste = False
         self._rect_normale = None   # bounds prima di massimizzare
         # ATTENZIONE al trattino basso: pywebview espone a JavaScript i metodi di
         # questa classe camminandone ricorsivamente gli attributi, e salta solo
@@ -88,15 +86,6 @@ class Api:
         t0 = time.time()
         log.info("get_calendars: inizio (force=%s)", force)
         cfg = config.load_config()
-        # Al primo giro (e a ogni "aggiorna") le integrazioni si verificano sul
-        # serio: il pallino di stato dev'essere un fatto, non l'eco di una
-        # lettura andata bene mezz'ora fa.
-        try:
-            google_cal.stato_integrazioni(
-                verifica=bool(force) or not self._integrazioni_viste)
-            self._integrazioni_viste = True
-        except Exception:
-            log.exception("get_calendars: verifica integrazioni fallita")
         def _ordina(lista):
             # Ordine scelto dall'utente per nome mostrato; stabile per il resto.
             return sorted(lista, key=lambda c: config.ordine_calendario(
@@ -324,17 +313,6 @@ class Api:
             log.exception("get_disponibilita: eccezione")
             return {"ok": False, "error": "Calendari non leggibili"}
         return {"ok": True, "impegni": impegni, "festivita": festivita, "completo": completo}
-
-    def get_integrazioni(self, verifica=False):
-        """Stato dei calendari collegati direttamente (per ora i calendari Google)."""
-        try:
-            voci = google_cal.stato_integrazioni(verifica=bool(verifica))
-            log.info("get_integrazioni: %s",
-                     [(v["nome"], v.get("stato")) for v in voci])
-            return {"integrazioni": voci}
-        except Exception as e:
-            log.exception("get_integrazioni: eccezione")
-            return {"integrazioni": [], "error": str(e)}
 
     # ---- Utility -------------------------------------------------------
     def open_external(self, url):

@@ -96,18 +96,6 @@ export type Personalizzazione = {
   sorgente?: "remota" | "outlook";
 };
 
-export type StatoIntegrazione = "ok" | "problema" | "riautorizzare" | "assente";
-
-export type Integrazione = {
-  nome: string;
-  tipo: string;
-  indirizzo: string;
-  stato: StatoIntegrazione | string;
-  ultimo_ok?: string;
-  scade?: string;
-  messaggio?: string;
-};
-
 export type NuovoEvento = {
   title: string;
   start: string;
@@ -124,7 +112,6 @@ export type Metodi = {
   get_config: [[], Config];
   save_config: [[Partial<Config>], Esito];
   get_personalizzazione: [[], Personalizzazione];
-  get_integrazioni: [[boolean?], { integrazioni: Integrazione[]; error?: string }];
   get_calendars: [[boolean?], CalendariRisposta];
   get_events: [[string, string], EventiRisposta];
   set_calendar_enabled: [[string, boolean], Esito];

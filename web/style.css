@@ -863,30 +863,6 @@ html, body {
 .pop-actions .del:hover { background: var(--hover); }
 
 
-/* Stato delle integrazioni (Impostazioni) ---------------------------------- */
-.integr-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
-.integr-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px;
-  background: var(--surface-2, transparent);
-}
-.integr-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.integr-name { flex: 1 1 auto; display: flex; flex-direction: column; font-weight: 600; }
-.integr-state { display: flex; flex-direction: column; text-align: right; font-weight: 600; }
-.integr-name small, .integr-state small {
-  font-weight: 400; font-size: 11px; color: var(--text-dim); margin-top: 2px;
-}
-.st-ok   { color: #16a34a; } .integr-dot.st-ok   { background: #16a34a; }
-.st-warn { color: #ca8a04; } .integr-dot.st-warn { background: #ca8a04; }
-.st-bad  { color: #dc2626; } .integr-dot.st-bad  { background: #dc2626; }
-/* Solo il pulsante della sezione Integrazioni: più basso e senza riempimento.
-   Prima questa regola non era circoscritta e riscriveva .btn-ghost ovunque
-   (compreso "Oggi" in barra), togliendo grassetto, sfondo e bordo previsti. */
-#btn-verifica-integr {
-  height: auto; padding: 6px 12px;
-  border: 1px solid var(--line); background: transparent; color: inherit;
-}
-
 /* Un errore non deve avere lo stesso aspetto di un avviso qualsiasi: con il
    colore del tema passava inosservato. */
 .banner.banner-errore {

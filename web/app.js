@@ -1401,46 +1401,6 @@ function toggleTema() {
   api.save_config({ theme: nuovo });
 }
 
-// Stato dei calendari collegati direttamente (i calendari Google). Serve a
-// capire a colpo d'occhio se l'integrazione regge o se il token va rifatto:
-// senza, un'autorizzazione scaduta si manifesterebbe solo con eventi mancanti.
-const ETICHETTE_STATO = {
-  ok: { testo: "Collegato", classe: "st-ok" },
-  problema: { testo: "Problema temporaneo", classe: "st-warn" },
-  riautorizzare: { testo: "Da riautorizzare", classe: "st-bad" },
-  assente: { testo: "Non configurato", classe: "st-bad" },
-};
-
-function mostraIntegrazioni(verifica) {
-  const box = $("#integrazioni-list");
-  const aiuto = $("#integr-aiuto");
-  box.innerHTML = `<div class="hint">${verifica ? "Verifico…" : "Controllo…"}</div>`;
-  aiuto.textContent = "";
-  return api.get_integrazioni(!!verifica).then((res) => {
-    const voci = (res && res.integrazioni) || [];
-    if (!voci.length) { box.innerHTML = `<div class="hint">Nessuna integrazione.</div>`; return; }
-    box.innerHTML = voci.map((v) => {
-      const e = ETICHETTE_STATO[v.stato] || ETICHETTE_STATO.problema;
-      const dettagli = [];
-      if (v.ultimo_ok) dettagli.push("ultimo aggiornamento " + v.ultimo_ok.replace("T", " ").slice(11, 16));
-      if (v.stato === "ok" && v.scade) dettagli.push("token valido fino alle " + v.scade);
-      return `<div class="integr-row">
-        <span class="integr-dot ${e.classe}"></span>
-        <span class="integr-name">${escapeHtml(v.nome)}<small>${escapeHtml(v.tipo)} · ${escapeHtml(v.indirizzo)}</small></span>
-        <span class="integr-state ${e.classe}">${e.testo}<small>${escapeHtml(dettagli.join(" · ") || v.messaggio || "")}</small></span>
-      </div>`;
-    }).join("");
-    // Se serve l'intervento, si dice esattamente cosa fare: il token si rinnova
-    // dall'add-in che l'aveva ottenuto, non da qui.
-    if (voci.some((v) => v.stato === "riautorizzare" || v.stato === "assente")) {
-      aiuto.innerHTML = "Per rimettere a posto: apri <b>Outlook → scheda CalDav Synchronizer → "
-        + "Synchronization Profiles</b>, togli la spunta <i>Inactive</i> al profilo "
-        + "di quel calendario Google, premi <b>Test settings</b> e completa l'accesso. "
-        + "Poi torna qui e premi «Verifica adesso».";
-    }
-  }).catch((e) => { box.innerHTML = `<div class="hint">Stato non leggibile: ${escapeHtml(String(e))}</div>`; });
-}
-
 function openAppSettings() {
   chiudiModali();
   api.get_config().then((c) => {
@@ -1452,7 +1412,6 @@ function openAppSettings() {
     api.get_autostart().then((r) => {
       $("#cfg-autostart").checked = !!(r && r.enabled);
     });
-    mostraIntegrazioni(false);
     apriModale("#modal-appsettings", "#nav-settings");
   });
 }
@@ -1471,7 +1430,6 @@ function setupAppSettings() {
   });
   $("#cfg-start-minimized").addEventListener("change", (e) =>
     api.save_config({ start_minimized: e.target.checked }));
-  $("#btn-verifica-integr").addEventListener("click", () => mostraIntegrazioni(true));
   $("#cfg-autostart").addEventListener("change", (e) => {
     $("#appsettings-result").textContent = "Applico…";
     api.set_autostart(e.target.checked).then((r) => {

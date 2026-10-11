@@ -356,7 +356,7 @@ def controlla_dati_personali():
 # ----------------------------------------------------------------- dati ------
 def controlla_dati():
     sys.path.insert(0, QUI)
-    import agente_remoto, config, google_cal, outlook_com   # noqa: E402
+    import agente_remoto, config, outlook_com   # noqa: E402
     import app as appmod                            # noqa: E402
 
     cfg = config.load_config()
@@ -384,12 +384,6 @@ def controlla_dati():
               " ; ".join(f"{c.get('alias') or c['account']}: {c.get('stato_msg')}"
                          for c in fermi),
               avviso=all(c.get("stato") == "avviso" for c in fermi))
-
-    integr = api.get_integrazioni(verifica=True).get("integrazioni", [])
-    guasti = [i for i in integr if i.get("stato") not in ("ok", None)]
-    esito("Integrazioni diverse da Outlook", not guasti,
-          " ; ".join(f"{i['nome']}: {i.get('stato')} {i.get('stato_msg','')}"
-                     for i in integr) or "nessuna")
 
     oggi = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     ini = oggi - datetime.timedelta(days=oggi.weekday())

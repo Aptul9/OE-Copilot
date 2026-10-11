@@ -394,17 +394,6 @@ FESTIVITA_NOME = "Festività"
 COLORE_FESTIVITA = "#8a8a8a"
 
 
-# Calendari Google letti direttamente via CalDAV, senza passare da Outlook.
-# Riusano il token gia' rilasciato a CalDav Synchronizer (vedi google_cal.py):
-# serve per un account Google che in Outlook e' configurato come sola posta
-# (IMAP), quindi senza calendario. Voci: {"indirizzo": ..., "nome": ...}
-CALENDARI_GOOGLE = [
-    {"id": "google::" + c["indirizzo"], "indirizzo": c["indirizzo"],
-     "nome": c.get("nome") or c["indirizzo"]}
-    for c in (_P.get("calendari_google") or [])
-    if isinstance(c, dict) and c.get("indirizzo")
-]
-
 # Aspetto dell'interfaccia: sigle e loghi delle aziende, calendari "secondari"
 # (mostrati sbiaditi), schede della sezione Timesheet. Li legge app.js all'avvio.
 INTERFACCIA = dict(_P.get("interfaccia") or {})

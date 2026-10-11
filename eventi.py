@@ -1,12 +1,10 @@
 """Raccolta degli eventi da tutte le sorgenti, in un posto solo.
 
-Le sorgenti sono quattro (le caselle, calendari Google via CalDAV, link ICS,
-calendario locale) e vanno lette insieme, non a due a due: prima questa
-unione stava scritta dentro l'interfaccia, mentre il servizio promemoria leggeva
-per conto suo solo Outlook e gli ICS. Risultato: le riunioni che arrivano da
-un calendario Google e gli eventi aggiunti a mano si vedevano in griglia ma
-non producevano nessun promemoria. Con una funzione sola le due strade non
-possono piu' divergere.
+Le sorgenti sono tre (le caselle, i link ICS, il calendario locale) e vanno lette
+insieme, non a due a due: prima questa unione stava scritta dentro l'interfaccia,
+mentre il servizio promemoria leggeva per conto suo solo Outlook e gli ICS.
+Risultato: gli eventi aggiunti a mano si vedevano in griglia ma non producevano
+nessun promemoria. Con una funzione sola le due strade non possono più divergere.
 
 Le caselle si leggono da Outlook su questo PC (outlook_com) oppure, se la
 personalizzazione lo dice, da un agente remoto (agente_remoto): i due moduli
@@ -21,7 +19,6 @@ import agente_remoto
 import caselle
 import config
 import disponibilita
-import google_cal
 import ics_feed
 import local_events
 import outlook_com
@@ -51,8 +48,7 @@ def calendari_extra(cfg):
     sorgente dimenticata in uno solo di quei punti si accendeva ma non si
     spegneva, o teneva un pallino che non si aggiornava mai.
     """
-    return (ics_feed.list_feeds(cfg) + google_cal.calendari(cfg)
-            + local_events.list_calendars(cfg)
+    return (ics_feed.list_feeds(cfg) + local_events.list_calendars(cfg)
             + sorgente_caselle().calendari_inoltrati(cfg))
 
 
@@ -65,7 +61,7 @@ def senza_doppioni(eventi):
 
     Si tiene la copia di Outlook (porta l'EntryID per "Apri in Outlook"), ma se
     la stessa riunione arriva ANCHE dal calendario Google di un'azienda
-    (google_cal marca `is_google`), si adotta la sua etichetta e il suo colore:
+    (l'agente marca `is_google`), si adotta la sua etichetta e il suo colore:
     la casella dove l'invito e' atterrato non deve vincere sull'azienda a cui la
     riunione appartiene davvero.
     """
@@ -106,17 +102,15 @@ def raccogli(cfg, start_iso, end_iso, allow_cache=True):
     except (ValueError, AttributeError) as e:
         return eventi, errori + [f"Intervallo non valido: {e}"], meta
 
-    for nome, funzione in (("Calendari da link", ics_feed.fetch_events),
-                           ("Calendari Google", google_cal.fetch_events)):
-        try:
-            trovati, errori_fonte = funzione(cfg, inizio, fine)
-            log.info("raccogli: %s -> %d eventi", nome, len(trovati))
-            eventi += trovati
-            errori += errori_fonte
-        except Exception as e:
-            # Una sorgente rotta non deve portarsi via le altre.
-            log.exception("raccogli: %s ha fallito", nome)
-            errori.append(f"{nome}: {e}")
+    try:
+        trovati, errori_fonte = ics_feed.fetch_events(cfg, inizio, fine)
+        log.info("raccogli: calendari da link -> %d eventi", len(trovati))
+        eventi += trovati
+        errori += errori_fonte
+    except Exception as e:
+        # Una sorgente rotta non deve portarsi via le altre.
+        log.exception("raccogli: calendari da link falliti")
+        errori.append(f"Calendari da link: {e}")
     try:
         eventi += local_events.fetch_events(cfg, inizio, fine)
     except Exception as e:

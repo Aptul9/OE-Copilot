@@ -32,7 +32,7 @@ log = logging.getLogger("ui")
 # Quello che la pagina può chiamare. Il resto di Api (finestra, avvio automatico,
 # notifiche, Outlook su questo PC) non ha senso fuori da Windows.
 METODI = {
-    "get_config", "save_config", "get_personalizzazione", "get_integrazioni",
+    "get_config", "save_config", "get_personalizzazione",
     "get_calendars", "get_events", "get_disponibilita",
     "set_calendar_enabled", "set_account_enabled", "set_azienda_enabled",
     "mostra_solo_azienda", "mostra_solo_gruppo", "set_account_alias",

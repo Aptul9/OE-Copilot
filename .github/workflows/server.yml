@@ -16,7 +16,6 @@ on:
       - "disponibilita.py"
       - "agente_remoto.py"
       - "ics_feed.py"
-      - "google_cal.py"
       - "local_events.py"
       - "outlook_com.py"
   pull_request:
@@ -31,7 +30,6 @@ on:
       - "disponibilita.py"
       - "agente_remoto.py"
       - "ics_feed.py"
-      - "google_cal.py"
       - "local_events.py"
       - "outlook_com.py"
   workflow_dispatch:

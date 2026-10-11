@@ -135,11 +135,15 @@ jobs:
           docker network create prova
           ui=$(docker run -d --network prova --network-alias ui oe-copilot-ui)
           pw=$(openssl rand -hex 16)
-          gw=$(docker run -d --network prova -p 3190:3000 -e UI_UPSTREAM=http://ui:8181 -e GATEWAY_DB=/tmp/gw.db \
+          gw=$(docker run -d --network prova --network-alias gateway -p 3190:3000 -e UI_UPSTREAM=http://ui:8181 -e GATEWAY_DB=/tmp/gw.db \
             -e APP_URL=http://localhost:3190 -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
             -e ADMIN_EMAIL=prova@example.com -e ADMIN_PASSWORD="$pw" oe-copilot-gateway)
-          trap 'rc=$?; [ $rc = 0 ] || { docker logs "$gw"; docker logs "$ui"; }; docker rm -f "$gw" "$ui" >/dev/null; docker network rm prova >/dev/null' EXIT
+          # lo schermo del telefono (senza telefono) e il Caddy vero davanti a gateway e schermo, in HTTP (UI_HOST con http://)
+          sc=$(docker run -d --network prova --network-alias schermo --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL oe-copilot-schermo)
+          cd=$(docker run -d --network prova -p 8080:8080 -e UI_HOST=http://:8080 oe-copilot-caddy)
+          trap 'rc=$?; [ $rc = 0 ] || { docker logs "$gw"; docker logs "$ui"; docker logs "$sc"; docker logs "$cd"; }; docker rm -f "$gw" "$ui" "$sc" "$cd" >/dev/null; docker network rm prova >/dev/null' EXIT
           for _ in $(seq 1 30); do curl -fsS localhost:3190/salute >/dev/null 2>&1 && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS localhost:8080/telefono/ -H 'Accept: text/html' -o /dev/null -w '%{http_code}' 2>/dev/null | grep -q 302 && break; sleep 1; done
           G=http://localhost:3190
           codice() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
           json=(-H 'Content-Type: application/json' -H "Origin: $G")
@@ -167,9 +171,32 @@ jobs:
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/win_close)" = 404
           test "$(codice -b jar -X POST -d '[]' $G/api/get_config)" = 415
           test "$(codice -b jar -X POST "${json[@]}" -H 'Sec-Fetch-Site: cross-site' -d '[]' $G/api/get_config)" = 403
+          # schermo del telefono dietro Caddy: senza sessione né pagina né WebSocket, con la sessione sì, e un WebSocket
+          # di un altro sito mai (qui il servizio non ha telefono: si prova il cancello, non lo schermo)
+          C=http://localhost:8080
+          wsh=(-H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==')
+          ws() { curl -s -N --max-time 3 -o /dev/null -w '%{http_code}' "${wsh[@]}" "$@" || true; }
+          test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -H 'Accept: text/html' $C/telefono/)" = "302 $C/login?next=%2Ftelefono%2F"
+          test "$(codice $C/telefono/)" = 401
+          test "$(codice $C/telefono/bundle.js)" = 401
+          test "$(codice $C/telefono/salute)" = 401
+          test "$(ws -H "Origin: $C" "$C/telefono/?action=goog-device-list")" = 401
+          test "$(ws -H "Origin: https://evil.example" "$C/telefono/?action=goog-device-list")" = 403
+          test "$(codice -I $C/telefono)" = 308
+          test "$(codice -b jar $C/telefono/)" = 200
+          curl -fsS -b jar $C/telefono/ | grep -q 'bundle.js'
+          test "$(codice -b jar $C/telefono/bundle.js)" = 200
+          test "$(codice -b jar $C/telefono/salute)" = 200
+          test "$(ws -b jar -H "Origin: $C" "$C/telefono/?action=goog-device-list")" = 101
+          test "$(ws -b jar -H "Origin: https://evil.example" "$C/telefono/?action=goog-device-list")" = 403
+          test "$(ws -b jar "$C/telefono/?action=goog-device-list")" = 403
+          # il resto del sito resta come prima dietro lo stesso Caddy
+          curl -fsS -b jar $C/ | grep -q 'Cerca tra le riunioni'
           # uscita: la sessione non vale più
           curl -fsS -b jar -c jar -o /dev/null -X POST "${json[@]}" -d '{}' $G/api/auth/sign-out
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401
+          test "$(codice -b jar $C/telefono/)" = 401
+          test "$(ws -b jar -H "Origin: $C" "$C/telefono/?action=goog-device-list")" = 401
           # cinque errori bloccano l'account, anche per la password giusta
           for i in 1 2 3 4 5; do codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email >/dev/null; done
           test "$(codice -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email)" = 429

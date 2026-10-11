@@ -17,5 +17,31 @@
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
 	}
-	reverse_proxy gateway:3000
+
+	# Schermo del telefono (servizio schermo, GUIDA.md 4.8): il servizio non ha password e comanda il telefono, quindi
+	# ogni richiesta, il WebSocket compreso, chiede prima al gateway se c'è una sessione valida (204 sì, 302 verso
+	# l'accesso per una pagina, 401 per il resto). Un WebSocket parte solo dalla pagina di questo sito (Origin).
+	redir /telefono /telefono/ 308
+	handle /telefono/* {
+		# route: l'ordine qui sotto è quello scritto (senza, Caddy metterebbe il rifiuto dopo l'inoltro e non scatterebbe mai)
+		route {
+			@altro_sito {
+				header Connection *Upgrade*
+				not header Origin {scheme}://{hostport}
+			}
+			respond @altro_sito "origine non ammessa" 403
+			forward_auth gateway:3000 {
+				uri /api/verifica-sessione
+				# la domanda al gateway è una richiesta normale, anche quando quella del browser è un WebSocket
+				header_up -Connection
+				header_up -Upgrade
+			}
+			uri strip_prefix /telefono
+			reverse_proxy schermo:8000
+		}
+	}
+
+	handle {
+		reverse_proxy gateway:3000
+	}
 }

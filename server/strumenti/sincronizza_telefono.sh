@@ -40,6 +40,9 @@ ACCESSI_OGNI=${ACCESSI_OGNI:-2}
 # solo con le notifiche push, forzarlo copre il caso che una notifica non arrivi.
 GOOGLE_OGNI=${GOOGLE_OGNI:-4}
 mkdir -p "$STATO"
+# La cartella del file PAUSA del servizio schermo (utente 10001): la crea questo servizio, che gira da root. L'utente dell'aggiornamento
+# automatico non ha sudo, e se la cartella non c'è Docker la crea di root e il servizio schermo non ci scrive.
+install -d -o 10001 -g 10001 -m 755 "$STATO/schermo"
 
 conta=0
 while true; do

@@ -65,8 +65,6 @@ avvia_ui() {
 # Schermo del telefono nel browser (schermo-web, GUIDA.md 4.8). Come la web: se non parte la Action diventa rossa,
 # agente e telefono restano come sono. Il telefono non si tocca: si costruisce e si avvia solo questo servizio.
 avvia_schermo() {
-    # la cartella del file PAUSA: del solo utente del container, il resto di stato/ resta di chi scrive il battito
-    sudo -n install -d -o 10001 -g 10001 -m 755 stato/schermo
     docker compose up -d --build schermo
     stato=""
     for _ in $(seq 1 30); do
@@ -75,6 +73,10 @@ avvia_schermo() {
         sleep 2
     done
     [ "$stato" = healthy ] || { echo "il servizio oe-copilot-schermo non risponde" >&2; docker logs --tail 40 oe-copilot-schermo >&2 || true; return 1; }
+    # la cartella del file PAUSA (stato/schermo, la crea il servizio di sincronizzazione) deve essere scrivibile dal container: senza,
+    # la sincronizzazione continuerebbe a portare Outlook in primo piano mentre si usa il telefono nel browser
+    docker exec oe-copilot-schermo sh -c 'touch /pausa/.prova && rm /pausa/.prova' \
+        || { echo "stato/schermo non è scrivibile dal servizio schermo (lo crea oe-copilot-sincronizza, utente 10001)" >&2; return 1; }
 }
 
 sano() {

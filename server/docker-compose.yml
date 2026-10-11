@@ -127,7 +127,7 @@ services:
       - TELEFONO=telefono:5555
       - PAUSA_FILE=/pausa/PAUSA
     volumes:
-      # solo questa cartella (di utente 10001, la crea aggiorna_server.sh), non tutto stato/ e meno che mai telefono/ (i dati
+      # solo questa cartella (di utente 10001, la crea il servizio di sincronizzazione), non tutto stato/ e meno che mai telefono/ (i dati
       # del telefono): finché una pagina guarda il telefono il servizio ci riscrive PAUSA e il servizio di sincronizzazione
       # non porta Outlook in primo piano
       - ./stato/schermo:/pausa

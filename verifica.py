@@ -14,7 +14,6 @@ script.
 """
 
 import datetime
-import io
 import json
 import os
 import re
@@ -237,7 +236,7 @@ def controlla_inoltri():
     # Un'azienda inoltrata di prova, senza toccare la personalizzazione vera.
     vere = config.AZIENDE_INOLTRATE
     config.AZIENDE_INOLTRATE = {"Azienda Prova": {
-        "via": "nessuno@example.com", "oggetto_posta": "Copia inoltrata", "colore": None,
+        "via": "nessuno@example.com", "colore": None,
         "prefisso": re.compile(r"^\s*(?:Copia\s+inoltrata|INO(?:\s*-\s*Forward)?)\s*:\s*", re.I)}}
     try:
         casi = {
@@ -356,7 +355,7 @@ def controlla_dati_personali():
 # ----------------------------------------------------------------- dati ------
 def controlla_dati():
     sys.path.insert(0, QUI)
-    import agente_remoto, config, outlook_com   # noqa: E402
+    import agente_remoto, config   # noqa: E402
     import app as appmod                            # noqa: E402
 
     cfg = config.load_config()
@@ -365,18 +364,21 @@ def controlla_dati():
           f"calendari spenti={len(cfg.get('disabled_calendars') or [])}")
 
     api = appmod.Api()
-    remoto = agente_remoto.attivo()
+    if not agente_remoto.attivo():
+        esito("Il server dei calendari è configurato", False,
+              "manca agente_remoto.ssh nella personalizzazione")
+        return
     # Al server si chiede una lettura vera (force): senza, quando non risponde
-    # l'app da' l'ultimo elenco salvato e qui sembrerebbe tutto a posto.
-    cal = api.get_calendars(force=remoto)
-    # Le caselle: tutto cio' che non e' un link, un calendario Google, il
+    # l'app dà l'ultimo elenco salvato e qui sembrerebbe tutto a posto.
+    cal = api.get_calendars(force=True)
+    # Le caselle: tutto ciò che non è un link, un calendario Google, il
     # calendario locale o la voce di un'azienda inoltrata.
     letti = [c for c in cal.get("calendars", [])
              if not any(c.get(k) for k in ("is_ics", "is_google", "is_local", "is_inoltro"))]
-    esito("Il server dei calendari risponde" if remoto else "Outlook risponde",
+    esito("Il server dei calendari risponde",
           not cal.get("error") and bool(letti),
           cal.get("error") or f"{len(letti)} calendari delle caselle")
-    if remoto and letti:
+    if letti:
         # Il server risponde anche con i dati fermi (un accesso scaduto, il
         # servizio che aggiorna le caselle spento): lo dice lo stato di ognuna.
         fermi = [c for c in letti if c.get("stato") != "ok"]

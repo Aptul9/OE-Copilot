@@ -7,7 +7,6 @@ Outlook, così l'interfaccia li tratta allo stesso modo.
 """
 import json
 import logging
-import os
 import threading
 from datetime import datetime
 

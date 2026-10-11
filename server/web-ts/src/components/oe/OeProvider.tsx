@@ -30,7 +30,7 @@ export const ZOOM_MIN = 26;
 export const ZOOM_MAX = 110;
 export const ZOOM_PASSO = 8;
 export const ZOOM_DEFAULT = 58;
-const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un avvio a freddo di Outlook
+const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un riavvio del server dei calendari
 
 type Valori = {
   /** La pagina pubblica (senza accesso): stessi dati e stesse viste, impegni ridotti a "Occupato", niente scritture. */
@@ -173,7 +173,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     tentativi.current++;
     timerRitentativo.current = setTimeout(() => {
       timerRitentativo.current = null;
-      // quando Outlook diventa pronto vanno recuperati entrambi: l'elenco e gli eventi
+      // quando il server risponde di nuovo vanno recuperati entrambi: l'elenco e gli eventi
       void aggiornaCalendariRef.current();
       ricarica();
     }, 10000);
@@ -185,7 +185,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
       try {
         const res = await api("get_calendars", forza);
         if (res.error) {
-          // Tipicamente Outlook si sta ancora avviando: non si svuota l'elenco, si riprova da soli.
+          // Tipicamente il server dei calendari non risponde ancora: non si svuota l'elenco, si riprova da soli.
           pianificaRitentativo();
           if (!res.calendars.length) return;
         }

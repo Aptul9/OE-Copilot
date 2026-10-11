@@ -93,7 +93,6 @@ export type Personalizzazione = {
     calendari_senza_teams?: string[];
   };
   estensioni?: string[];
-  sorgente?: "remota" | "outlook";
 };
 
 export type NuovoEvento = {

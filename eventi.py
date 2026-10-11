@@ -6,9 +6,8 @@ mentre il servizio promemoria leggeva per conto suo solo Outlook e gli ICS.
 Risultato: gli eventi aggiunti a mano si vedevano in griglia ma non producevano
 nessun promemoria. Con una funzione sola le due strade non possono più divergere.
 
-Le caselle si leggono da Outlook su questo PC (outlook_com) oppure, se la
-personalizzazione lo dice, da un agente remoto (agente_remoto): i due moduli
-espongono le stesse funzioni e qui si sceglie quale usare.
+Le caselle si leggono dall'agente remoto (agente_remoto): il pallino di ogni azienda dice
+anche se sul server l'aggiornamento è fermo.
 """
 
 import logging
@@ -21,23 +20,16 @@ import config
 import disponibilita
 import ics_feed
 import local_events
-import outlook_com
 
 log = logging.getLogger(__name__)
 
-# Le caselle non rispondono: Outlook chiuso, oppure agente remoto irraggiungibile.
-SORGENTE_NON_DISPONIBILE = (outlook_com.OutlookUnavailable,
-                            agente_remoto.AgenteNonDisponibile)
-
-
-def sorgente_caselle():
-    """Il modulo da cui si leggono le caselle: agente remoto se configurato."""
-    return agente_remoto if agente_remoto.attivo() else outlook_com
+# Le caselle non rispondono: l'agente remoto è irraggiungibile.
+SORGENTE_NON_DISPONIBILE = agente_remoto.AgenteNonDisponibile
 
 
 def calendari_caselle(cfg, force=False):
     """Elenco dei calendari delle caselle; solleva SORGENTE_NON_DISPONIBILE."""
-    return sorgente_caselle().list_calendars(cfg, force=force)
+    return agente_remoto.list_calendars(cfg, force=force)
 
 
 def calendari_extra(cfg):
@@ -49,21 +41,20 @@ def calendari_extra(cfg):
     spegneva, o teneva un pallino che non si aggiornava mai.
     """
     return (ics_feed.list_feeds(cfg) + local_events.list_calendars(cfg)
-            + sorgente_caselle().calendari_inoltrati(cfg))
+            + agente_remoto.calendari_inoltrati(cfg))
 
 
 def senza_doppioni(eventi):
-    """Toglie lo stesso appuntamento arrivato da piu' fonti.
+    """Toglie lo stesso appuntamento arrivato da più fonti.
 
     Una riunione di un'azienda invitata sulla casella di un'altra viene accettata
     nel calendario predefinito e sta anche nel calendario Google della sua
-    azienda: e' lo stesso impegno e va mostrato una volta sola.
+    azienda: è lo stesso impegno e va mostrato una volta sola.
 
-    Si tiene la copia di Outlook (porta l'EntryID per "Apri in Outlook"), ma se
-    la stessa riunione arriva ANCHE dal calendario Google di un'azienda
-    (l'agente marca `is_google`), si adotta la sua etichetta e il suo colore:
-    la casella dove l'invito e' atterrato non deve vincere sull'azienda a cui la
-    riunione appartiene davvero.
+    Si tiene la copia della casella, ma se la stessa riunione arriva ANCHE dal
+    calendario Google di un'azienda (l'agente marca `is_google`), si adotta la sua
+    etichetta e il suo colore: la casella dove l'invito è atterrato non deve
+    vincere sull'azienda a cui la riunione appartiene davvero.
     """
     indice = {}   # chiave -> posizione in out
     out = []
@@ -92,7 +83,7 @@ def raccogli(cfg, start_iso, end_iso, allow_cache=True):
     `allow_cache=False` vieta di rispondere con l'ultima lettura salvata: lo usa
     il servizio promemoria, che non deve avvisare per riunioni gia' spostate.
     """
-    eventi, errori, meta = sorgente_caselle().fetch_all_events(
+    eventi, errori, meta = agente_remoto.fetch_all_events(
         cfg, start_iso, end_iso, allow_cache=allow_cache)
     if not config.MOSTRA_TUTTO_IL_GIORNO:
         eventi = [e for e in eventi if not e.get("allDay")]
@@ -159,28 +150,20 @@ _GRAVITA = {"ok": 0, "avviso": 1, "errore": 2}
 
 
 def _stato_fonti(cfg, meta, errori=()):
-    """Come e' andata QUESTA lettura, azienda per azienda.
+    """Come è andata QUESTA lettura, azienda per azienda.
 
     Serve al pallino accanto a ogni calendario: prima il pallino si aggiornava
     solo quando si ricaricava l'elenco, e poteva restare verde mentre le
-    riunioni non arrivavano piu'. Cosi' invece racconta l'ultima lettura, che
-    avviene ogni minuto. Se un'azienda ha piu' sorgenti, vince la peggiore.
+    riunioni non arrivavano più. Così invece racconta l'ultima lettura, che
+    avviene ogni minuto. Se un'azienda ha più sorgenti, vince la peggiore.
     """
     ora = time.strftime("%H:%M")
-    outlook_ok = not meta.get("outlook_starting")
-    # Chi legge le caselle puo' dire da se' com'e' andata, azienda per azienda
-    # (l'agente remoto lo fa: sa se una casella manca o se l'aggiornamento sul
-    # server e' fermo). Outlook non lo dice: o risponde, o no.
-    propri = meta.get("stato_aziende")
+    # L'agente remoto dice da sé com'è andata, azienda per azienda: sa se una
+    # casella manca o se l'aggiornamento sul server è fermo.
+    propri = meta.get("stato_aziende") or {}
     fonti = {}
     for azienda in (meta.get("aziende") or {}):
-        if propri is not None:
-            fonti[azienda] = dict(propri.get(azienda)
-                                  or {"stato": "ok", "msg": f"Letto alle {ora}"})
-        else:
-            fonti[azienda] = ({"stato": "ok", "msg": f"Outlook letto alle {ora}"}
-                              if outlook_ok else
-                              {"stato": "errore", "msg": "Outlook non risponde"})
+        fonti[azienda] = dict(propri.get(azienda) or {"stato": "ok", "msg": f"Letto alle {ora}"})
     try:
         altri = calendari_extra(cfg)
     except Exception:
@@ -190,29 +173,21 @@ def _stato_fonti(cfg, meta, errori=()):
         nome = c.get("alias") or c.get("account")
         stato = c.get("stato") or "ok"
         msg = c.get("stato_msg") or ""
-        if c.get("is_inoltro") and propri is None:
-            # Le copie si leggono dal calendario di un'altra casella di
-            # Outlook: se Outlook non risponde non arrivano nemmeno loro.
-            # (Con l'agente remoto il pallino segue gia' la casella che le ospita.)
-            if not outlook_ok:
-                stato, msg = "errore", "Outlook non risponde"
-            else:
-                msg = f"Outlook letto alle {ora} · {msg}"
         prec = fonti.get(nome)
         if prec is None:
             fonti[nome] = {"stato": stato, "msg": msg}
             continue
-        # Piu' sorgenti per la stessa azienda (es. su Google e in Outlook):
-        # si tengono tutti i messaggi e vince lo stato peggiore.
+        # Più sorgenti per la stessa azienda: si tengono tutti i messaggi e vince
+        # lo stato peggiore.
         fonti[nome] = {
             "stato": stato if _GRAVITA.get(stato, 0) > _GRAVITA.get(prec["stato"], 0)
                      else prec["stato"],
             "msg": " · ".join(x for x in (prec["msg"], msg) if x),
         }
-    # Ultima regola, e la piu' importante: se c'e' un errore che nomina
-    # un'azienda, il suo pallino DEVE essere rosso. Prima poteva succedere che
-    # in alto comparisse "Azienda: autorizzazione non trovata" mentre il
-    # pallino di quell'azienda restava verde.
+    # Ultima regola, e la più importante: se c'è un errore che nomina un'azienda, il
+    # suo pallino DEVE essere rosso. Prima poteva succedere che in alto comparisse
+    # "Azienda: autorizzazione non trovata" mentre il pallino di quell'azienda
+    # restava verde.
     for testo in errori or ():
         nome, _, dettaglio = str(testo).partition(":")
         nome = nome.strip()

@@ -11,9 +11,8 @@ import tempfile
 import types
 
 # app.py importa la finestra, i promemoria e Windows: qui non servono (come in server/ui/server.py)
-for nome in ("webview", "reminders", "teams_link", "pythoncom", "win32com", "win32com.client"):
+for nome in ("webview", "reminders", "teams_link", "outlook_com"):
     sys.modules[nome] = types.ModuleType(nome)
-sys.modules["win32com"].client = sys.modules["win32com.client"]
 
 qui = os.path.dirname(os.path.abspath(__file__))
 for cartella in ("/app", os.path.join(qui, "..", "..")):

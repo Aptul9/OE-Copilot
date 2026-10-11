@@ -15,19 +15,16 @@ type Props = { aperto: boolean; onChiudi: () => void };
 
 /** "Calendari da mostrare": un interruttore per calendario, il nome di ogni account, i calendari da link. */
 export function DialogoCalendari({ aperto, onChiudi }: Props) {
-  const { pers, aggiornaCalendari, ricarica } = useOe();
+  const { aggiornaCalendari, ricarica } = useOe();
   const [dati, setDati] = useState<CalendariRisposta | null>(null);
   const [errore, setErrore] = useState("");
-  const [forzata, setForzata] = useState(false);
   const [nome, setNome] = useState("");
   const [url, setUrl] = useState("");
   const [esito, setEsito] = useState("");
   const [occupato, setOccupato] = useState(false);
-  const remota = pers.sorgente === "remota";
 
   const carica = useCallback(
     async (forza: boolean) => {
-      setForzata(forza);
       setDati(null);
       setErrore("");
       try {
@@ -89,9 +86,7 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
         <DialogHeader>
           <DialogTitle>Calendari da mostrare</DialogTitle>
           <DialogDescription>
-            {remota
-              ? "Sono le caselle lette dal server dei calendari: gli accessi si fanno lì."
-              : "Sono i calendari già presenti nel profilo Outlook: nessun accesso da fare."}
+            Sono le caselle lette dal server dei calendari: gli accessi si fanno lì.
           </DialogDescription>
         </DialogHeader>
 
@@ -99,12 +94,12 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
 
         <div id="cal-list" className="flex flex-col gap-0.5 text-sm">
           {!dati && !errore && (
-            <p className="text-muted-foreground">{remota ? "Lettura dal server dei calendari…" : forzata ? "Ricerca completa in Outlook, richiede qualche secondo…" : "Lettura da Outlook…"}</p>
+            <p className="text-muted-foreground">Lettura dal server dei calendari…</p>
           )}
           {errore && <p className="text-destructive">{errore}</p>}
           {dati?.error && <p className="text-destructive">{dati.error}</p>}
           {dati && !dati.error && dati.calendars.length === 0 && (
-            <p className="text-muted-foreground">{remota ? "Il server dei calendari non ha caselle da mostrare." : "Nessun calendario trovato nel profilo Outlook."}</p>
+            <p className="text-muted-foreground">Il server dei calendari non ha caselle da mostrare.</p>
           )}
           {gruppi.map(({ account, cals }) => (
             <div key={account} className="mb-2">

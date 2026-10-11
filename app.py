@@ -238,16 +238,6 @@ class Api:
         local_events.delete_event(config.load_config(), uid)
         return {"ok": True}
 
-    def open_in_outlook(self, event_id):
-        """Apre in Outlook l'evento dato il suo id (entry_id|inizio)."""
-        entry_id = (event_id or "").split("|", 1)[0]
-        try:
-            ok = outlook_com.open_item(config.load_config(), entry_id)
-            return {"ok": ok}
-        except Exception as e:
-            log.exception("open_in_outlook: eccezione")
-            return {"ok": False, "error": str(e)}
-
     def apri_in_outlook_remoto(self, account, start_iso, titolo):
         """Apre in Outlook un evento letto dall'agente remoto.
 
@@ -338,9 +328,7 @@ class Api:
         aziende. Con il file assente l'interfaccia parte con i valori neutri.
         """
         return {"interfaccia": config.INTERFACCIA,
-                "estensioni": sorted(_ESTENSIONI_CARICATE),
-                # Da dove arrivano le caselle: l'interfaccia adatta i testi.
-                "sorgente": "remota" if raccolta_eventi.agente_remoto.attivo() else "outlook"}
+                "estensioni": sorted(_ESTENSIONI_CARICATE)}
 
     def test_notification(self):
         return {"message": reminders.send_test_notification(config.load_config())}

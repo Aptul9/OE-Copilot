@@ -21,9 +21,8 @@ logging.basicConfig(level=logging.INFO,
 # app.py importa la finestra (pywebview), i promemoria e Windows (pywin32): qui non
 # servono e su Linux non esistono. Moduli finti, perché nessuna delle funzioni che
 # li usano è raggiungibile da METODI.
-for _nome in ("webview", "reminders", "teams_link", "pythoncom", "win32com", "win32com.client"):
+for _nome in ("webview", "reminders", "teams_link", "outlook_com"):
     sys.modules[_nome] = types.ModuleType(_nome)
-sys.modules["win32com"].client = sys.modules["win32com.client"]
 
 import app  # noqa: E402
 

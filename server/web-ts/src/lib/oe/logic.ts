@@ -234,12 +234,10 @@ export type AzioniEvento = { partecipa: string | null; apriInTeams: { account: s
  * browser solo se la riunione ha un link da aprire.
  */
 export function azioniEvento(p: Evento, senzaTeams: Set<string>): AzioniEvento {
-  const idOutlook =
-    !p.is_local && !p.remoto && !!p.id && p.id.indexOf("|") > 0 && !p.id.startsWith("local::") && !p.id.startsWith("builtin::") && !p.id.startsWith("ics_");
   const casellaRemota = !!p.remoto && !p.is_google;
   const linkTeams = /teams\.(microsoft\.com|live\.com)/i.test(p.online_url || "");
   const teams =
-    (idOutlook || casellaRemota || linkTeams) && String(p.account || "").includes("@") && !senzaTeams.has(p.alias ?? "") && !p.inoltrata_da && !!p.online_url;
+    (casellaRemota || linkTeams) && String(p.account || "").includes("@") && !senzaTeams.has(p.alias ?? "") && !p.inoltrata_da && !!p.online_url;
   return {
     partecipa: p.online_url ? encodeURI(p.online_url) : null,
     apriInTeams: teams ? { account: p.account, url: p.online_url as string } : null,
@@ -261,7 +259,7 @@ export function etichettaSync(ultimaSync: number | null, adesso: number, inCorso
 /** Avviso dei dati salvati, quando le caselle non rispondono ancora. */
 export function testoDatiVecchi(quando: string | null | undefined, motivo: string | null | undefined): string {
   const ora = quando ? quando.slice(11, 16) : null;
-  const cosa = motivo || "Outlook si sta avviando";
+  const cosa = motivo || "Il server dei calendari non risponde";
   return ora ? `${cosa} — questi sono i dati salvati delle ${ora}. Aggiorno da solo…` : `${cosa} — aggiorno da solo appena è pronto…`;
 }
 

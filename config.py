@@ -62,13 +62,11 @@ COLOR_PALETTE = [
 ]
 
 DEFAULT_CONFIG = {
-    # Nessuna credenziale: gli eventi arrivano da Outlook desktop via COM, quindi
-    # valgono gli account già configurati nel profilo Outlook. Il calendario
-    # Google entra come calendario Internet (ICS) sottoscritto dentro Outlook.
-    # Calendari da NON mostrare: elenco di EntryID (si gestisce dalla UI).
+    # Nessuna credenziale: gli eventi arrivano dall'agente remoto (agente_remoto.py).
+    # Calendari da NON mostrare: elenco di id (si gestisce dalla UI).
     "disabled_calendars": [],
-    # Profilo Outlook da usare. Vuoto = quello predefinito. Va valorizzato solo
-    # se sul PC ci sono più profili e si vuole imporre quale leggere.
+    # Profilo Outlook da usare per "Apri in Outlook". Vuoto = quello predefinito. Va
+    # valorizzato solo se sul PC ci sono più profili e si vuole imporre quale usare.
     "outlook_profile": "",
     # Calendari sottoscritti da link iCal: [{"id", "name", "url"}].
     # Servono per Google e in generale per gli account che Outlook non porta.
@@ -267,16 +265,6 @@ def ordine_calendario(alias):
 DOMINI_AZIENDALI = _minuscole(_P.get("domini_aziendali"))
 
 
-# Store "Cartelle pubbliche"/"Public Folders": non sono la casella dell'utente,
-# vanno saltati (altrimenti spuntano calendari pubblici non suoi nell'elenco).
-CARTELLE_PUBBLICHE = ("cartelle pubbliche", "public folders")
-
-
-def store_pubblico(nome):
-    n = (nome or "").lower()
-    return any(k in n for k in CARTELLE_PUBBLICHE)
-
-
 # Cartelle calendario dedicate a un'azienda: gli eventi che ci stanno dentro sono
 # di quell'azienda, a prescindere da store che le ospita e da chi risulta
 # organizzatore. Serve per i calendari sincronizzati da programmi esterni (per
@@ -298,15 +286,12 @@ def azienda_da_cartella(label_o_nome):
 
 # Aziende SENZA una casella in Outlook, i cui impegni arrivano copiati in
 # un'altra casella da un flusso (per esempio Power Automate) e si riconoscono dal
-# prefisso nel titolo. Tipico quando un account e' bloccato alle app e si apre
+# prefisso nel titolo. Tipico quando un account è bloccato alle app e si apre
 # solo dal browser: un flusso copia ogni riunione nuova nel calendario di
-# un'altra casella con un prefisso nel titolo, e un flusso gemello inoltra la
-# posta con un prefisso nell'oggetto. Le copie si mostrano come l'azienda
-# d'origine, col titolo vero; la posta inoltrata dice se il collegamento e' vivo
-# (outlook_com). Voci in personalizzazione.json:
+# un'altra casella con un prefisso nel titolo. Le copie si mostrano come
+# l'azienda d'origine, col titolo vero. Voci in personalizzazione.json:
 #   "via":           casella in cui arrivano le copie
 #   "prefisso":      espressione regolare del prefisso nel titolo delle copie
-#   "oggetto_posta": inizio dell'oggetto delle mail inoltrate (facoltativo)
 #   "colore":        colore da dare all'azienda alla prima assegnazione
 def _aziende_inoltrate():
     out = {}
@@ -316,7 +301,6 @@ def _aziende_inoltrate():
         try:
             out[nome] = {"via": d["via"],
                          "prefisso": re.compile(d["prefisso"], re.I),
-                         "oggetto_posta": d.get("oggetto_posta") or "",
                          "colore": d.get("colore")}
         except (KeyError, TypeError, AttributeError, re.error):
             log.error("personalizzazione: azienda inoltrata %r non valida, ignorata",
@@ -334,16 +318,6 @@ def azienda_da_titolo(titolo):
         if m:
             return azienda, (titolo[m.end():].strip() or "(senza titolo)")
     return None, titolo
-
-
-def colore_per_azienda(cfg, azienda):
-    """Colore già assegnato a una tua casella di quell'azienda, o None."""
-    colori = cfg.get("account_colors", {})
-    alias = alias_per_account(cfg, list(colori.keys()))
-    for acc, col in colori.items():
-        if alias.get(acc) == azienda:
-            return col
-    return None
 
 
 def azienda_da_email(email):
@@ -381,10 +355,6 @@ MOSTRA_TUTTO_IL_GIORNO = bool(_P.get("mostra_tutto_il_giorno"))
 ACCOUNT_LOCALE = "Eventi personali"
 LOCAL_EVENTS_PATH = os.path.join(APP_DIR, "local_events.json")
 
-# Le cartelle calendario con questi nomi (festività, compleanni) sono rumore:
-# vengono escluse ovunque. Le festività italiane arrivano dal calendario fisso.
-CARTELLE_ESCLUSE = ("festivit", "holiday", "feiertag", "vacances")
-
 # Calendario delle festività italiane, sempre attivo e non elencato tra gli
 # account. È il feed pubblico di Google.
 FESTIVITA_URL = ("https://calendar.google.com/calendar/ical/"
@@ -408,22 +378,6 @@ AGENTE_REMOTO = dict(_P.get("agente_remoto") or {})
 # La chiave dell'API dell'agente non sta nella personalizzazione: e' un segreto,
 # e si conserva cifrata (vedi proteggi/svela) accanto ai dati dell'app.
 AGENTE_CHIAVE_PATH = os.path.join(DATA_DIR, "agente_chiave.bin")
-
-
-# Cartelle "cestino": tutto quello che ci sta dentro e' roba eliminata e non va
-# mostrata. I nomi cambiano con la lingua della casella.
-CARTELLE_CESTINO = ("posta eliminata", "deleted items", "elementi eliminati",
-                    "cestino", "trash", "papierkorb", "corbeille")
-
-
-def cartella_cestino(nome):
-    n = (nome or "").strip().lower()
-    return any(n == k for k in CARTELLE_CESTINO)
-
-
-def cartella_esclusa(nome):
-    n = (nome or "").lower()
-    return any(k in n for k in CARTELLE_ESCLUSE)
 
 
 def _nome_predefinito(indirizzo):

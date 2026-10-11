@@ -1,9 +1,8 @@
-"""Regole comuni alle sorgenti di caselle: Outlook su questo PC o l'agente remoto.
+"""Regole comuni alle caselle lette dall'agente remoto: di che azienda è una riunione,
+quale copia tenere fra due uguali e che colore darle.
 
-Le caselle si possono leggere in due modi (outlook_com, agente_remoto), ma di
-che azienda e' una riunione, quale copia tenere fra due uguali e che colore
-darle non deve dipendere da dove arriva. Quelle regole stanno qui, una volta
-sola: prima erano dentro la lettura di Outlook.
+Prima le caselle potevano essere lette anche da Outlook su questo PC (outlook_com): le
+regole stanno qui, in un posto solo, e non dipendono da dove arrivano gli eventi.
 """
 import json
 import logging
@@ -76,10 +75,9 @@ INOLTRO_RE = re.compile(r"^\s*(?:(?:fwd?|i|wg|tr|rv)\s*:\s*)+", re.I)
 def accoda(events, seen, ev, etichetta_calendario, invitato):
     """Aggiunge `ev` a `events`, riconoscendo le copie e scartando i doppioni.
 
-    `seen` e' l'indice (chiave -> posizione) che chi legge tiene per tutta la
-    lettura. `invitato` e' una funzione senza argomenti che dice quale casella
-    dell'utente era fra gli invitati: la si chiama solo quando serve, perche'
-    per Outlook leggere i destinatari di ogni evento costerebbe troppo.
+    `seen` è l'indice (chiave -> posizione) che chi legge tiene per tutta la
+    lettura. `invitato` è una funzione senza argomenti che dice quale casella
+    dell'utente era fra gli invitati: la si chiama solo quando serve.
     """
     # Copia messa qui da un flusso (le riunioni di un'azienda inoltrata, copiate
     # in questa casella): e' di quell'azienda, e il prefisso nel titolo non

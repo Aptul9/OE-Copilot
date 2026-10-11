@@ -17,7 +17,6 @@ on:
       - "agente_remoto.py"
       - "ics_feed.py"
       - "local_events.py"
-      - "outlook_com.py"
   pull_request:
     paths:
       - "server/**"
@@ -31,7 +30,6 @@ on:
       - "agente_remoto.py"
       - "ics_feed.py"
       - "local_events.py"
-      - "outlook_com.py"
   workflow_dispatch:
 
 permissions:

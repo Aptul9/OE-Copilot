@@ -12,8 +12,7 @@ cifrata, leggendola dallo standard input:
 
     <comando che stampa la chiave> | .venv\\Scripts\\python agente_remoto.py imposta-chiave
 
-Per il resto dell'app questo modulo si comporta come outlook_com: stesse
-funzioni, stessi dati. Le regole su aziende, doppioni e colori sono quelle
+Le regole su aziende, doppioni e colori sono quelle
 comuni (caselle.py).
 """
 import atexit
@@ -179,6 +178,8 @@ def _chiave(rileggi=False):
 
 def _chiedi(percorso, parametri=None, attesa=20):
     """GET all'agente attraverso il tunnel. -> dati JSON, o AgenteNonDisponibile."""
+    if not attivo():
+        raise AgenteNonDisponibile("Agente remoto non configurato: manca agente_remoto.ssh nella personalizzazione")
     if not URL_DIRETTO:
         _apri_tunnel()
     url = (URL_DIRETTO or f"http://127.0.0.1:{PORTA_LOCALE}") + percorso
@@ -321,7 +322,7 @@ def calendari_inoltrati(cfg):
 
 
 # --------------------------------------------------------------------------
-# Calendari ed eventi (stessa forma di outlook_com)
+# Calendari ed eventi
 # --------------------------------------------------------------------------
 def list_calendars(cfg, force=False):
     """Una voce per casella letta dall'agente, con colore, stato e interruttore.
@@ -390,8 +391,8 @@ def _senza_agente(cfg, errore, chiave_cache, allow_cache, meta):
 def fetch_all_events(cfg, start_iso, end_iso, allow_cache=True):
     """Eventi di tutte le caselle lette dall'agente, nell'intervallo dato.
 
-    Ritorna (eventi, errori, meta) come outlook_com.fetch_all_events. In piu',
-    meta["stato_aziende"] da' il pallino di ogni azienda per QUESTA lettura.
+    Ritorna (eventi, errori, meta). In più, meta["stato_aziende"] dà il pallino di
+    ogni azienda per QUESTA lettura.
     """
     meta = {"stale": False, "stale_at": None, "outlook_starting": False}
     try:

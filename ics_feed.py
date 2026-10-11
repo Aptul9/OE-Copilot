@@ -14,16 +14,20 @@ import logging
 import os
 import re
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import icalendar
 import recurring_ical_events
 import requests
 
 import config
-# Stessa estrazione del link riunione usata per gli eventi di Outlook: tenerla
-# in un posto solo evita che le due strade divergano.
-from outlook_com import MEETING_URL_RE
+
+# Link di una riunione online (Teams, Zoom, Meet...) nel luogo o nella descrizione.
+MEETING_URL_RE = re.compile(
+    r"https?://(?:[\w.-]*teams\.microsoft\.com|[\w.-]*zoom\.us|meet\.google\.com|"
+    r"[\w.-]*webex\.com|meet\.jit\.si|[\w.-]*gotomeeting\.com)/[^\s<>\"']+",
+    re.IGNORECASE,
+)
 
 log = logging.getLogger(__name__)
 

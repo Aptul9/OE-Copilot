@@ -18,7 +18,6 @@ local_events.json
 teams_tenants.json
 agente_chiave.bin
 agente_caselle.json
-pulizia_*.json
 ics_cache/
 .tmp_*
 

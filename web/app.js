@@ -5,7 +5,7 @@ let interfacciaPronta = false;
 let legendaGiaFatta = false;
 let tentativiOutlook = 0;
 let timerRitentativo = null;
-const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un avvio a freddo di Outlook
+const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un riavvio del server dei calendari
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -34,7 +34,7 @@ if (NEL_BROWSER) document.documentElement.classList.add("nel-browser");
 // Funzioni che hanno senso solo nella finestra dell'app per Windows: nel browser
 // non fanno niente (e gli elementi che le usano sono nascosti, classe solo-app).
 const SOLO_APP = new Set(["win_minimize", "win_maximize_toggle", "win_close", "win_nudge",
-  "win_resize", "get_autostart", "set_autostart", "test_notification", "open_in_outlook",
+  "win_resize", "get_autostart", "set_autostart", "test_notification",
   "apri_in_outlook_remoto", "log_js", "log_ui"]);
 // I link li apre il browser, subito: serve il gesto dell'utente, non una risposta.
 const LINK_NEL_BROWSER = new Set(["open_external", "apri_in_teams"]);
@@ -623,9 +623,6 @@ let CALENDARI_SECONDARI = new Set();
 // Calendari di caselle che in Teams non esistono come account (per esempio le
 // caselle condivise): per i loro eventi il pulsante "Apri in Teams" non c'è.
 let CALENDARI_SENZA_TEAMS = new Set();
-// Da dove arrivano le caselle: "outlook" (Outlook su questo PC) o "remota" (un
-// agente su un server). Cambiano solo i testi: i dati hanno la stessa forma.
-let SORGENTE_REMOTA = false;
 
 /** Applica le impostazioni personali ricevute da Python. */
 function applicaPersonalizzazione(p) {
@@ -635,16 +632,6 @@ function applicaPersonalizzazione(p) {
   SIGLE_AZIENDA = Object.assign({}, ui.sigle || {});
   CALENDARI_SECONDARI = new Set(ui.calendari_secondari || []);
   CALENDARI_SENZA_TEAMS = new Set(ui.calendari_senza_teams || []);
-  SORGENTE_REMOTA = !!(p && p.sorgente === "remota");
-  if (SORGENTE_REMOTA) {
-    // I testi della pagina parlano di Outlook su questo PC: qui non vale.
-    const nota = $("#nota-calendari");
-    if (nota) nota.textContent = "Sono le caselle lette dal server dei calendari: "
-      + "gli accessi si fanno lì, su questo PC non serve Outlook.";
-    const origine = $("#nota-origine");
-    if (origine) origine.innerHTML = "Gli eventi vengono letti dal <b>server dei "
-      + "calendari</b>, che tiene gli accessi alle caselle. Su questo PC non serve Outlook.";
-  }
 }
 
 // ---- Estensioni personali ---------------------------------------------------
@@ -783,21 +770,15 @@ function onEventClick(arg) {
   else if (p.organizer)
     rows.push(`<div class="row"><span class="pop-k">Organizza</span> ${escapeHtml(p.organizer)}</div>`);
 
-  // Un evento è di Outlook se il suo id contiene un EntryID (prima del "|") e
-  // non è locale né festività. Quelli letti dal server dei calendari (remoto)
-  // non hanno un EntryID: se vengono da una casella di posta si possono
-  // comunque aprire in Outlook cercandoli per ora e titolo.
-  const idOutlook = !p.is_local && !p.remoto && p.id && p.id.indexOf("|") > 0
-    && !String(p.id).startsWith("local::") && !String(p.id).startsWith("builtin::")
-    && !String(p.id).startsWith("ics_");
+  // Gli eventi letti dal server dei calendari non hanno un EntryID di Outlook: se
+  // vengono da una casella di posta si possono comunque aprire in Outlook
+  // cercandoli per ora e titolo.
   const casellaRemota = !!p.remoto && !p.is_google;
 
   const azioni = [];
   if (p.online_url)
     azioni.push(`<button class="join" data-url="${encodeURI(p.online_url)}">Partecipa</button>`);
-  if (idOutlook)
-    azioni.push(`<button class="ghost solo-app" data-outlook="${escapeHtml(p.id)}">Apri in Outlook</button>`);
-  else if (casellaRemota)
+  if (casellaRemota)
     azioni.push(`<button class="ghost solo-app" data-outlook-remoto="1">Apri in Outlook</button>`);
   // Teams ha piu' account collegati: si passa la casella dell'evento cosi'
   // l'app si posiziona su quella prima di aprire la riunione. Il pulsante c'è
@@ -809,7 +790,7 @@ function onEventClick(arg) {
   // Nemmeno per le copie di un'azienda inoltrata: stanno nella casella di
   // un'altra azienda, e il pulsante porterebbe sul calendario sbagliato.
   // Nel browser il pulsante apre il link della riunione: senza link non c'è niente da aprire.
-  if ((idOutlook || casellaRemota || linkTeams) && String(p.account || "").includes("@")
+  if ((casellaRemota || linkTeams) && String(p.account || "").includes("@")
       && !CALENDARI_SENZA_TEAMS.has(p.alias) && !p.inoltrata_da
       && !(NEL_BROWSER && !p.online_url))
     azioni.push(`<button class="ghost" data-teams="${escapeHtml(p.account)}"
@@ -824,11 +805,6 @@ function onEventClick(arg) {
      ${azioni.length ? `<div class="pop-actions">${azioni.join("")}</div>` : ""}`;
   pop.querySelectorAll("button[data-url]").forEach((b) =>
     b.addEventListener("click", () => api.open_external(b.dataset.url)));
-  pop.querySelectorAll("button[data-outlook]").forEach((b) =>
-    b.addEventListener("click", () => {
-      api.open_in_outlook(b.dataset.outlook);
-      pop.classList.add("hidden");
-    }));
   pop.querySelectorAll("button[data-outlook-remoto]").forEach((b) =>
     b.addEventListener("click", () => {
       api.apri_in_outlook_remoto(p.account, p.start, arg.event.title).then((res) => {
@@ -975,10 +951,7 @@ function refreshLegend() {
 }
 
 function openCalendarsModal(force) {
-  $("#cal-list").textContent = SORGENTE_REMOTA
-    ? "Lettura dal server dei calendari…"
-    : (force ? "Ricerca completa in Outlook, richiede qualche secondo…"
-             : "Lettura da Outlook…");
+  $("#cal-list").textContent = "Lettura dal server dei calendari…";
   apriModale("#modal-calendars");
   api.get_calendars(!!force).then((res) => {
     const box = $("#cal-list");
@@ -988,9 +961,7 @@ function openCalendarsModal(force) {
     }
     const cals = res.calendars || [];
     if (!cals.length) {
-      box.innerHTML = SORGENTE_REMOTA
-        ? `<p class="hint">Il server dei calendari non ha caselle da mostrare.</p>`
-        : `<p class="hint">Nessun calendario trovato nel profilo Outlook.</p>`;
+      box.innerHTML = `<p class="hint">Il server dei calendari non ha caselle da mostrare.</p>`;
       return;
     }
     // Raggruppati per account. L'intestazione mostra il nome (alias) con un
@@ -1537,8 +1508,8 @@ function pianificaRitentativo() {
 function mostraDatiVecchi(quando, motivo) {
   const el = $("#stale");
   const ora = quando ? quando.slice(11, 16) : null;
-  // "motivo" lo dà chi legge le caselle quando non è Outlook a mancare.
-  const cosa = motivo || "Outlook si sta avviando";
+  // "motivo" lo dà chi legge le caselle.
+  const cosa = motivo || "Il server dei calendari non risponde";
   el.textContent = ora
     ? `${cosa} — questi sono i dati salvati delle ${ora}. Aggiorno da solo…`
     : `${cosa} — aggiorno da solo appena è pronto…`;

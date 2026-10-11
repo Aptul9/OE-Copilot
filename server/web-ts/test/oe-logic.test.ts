@@ -176,7 +176,7 @@ describe("sincronizzazione", () => {
   });
   it("i dati vecchi", () => {
     expect(testoDatiVecchi("2026-10-11T07:23:02", "Il server non risponde")).toBe("Il server non risponde — questi sono i dati salvati delle 07:23. Aggiorno da solo…");
-    expect(testoDatiVecchi(null, null)).toBe("Outlook si sta avviando — aggiorno da solo appena è pronto…");
+    expect(testoDatiVecchi(null, null)).toBe("Il server dei calendari non risponde — aggiorno da solo appena è pronto…");
   });
 });
 

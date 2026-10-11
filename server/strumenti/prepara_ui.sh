@@ -9,5 +9,5 @@ cd "$(dirname "$0")/../.."
 rm -rf server/ui/app
 mkdir -p server/ui/app
 cp app.py config.py caselle.py eventi.py disponibilita.py agente_remoto.py ics_feed.py \
-   local_events.py outlook_com.py server/ui/app/
+   local_events.py server/ui/app/
 cp -r web server/ui/app/web

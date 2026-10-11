@@ -3,3 +3,7 @@ server/** text eol=lf
 
 # Le immagini dentro server/ non sono testo: la regola sopra ne cambierebbe i byte.
 server/**/*.png binary
+
+# I file binari dentro server/ (il server del telefono di ws-scrcpy) non vanno toccati dalla regola sopra.
+server/**/*.jar binary
+server/**/*.asset binary

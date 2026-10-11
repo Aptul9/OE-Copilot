@@ -47,31 +47,39 @@
    FullCalendar fa riempire l'evento al suo slot. */
 .calendario .fc .fc-event { border: none; border-left: 3px solid; border-radius: 6px; box-shadow: none; padding: 0; }
 .calendario .fc .fc-timegrid-event { overflow: visible; }
-.calendario .fc .fc-timegrid-event .fc-event-main { padding: 0; height: 100%; overflow: visible; }
+.calendario .fc .fc-timegrid-event .fc-event-main { padding: 0; height: 100%; overflow: visible; container-type: inline-size; }
 .ev-body { height: 100%; overflow: hidden; position: relative; padding: 2px 8px; border-radius: 6px; }
 .calendario .fc-event.secondario { border-left-style: dashed; }
 .calendario .fc-event.secondario .fc-event-main,
 .calendario .fc-event.secondario .ev-meta { color: var(--muted-ink); }
 
-/* pallino azienda in alto a destra dell'evento: cerchio con le iniziali, o il logo intero */
+/* azienda dell'evento: cerchio con le iniziali, o il logo intero, a destra della riga dell'orario (dentro l'evento) */
 .ev-corner {
-  position: absolute; top: -8px; right: -8px; height: 28px; width: 28px;
-  border-radius: 50%; z-index: 3; overflow: hidden; background: #fff;
+  flex: none; position: relative; height: 18px; width: 18px; margin: -1px -4px -1px 0;
+  border-radius: 50%; overflow: hidden; background: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 800; color: #fff; line-height: 1;
-  box-shadow: 0 0 0 1.5px var(--card), 0 0 0 2.5px rgba(0, 0, 0, .10), 0 1px 2px rgba(0, 0, 0, .22);
+  font-size: 8.5px; font-weight: 800; color: #fff; line-height: 1;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .16);
 }
-.ev-corner img { height: 100%; width: 100%; object-fit: contain; padding: 3px; display: block; }
+.ev-corner img { height: 100%; width: 100%; object-fit: contain; padding: 2px; display: block; }
 .calendario .fc .fc-event:hover { filter: brightness(.97); }
 .calendario .fc .fc-event-main { padding: 0; color: var(--foreground); }
 .calendario .fc-event .ev-meta {
-  flex: none; font-size: 10px; font-weight: 700; color: var(--muted-foreground);
-  letter-spacing: .1px; line-height: 1.05; padding-right: 22px; margin-bottom: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: none; display: flex; align-items: center; gap: 6px; min-height: 16px;
+  font-size: 10px; font-weight: 700; color: var(--muted-foreground);
+  letter-spacing: .1px; line-height: 1.05; margin-bottom: 0;
+}
+.calendario .fc-event .ev-meta-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* colonna stretta (tante riunioni affiancate): niente orario in riga, solo il badge, al centro */
+@container (max-width: 64px) {
+  .ev-body { padding-left: 3px; padding-right: 3px; }
+  .ev-meta { justify-content: center; }
+  .ev-meta-text { display: none; }
+  .ev-corner { margin-right: 0; }
 }
 .calendario .fc-event .ev-meta .ev-az { font-weight: 600; color: var(--muted-ink); }
 .calendario .fc-event .ev-title {
-  min-height: 0; font-weight: 600; font-size: 12.5px; line-height: 1.15; padding-right: 16px;
+  min-height: 0; font-weight: 600; font-size: 12.5px; line-height: 1.15; padding-right: 2px;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
 }
 .calendario .fc-event .ev-line {

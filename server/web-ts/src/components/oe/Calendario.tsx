@@ -142,19 +142,21 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       ) : null;
       // nella vista Giorno e a 3 giorni c'è la larghezza per scrivere anche di che azienda è la riunione
       const azienda = tipo === "timeGridDay" || tipo === VISTA_3G ? alias : "";
+      // il logo (o le iniziali) sta dentro l'evento, a destra della riga dell'orario: sempre nello stesso punto,
+      // mai a cavallo del bordo (prima usciva e finiva sopra l'evento accanto o sotto quello prima)
       return (
-        <>
-          {angolo}
-          <div className="ev-body">
-            {arg.timeText && (
-              <div className="ev-meta">
+        <div className="ev-body">
+          {(arg.timeText || angolo) && (
+            <div className="ev-meta">
+              <span className="ev-meta-text">
                 {arg.timeText}
                 {azienda && <span className="ev-az"> · {azienda}</span>}
-              </div>
-            )}
-            <div className="ev-title">{arg.event.title}</div>
-          </div>
-        </>
+              </span>
+              {angolo}
+            </div>
+          )}
+          <div className="ev-title">{arg.event.title}</div>
+        </div>
       );
     },
     [loghi, sigle],

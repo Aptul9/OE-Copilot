@@ -9,17 +9,18 @@ import { azzeraFeed } from "@/lib/core/ics";
 import { fissaOra } from "@/lib/core/orologio";
 import { avviaAgente, avviaIcs, CHIAVE, fixture, leggi, normalizza, ORA_FISSA_MS, preparaDati } from "./golden-comune";
 
-// La scrittura del gateway contro quella del servizio ui (Python): la stessa sequenza di modifiche (interruttori, gruppi, alias,
-// calendari da link, eventi personali, configurazione) sulla stessa cartella dei dati. Dopo ogni chiamata la risposta e lo stato
-// (config.json, local_events.json, copie dei calendari ICS) devono essere quelli che ha registrato il servizio ui
-// (server/strumenti/prova_ui_golden.py, golden/ui-scritture.json). Lo stato del gateway sta nel database; i due file sono la copia che
+// La scrittura del gateway contro le risposte registrate dal servizio ui (Python): la stessa sequenza di modifiche (interruttori, gruppi,
+// alias, calendari da link, eventi personali, configurazione) sulla stessa cartella dei dati. Dopo ogni chiamata la risposta e lo stato
+// (config.json, local_events.json, copie dei calendari ICS) devono essere quelli che ha registrato il servizio ui quando c'era
+// (server/strumenti/prova_ui_golden.py, golden/ui-scritture.json: l'ultimo commit che li contiene è 142e789). Oggi il servizio non gira
+// più e nessuno le rigenera: sono dati registrati. Lo stato del gateway sta nel database; i due file sono la copia che
 // riscrive dopo ogni modifica, nel formato di prima.
 
 const registrato = leggi("ui-scritture.json");
 
 type Passo = { nome: string; metodo: NomeMetodoTs; args: unknown[] };
 
-describe("scritture del gateway contro il servizio ui", () => {
+describe("scritture del gateway contro le risposte registrate", () => {
   const stato = { modo: "normale" };
   let agente: { server: http.Server; url: string };
   let ics: { server: http.Server; url: string };

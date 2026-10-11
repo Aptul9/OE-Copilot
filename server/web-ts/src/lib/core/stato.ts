@@ -2,7 +2,7 @@ import { type Config, modificaConfig } from "./archivio";
 import { COLOR_PALETTE, ACCOUNT_LOCALE, personalizzazione } from "./personalizzazione";
 import { isDict, pyStr } from "./py";
 
-// La configurazione di chi usa l'app (config.py): calendari spenti, alias, colori, gruppi, link ICS, tema. Sta nel database dello stato
+// La configurazione di chi usa l'app (era config.py, fino al commit 142e789): calendari spenti, alias, colori, gruppi, link ICS, tema. Sta nel database dello stato
 // (archivio.ts); qui le regole che la leggono e la cambiano.
 
 export { DEFAULT_CONFIG, loadConfig, modificaConfig, percorsoConfig, saveConfig, type Config } from "./archivio";

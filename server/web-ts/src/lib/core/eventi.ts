@@ -9,7 +9,7 @@ import { FESTIVITA_NOME, personalizzazione } from "./personalizzazione";
 import { messaggio } from "./py";
 import { membriGruppo, type Config } from "./stato";
 
-// La raccolta degli eventi da tutte le sorgenti, in un posto solo (eventi.py): le caselle lette dall'agente, i link ICS e il
+// La raccolta degli eventi da tutte le sorgenti, in un posto solo (era eventi.py, fino al commit 142e789): le caselle lette dall'agente, i link ICS e il
 // calendario locale. Vanno lette insieme, non a due a due, così le due strade (la pagina e la disponibilità) non possono divergere.
 
 const GRAVITA: Record<string, number> = { ok: 0, avviso: 1, errore: 2 };

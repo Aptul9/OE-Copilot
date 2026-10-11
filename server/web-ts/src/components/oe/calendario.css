@@ -1,4 +1,4 @@
-/* FullCalendar nel tema di shadcn: gli stessi ritocchi di web/style.css, con i colori del tema
+/* FullCalendar nel tema di shadcn: gli stessi ritocchi del vecchio style.css (storia di git fino a 2d57a83^), con i colori del tema
    (--card, --border, --primary...) al posto di quelli del vecchio file. */
 .calendario {
   --fc-border-color: var(--border);

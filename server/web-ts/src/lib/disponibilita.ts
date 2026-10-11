@@ -1,9 +1,8 @@
-import { config } from "./config";
 import type { Evento } from "./oe/types";
 
 // La pagina pubblica (/disponibilita) è il calendario di sempre, senza accesso, con gli impegni ridotti
-// a "Occupato". Qui stanno le regole dell'API che la serve (/api/disponibilita): dal servizio ui arrivano
-// solo orari e festività (disponibilita.py), e quello che arriva si ricostruisce campo per campo.
+// a "Occupato". Qui stanno le regole dell'API che la serve (/api/disponibilita): dalla lettura dei calendari
+// (get_disponibilita, lib/core) arrivano solo orari e festività, e quello che arriva si ricostruisce campo per campo.
 
 export const FUSO = "Europe/Rome";
 export const OCCUPATO = "Occupato";
@@ -84,8 +83,8 @@ export function eventiPubblici(impegni: Coppia[], festivita: Festa[], da: string
 }
 
 /**
- * Se si è occupati, si è occupati: impegni che si sovrappongono o si toccano sono un blocco solo. Il servizio
- * ui li unisce già, ma ogni blocco di 28 giorni lo fa per conto suo: un impegno lungo a cavallo di due blocchi
+ * Se si è occupati, si è occupati: impegni che si sovrappongono o si toccano sono un blocco solo. La lettura
+ * li unisce già, ma ogni blocco di 28 giorni lo fa per conto suo: un impegno lungo a cavallo di due blocchi
  * arriva due volte, con inizi diversi. Gli orari sono testi AAAA-MM-GGTHH:MM:SS, si confrontano come testi.
  */
 export function unisci(impegni: Coppia[]): Coppia[] {
@@ -99,15 +98,13 @@ export function unisci(impegni: Coppia[]): Coppia[] {
   return uniti;
 }
 
-// ---- Lettura dal servizio ui -----------------------------------------------------------------------
+// ---- Lettura dei blocchi ---------------------------------------------------------------------------
 export type Blocco = { impegni: Coppia[]; festivita: Festa[]; completo: boolean };
 export type Esito = ({ ok: true } & Blocco) | { ok: false; stato: 404 | 429 | 502 };
 type Deps = {
-  fetch?: typeof fetch;
-  upstream?: string;
   adesso?: () => number;
-  /** La lettura in processo (lib/core): se c'è, non si passa dal servizio ui. */
-  core?: (da: string, giorni: number, gruppo: string) => Promise<unknown>;
+  /** La lettura dei calendari (lib/core): l'inizio del blocco, i giorni e il gruppo. */
+  core: (da: string, giorni: number, gruppo: string) => Promise<unknown>;
 };
 
 const TTL_MS = 60_000;
@@ -130,7 +127,7 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
 // eslint-disable-next-line no-control-regex
 const CONTROLLO = /[\u0000-\u001f\u007f]/g;
 
-/** Quello che arriva dal servizio ui si ricostruisce: solo coppie di orari e nomi di festa, il resto non passa. */
+/** Quello che arriva dalla lettura si ricostruisce: solo coppie di orari e nomi di festa, il resto non passa. */
 function ripulisci(dati: unknown): Esito {
   const guasto: Esito = { ok: false, stato: 502 };
   if (!dati || typeof dati !== "object") return guasto;
@@ -152,15 +149,7 @@ function ripulisci(dati: unknown): Esito {
 
 async function leggi(da: string, gruppo: string, deps: Deps): Promise<Esito> {
   try {
-    if (deps.core) return ripulisci(JSON.parse(JSON.stringify(await deps.core(da, GIORNI_BLOCCO, gruppo))));
-    const r = await (deps.fetch ?? fetch)((deps.upstream ?? config.upstream) + "/api/get_disponibilita", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify([da, GIORNI_BLOCCO, gruppo]),
-      cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
-    });
-    return ripulisci(await r.json());
+    return ripulisci(JSON.parse(JSON.stringify(await deps.core(da, GIORNI_BLOCCO, gruppo))));
   } catch {
     return { ok: false, stato: 502 };
   }
@@ -172,7 +161,7 @@ async function leggi(da: string, gruppo: string, deps: Deps): Promise<Esito> {
  * e le letture vere dei calendari sono al più venti al minuto in tutto (dietro sslh i client non si
  * distinguono, quindi il limite è uno solo): oltre, 429.
  */
-export async function leggiBlocco(da: string, gruppo: string, deps: Deps = {}): Promise<Esito> {
+export async function leggiBlocco(da: string, gruppo: string, deps: Deps): Promise<Esito> {
   const adesso = deps.adesso?.() ?? Date.now();
   const chiave = `${da}|${gruppo}`;
   const salvata = cache.get(chiave);
@@ -197,7 +186,7 @@ export async function leggiBlocco(da: string, gruppo: string, deps: Deps = {}): 
 export const MESSAGGIO_INCOMPLETO = "Alcuni calendari non sono aggiornati al momento: gli orari occupati potrebbero essere incompleti.";
 
 /** Il corpo di /api/disponibilita: nella forma di get_events, così la pagina legge tutto come sempre. */
-export async function leggiDisponibilita(r: Richiesta, deps: Deps = {}): Promise<{ ok: true; events: Evento[]; errors: string[] } | { ok: false; stato: 404 | 429 | 502 }> {
+export async function leggiDisponibilita(r: Richiesta, deps: Deps): Promise<{ ok: true; events: Evento[]; errors: string[] } | { ok: false; stato: 404 | 429 | 502 }> {
   const esiti = await Promise.all(blocchi(r.da, r.a).map((b) => leggiBlocco(b, r.gruppo, deps)));
   const guasto = esiti.find((e) => !e.ok);
   if (guasto && !guasto.ok) {

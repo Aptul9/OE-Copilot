@@ -5,7 +5,7 @@ import { personalizzazione } from "./personalizzazione";
 import { aliasPerAccount, colorForAccount, nomePredefinitoDi, type Config } from "./stato";
 import { isDict, pyStr } from "./py";
 
-// Regole comuni alle caselle lette dall'agente (caselle.py): di che azienda è una riunione, quale copia tenere fra due uguali, che
+// Regole comuni alle caselle lette dall'agente (era caselle.py, fino al commit 142e789): di che azienda è una riunione, quale copia tenere fra due uguali, che
 // colore darle. Non dipendono da dove arrivano gli eventi.
 
 /** Un evento come lo manda get_events: i campi li decide l'agente e questo codice, la pagina li legge per nome. */

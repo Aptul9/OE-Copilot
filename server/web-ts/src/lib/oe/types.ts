@@ -1,5 +1,5 @@
-// Le forme dei dati che l'API Python (app.Api) restituisce alla pagina. Sono quelle del file
-// web/app.js: il servizio ui le serve così come sono, qui si danno solo i tipi.
+// Le forme dei dati che l'API del gateway (lib/core/api.ts) restituisce alla pagina. Sono quelle della
+// vecchia pagina (app.js, nella storia di git fino a 2d57a83^): qui si danno solo i tipi.
 
 export type Stato = "ok" | "avviso" | "errore";
 export type FonteStato = { stato: Stato; msg: string };
@@ -106,7 +106,7 @@ export type NuovoEvento = {
 
 export type Esito = { ok: boolean; error?: string };
 
-/** I metodi di Api che il servizio ui espone (METODI di server/ui/server.py): argomenti e risposta. */
+/** I metodi dell'API che il gateway serve (apiTs in lib/core/api.ts): argomenti e risposta. */
 export type Metodi = {
   get_config: [[], Config];
   save_config: [[Partial<Config>], Esito];

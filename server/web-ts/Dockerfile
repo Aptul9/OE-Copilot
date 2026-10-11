@@ -1,4 +1,4 @@
-# Gateway dell'interfaccia web: pagina di accesso, sessioni e proxy verso il servizio ui.
+# Gateway dell'interfaccia web: pagina di accesso, sessioni, metodi dell'API in TypeScript e loghi.
 # L'immagine si costruisce sulla macchina che la esegue (arm64 sulla VM).
 FROM node:26-slim AS build
 WORKDIR /app
@@ -15,7 +15,9 @@ ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
-# /dati (gateway.db) è montata da fuori e appartiene all'utente 10001, lo stesso del servizio ui
+# i loghi che porta l'immagine (personale.png, l'icona degli eventi personali): il gateway li cerca dopo quelli di /dati/logos
+COPY --from=build /app/logos-predefiniti ./logos-predefiniti
+# /dati (gateway.db, loghi delle aziende) è montata da fuori e appartiene all'utente 10001
 USER 10001
 EXPOSE 3000
 CMD ["node", "server.js"]

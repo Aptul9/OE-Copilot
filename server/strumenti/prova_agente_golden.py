@@ -3,9 +3,9 @@
 
 Costruisce un calendar.db come quello del telefono (tabelle Calendars, Events, Attendees) con dati inventati, avvia
 l'agente vero (agent.py, HTTP) su una porta libera, chiede /api/calendari e /api/eventi per alcune finestre e confronta le
-risposte con quelle registrate in golden/agente.json (la risposta intera dell'agente: è anche quello che il servizio ui
-e il gateway ricevono nelle loro prove). In più controlla a parte, senza il file registrato, i fatti che devono valere
-(l'ora locale prima e dopo il cambio dell'ora, un'occorrenza annullata, una spostata, i doppioni).
+risposte con quelle registrate in golden/agente.json (la risposta intera dell'agente: è anche quello che il gateway
+riceve nelle sue prove, server/web-ts/test/golden-*.test.ts). In più controlla a parte, senza il file registrato, i fatti
+che devono valere (l'ora locale prima e dopo il cambio dell'ora, un'occorrenza annullata, una spostata, i doppioni).
 
 Si esegue nell'immagine dell'agente (ha le librerie e il fuso di Roma), con il codice dell'agente in /app:
     docker run --rm -v "$PWD/server/agent:/app:ro" -v "$PWD/server/strumenti:/prove:ro" oe-copilot-agent python /prove/prova_agente_golden.py
@@ -154,12 +154,12 @@ FINESTRE = [
     ["2026-10-19T00:00:00", "2026-11-09T00:00:00"],             # tre settimane a cavallo del cambio dell'ora
     ["2026-10-25T00:00:00", "2026-10-26T00:00:00"],             # il giorno del cambio dell'ora
     ["2026-11-02T00:00:00+01:00", "2026-11-03T00:00:00+01:00"],     # con lo scarto
-    ["2026-11-02T00:00:00", "2026-11-03T00:00:00"],             # lo stesso giorno senza scarto: com'è dopo che il servizio ui l'ha convertito
+    ["2026-11-02T00:00:00", "2026-11-03T00:00:00"],             # lo stesso giorno senza scarto: com'è dopo che il gateway l'ha convertito
     ["2026-10-01T00:00:00", "2026-12-31T00:00:00"],             # il trimestre
 ]
 
 
-# finestre in più solo per i calendari ICS: le prove del servizio ui e del gateway le chiedono anche quando l'agente non ha una
+# finestre in più solo per i calendari ICS: le prove del gateway le chiedono anche quando l'agente non ha una
 # risposta registrata per i telefoni (lì un 404 prova la copia salvata)
 FINESTRE_ICS_IN_PIU = [
     ["2026-09-01T00:00:00", "2026-09-08T00:00:00"],
@@ -495,7 +495,7 @@ def main():
         with open(REGISTRATO, "w", encoding="utf-8", newline="\n") as f:
             json.dump(letto, f, ensure_ascii=False, sort_keys=True, indent=1)
             f.write("\n")
-        # i calendari ICS di prova, con le righe a capo di git (LF), per le prove del servizio ui e del gateway che li servono
+        # i calendari ICS di prova, con le righe a capo di git (LF), per le prove del gateway che li serve
         # (html e rotto servono ai link che non si possono aggiungere, o che non hanno un nome)
         cartella_ics = os.path.join(os.path.dirname(REGISTRATO), "ics")
         os.makedirs(cartella_ics, exist_ok=True)

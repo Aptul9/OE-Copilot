@@ -17,8 +17,8 @@ import {
 } from "./stato";
 import { personalizzazione } from "./personalizzazione";
 
-// I metodi di app.Api che il servizio ui esponeva alla pagina, scritti qui (app.py): la lettura e la scrittura. Il gateway li serve da
-// sé. Ogni metodo riceve gli argomenti della lista JSON e restituisce quello che finisce nel corpo della risposta.
+// I metodi di app.Api che il servizio Python ui esponeva alla pagina, scritti qui (era app.py, fino al commit 142e789): la lettura e la
+// scrittura. Il gateway li serve da sé. Ogni metodo riceve gli argomenti della lista JSON e restituisce quello che finisce nel corpo della risposta.
 
 /** Un argomento mancante o di un altro tipo: Python lo diceva con un TypeError, qui lo stesso con un testo suo. */
 export class ErroreArgomenti extends Error {}

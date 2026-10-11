@@ -10,7 +10,7 @@ import { COLORE_FESTIVITA, FESTIVITA_ID, FESTIVITA_NOME, FESTIVITA_URL } from ".
 import { ErroreValore, messaggio, testoPulito } from "./py";
 import { colorForAccount, impostaAcceso, modificaConfig, type Config } from "./stato";
 
-// Calendari sottoscritti con un link ICS (ics_feed.py): Google, Apple, le festività italiane. Il link è di fatto una chiave: chi ce
+// Calendari sottoscritti con un link ICS (era ics_feed.py, fino al commit 142e789): Google, Apple, le festività italiane. Il link è di fatto una chiave: chi ce
 // l'ha legge il calendario, quindi sta solo nella configurazione sul server. Il testo si scarica da qui, con la sua copia su disco
 // e il suo ritardo; le ricorrenze (RRULE, EXDATE, RECURRENCE-ID, fusi) le espande l'agente, la stessa libreria che legge il telefono.
 
@@ -147,7 +147,7 @@ export async function testoCalendario(id: string, url: string): Promise<[string 
 const ILLEGGIBILE = "Il link risponde ma non contiene un calendario iCal valido. Assicurati di aver copiato l'indirizzo segreto in formato iCal.";
 
 /**
- * Aggiunge un calendario da link (ics_feed.add_feed) dopo aver controllato che il link risponda e che sia un calendario: il controllo
+ * Aggiunge un calendario da link dopo aver controllato che il link risponda e che sia un calendario: il controllo
  * lo fa l'agente, con la stessa libreria che poi espande le ricorrenze. Solleva ErroreValore con il testo che la pagina mostra.
  */
 export async function aggiungiFeed(nome: unknown, url: unknown): Promise<{ id: string; name: string; url: string }> {

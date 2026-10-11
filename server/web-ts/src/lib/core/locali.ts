@@ -5,7 +5,7 @@ import { ACCOUNT_LOCALE } from "./personalizzazione";
 import { ErroreValore, isDict, pyBool, testoPulito, tipoPy } from "./py";
 import { colorForAccount, type Config } from "./stato";
 
-// Gli eventi aggiunti a mano dentro l'app, calendario "Altro" (local_events.py): l'unico calendario su cui l'app scrive. Stanno nel
+// Gli eventi aggiunti a mano dentro l'app, calendario "Altro" (era local_events.py, fino al commit 142e789): l'unico calendario su cui l'app scrive. Stanno nel
 // database dello stato (archivio.ts), così non toccano nessuna casella di posta e non richiedono permessi.
 
 export const ID_CALENDARIO = "local::altro";

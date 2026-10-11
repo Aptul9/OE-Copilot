@@ -1,4 +1,4 @@
-"""Agente di Oe Copilot sulla VM: legge i calendari e li serve al servizio ui.
+"""Agente di Oe Copilot sulla VM: legge i calendari e li serve al gateway.
 
 L'unica fonte e' il calendario di sistema del telefono Android virtuale, tenuto
 aggiornato da client veri con i login fatti dentro di loro: Outlook per le

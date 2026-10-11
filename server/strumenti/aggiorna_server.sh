@@ -35,8 +35,8 @@ avvia() {
     sudo -n systemctl restart "$SERVIZIO"
 }
 
-# Interfaccia web (facoltativa, GUIDA.md 4.7): il servizio ui, il gateway che chiede
-# l'accesso e il Caddy che le mette HTTPS davanti. Parte solo se in .env c'è UI_HOST.
+# Interfaccia web (facoltativa, GUIDA.md 4.7): il gateway, che chiede l'accesso e serve la
+# pagina, l'API e i loghi, e il Caddy che le mette HTTPS davanti. Parte solo se in .env c'è UI_HOST.
 # Gira dopo che agente e battito sono a posto e non fa tornare indietro niente: se la web
 # non parte, la Action diventa rossa ma l'agente e il telefono restano come sono. Il Caddy
 # nuovo si ricrea solo se il gateway è sano (depends_on): se non lo è resta quello di prima.
@@ -46,16 +46,21 @@ avvia_ui() {
     for v in ADMIN_EMAIL ADMIN_PASSWORD BETTER_AUTH_SECRET; do
         grep -q "^$v=." .env || { echo "manca $v in $DIR/.env (vedi GUIDA.md, 4.7): l'interfaccia web resta com'è" >&2; return 1; }
     done
-    docker compose up -d --build ui gateway caddy-ui
-    for servizio in oe-copilot-ui oe-copilot-gateway; do
-        stato=""
-        for _ in $(seq 1 30); do
-            stato="$(docker inspect -f '{{.State.Health.Status}}' "$servizio" 2>/dev/null)"
-            [ "$stato" = healthy ] && break
-            sleep 2
-        done
-        [ "$stato" = healthy ] || { echo "il servizio $servizio non risponde" >&2; docker logs --tail 40 "$servizio" >&2 || true; return 1; }
+    docker compose up -d --build gateway caddy-ui \
+        || { echo "docker compose non ha avviato gateway e caddy-ui" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
+    # Il servizio ui non c'è più. Il suo container e la sua immagine, rimasti dalle versioni di prima, si tolgono solo
+    # adesso: il gateway vecchio gli chiedeva i loghi fino a questo punto, quello nuovo (sano) fa da sé.
+    if docker container inspect oe-copilot-ui >/dev/null 2>&1; then
+        docker rm -f oe-copilot-ui >/dev/null && echo "tolto il container oe-copilot-ui: il servizio ui non c'è più"
+    fi
+    docker image rm oe-copilot-ui >/dev/null 2>&1 || true
+    stato=""
+    for _ in $(seq 1 30); do
+        stato="$(docker inspect -f '{{.State.Health.Status}}' oe-copilot-gateway 2>/dev/null)"
+        [ "$stato" = healthy ] && break
+        sleep 2
     done
+    [ "$stato" = healthy ] || { echo "il servizio oe-copilot-gateway non risponde" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
     # il cancello deve chiudere davvero: senza sessione la pagina rimanda a /login e l'API risponde 401
     [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3190/logos/personale.png)" = 302 ] \
         && [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H 'Content-Type: application/json' -d '[]' http://127.0.0.1:3190/api/get_config)" = 401 ] \

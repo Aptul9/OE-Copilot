@@ -16,13 +16,13 @@ export const config = {
   get db() {
     return process.env.GATEWAY_DB || "/dati/gateway.db";
   },
-  // Il servizio Python con la pagina e l'API, non pubblicato: ci si arriva solo da qui
-  get upstream() {
-    return (process.env.UI_UPSTREAM || "http://ui:8181").replace(/\/+$/, "");
-  },
   // La cartella dei dati dell'app (config.json, personalizzazione.json, cache, eventi personali, loghi): ui-dati/ sul server
   get dati() {
     return process.env.OE_DATI || "/dati";
+  },
+  // I loghi che porta l'immagine (personale.png, l'icona degli eventi personali): LOGHI_PREDEFINITI, altrimenti logos-predefiniti accanto a server.js
+  get loghiPredefiniti() {
+    return process.env.LOGHI_PREDEFINITI || path.join(process.cwd(), "logos-predefiniti");
   },
   // Il database dello stato dell'app (configurazione ed eventi personali): lo stesso delle sessioni; senza GATEWAY_DB, gateway.db nella cartella dei dati
   get dbStato() {

@@ -4,8 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Quello che le prove del gateway contro il servizio ui (Python) hanno in comune: i file registrati, l'agente finto che ripete le risposte
-// registrate, il server dei calendari ICS di prova e la cartella dei dati costruita dal file di scenari (golden/ui/fixture.json).
+// Quello che le prove del gateway contro le risposte registrate dal servizio ui (Python, tolto: l'ultimo commit che lo contiene è 142e789)
+// hanno in comune: i file registrati, l'agente finto che ripete le risposte registrate, il server dei calendari ICS di prova e la
+// cartella dei dati costruita dal file di scenari (golden/ui/fixture.json).
 
 export const GOLDEN = fileURLToPath(new URL("../../strumenti/golden/", import.meta.url));
 export const leggi = (...p: string[]) => JSON.parse(fs.readFileSync(path.join(GOLDEN, ...p), "utf-8"));
@@ -79,7 +80,7 @@ export const avviaAgente = (stato: { modo: string }) =>
     risposta(200, dato);
   });
 
-/** La cartella dei dati che costruisce anche il servizio ui (prova_ui_golden.py, prepara_dati). */
+/** La cartella dei dati di partenza: gli stessi file con cui il servizio ui registrò le risposte (li costruiva prepara_dati di prova_ui_golden.py, commit 142e789). */
 export function preparaDati(profilo: string, icsUrl: string): string {
   const dati = fs.mkdtempSync(path.join(os.tmpdir(), "oe-golden-"));
   const scrivi = (nome: string, v: unknown) => fs.writeFileSync(path.join(dati, nome), JSON.stringify(v, null, 2));

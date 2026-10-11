@@ -9,9 +9,10 @@ import { azzeraFeed } from "@/lib/core/ics";
 import { fissaOra } from "@/lib/core/orologio";
 import { avviaAgente, avviaIcs, CHIAVE, fixture, leggi, normalizza, ORA_FISSA_MS, preparaDati } from "./golden-comune";
 
-// La lettura del gateway contro quella del servizio ui (Python): le stesse chiamate sulla stessa cartella dei dati, con lo stesso
-// agente finto, devono dare le stesse risposte e la stessa cartella a fine sequenza. Le risposte "giuste" le ha registrate il
-// servizio ui (server/strumenti/prova_ui_golden.py, golden/ui-lettura.json); la Action controlla che il servizio ui le dia ancora.
+// La lettura del gateway contro le risposte registrate dal servizio ui (Python): le stesse chiamate sulla stessa cartella dei dati, con
+// lo stesso agente finto, devono dare le stesse risposte e la stessa cartella a fine sequenza. Le risposte "giuste" (golden/ui-lettura.json)
+// le registrò il servizio ui quando c'era, con server/strumenti/prova_ui_golden.py: l'ultimo commit che li contiene è 142e789. Oggi il
+// servizio non gira più e nessuno le rigenera: sono dati registrati, e una differenza è un comportamento del gateway che è cambiato.
 // La configurazione e gli eventi personali della cartella sono quelli di prima: il gateway li importa nel suo database alla prima
 // chiamata e da lì in poi li riscrive uguali ai file che scriveva Python.
 
@@ -19,7 +20,7 @@ const registrato = leggi("ui-lettura.json");
 
 type Scenario = { profilo: string; modo: string; nome: string; metodo: NomeMetodoTs; args: unknown[] };
 
-describe.each(Object.keys(fixture.profili))("gateway contro il servizio ui, profilo %s", (profilo) => {
+describe.each(Object.keys(fixture.profili))("gateway contro le risposte registrate, profilo %s", (profilo) => {
   const stato = { modo: "normale" };
   let agente: { server: http.Server; url: string };
   let ics: { server: http.Server; url: string };

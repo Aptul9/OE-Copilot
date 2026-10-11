@@ -12,7 +12,7 @@ export class ApiError extends Error {
 type Fetch = typeof fetch;
 
 /**
- * Il client dell'API Python: ogni metodo di app.Api è un POST /api/<metodo> con gli argomenti in
+ * Il client dell'API del gateway: ogni metodo (lib/core/api.ts) è un POST /api/<metodo> con gli argomenti in
  * una lista JSON. Una risposta 401 vuol dire che la sessione è finita: si torna all'accesso.
  */
 export function creaApi(fetchImpl: Fetch = (...a) => fetch(...a), aSessioneFinita: () => void = vaiAllAccesso) {

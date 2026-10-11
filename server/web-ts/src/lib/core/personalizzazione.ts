@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { nelleDati, leggiTesto } from "./dati";
 import { Dict, elencoTesti, isDict, minuscole, oppure, pyBool, pyStr } from "./py";
 
-// Nomi, domini e caselle di chi usa l'app non stanno nel codice ma in personalizzazione.json (config.py): qui si leggono e si
+// Nomi, domini e caselle di chi usa l'app non stanno nel codice ma in personalizzazione.json (lo leggeva config.py, fino al commit 142e789): qui si leggono e si
 // derivano le stesse costanti. Senza il file l'app funziona lo stesso e i calendari prendono il nome dal dominio della casella.
 
 export const ACCOUNT_LOCALE = "Eventi personali";

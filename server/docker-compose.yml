@@ -4,7 +4,7 @@
 name: oe-copilot
 services:
   # agent = legge il calendario del telefono e lo serve con un'API a chiave
-  # al servizio ui (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (GUIDA.md, sezione 5).
+  # al gateway (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (GUIDA.md, sezione 5).
   agent:
     build: ./agent
     container_name: oe-copilot-agent
@@ -21,7 +21,7 @@ services:
       - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
       # Segno di vita del servizio che aggiorna il telefono (battito.json).
       - ./stato:/stato:ro
-    # Solo localhost: dal PC ci si arriva con un tunnel SSH e il servizio ui dalla rete di
+    # Solo localhost: dal PC ci si arriva con un tunnel SSH e il gateway dalla rete di
     # compose, niente è esposto su internet.
     ports:
       - "127.0.0.1:3180:8180"
@@ -54,38 +54,19 @@ services:
       - "127.0.0.1:5555:5555"
     restart: unless-stopped
 
-  # Interfaccia web (facoltativa, GUIDA.md 4.7): la logica dell'app (app.py e i suoi moduli),
-  # che il gateway usa per la pagina del browser. Non è pubblicata e non ha password: ci arriva solo il
-  # gateway, che chiede l'accesso. Le copie del codice dell'app le mette strumenti/prepara_ui.sh.
-  ui:
-    build: ./ui
-    container_name: oe-copilot-ui
-    environment:
-      - OE_AGENTE_URL=http://agent:8180
-      - OE_AGENTE_CHIAVE=${API_KEY}
-    volumes:
-      # configurazione, interruttori, cache e personalizzazione.json: solo sul server
-      - ./ui-dati:/dati
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8181/salute', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-    restart: unless-stopped
-
-  # Gateway (web-ts/, Next.js e Better Auth): pagina di accesso, sessioni e proxy verso ui.
-  # Senza sessione una pagina rimanda a /login e l'API risponde 401; con la sessione passa
-  # tutto a ui. Il proprietario nasce da ADMIN_EMAIL e ADMIN_PASSWORD di .env, le sessioni
-  # e il blocco per account stanno in ui-dati/gateway.db. La porta è solo su localhost
+  # Interfaccia web (facoltativa, GUIDA.md 4.7). Gateway (web-ts/, Next.js e Better Auth): pagina di
+  # accesso, sessioni, pagina in TypeScript, metodi dell'API e loghi. Senza sessione una pagina rimanda
+  # a /login e l'API risponde 401; con la sessione risponde da sé (POST /api/<metodo>, GET /logos/<file>)
+  # e il resto è 404. Il proprietario nasce da ADMIN_EMAIL e ADMIN_PASSWORD di .env, le sessioni, il
+  # blocco per account e lo stato dell'app stanno in ui-dati/gateway.db. La porta è solo su localhost
   # (per le prove dal server): ci arriva caddy-ui dalla rete di compose.
   gateway:
     build: ./web-ts
     container_name: oe-copilot-gateway
     user: "10001:10001"
     environment:
-      - UI_UPSTREAM=http://ui:8181
       - GATEWAY_DB=/dati/gateway.db
-      # i metodi della lettura (lib/core) li serve il gateway: leggono la cartella dei dati e chiedono all'agente
+      # i metodi dell'API (lib/core) leggono e scrivono la cartella dei dati e chiedono all'agente; i loghi stanno in /dati/logos
       - OE_DATI=/dati
       - AGENTE_URL=http://agent:8180
       - AGENTE_CHIAVE=${API_KEY}
@@ -97,9 +78,6 @@ services:
       - ./ui-dati:/dati
     ports:
       - "127.0.0.1:3190:3000"
-    depends_on:
-      ui:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/salute').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 30s

@@ -1,6 +1,6 @@
 import type { Calendario, Evento, FonteStato, GruppiCalendari, SchedaTimesheet } from "./types";
 
-// Funzioni pure della pagina, portate da web/app.js: niente DOM, niente rete, provabili da sole.
+// Funzioni pure della pagina, portate dalla vecchia pagina (app.js, nella storia di git fino a 2d57a83^): niente DOM, niente rete, provabili da sole.
 
 export const capitalizza = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 

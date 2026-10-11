@@ -172,26 +172,26 @@ describe("eventiPubblici", () => {
   });
 });
 
-// ---- la lettura dal servizio ui -------------------------------------------------------------------
+// ---- la lettura dei blocchi -----------------------------------------------------------------------
 const BUONO = { ok: true, completo: true, impegni: [["2026-10-12T09:00:00", "2026-10-12T10:00:00"]], festivita: [["2026-11-01T00:00:00", "2026-11-02T00:00:00", "Ognissanti"]] };
 const BLOCCO = blocchi("2026-10-14", "2026-10-15")[0];
 
 function finto(risposta: unknown = BUONO) {
-  const chiamate: { url: string; corpo: unknown }[] = [];
-  const f = (async (url: string, init: RequestInit) => {
-    chiamate.push({ url, corpo: JSON.parse(String(init.body)) });
+  const chiamate: { corpo: unknown }[] = [];
+  const core = async (da: string, giorni: number, gruppo: string) => {
+    chiamate.push({ corpo: [da, giorni, gruppo] });
     const r = typeof risposta === "function" ? (risposta as (n: number) => unknown)(chiamate.length) : risposta;
     if (r instanceof Error) throw r;
-    return new Response(typeof r === "string" ? r : JSON.stringify(r), { status: 200 });
-  }) as unknown as typeof fetch;
-  return { chiamate, deps: { fetch: f, upstream: "http://ui:8181" } };
+    return r;
+  };
+  return { chiamate, deps: { core } };
 }
 
 describe("leggiBlocco", () => {
-  it("chiede al servizio ui il metodo giusto: inizio del blocco, 28 giorni, gruppo", async () => {
+  it("chiede alla lettura i parametri giusti: inizio del blocco, 28 giorni, gruppo", async () => {
     const { chiamate, deps } = finto();
     const e = await leggiBlocco(BLOCCO, "antonio", deps);
-    expect(chiamate).toEqual([{ url: "http://ui:8181/api/get_disponibilita", corpo: [BLOCCO, 28, "antonio"] }]);
+    expect(chiamate).toEqual([{ corpo: [BLOCCO, 28, "antonio"] }]);
     expect(e).toEqual({ ok: true, completo: true, impegni: BUONO.impegni, festivita: BUONO.festivita });
   });
 
@@ -208,7 +208,7 @@ describe("leggiBlocco", () => {
     expect(e.ok && e.festivita[0][2]).toHaveLength(80);
   });
 
-  it("un minuto in memoria: la seconda richiesta uguale non va al servizio, una diversa sì", async () => {
+  it("un minuto in memoria: la seconda richiesta uguale non rilegge, una diversa sì", async () => {
     const { chiamate, deps } = finto();
     let t = 1_000_000;
     const d = { ...deps, adesso: () => t };
@@ -251,10 +251,10 @@ describe("leggiBlocco", () => {
 
   const t1 = ["2026-10-12T09:00:00", "2026-10-12T10:00:00"];
   it.each([
-    ["errore del servizio", { ok: false, error: "Calendari non leggibili" }],
-    ["errore 500 del servizio", { error: "boom" }],
-    ["non è JSON", "<html>"],
-    ["rete", new Error("ECONNREFUSED")],
+    ["errore della lettura", { ok: false, error: "Calendari non leggibili" }],
+    ["una risposta di errore senza ok", { error: "boom" }],
+    ["un testo al posto dell'oggetto", "<html>"],
+    ["la lettura solleva un errore", new Error("ECONNREFUSED")],
     ["nessuna risposta", null],
     ["manca la lista degli impegni", { ok: true, completo: true, festivita: [] }],
     ["un orario di testo libero", { ...BUONO, impegni: [["9", "10"]] }],
@@ -343,7 +343,7 @@ describe("leggiDisponibilita", () => {
     expect(await leggiDisponibilita({ da: "2026-10-01", a: "2026-11-30", gruppo: "" }, d2)).toEqual({ ok: false, stato: 502 });
   });
 
-  it("niente di quello che il servizio aggiunge arriva alla pagina", async () => {
+  it("niente di quello che la lettura aggiunge arriva alla pagina", async () => {
     const { deps } = finto({ ...BUONO, titolo: "SEGRETO", impegni: BUONO.impegni });
     const e = await leggiDisponibilita(R, deps);
     expect(JSON.stringify(e)).not.toMatch(/SEGRETO|titolo|luogo|organizer|location/i);

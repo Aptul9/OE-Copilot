@@ -9,8 +9,9 @@ import { type Dict, isDict, pyStr } from "./py";
 // Lo stato di chi usa l'app: la configurazione (config.json) e gli eventi personali (local_events.json) stanno in gateway.db, nello
 // stesso database delle sessioni. Una volta sola, alla prima apertura, si importano i due file di prima; da lì in poi il database è la
 // fonte e ogni modifica è una transazione (il servizio Python rileggeva e riscriveva il file a ogni richiesta, senza blocchi).
-// I due file si riscrivono dopo ogni modifica, nel formato di sempre: servono a tornare alla versione precedente senza perdere niente e
-// spariscono con il servizio ui. Non si rileggono mai, salvo nell'importazione.
+// I due file si riscrivono dopo ogni modifica, nel formato di sempre: servono a tornare a una versione che li leggeva (fino al commit
+// 142e789 c'era il servizio Python ui) senza perdere niente, e a correggere lo stato a mano (GUIDA.md, sezione 7). Non si rileggono mai,
+// salvo nell'importazione.
 
 export type Config = Dict;
 

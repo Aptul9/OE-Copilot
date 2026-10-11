@@ -2,7 +2,7 @@ import type { Ev } from "./caselle";
 import { chiave, isoSecondi, mezzanotte, naiveLocale, piuGiorni, type Naive } from "./fuso";
 import { pyStr } from "./py";
 
-// Quello che la pagina pubblica (senza accesso) può sapere degli impegni: quando, mai cosa (disponibilita.py). Da qui escono solo
+// Quello che la pagina pubblica (senza accesso) può sapere degli impegni: quando, mai cosa (era disponibilita.py, fino al commit 142e789). Da qui escono solo
 // orari di inizio e fine, e le festività (date pubbliche): né un titolo, né un luogo, né chi partecipa, né il nome di un calendario.
 
 const maggiore = (a: Naive, b: Naive) => (chiave(a) >= chiave(b) ? a : b);

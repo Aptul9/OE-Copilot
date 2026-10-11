@@ -1,5 +1,5 @@
 {
-  "_nota": "Dati inventati per le prove del servizio ui e del gateway (prova_ui_golden.py, test/golden-lettura.test.ts e golden-scritture.test.ts): lo stesso file, la stessa sequenza di chiamate. {ICS} diventa l'indirizzo del server dei calendari ICS di prova.",
+  "_nota": "Dati inventati per le prove del gateway (test/golden-lettura.test.ts e golden-scritture.test.ts). Le risposte registrate in ui-lettura.json e ui-scritture.json le diede il servizio Python ui, ora tolto, con questo stesso file e la stessa sequenza di chiamate: l'ultimo commit che lo contiene è 142e789. {ICS} diventa l'indirizzo del server dei calendari ICS di prova.",
   "profili": {
     "base": {
       "personalizzazione": {

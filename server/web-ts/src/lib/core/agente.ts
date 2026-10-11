@@ -7,7 +7,7 @@ import { personalizzazione } from "./personalizzazione";
 import { messaggio, pyStr } from "./py";
 import { aliasPerAccount, colorForAccount, type Config } from "./stato";
 
-// Le caselle lette dall'agente sul server (agente_remoto.py): una richiesta HTTP con la chiave dell'API. L'agente tiene i login,
+// Le caselle lette dall'agente sul server (era agente_remoto.py, fino al commit 142e789): una richiesta HTTP con la chiave dell'API. L'agente tiene i login,
 // legge il telefono e risponde con gli eventi e lo stato di ogni casella; qui si decide il pallino di ogni azienda.
 
 export class AgenteNonDisponibile extends Error {}

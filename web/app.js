@@ -15,6 +15,7 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 // "url" apre il gestionale in Chrome; "azione" chiama una funzione registrata
 // da un'estensione personale (web/personale/estensione.js).
 let TIMESHEET_AZIENDE = [];
+let CONFIG_INIZIALE = {};   // get_config() letta prima di disegnare il calendario
 
 // Gli errori JS in una finestra pywebview non si vedono da nessuna parte:
 // li si rimanda a Python, che li scrive nel log.
@@ -94,9 +95,11 @@ function init() {
   // Le impostazioni personali servono prima di disegnare qualunque cosa (sigle,
   // calendari secondari...): si chiedono per prime. Se la richiesta fallisce,
   // l'app parte lo stesso con i valori neutri.
-  api.get_personalizzazione()
-    .then(applicaPersonalizzazione, () => {})
-    .finally(avviaInterfaccia);
+  // La vista salvata nella configurazione serve prima di creare il calendario.
+  Promise.all([
+    api.get_personalizzazione().then(applicaPersonalizzazione, () => {}),
+    api.get_config().then((c) => { CONFIG_INIZIALE = c || {}; }, () => {}),
+  ]).finally(avviaInterfaccia);
 }
 
 function avviaInterfaccia() {
@@ -132,8 +135,18 @@ function avviaInterfaccia() {
 
 // ================= CALENDARIO =================
 function setupCalendar() {
+  const viste = $$("#view-switch button").map((x) => x.dataset.view);
   calendar = new FullCalendar.Calendar($("#calendar"), {
-    initialView: "timeGridWeek",
+    initialView: viste.includes(CONFIG_INIZIALE.vista) ? CONFIG_INIZIALE.vista : "timeGridWeek",
+    views: {
+      // Tre giorni che scorrono di uno alla volta, come in Outlook.
+      [VISTA_3G]: {
+        type: "timeGrid",
+        duration: { days: 3 },
+        dateIncrement: { days: 1 },
+        titleFormat: { day: "numeric", month: "long", year: "numeric" },
+      },
+    },
     locale: "it",
     firstDay: 1,
     nowIndicator: true,
@@ -147,6 +160,10 @@ function setupCalendar() {
     // All'apertura la vista è posizionata sulle 9; scorrendo su si vedono
     // comunque le ore prima (07-09).
     scrollTime: "09:00:00",
+    // Spostandosi di giorno o di settimana l'altezza a cui si sta guardando resta
+    // quella (come in Outlook): alle 9 si torna solo cambiando vista. Va a livello
+    // del calendario: FullCalendar la legge una volta sola, dalla vista iniziale.
+    scrollTimeReset: false,
     slotDuration: "00:30:00",
     slotLabelInterval: "01:00:00",
     // Riunioni in sovrapposizione affiancate invece che una sopra l'altra:
@@ -172,11 +189,20 @@ function setupCalendar() {
     },
   });
   calendar.render();
+  // Ogni rilettura voluta (aggiornamento, interruttori della legenda, eventi nuovi)
+  // scarta la memoria della vista a 3 giorni: i dati letti prima sarebbero vecchi.
+  const rileggi = calendar.refetchEvents.bind(calendar);
+  calendar.refetchEvents = () => { cacheTreGiorni = null; rileggi(); };
+  setupScorrimentoTreGiorni();
 }
 
+let vistaCorrente = null;   // tipo della vista mostrata: calendar.view non c'è ancora al primo disegno
+
 function onDatesSet(info) {
+  vistaCorrente = info.view.type;
   const label = $("#range-label");
   if (label) label.textContent = capitalizza(info.view.title);
+  $("#calendar").classList.toggle("vista-3g", info.view.type === VISTA_3G);
   $$("#view-switch button").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.view === info.view.type));
   // Il mini-calendario segue il periodo mostrato dal calendario grande.
@@ -185,6 +211,71 @@ function onDatesSet(info) {
   renderMinical();
   // Cambiando settimana/vista le colonne sono nuove: vanno rimarcate.
   segnaGiorniRossi();
+}
+
+// ---- Scorrimento di un giorno alla volta nella vista a 3 giorni -----------------
+// Rotellina o trackpad in orizzontale, trascinamento, tocco e frecce spostano di un
+// giorno; l'asse delle ore resta fermo perché cambia solo il periodo mostrato.
+function setupScorrimentoTreGiorni() {
+  const el = $("#calendar");
+  const attiva = () => vistaCorrente === VISTA_3G
+    && !document.querySelector(".app").classList.contains("view-timesheet");
+  const sposta = (n) => { if (n) calendar.incrementDate({ days: n }); };
+
+  // Rotellina e trackpad: un giorno per gesto. Una spinta del trackpad manda eventi
+  // per quasi un secondo (inerzia): finché ne arrivano si resta fermi, altrimenti
+  // un colpetto salterebbe una settimana.
+  let ruotato = false, accumulo = 0, finePrimaDi = null;
+  el.addEventListener("wheel", (e) => {
+    const dx = e.deltaX || (e.shiftKey ? e.deltaY : 0);
+    if (!attiva() || !dx || (!e.shiftKey && Math.abs(dx) <= Math.abs(e.deltaY))) return;
+    e.preventDefault();   // niente scorrimento laterale del browser, né "indietro" a due dita
+    clearTimeout(finePrimaDi);
+    finePrimaDi = setTimeout(() => { ruotato = false; accumulo = 0; }, 140);
+    if (ruotato) return;
+    accumulo += dx;
+    if (Math.abs(accumulo) < 40) return;
+    ruotato = true;
+    sposta(accumulo > 0 ? 1 : -1);
+  }, { passive: false });
+
+  // Trascinamento col mouse, la penna o il dito: un giorno ogni larghezza di colonna.
+  // Il movimento verticale resta allo scorrimento normale della griglia.
+  let presa = null;
+  el.addEventListener("pointerdown", (e) => {
+    if (!attiva() || (e.pointerType === "mouse" && e.button !== 0)) return;
+    if (e.target.closest(".fc-event, a, button") || !e.target.closest(".fc-timegrid-body, .fc-col-header")) return;
+    const colonna = el.querySelector(".fc-timegrid-col[data-date]");
+    const larghezza = colonna ? colonna.getBoundingClientRect().width : 0;
+    if (larghezza) presa = { id: e.pointerId, x: e.clientX, y: e.clientY, larghezza, fatti: 0, attiva: false };
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (!presa || e.pointerId !== presa.id) return;
+    const dx = e.clientX - presa.x;
+    if (!presa.attiva) {
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - presa.y)) return;
+      presa.attiva = true;
+      el.classList.add("trascina");
+    }
+    const voluti = Math.round(-dx / presa.larghezza);
+    sposta(voluti - presa.fatti);
+    presa.fatti = voluti;
+  });
+  const lascia = (e) => {
+    if (!presa || e.pointerId !== presa.id) return;
+    presa = null;
+    el.classList.remove("trascina");
+  };
+  window.addEventListener("pointerup", lascia);
+  window.addEventListener("pointercancel", lascia);
+
+  document.addEventListener("keydown", (e) => {
+    if (!attiva() || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if (e.target.closest("input, textarea, select, [contenteditable]") || document.querySelector(".modal:not(.hidden)")) return;
+    e.preventDefault();
+    sposta(e.key === "ArrowRight" ? 1 : -1);
+  });
 }
 
 // ================= MINI CALENDARIO =================
@@ -324,14 +415,47 @@ function restringiWeekend() {
     "#calendar .fc-col-header-cell[data-date], #calendar .fc-timegrid-col[data-date]"
   ).forEach((el) => {
     const dow = new Date(el.dataset.date + "T00:00:00").getDay();
-    el.style.width = (dow === 0 || dow === 6) ? LARG : "";
+    // Nella vista a 3 giorni le colonne sono uguali: la larghezza lasciata dalla
+    // vista precedente (le celle si riusano) va tolta.
+    el.style.width = (vistaCorrente !== VISTA_3G && (dow === 0 || dow === 6)) ? LARG : "";
   });
 }
 
+// Vista a 3 giorni: ogni passo di un giorno chiede a FullCalendar un periodo nuovo.
+// Per non lasciare una colonna vuota fino alla risposta del server si legge un
+// intorno più largo e si risponde dalla memoria finché il periodo richiesto ci sta
+// dentro; vicino al bordo se ne rilegge uno nuovo in sottofondo.
+const VISTA_3G = "timeGridTreGiorni";
+const PRIMA_GIORNI = 7, DOPO_GIORNI = 14, SOGLIA_RABBOCCO = 3;
+let cacheTreGiorni = null;       // {da, a, eventi}: l'ultima lettura larga
+let rabboccoInCorso = false;
+
+const _giorniTra = (a, b) => Math.round((b - a) / 86400000);
+const _spostaGiorni = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+/** ISO con lo scarto orario locale, come quello che manda FullCalendar (2026-10-11T00:00:00+02:00). */
+function _isoLocale(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  const scarto = -d.getTimezoneOffset(), assoluto = Math.abs(scarto);
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+    + `${scarto < 0 ? "-" : "+"}${p(Math.floor(assoluto / 60))}:${p(assoluto % 60)}`;
+}
+
 function loadEvents(info, success, failure) {
+  const tre = _giorniTra(info.start, info.end) === 3;
+  const c = cacheTreGiorni;
+  if (tre && c && info.start >= c.da && info.end <= c.a) {
+    success(c.eventi);
+    rabboccaTreGiorni(info);
+    return;
+  }
+  if (!tre) cacheTreGiorni = null;
+  const da = tre ? _spostaGiorni(info.start, -PRIMA_GIORNI) : info.start;
+  const a = tre ? _spostaGiorni(info.end, DOPO_GIORNI) : info.end;
   hideBanner();
   syncInizio();
-  api.get_events(info.startStr, info.endStr).then((res) => {
+  api.get_events(tre ? _isoLocale(da) : info.startStr,
+                 tre ? _isoLocale(a) : info.endStr).then((res) => {
     if (res.outlook_starting) {
       // Le caselle non rispondono ancora (Outlook si sta avviando, o il server
       // dei calendari non si raggiunge): si mostrano i dati salvati e si riprova
@@ -351,35 +475,8 @@ function loadEvents(info, success, failure) {
       syncFine(true);
       if (eraFerma) refreshLegend();
     }
-    // Prima si raccolgono le festività (per la riga sotto il giorno), poi si
-    // tengono per la griglia solo gli eventi visibili e NON festività (queste
-    // ultime si mostrano solo sotto la data, mai come blocco nel calendario).
-    // Il pallino accanto a ogni calendario racconta QUESTA lettura, non lo stato
-    // di quando si è aperto l'elenco: prima poteva restare verde per ore mentre
-    // una sorgente non rispondeva più.
-    statoFonti = res.fonti || {};
-    aggiornaPallini();
-    raccogliFestivi(res.events || []);
-    const evs = (res.events || [])
-      .filter((e) => !e.nascosto && e.account !== "Festività")
-      .map((e) => {
-        const secondario = CALENDARI_SECONDARI.has(e.alias);
-        return {
-          id: e.id,
-          title: e.title,
-          start: e.start,
-          end: e.end,
-          allDay: e.allDay,
-          // Riempimento tenue + barretta piena: è la resa delle riunioni in Teams.
-          // Il riempimento è opaco: con un rgba le righe da 30 minuti della griglia
-          // si vedrebbero attraverso l'evento. Quelli secondari sono più tenui
-          // ancora, senza opacity (che avrebbe lo stesso effetto).
-          backgroundColor: tintaOpaca(e.color, secondario ? 7 : 14),
-          borderColor: secondario ? tintaOpaca(e.color, 55) : e.color,
-          classNames: secondario ? ["secondario"] : [],
-          extendedProps: e,
-        };
-      });
+    const evs = eventiDaRisposta(res);
+    cacheTreGiorni = tre && !res.outlook_starting ? { da, a, eventi: evs } : null;
     success(evs);
   }).catch((err) => {
     showBanner("Errore nel caricamento: " + err);
@@ -392,6 +489,53 @@ function loadEvents(info, success, failure) {
     syncFine(false);
     failure(err);
   });
+}
+
+/** Stato delle fonti, pallini e festività di una lettura; restituisce gli eventi per la griglia. */
+function eventiDaRisposta(res) {
+  // Prima si raccolgono le festività (per la riga sotto il giorno), poi si
+  // tengono per la griglia solo gli eventi visibili e NON festività (queste
+  // ultime si mostrano solo sotto la data, mai come blocco nel calendario).
+  // Il pallino accanto a ogni calendario racconta QUESTA lettura, non lo stato
+  // di quando si è aperto l'elenco: prima poteva restare verde per ore mentre
+  // una sorgente non rispondeva più.
+  statoFonti = res.fonti || {};
+  aggiornaPallini();
+  raccogliFestivi(res.events || []);
+  return (res.events || [])
+    .filter((e) => !e.nascosto && e.account !== "Festività")
+    .map((e) => {
+      const secondario = CALENDARI_SECONDARI.has(e.alias);
+      return {
+        id: e.id,
+        title: e.title,
+        start: e.start,
+        end: e.end,
+        allDay: e.allDay,
+        // Riempimento tenue + barretta piena: è la resa delle riunioni in Teams.
+        // Il riempimento è opaco: con un rgba le righe da 30 minuti della griglia
+        // si vedrebbero attraverso l'evento. Quelli secondari sono più tenui
+        // ancora, senza opacity (che avrebbe lo stesso effetto).
+        backgroundColor: tintaOpaca(e.color, secondario ? 7 : 14),
+        borderColor: secondario ? tintaOpaca(e.color, 55) : e.color,
+        classNames: secondario ? ["secondario"] : [],
+        extendedProps: e,
+      };
+    });
+}
+
+/** Rilegge in sottofondo l'intorno della vista a 3 giorni quando si è vicini al bordo. */
+function rabboccaTreGiorni(info) {
+  const c = cacheTreGiorni;
+  if (!c || rabboccoInCorso) return;
+  if (_giorniTra(c.da, info.start) >= SOGLIA_RABBOCCO && _giorniTra(info.end, c.a) >= SOGLIA_RABBOCCO) return;
+  rabboccoInCorso = true;
+  const da = _spostaGiorni(info.start, -PRIMA_GIORNI), a = _spostaGiorni(info.end, DOPO_GIORNI);
+  api.get_events(_isoLocale(da), _isoLocale(a)).then((res) => {
+    // Cache cambiata nel frattempo (aggiornamento forzato, altra vista): la lettura è vecchia.
+    if (cacheTreGiorni !== c || res.outlook_starting) return;
+    cacheTreGiorni = { da, a, eventi: eventiDaRisposta(res) };
+  }).catch(() => {}).finally(() => { rabboccoInCorso = false; });
 }
 
 // ================= SINCRONIZZAZIONE =================
@@ -555,7 +699,8 @@ function renderEventContent(arg) {
   const corner = arg.event.allDay ? "" : _cornerAzienda(p);
   // Nella vista Giorno c'è tutta la larghezza che serve: accanto all'orario si
   // scrive anche di che azienda è la riunione.
-  const azienda = arg.view.type === "timeGridDay" ? (p.alias || p.account || "") : "";
+  const azienda = arg.view.type === "timeGridDay" || arg.view.type === VISTA_3G
+    ? (p.alias || p.account || "") : "";
   const testoOra = azienda
     ? `${escapeHtml(arg.timeText)}<span class="ev-az"> · ${escapeHtml(azienda)}</span>`
     : escapeHtml(arg.timeText || "");
@@ -1119,7 +1264,11 @@ function setupUI() {
   $("#btn-zoom-out").addEventListener("click", () => cambiaZoom(-1));
   $("#btn-zoom-reset").addEventListener("click", () => applicaZoom(ZOOM_DEFAULT, true));
   $$("#view-switch button").forEach((b) =>
-    b.addEventListener("click", () => calendar && calendar.changeView(b.dataset.view)));
+    b.addEventListener("click", () => {
+      if (!calendar) return;
+      calendar.changeView(b.dataset.view);
+      api.save_config({ vista: b.dataset.view }).catch(() => {});
+    }));
 
   // Riquadri
   $("#btn-rescan").addEventListener("click", () => openCalendarsModal(true));

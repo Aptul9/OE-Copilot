@@ -944,3 +944,10 @@ html, body {
 
 /* ---------------- Interfaccia web: parti che servono solo all'app per Windows ---------------- */
 .nel-browser .solo-app { display: none !important; }
+
+/* Vista a 3 giorni: il movimento orizzontale è nostro (un giorno alla volta, vedi
+   setupScorrimentoTreGiorni), quello verticale resta allo scorrimento della griglia. */
+#calendar.vista-3g .fc-timegrid-body,
+#calendar.vista-3g .fc-col-header { touch-action: pan-y; }
+#calendar.vista-3g { overscroll-behavior-x: none; }
+#calendar.trascina { user-select: none; cursor: grabbing; }

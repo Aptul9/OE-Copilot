@@ -71,6 +71,8 @@ jobs:
 
       - name: Supervisore del telefono, tipi, prove e immagine
         working-directory: server/supervisore
+      - name: Agente in TypeScript (ricorrenze), installazione, tipi e prove
+        working-directory: server/agente-ts
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm run typecheck

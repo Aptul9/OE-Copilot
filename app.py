@@ -459,16 +459,6 @@ class Api:
         u.SetWindowPos(hwnd, 0, 0, 0, w, h, SWP)
         return {"ok": True}
 
-    # ---- interno -------------------------------------------------------
-    def _notify_js(self, fn, payload):
-        if not self._window:
-            return
-        import json
-        try:
-            self._window.evaluate_js(f"window.{fn} && window.{fn}({json.dumps(payload)})")
-        except Exception:
-            pass
-
 
 # Estensioni personali: funzioni in piu' scritte per una persona sola (per
 # esempio la mail mensile di un timesheet), che non stanno nel repository. Si

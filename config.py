@@ -257,9 +257,6 @@ NOMI_PER_DOMINIO = {str(k).strip().lower(): v for k, v in
 # eventi del loro calendario restano loro, senza essere riattribuiti.
 CASELLE_DI_COLLEGHI = _minuscole(_P.get("caselle_di_colleghi"))
 
-MESI_IT = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
-           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
-
 # Ordine con cui mostrare i calendari in "I miei calendari" (per nome mostrato).
 # Chi non è in elenco finisce in fondo, nell'ordine di Outlook.
 ORDINE_CALENDARI = list(_P.get("ordine_calendari") or ["Eventi personali", "Festività"])
@@ -464,10 +461,6 @@ def _nome_predefinito(indirizzo):
 
 def account_nascosto(indirizzo):
     return indirizzo.lower() in ACCOUNT_NASCOSTI
-
-
-# Un colore stabile e distinto per il calendario locale "Altro".
-COLORE_LOCALE = "#616161"
 
 
 def alias_per_account(cfg, indirizzi):

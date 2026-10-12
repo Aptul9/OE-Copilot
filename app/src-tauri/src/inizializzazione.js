@@ -5,6 +5,11 @@
 (function () {
   "use strict";
 
+  // Su Android la WebView lancia lo script due volte sulle pagine del sito (all'avvio del documento e a pagina iniziata):
+  // la seconda volta non deve fare niente, altrimenti i giri sono doppi, il permesso si chiede due volte e un avviso può uscire due volte
+  if (window.__oeInizializzato) return;
+  window.__oeInizializzato = true;
+
   // Una navigazione fallita (rete caduta) lascia la pagina di errore del browser: si torna alla pagina di avvio, che
   // mostra il messaggio, riprova da sola e riporta al sito appena risponde. Il controllo è differito perché all'avvio
   // dello script l'indirizzo della pagina di errore non è ancora quello definitivo.

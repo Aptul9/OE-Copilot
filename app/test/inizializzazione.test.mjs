@@ -258,6 +258,19 @@ test("dati in cache (stale): nessun avviso", async () => {
   assert.equal(a.stato().esito, "dati-non-freschi");
 });
 
+test("lanciato due volte nella stessa pagina (WebView di Android) lavora una volta sola", async () => {
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), permesso: null, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  const timerPrima = a.timer.length;
+  const contatori = a.sandbox.__oeNotifiche;
+  vm.runInContext(SCRIPT, a.sandbox);
+  assert.equal(a.timer.length, timerPrima);
+  assert.equal(a.sandbox.__oeNotifiche, contatori);
+  await a.giro();
+  assert.equal(a.chiamate.filter(([metodo]) => metodo === "get_events").length, 1);
+  assert.equal(a.sistema.richieste, 1);
+  assert.equal(a.notifiche.length, 1);
+});
+
 test("interruttore Notifiche spento: nessuna richiesta al sito", async () => {
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), notificheAttive: false, api: { get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) } });
   assert.equal(await a.giro(), 60_000);

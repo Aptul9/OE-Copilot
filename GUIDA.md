@@ -245,7 +245,7 @@ ssh <utente@server> "sudo rm /opt/oe-copilot/telefono/PAUSA"
    dispositivo non è certificato, l'ID del dispositivo (GSF) si registra su
    https://www.google.com/android/uncertified/; con l'account provato non è servito.
 3. Scrivi le caselle in `agent/fonti.json` ([sezione 4.2](#42-prendere-il-codice)) e riavvia
-   l'agente: `sudo docker compose restart agent`.
+   l'agente: `sudo docker compose restart agent`. Se l'agente in TypeScript è acceso (opzione, [sezione 5](#5-prove-dal-pc-tunnel-verso-lagente)) legge lo stesso file: si riavvia anche lui, `sudo docker compose restart agente-ts`.
 
 > I login (password e MFA) li fai **tu**, dallo schermo del telefono.
 
@@ -507,6 +507,16 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker: dal
    CHIAVE=$(ssh oecopilot "sudo grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2-")
    curl -s -H "Authorization: Bearer $CHIAVE" http://127.0.0.1:13180/api/calendari
    ```
+
+### Agente in TypeScript (opzione, non in uso)
+`server/agente-ts/` è lo stesso agente scritto in TypeScript: stessa API (`/api/eventi`, `/api/calendari`, `/api/salute`, `POST /api/ics`), stessa chiave, stessi codici di stato e stessi testi di errore, lo stesso `calendar.db` letto in sola lettura e lo stesso `agent/fonti.json`. Non è il servizio in uso: sta dietro il profilo `agente-ts` di compose, quindi `docker compose up -d` e l'aggiornamento automatico (4.6) non lo avviano e il gateway continua a chiedere a `agent`.
+
+1. **Avviarlo accanto all'altro**, senza spostare niente: `sudo docker compose --profile agente-ts up -d --build agente-ts`. Risponde alle stesse chiamate su `127.0.0.1:3181` (tunnel come sopra, con `-L 13181:127.0.0.1:3181`). Gira come utente 10001, a file system in sola lettura e senza capacità; i file del calendario sono del gruppo 10019 (l'utente di Android che li scrive) e il gruppo entra con `group_add` nel file di compose (se Android cambia il numero, `sudo stat -c %g /opt/oe-copilot/telefono/data/data/com.android.providers.calendar/databases/calendar.db` lo dice e in `.env` si scrive `CALENDARIO_GID=<numero>`; senza il gruppo le caselle risultano in errore con "Permission denied" in `/api/eventi` e `/api/salute`).
+2. **Farlo servire al gateway**: in `/opt/oe-copilot/.env` si scrive `AGENTE_URL=http://agente-ts:8180` e si ricrea il gateway, `sudo docker compose up -d gateway`. Il gateway ha un solo indirizzo dell'agente: vale per tutte le chiamate, `POST /api/ics` compreso.
+3. **Tornare indietro**: si toglie la riga `AGENTE_URL` da `.env` e si ricrea il gateway. L'agente Python non si ferma mai.
+4. **L'aggiornamento automatico (4.6)** ricrea e controlla sempre `agent` (porta 3180) e non tocca `agente-ts`: dopo un aggiornamento che cambia `server/agente-ts/` l'immagine si ricostruisce con il comando del punto 1.
+
+Le risposte sono le stesse di Python byte per byte (provate su un calendario inventato in CI, su una copia di quello del telefono e su quello vivo, fianco a fianco), con tre differenze volute: un percorso con byte non ASCII non codificati (senza `%`) riceve 400, perché Node li rifiuta (il gateway codifica sempre); uno spazio dopo la chiave giusta in `Authorization` passa, perché Node lo toglie (Python risponde 401); un testo ICS senza a capo non viene mai preso per il percorso di un file (Python lo apre se esiste).
 
 ---
 

@@ -24,17 +24,23 @@ export class Semaforo {
     return this.coda.length;
   }
 
-  /** La funzione che rende il posto, una volta sola; il posto passa al primo della coda senza mai risultare libero. */
+  /**
+   * La funzione che rende il posto, una volta sola; il posto passa al primo della coda senza mai risultare libero, ma al giro dopo del
+   * ciclo di eventi: chi ha appena finito (un socket chiuso) ha già lasciato il ciclo, in questo processo e in un server di prova, prima
+   * che ne parta un altro, e i collegamenti aperti insieme restano quelli dei posti.
+   */
   private rilascio(): () => void {
     let reso = false;
     return () => {
       if (reso) return;
       reso = true;
       const prossimo = this.coda.shift();
-      if (prossimo) {
-        clearTimeout(prossimo.timer);
-        prossimo.passa(this.rilascio());
-      } else this.occupati--;
+      if (!prossimo) {
+        this.occupati--;
+        return;
+      }
+      clearTimeout(prossimo.timer);
+      setImmediate(() => prossimo.passa(this.rilascio()));
     };
   }
 

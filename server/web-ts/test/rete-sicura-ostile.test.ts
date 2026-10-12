@@ -1,7 +1,7 @@
 import net from "node:net";
 import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
-import { controllaUrl, ErroreRete, indirizzoAmmesso, LIMITE_LETTURA, scaricaSicuro, type SoloProve, TESTI } from "@/lib/core/rete-sicura";
+import { controllaUrl, ErroreRete, indirizzoAmmesso, LIMITE_LETTURA, PEZZI_MAX, scaricaSicuro, type SoloProve, TESTI } from "@/lib/core/rete-sicura";
 
 // La guardia contro quello che prova a farle fare un sito ostile o chi scrive un indirizzo: una raccolta di indirizzi scritti in ogni modo
 // (scritta da chi ha attaccato la prima versione), le risposte del DNS che portano alla rete interna, e un sito che manda il corpo a un byte
@@ -226,7 +226,7 @@ describe("un sito che manda il corpo a un byte per volta", () => {
     };
   };
 
-  it("un milione di pezzi da un byte oltre il limite si interrompe, e la memoria cresce di poco (prima di questa prova: oltre 400 MB)", { timeout: 60_000 }, async () => {
+  it("un milione di pezzi da un byte si interrompe a PEZZI_MAX, subito, e la memoria cresce di poco (prima di questa prova: oltre 400 MB e mezzo secondo fermo)", { timeout: 60_000 }, async () => {
     const corpo = Buffer.alloc(LIMITE_LETTURA + 1, 65);
     const s = await server(aPezzi(corpo, 1));
     try {
@@ -238,7 +238,8 @@ describe("un sito che manda il corpo a un byte per volta", () => {
       const ms = performance.now() - t0;
       const picco = await c.ferma();
       expect(e).toBeInstanceOf(ErroreRete);
-      expect(e?.motivo).toBe("troppo_grande");
+      expect(e?.motivo).toBe("non_risponde");
+      expect(e?.message).toBe(TESTI.nonRisponde);
       const crescitaMB = (picco - base) / 1048576;
       expect(crescitaMB, `la memoria è cresciuta di ${crescitaMB.toFixed(0)} MB in ${ms.toFixed(0)} ms`).toBeLessThan(150);
       expect(ms).toBeLessThan(15_000);
@@ -247,10 +248,31 @@ describe("un sito che manda il corpo a un byte per volta", () => {
     }
   });
 
-  it("un milione di pezzi da un byte esatti (1 MB) arrivano interi e nello stesso ordine; uno in più è troppo", { timeout: 60_000 }, async () => {
+  it(`al più ${PEZZI_MAX} pezzi: tanti arrivano interi e nello stesso ordine, uno in più no`, async () => {
+    const corpo = Buffer.alloc(PEZZI_MAX);
+    for (let i = 0; i < corpo.length; i++) corpo[i] = (i * 7 + (i >> 8)) & 0xff;
+    const giusto = await server(aPezzi(corpo, 1), true);
+    try {
+      const r = await scaricaSicuro(`http://pezzi.test:${giusto.porta}/x.png`, PROVA, LIMITE_LETTURA);
+      expect(r.dati.length).toBe(PEZZI_MAX);
+      expect(r.dati.equals(corpo)).toBe(true);
+    } finally {
+      await giusto.chiudi();
+    }
+    const unoInPiu = await server(aPezzi(Buffer.concat([corpo, Buffer.from([1])]), 1), true);
+    try {
+      const e = await scaricaSicuro(`http://pezzi.test:${unoInPiu.porta}/x.png`, PROVA, LIMITE_LETTURA).then(() => null, (x: unknown) => x as ErroreRete);
+      expect(e?.motivo).toBe("non_risponde");
+    } finally {
+      await unoInPiu.chiudi();
+    }
+  });
+
+  it("un corpo di 1 MB a pezzi da 64 byte (16384 pezzi) arriva intero e nello stesso ordine; un byte in più è troppo grande", { timeout: 60_000 }, async () => {
     const corpo = Buffer.alloc(LIMITE_LETTURA);
     for (let i = 0; i < corpo.length; i++) corpo[i] = (i * 7 + (i >> 8)) & 0xff;
-    const intero = await server(aPezzi(corpo, 1), true);
+    expect(Math.ceil(corpo.length / 64)).toBeLessThan(PEZZI_MAX);
+    const intero = await server(aPezzi(corpo, 64), true);
     try {
       const r = await scaricaSicuro(`http://pezzi.test:${intero.porta}/x.png`, PROVA, LIMITE_LETTURA);
       expect(r.dati.length).toBe(LIMITE_LETTURA);
@@ -258,7 +280,7 @@ describe("un sito che manda il corpo a un byte per volta", () => {
     } finally {
       await intero.chiudi();
     }
-    const unoInPiu = await server(aPezzi(Buffer.concat([corpo, Buffer.from([1])]), 1), true);
+    const unoInPiu = await server(aPezzi(Buffer.concat([corpo, Buffer.from([1])]), 64), true);
     try {
       const e = await scaricaSicuro(`http://pezzi.test:${unoInPiu.porta}/x.png`, PROVA, LIMITE_LETTURA).then(() => null, (x: unknown) => x as ErroreRete);
       expect(e?.motivo).toBe("troppo_grande");

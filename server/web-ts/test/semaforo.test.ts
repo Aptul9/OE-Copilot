@@ -82,7 +82,7 @@ describe("Semaforo", () => {
   });
 
   it("chi non aspetta troppo ottiene il posto, e la scadenza non scatta più (nessun timer resta acceso)", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       const s = new Semaforo(1, 5, 1000, troppi);
       const occupa = aMano();
@@ -114,6 +114,25 @@ describe("Semaforo", () => {
     (await aspetta)();
     expect(s.inUso).toBe(0);
     expect(s.provaPrendere()).toBeTypeOf("function");
+  });
+
+  it("il posto passa al giro dopo del ciclo di eventi, non nello stesso: chi ha appena chiuso un socket lo ha già lasciato prima che ne parta un altro", async () => {
+    const s = new Semaforo(1, 5, 5000, troppi);
+    const rilascia = s.provaPrendere() as () => void;
+    const ordine: string[] = [];
+    const aspetta = s.prendi().then((r) => {
+      ordine.push("il primo in coda parte");
+      return r;
+    });
+    setImmediate(() => ordine.push("un altro giro dello stesso ciclo"));
+    rilascia();
+    ordine.push("posto reso");
+    // il posto è in viaggio, non libero: nessuno lo prende nel frattempo
+    expect(s.inUso).toBe(1);
+    expect(s.provaPrendere()).toBeNull();
+    (await aspetta)();
+    expect(ordine).toEqual(["posto reso", "un altro giro dello stesso ciclo", "il primo in coda parte"]);
+    expect(s.inUso).toBe(0);
   });
 
   it("provaPrendere non aspetta: null se i posti sono tutti occupati; il posto reso due volte si libera una volta sola", () => {

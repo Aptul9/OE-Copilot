@@ -17,6 +17,12 @@ export const MAX_REINDIRIZZAMENTI = 3;
 export const LIMITE_LETTURA = 1024 * 1024;
 /** Quello che si accetta di un logo. */
 export const LIMITE_ACCETTATO = 512 * 1024;
+/**
+ * Quanti pezzi (eventi `data`) di corpo si accettano: un corpo a pezzi (Transfer-Encoding: chunked) di pochi byte costa un evento a pezzo
+ * anche se il corpo è piccolo, e un milione di pezzi da un byte fermano il processo per mezzo secondo. Un sito vero ne manda poche decine
+ * (un corpo di 1 MB a pezzi da 64 byte sono 16384).
+ */
+export const PEZZI_MAX = 20_000;
 const INDIRIZZO_MAX = 2048;
 
 export type Motivo = "non_valido" | "non_ammesso" | "non_risponde" | "certificato" | "errore_http" | "reindirizzamenti" | "troppo_grande";
@@ -217,10 +223,12 @@ function unPasso(url: URL, rete: Rete, segnale: AbortSignal): Promise<Passo> {
       const dichiarata = Number(res.headers["content-length"]);
       if (Number.isFinite(dichiarata) && dichiarata > LIMITE_LETTURA) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
       // Un buffer solo, riempito pezzo per pezzo, e quello che arriva oltre il limite non si tiene: un sito che manda un byte per volta
-      // (un milione di pezzi da un byte, 6 MB sul filo) non deve costare un oggetto per pezzo.
+      // (un milione di pezzi da un byte, 6 MB sul filo) non deve costare un oggetto per pezzo, né il tempo di leggerli tutti (PEZZI_MAX).
       const corpo = Buffer.alloc(Number.isFinite(dichiarata) && dichiarata >= 0 ? dichiarata : LIMITE_LETTURA);
       let totale = 0;
+      let pezzi = 0;
       res.on("data", (c: Buffer) => {
+        if (++pezzi > PEZZI_MAX) return rifiuta(errore(null));
         if (totale + c.length > corpo.length) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
         corpo.set(c, totale);
         totale += c.length;

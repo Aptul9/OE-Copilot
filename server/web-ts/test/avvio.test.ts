@@ -141,7 +141,7 @@ describe("avvio con AUTH_2FA=totp", () => {
 
 describe("avvio con AUTH_2FA=passkey", () => {
   it("parte, deriva nome del sito e origine da APP_URL, e la cerimonia con una passkey arriva in fondo", async () => {
-    const sito = "oe.84-8-248-192.sslip.io";
+    const sito = "oe.example.com";
     process.env.AUTH_2FA = "passkey";
     process.env.APP_URL = `https://${sito}`;
     const righe = await avvia();

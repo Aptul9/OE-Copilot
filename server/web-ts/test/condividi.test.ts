@@ -532,4 +532,50 @@ describe("attraverso la lettura vera, con un agente finto", () => {
     expect(r.status).toBe(503);
     expect(await r.text()).not.toContain("BEGIN:VCALENDAR");
   });
+
+  it("con l'agente che risponde ma una casella no (calendar.db nascosto: 200 con l'errore dentro): 503 con Retry-After, mai un calendario con solo i personali o vuoto", async () => {
+    agente.eventi = [];
+    agente.caselle = ["mario@alfa.example"];
+    agente.stati = { "mario@alfa.example": { stato: "errore", msg: "calendar.db non leggibile" } };
+    for (const livello of ["occupato", "titoli"]) {
+      const { token } = nuovo({ livello });
+      for (const metodo of ["GET", "HEAD"]) {
+        const r = await prendi(token, {}, metodo, vero());
+        expect(r.status, `${livello} ${metodo}`).toBe(503);
+        expect(r.headers.get("retry-after")).toBe("120");
+        expect(r.headers.get("etag")).toBeNull();
+        const corpo = await r.text();
+        expect(corpo).not.toContain("BEGIN:VCALENDAR");
+        // chi legge il link non sa quali aziende ha chi lo ha creato, né cosa ha risposto l'agente
+        expect(corpo).not.toMatch(/Alfa|calendar\.db/);
+      }
+    }
+    // il motivo lo legge chi ha il gateway, nel log (e senza il testo segreto: lo controlla afterEach)
+    expect(registro.some((r) => r.includes("calendario non disponibile, non si leggono: Alfa"))).toBe(true);
+  });
+
+  it("quando la casella torna a leggersi il link risponde 200, dopo i quindici secondi in cui si ricorda il guasto", async () => {
+    const { token } = nuovo();
+    agente.stati = { "mario@alfa.example": { stato: "errore", msg: "accesso scaduto" } };
+    expect((await prendi(token, {}, "GET", vero())).status).toBe(503);
+    agente.stati = {};
+    expect((await prendi(token, {}, "GET", vero())).status).toBe(503);
+    t += TTL_GUASTO_MS;
+    const r = await prendi(token, {}, "GET", vero());
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain("BEGIN:VCALENDAR");
+  });
+
+  it("con più di 5000 eventi nella finestra: 503, e nel log il motivo con la cura (meno giorni)", async () => {
+    agente.eventi = Array.from({ length: 5001 }, (_, i) => {
+      const inizio = Date.UTC(2026, 9, 13) + i * 10 * 60_000;
+      const f = (ms: number) => new Date(ms).toISOString().slice(0, 19);
+      return { account: "mario@alfa.example", title: `Evento ${i}`, start: f(inizio), end: f(inizio + 5 * 60_000) };
+    });
+    const { token } = nuovo({ livello: "titoli" });
+    const r = await prendi(token, {}, "GET", vero());
+    expect(r.status).toBe(503);
+    expect(await r.text()).not.toContain("BEGIN:VCALENDAR");
+    expect(registro.some((x) => /calendario non disponibile, più di 5000 eventi nella finestra: servono meno giorni/.test(x))).toBe(true);
+  });
 });

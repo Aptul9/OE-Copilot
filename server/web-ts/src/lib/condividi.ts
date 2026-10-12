@@ -115,7 +115,9 @@ async function genera(link: Condivisione, ora: number, precedente: Voce | undefi
     const etag = `"${crypto.createHash("sha256").update(corpo, "utf8").digest("hex").slice(0, 32)}"`;
     return { ok: true, versione, fino: ora + TTL_CORPO_MS, corpo, etag, modificato };
   } catch (e) {
-    if (!(e instanceof LetturaNonDisponibile)) console.error(`condivisione ${link.id}: lettura non riuscita`, e);
+    // chi legge il link vede solo "non disponibile": il motivo (un'azienda che non si legge, troppi eventi) lo legge chi ha il gateway, qui
+    if (e instanceof LetturaNonDisponibile) console.warn(`condivisione ${link.id}: calendario non disponibile, ${e.message}`);
+    else console.error(`condivisione ${link.id}: lettura non riuscita`, e);
     return { ok: false, versione, fino: ora + TTL_GUASTO_MS, buono: buonoPrima };
   }
 }

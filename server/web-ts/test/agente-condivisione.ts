@@ -25,6 +25,8 @@ export type EventoFinto = {
 /** `perTesto`: l'evento si espande solo dal testo ICS che contiene questa riga (l'agente vero legge il testo; qui ci si finge di farlo). */
 export type EventoIcsFinto = { uid: string; inizio: string; fine: string; titolo: string; tutto_giorno?: boolean; luogo?: string; organizzatore?: string; link?: string | null; perTesto?: string };
 
+export type StatoFinto = { stato: "ok" | "avviso" | "errore"; msg: string };
+
 export type AgenteFinto = {
   url: string;
   eventi: EventoFinto[];
@@ -32,22 +34,35 @@ export type AgenteFinto = {
   ics: EventoIcsFinto[];
   /** Con true l'agente risponde 500 a tutto: com'è quando non si raggiunge. */
   giu: boolean;
+  /** Le caselle che l'agente legge anche se non hanno eventi (un calendar.db che non si legge le lascia senza eventi, ma sono nell'elenco). */
+  caselle: string[];
+  /** Lo stato che una casella dichiara (per account): senza voce è ok. L'agente vero risponde 200 anche con una casella in errore, e lo dice qui. */
+  stati: Record<string, StatoFinto>;
+  /** Il segno di vita dell'aggiornamento sul server (`servizio` di /api/calendari e /api/eventi): di partenza sano. */
+  servizio: Record<string, unknown> | null;
   /** Le richieste ricevute: "GET /api/eventi?inizio=...&fine=...". */
   richieste: string[];
   chiudi: () => Promise<void>;
 };
 
-const SERVIZIO = { eta_s: 5, pausa: false, telefono: true };
+export const SERVIZIO_SANO = { eta_s: 5, pausa: false, telefono: true };
 
 export async function avviaAgenteFinto(eventi: EventoFinto[] = []): Promise<AgenteFinto> {
-  const agente: AgenteFinto = { url: "", eventi, ics: [], giu: false, richieste: [], chiudi: async () => {} };
+  const agente: AgenteFinto = { url: "", eventi, ics: [], giu: false, caselle: [], stati: {}, servizio: SERVIZIO_SANO, richieste: [], chiudi: async () => {} };
   const server = http.createServer((req, res) => {
     const risposta = (codice: number, corpo: unknown) => void res.writeHead(codice, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(corpo));
     agente.richieste.push(`${req.method} ${req.url}`);
     if (agente.giu) return risposta(500, { errore: "finto: giù" });
     if (req.headers.authorization !== "Bearer " + CHIAVE_AGENTE) return risposta(401, { errore: "non autorizzato" });
     const url = new URL(req.url ?? "", "http://x");
-    const caselle = [...new Set(agente.eventi.map((e) => e.account))].map((account) => ({ account, nome: account, tipo: "outlook", eventi: 1, stato: "ok", msg: "" }));
+    const caselle = [...new Set([...agente.eventi.map((e) => e.account), ...agente.caselle])].map((account) => ({
+      account,
+      nome: account,
+      tipo: "outlook",
+      eventi: 1,
+      ...(agente.stati[account] ?? { stato: "ok", msg: "" }),
+    }));
+    const errori = caselle.filter((c) => c.stato === "errore").map((c) => `${c.nome}: ${c.msg}`);
     if (req.method === "POST" && url.pathname === "/api/ics") {
       let corpo = "";
       req.on("data", (c) => (corpo += c));
@@ -62,12 +77,12 @@ export async function avviaAgenteFinto(eventi: EventoFinto[] = []): Promise<Agen
       });
       return;
     }
-    if (url.pathname === "/api/calendari") return risposta(200, { caselle, servizio: SERVIZIO });
+    if (url.pathname === "/api/calendari") return risposta(200, { caselle, servizio: agente.servizio });
     if (url.pathname === "/api/eventi") {
       const inizio = (url.searchParams.get("inizio") ?? "").slice(0, 19);
       const fine = (url.searchParams.get("fine") ?? "").slice(0, 19);
       const dentro = agente.eventi.filter((e) => e.end > inizio && e.start < fine).map((e, n) => ({ id: `finto|${e.account}|${n}|${e.start}`, ...e }));
-      return risposta(200, { eventi: dentro, errori: [], fonti: {}, caselle, servizio: SERVIZIO });
+      return risposta(200, { eventi: dentro, errori, fonti: {}, caselle, servizio: agente.servizio });
     }
     risposta(404, { errore: "sconosciuto" });
   });

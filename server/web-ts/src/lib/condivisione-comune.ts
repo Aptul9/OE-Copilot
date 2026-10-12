@@ -9,6 +9,8 @@ export type Ambito = (typeof AMBITI)[number];
 /** Quanti giorni prima di oggi e dopo oggi si pubblicano: i valori di partenza e i limiti che nessun link supera. */
 export const INDIETRO = { min: 0, max: 30, predefinito: 7 } as const;
 export const AVANTI = { min: 1, max: 365, predefinito: 90 } as const;
+/** Quanti eventi al più in un calendario condiviso: oltre, il link non risponde (503), perché pubblicare i primi vorrebbe dire dare per liberi i mesi dopo. */
+export const EVENTI_MAX = 5000;
 export const NOME_MAX = 60;
 export const NOME_CALENDARIO_MAX = 80;
 export const NOME_CALENDARIO_PREDEFINITO = "Calendario condiviso";

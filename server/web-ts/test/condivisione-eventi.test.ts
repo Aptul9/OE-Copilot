@@ -5,7 +5,7 @@ import { AVANTI, INDIETRO, type Livello } from "@/lib/condivisione-comune";
 import { azzeraMemoria } from "@/lib/core/agente";
 import { archivio, chiudiArchivio } from "@/lib/core/archivio";
 import type { Condivisione } from "@/lib/core/condivisione";
-import { EVENTI_MAX, finestra, inEventiUscita, leggiPerCondivisione, LetturaNonDisponibile, luogoEsportabile, titoloEsportabile } from "@/lib/core/condivisione-eventi";
+import { EVENTI_MAX, finestra, inEventiUscita, leggiPerCondivisione, LetturaNonDisponibile, luogoEsportabile, pulisciTesto, titoloEsportabile } from "@/lib/core/condivisione-eventi";
 import { raccogli } from "@/lib/core/eventi";
 import { azzeraFeed } from "@/lib/core/ics";
 import { aggiungiEvento } from "@/lib/core/locali";
@@ -13,7 +13,7 @@ import { fissaOra } from "@/lib/core/orologio";
 import { loadConfig, modificaConfig } from "@/lib/core/stato";
 import { blocchi, GIORNI_BLOCCO, giorniTra, spostaData } from "@/lib/disponibilita";
 import { costruisciIcs, testoIcs } from "@/lib/ics-uscita";
-import { avviaAgenteFinto, CHIAVE_AGENTE, cartellaDati, copiaIcs, CORPUS, type AgenteFinto, type EventoFinto, TUTTO_IL_CORPUS } from "./agente-condivisione";
+import { avviaAgenteFinto, CHIAVE_AGENTE, cartellaDati, copiaIcs, CORPUS, SERVIZIO_SANO, type AgenteFinto, type EventoFinto, type StatoFinto, TUTTO_IL_CORPUS } from "./agente-condivisione";
 
 // Cosa c'è nel calendario di un link (lib/core/condivisione-eventi.ts), letto dagli stessi percorsi dell'app con un agente finto: i due livelli, gli
 // interruttori e i gruppi, la finestra, i blocchi di 28 giorni, i calendari ricevuti da altri che non escono mai e quello che non deve uscire dei dettagli.
@@ -361,13 +361,132 @@ describe("quando l'agente non risponde", () => {
   });
 });
 
+describe("quando l'agente risponde ma una casella no (200 con l'errore dentro)", () => {
+  const ERRORE: StatoFinto = { stato: "errore", msg: "calendar.db non leggibile" };
+  const AVVISO: StatoFinto = { stato: "avviso", msg: "Telefono bloccato" };
+  const livelli: Livello[] = ["occupato", "titoli"];
+  const tutteLeCaselle = () => {
+    agente.eventi = [];
+    agente.caselle = [ALFA, BETA];
+    agente.stati = { [ALFA]: ERRORE, [BETA]: ERRORE };
+  };
+
+  it("calendar.db nascosto: nessuna casella si legge e di eventi ci sono solo i personali: non esce quel calendario, si solleva (e nomina le aziende)", async () => {
+    tutteLeCaselle();
+    for (const livello of livelli) {
+      const lettura = leggiPerCondivisione(link({ livello }), OGGI);
+      await expect(lettura, livello).rejects.toBeInstanceOf(LetturaNonDisponibile);
+      await expect(lettura, livello).rejects.toThrow(/Alfa.*Beta|Beta.*Alfa/);
+    }
+  });
+
+  it("lo stesso per un gruppo la cui azienda non si legge, anche se le altre aziende del gruppo stanno bene", async () => {
+    agente.stati = { [ALFA]: ERRORE };
+    modificaConfig((c) => void (c.gruppi_calendari = { ...(c.gruppi_calendari as Record<string, string[]>), entrambe: ["Alfa", "Beta"] }));
+    for (const livello of livelli) {
+      await expect(leggiPerCondivisione(link({ livello, ambito: "gruppo", gruppo: "solo-alfa" }), OGGI), `solo-alfa ${livello}`).rejects.toBeInstanceOf(LetturaNonDisponibile);
+      await expect(leggiPerCondivisione(link({ livello, ambito: "gruppo", gruppo: "entrambe" }), OGGI), `entrambe ${livello}`).rejects.toBeInstanceOf(LetturaNonDisponibile);
+    }
+  });
+
+  it("tutto sano: si legge, in tutti i livelli e in tutti e due gli ambiti", async () => {
+    for (const livello of livelli) {
+      expect((await leggiPerCondivisione(link({ livello }), OGGI)).livello).toBe(livello);
+      expect((await leggiPerCondivisione(link({ livello, ambito: "gruppo", gruppo: "solo-alfa" }), OGGI)).livello).toBe(livello);
+    }
+    expect(await intervalli()).toHaveLength(5);
+  });
+
+  it("una sorgente in errore fuori da quello che il link pubblica non lo ferma: un gruppo senza quell'azienda, o tutti con quell'azienda spenta nella barra laterale", async () => {
+    agente.stati = { [ALFA]: ERRORE };
+    expect(await titoliLetti({ ambito: "gruppo", gruppo: "solo-beta" })).toEqual([CORPUS.titoli[4], "Colloquio con link", CORPUS.titoli[3]]);
+    modificaConfig((c) => void (c.disabled_calendars = [`remoto::${ALFA}`]));
+    expect(await titoliLetti()).toEqual([CORPUS.titoli[4], "Colloquio con link", "Dentista", "Compleanno", CORPUS.titoli[3]]);
+    // con quell'azienda accesa, invece, il link si ferma
+    modificaConfig((c) => void (c.disabled_calendars = []));
+    await expect(leggiPerCondivisione(link(), OGGI)).rejects.toBeInstanceOf(LetturaNonDisponibile);
+  });
+
+  it("gli stati di avviso (telefono bloccato, aggiornamento in ritardo o in pausa, nessun segno di vita) non fermano il link: i dati ci sono, la pagina li mostra con il pallino giallo", async () => {
+    agente.stati = { [ALFA]: AVVISO };
+    expect(await intervalli()).toHaveLength(5);
+    for (const servizio of [{ eta_s: 400, pausa: false, telefono: true }, { eta_s: 5, pausa: true, telefono: true }, null, {}]) {
+      agente.servizio = servizio;
+      expect(await intervalli(), JSON.stringify(servizio)).toHaveLength(5);
+    }
+  });
+
+  it("il servizio che aggiorna le caselle fermo da più di 15 minuti, o il suo lettore spento: ogni casella è in errore e il link si solleva; quando riparte si legge", async () => {
+    for (const servizio of [{ eta_s: 5000, pausa: false, telefono: true }, { eta_s: 5, pausa: false, telefono: false }]) {
+      agente.servizio = servizio;
+      await expect(leggiPerCondivisione(link(), OGGI), JSON.stringify(servizio)).rejects.toBeInstanceOf(LetturaNonDisponibile);
+    }
+    agente.servizio = SERVIZIO_SANO;
+    expect(await intervalli()).toHaveLength(5);
+  });
+
+  it("un accesso scaduto (la casella è in errore ma qualche evento è ancora lì) ferma il link lo stesso: quegli eventi sarebbero vecchi", async () => {
+    agente.stati = { [BETA]: { stato: "errore", msg: "Accesso scaduto: serve un nuovo accesso" } };
+    for (const livello of livelli) await expect(leggiPerCondivisione(link({ livello }), OGGI), livello).rejects.toBeInstanceOf(LetturaNonDisponibile);
+  });
+
+  it("un'azienda inoltrata si legge dalla casella che ospita le sue copie: se quella è in errore, si ferma anche il gruppo che ha solo l'azienda inoltrata", async () => {
+    fs.writeFileSync(path.join(dati, "personalizzazione.json"), JSON.stringify({ aziende_inoltrate: { Gamma: { via: ALFA, prefisso: "^\\[Gamma\\]" } } }));
+    modificaConfig((c) => void (c.gruppi_calendari = { ...(c.gruppi_calendari as Record<string, string[]>), "solo-gamma": ["Gamma"] }));
+    expect(await titoliLetti({ ambito: "gruppo", gruppo: "solo-gamma" })).toEqual([]);
+    agente.stati = { [ALFA]: ERRORE };
+    await expect(leggiPerCondivisione(link({ ambito: "gruppo", gruppo: "solo-gamma" }), OGGI)).rejects.toBeInstanceOf(LetturaNonDisponibile);
+  });
+
+  it("gli eventi personali che non si leggono (un orario con il fuso dentro) fermano 'tutti' ma non un gruppo che non li nomina; col calendario personale spento non contano", async () => {
+    aggiungiEvento({ title: "Con scarto", start: "2026-10-18T10:00:00+02:00", end: "2026-10-18T11:00:00+02:00", allDay: false, location: "", notes: "" });
+    await expect(leggiPerCondivisione(link(), OGGI)).rejects.toBeInstanceOf(LetturaNonDisponibile);
+    expect(await titoliLetti({ ambito: "gruppo", gruppo: "solo-beta" })).toEqual([CORPUS.titoli[4], "Colloquio con link", CORPUS.titoli[3]]);
+    modificaConfig((c) => void (c.disabled_calendars = ["local::altro"]));
+    expect(await titoliLetti()).toContain(CORPUS.titoli[0]);
+  });
+
+  it("il messaggio dice quali aziende non si leggono (per il log di chi ha il gateway), non cosa ha risposto l'agente: percorsi e indirizzi non ci sono", async () => {
+    tutteLeCaselle();
+    const lettura = await leggiPerCondivisione(link(), OGGI).catch((e: unknown) => e);
+    expect(lettura).toBeInstanceOf(LetturaNonDisponibile);
+    expect(String((lettura as Error).message)).not.toMatch(/calendar\.db|mario@/);
+  });
+});
+
 describe("quanto è lungo un calendario", () => {
-  it("al più EVENTI_MAX eventi: oltre, si pubblicano i primi e si scrive nel log", async () => {
-    const ora = (i: number) => `2026-10-${String(13 + (i % 10)).padStart(2, "0")}T${String(Math.floor(i / 400) % 24).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`;
-    agente.eventi = Array.from({ length: EVENTI_MAX + 30 }, (_, i) => ({ account: ALFA, title: `Evento ${String(i).padStart(5, "0")}`, start: `${ora(i)}:00`, end: `${ora(i)}:30` }));
-    const letti = await eventiLetti({ giorni_avanti: 30 });
-    expect(letti).toHaveLength(EVENTI_MAX);
-    expect(vi.mocked(console.warn)).toHaveBeenCalledWith(expect.stringContaining(`se ne pubblicano ${EVENTI_MAX}`));
+  // un evento ogni 10 minuti, di 5, tutti di Alfa: non si toccano mai, quindi nel livello occupato ognuno è un blocco; con il gruppo solo-alfa gli altri non contano
+  const disgiunti = (n: number): EventoFinto[] =>
+    Array.from({ length: n }, (_, i) => {
+      const t = (ms: number) => new Date(ms).toISOString().slice(0, 19);
+      const inizio = Date.UTC(2026, 9, 13) + i * 10 * 60_000;
+      return { account: ALFA, title: `Evento ${String(i).padStart(5, "0")}`, start: t(inizio), end: t(inizio + 5 * 60_000) };
+    });
+  const livelli: Livello[] = ["occupato", "titoli"];
+  const conteggio = async (livello: Livello) => {
+    const l = await leggiPerCondivisione(link({ livello, ambito: "gruppo", gruppo: "solo-alfa" }), OGGI);
+    return l.impegni.length + l.eventi.length;
+  };
+
+  it("fino a EVENTI_MAX eventi si pubblicano tutti", async () => {
+    agente.eventi = disgiunti(EVENTI_MAX);
+    for (const livello of livelli) expect(await conteggio(livello), livello).toBe(EVENTI_MAX);
+  });
+
+  it("oltre EVENTI_MAX non si pubblicano i primi e i mesi dopo come liberi: si solleva, e il messaggio dice di accorciare la finestra", async () => {
+    agente.eventi = disgiunti(EVENTI_MAX + 1);
+    for (const livello of livelli) {
+      const lettura = leggiPerCondivisione(link({ livello, ambito: "gruppo", gruppo: "solo-alfa" }), OGGI);
+      await expect(lettura, livello).rejects.toBeInstanceOf(LetturaNonDisponibile);
+      await expect(lettura, livello).rejects.toThrow(/5000.*meno giorni/);
+    }
+  });
+
+  it("e non si scrive niente a metà: dopo aver tolto gli eventi di troppo il link legge di nuovo", async () => {
+    agente.eventi = disgiunti(EVENTI_MAX + 1);
+    await expect(leggiPerCondivisione(link({ livello: "titoli", ambito: "gruppo", gruppo: "solo-alfa" }), OGGI)).rejects.toBeInstanceOf(LetturaNonDisponibile);
+    agente.eventi = disgiunti(EVENTI_MAX - 10);
+    expect(await conteggio("titoli")).toBe(EVENTI_MAX - 10);
   });
 });
 
@@ -390,7 +509,7 @@ describe("titoloEsportabile e luogoEsportabile", () => {
     expect(luogoEsportabile("Sala Rossa https://teams.microsoft.com/l/meetup-join/x")).toBe("Sala Rossa");
     expect(luogoEsportabile("https://zoom.us/j/123456789?pwd=abc")).toBe("");
     expect(luogoEsportabile("zoom.us/j/123456789")).toBe("");
-    expect(luogoEsportabile("Ufficio di anna.rossi@alfa.example, piano 3")).toBe("Ufficio di, piano 3");
+    expect(luogoEsportabile("Ufficio di anna.rossi@alfa.example, piano 3")).toBe("Ufficio di piano 3");
     expect(luogoEsportabile("tel:+390212345678,,123456#")).toBe("");
     expect(luogoEsportabile("sip:sala@example.com")).toBe("");
     expect(luogoEsportabile(undefined)).toBe("");
@@ -403,6 +522,150 @@ describe("titoloEsportabile e luogoEsportabile", () => {
   it("i link per collegarsi e gli indirizzi di posta del corpus, messi nel luogo, escono senza; i link anche dal titolo (la posta nel titolo è scelta di chi lo scrive)", () => {
     for (const privata of [...CORPUS.conferenze, ...CORPUS.posta]) expect(luogoEsportabile(`Sala 3 ${privata}`), privata).toBe("Sala 3");
     for (const privata of CORPUS.conferenze) expect(titoloEsportabile(`Incontro ${privata}`), privata).toBe("Incontro");
+  });
+});
+
+describe("indirizzi senza schema, parole incollate, codici per collegarsi", () => {
+  it.each([
+    "bit.ly/Xk3dZ",
+    "8x8.vc/X/room",
+    "discord.gg/abcdef",
+    "app.slack.com/huddle/T012/C345",
+    "tinyurl.com/segreto",
+    "192.168.1.10/sala",
+    "www.esempio.it",
+    "esempio.it:8080/stanza",
+    "perché.it/stanza",
+    "(bit.ly/Xk3dZ)",
+    "«bit.ly/Xk3dZ»",
+    "“8x8.vc/X/room”",
+    "Meet:meet.google.com/abc-defg-hij",
+    "sala,bit.ly/Xk3dZ",
+    "link=zoom.us/j/123",
+    "zoom.us",
+    "us02web.zoom.us",
+    "TEAMS.MICROSOFT.COM/l/meetup-join/x",
+  ])("%s: nel titolo e nel luogo non esce", (indirizzo) => {
+    expect(titoloEsportabile(`Prima ${indirizzo} dopo`)).toBe("Prima dopo");
+    expect(luogoEsportabile(`Sala 3 ${indirizzo} piano 2`)).toBe("Sala 3 piano 2");
+  });
+
+  it("un indirizzo con dentro parentesi, virgole e punti esce tutto, fino allo spazio: non resta niente dopo la prima parentesi", () => {
+    expect(titoloEsportabile("Vedi https://example.com/a(b)SEGRETO?x=1 ok")).toBe("Vedi ok");
+    expect(luogoEsportabile("Sala https://example.com/a(b)SEGRETO?x=1 piano 2")).toBe("Sala piano 2");
+    expect(titoloEsportabile("https://example.com/a(b)SEGRETO?x=1")).toBe("(senza titolo)");
+    expect(titoloEsportabile("x https://e.com/a,b;c)d(e'f\"g|h x")).toBe("x x");
+    expect(luogoEsportabile("https://example.com/a(b)SEGRETO?x=1")).toBe("");
+  });
+
+  it("quello che somiglia a un indirizzo ma non lo è resta: frazioni, orari, sigle, date, numeri civici", () => {
+    for (const t of ["Sala A/B", "Piano 1/2", "dalle 10.30/11.30", "12.10.2026/13.10.2026", "Via Roma 12/A", "S.p.A. Rossi", "Dr. Verdi", "24/7", "v1.2/3", "e/o"]) {
+      expect(titoloEsportabile(t), t).toBe(t);
+      expect(luogoEsportabile(t), t).toBe(t);
+    }
+  });
+
+  it("un luogo che parla di ID, codici, PIN o numeri per collegarsi non esce, nemmeno a pezzi", () => {
+    for (const t of [
+      "Dial-in +39 02 1234567 conference ID 123 456 789# PIN 1234",
+      "Conference ID: 123 456 789",
+      "Meeting ID 987 654 321, Passcode abc123",
+      "Codice di accesso 5555",
+      "Numero di accesso +39 02 1234567",
+      "Chiamami al +39 333 1234567",
+      "Join by phone +1 555 0100",
+      "Sala 3, PIN 1234",
+      "dial in: 02 1234567",
+    ]) expect(luogoEsportabile(t), t).toBe("");
+    // un posto vero con una parola simile dentro resta
+    for (const t of ["Via Pinerolo 12", "Spinoza 3, Sala Idea", "Sala Meeting Room 3", "Studio Pini"]) expect(luogoEsportabile(t), t).toBe(t);
+  });
+
+  it("nel titolo un codice o un PIN restano come li ha scritti chi organizza (senza link non danno accesso a niente), i link no", () => {
+    expect(titoloEsportabile("Call PIN 1234 https://zoom.us/j/123?pwd=x")).toBe("Call PIN 1234");
+  });
+});
+
+describe("caratteri invisibili e di direzione", () => {
+  const nascosti = "\u200b\u200c\u200d\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2060\u2061\u2066\u2067\u2068\u2069\u206a\u206f\ufeff\u061c";
+
+  it("spariscono dal titolo e dal luogo: U+202E, U+202C, U+200E, U+FEFF e gli altri", () => {
+    expect(titoloEsportabile(`Riu${nascosti}nione`)).toBe("Riunione");
+    expect(luogoEsportabile(`Sa${nascosti}la 3`)).toBe("Sala 3");
+    expect(titoloEsportabile("\u202eenoinuir\u202c")).toBe("enoinuir");
+    expect(titoloEsportabile("\ufeffRiunione\u200e")).toBe("Riunione");
+    for (const c of nascosti) {
+      expect(titoloEsportabile(`a${c}b`), c.codePointAt(0)!.toString(16)).toBe("ab");
+      expect(luogoEsportabile(`a${c}b`), c.codePointAt(0)!.toString(16)).toBe("ab");
+    }
+  });
+
+  it("non nascondono un indirizzo: dentro un sito il carattere invisibile non lo fa passare", () => {
+    expect(titoloEsportabile("zoom\u200b.us/j/1 sala")).toBe("sala");
+    expect(luogoEsportabile("bit\u202e.ly/X sala")).toBe("sala");
+    expect(luogoEsportabile("anna\u200b@alfa.example")).toBe("");
+  });
+
+  it("e un titolo fatto solo di invisibili è un titolo vuoto", () => {
+    expect(titoloEsportabile(nascosti)).toBe("(senza titolo)");
+    expect(luogoEsportabile(nascosti)).toBe("");
+  });
+
+  it("l'emoji, gli accenti e le lettere di altre lingue restano", () => {
+    expect(titoloEsportabile("Caffè con Zoë 日本語 العربية")).toBe("Caffè con Zoë 日本語 العربية");
+  });
+
+  it("nel testo del calendario non c'è nessun carattere di direzione, e i titoli e i luoghi scritti così escono puliti", async () => {
+    agente.eventi.push({ account: ALFA, title: "Fine\u202e riunione\ufeff", start: "2026-10-20T10:00:00", end: "2026-10-20T11:00:00", location: "Sala\u200e 3\u202c" });
+    const t = await testo({ livello: "titoli" });
+    expect(t).not.toMatch(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\u061c]/);
+    expect(proprieta(t, "SUMMARY")).toContain("SUMMARY:Fine riunione");
+    expect(proprieta(t, "LOCATION")).toContain("LOCATION:Sala 3");
+  });
+});
+
+describe("il tempo che costano i testi lunghi", () => {
+  // testi fatti per far ripartire le espressioni regolari da ogni posizione: con le vecchie (LINK, SITI_CONFERENZA) un titolo di centomila caratteri bloccava
+  // il processo per sette secondi, un luogo per dieci
+  const furbi: [string, string][] = [
+    ["a. ripetuto", "a.".repeat(50_000)],
+    ["a.a.a. ripetuto", "a.a.a.".repeat(17_000)],
+    ["host lunghissimo e un percorso", "a.".repeat(50_000) + "/x"],
+    ["etichette incollate", "a:".repeat(50_000)],
+    ["parentesi e virgole", "(a,".repeat(33_000)],
+    ["chiocciole", "@".repeat(100_000)],
+    ["chiocciole e punti", "x@".repeat(50_000) + "."],
+    ["http senza due punti", "http".repeat(25_000)],
+    ["://", "://".repeat(33_000)],
+    ["www.", "www.".repeat(25_000)],
+    ["trattini", "-".repeat(100_000) + "!"],
+    ["punteggiatura e una lettera", "!".repeat(100_000) + "a"],
+    ["centomila parole", "a ".repeat(50_000)],
+    ["spazi e una lettera", " ".repeat(100_000) + "x"],
+    ["invisibili", "\u200b".repeat(100_000)],
+    ["a capo", "\n".repeat(100_000)],
+    ["siti conferenza", "zoom.us ".repeat(12_000)],
+    ["ID e PIN", "pin id conference ".repeat(5_000)],
+  ];
+  const ms = (f: () => unknown) => {
+    const t0 = performance.now();
+    f();
+    return performance.now() - t0;
+  };
+
+  it.each(furbi)("titolo e luogo di centomila caratteri (%s): pochi millisecondi", (_nome, testo) => {
+    expect(ms(() => titoloEsportabile(testo))).toBeLessThan(150);
+    expect(ms(() => luogoEsportabile(testo))).toBeLessThan(150);
+  });
+
+  it.each(furbi)("la pulizia in sé è lineare, anche senza il taglio a 1000 caratteri che fanno i due chiamanti (%s)", (_nome, testo) => {
+    expect(ms(() => pulisciTesto(testo, true))).toBeLessThan(500);
+    expect(ms(() => pulisciTesto(testo, false))).toBeLessThan(500);
+  });
+
+  it("si taglia prima: cento volte il testo, lo stesso risultato", () => {
+    const base = "Riunione di prova con Anna ";
+    expect(titoloEsportabile(base.repeat(40))).toBe(titoloEsportabile(base.repeat(4000)));
   });
 });
 

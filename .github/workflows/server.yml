@@ -199,12 +199,15 @@ jobs:
           grep -qi '^x-content-type-options: nosniff' intestl
           # i loghi da indirizzo: il gateway scarica solo siti pubblici, quindi la rete interna, i metadati del cloud e gli schemi che non
           # sono http si rifiutano prima di collegarsi (nessun traffico in uscita); la tabella dei loghi non è nella configurazione
-          for url in http://127.0.0.1/x.png http://localhost/x.png http://169.254.169.254/latest/meta-data/ 'http://[::1]/x.png' http://10.0.0.5/x.png file:///etc/passwd; do
+          for url in http://127.0.0.1/x.png http://localhost/x.png http://169.254.169.254/latest/meta-data/ 'http://[::1]/x.png' 'http://[::ffff:0:127.0.0.1]/x.png' http://10.0.0.5/x.png file:///etc/passwd; do
             for metodo in set_logo preview_logo; do
               if [ "$metodo" = set_logo ]; then corpo="[\"Alfa\",\"$url\"]"; else corpo="[\"$url\"]"; fi
               curl -fsS -b jar -X POST "${json[@]}" -d "$corpo" "$G/api/$metodo" | grep -q '"error":"Indirizzo non ammesso"'
             done
           done
+          # un file che prima fermava il controllo delle immagini (22 commenti vuoti e una x) si rifiuta subito: il gateway non resta fermo
+          ostile=$( { for i in $(seq 22); do printf '<!---->'; done; printf x; } | base64 -w0 )
+          curl -fsS --max-time 5 -b jar -X POST "${json[@]}" -d "[\"Alfa\",\"$ostile\"]" $G/api/upload_logo | grep -q "\"error\":\"Non è un'immagine\""
           curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_loghi | grep -q '"loghi":{}'
           test -z "$(curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config | grep -o logo)"
           # i metodi della lettura li serve il gateway da sé (qui senza agente: nessuna casella, ma la risposta c'è, in JSON e senza cache)

@@ -110,6 +110,39 @@ describe("gli eventi di un calendario condiviso restano segnati", () => {
   });
 });
 
+describe("la riga da sola non basta: serve anche il PRODID di OE Copilot", () => {
+  const nome = "X-WR-CALNAME:Un calendario qualunque\r\n";
+  const PRODID = "-//OE Copilot//Condivisione//IT";
+  const corpo = (prodid: string | null, riga: string) => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n${prodid === null ? "" : `PRODID:${prodid}\r\n`}${nome}${riga}END:VCALENDAR\r\n`;
+  const MARCA = "X-OE-COPILOT-SHARE:1\r\n";
+  const casi: [string, string | null, string, boolean][] = [
+    ["tutti e due", PRODID, MARCA, true],
+    ["tutti e due, con uno spazio in coda al PRODID", PRODID + " ", MARCA, true],
+    ["la riga e un altro PRODID: chi non è OE Copilot non si fa riconoscere così", "-//Altro//IT", MARCA, false],
+    ["la riga e il PRODID di un'altra versione del prodotto", "-//OE Copilot//Condivisione//EN", MARCA, false],
+    ["la riga e il PRODID di un altro prodotto di OE Copilot", "-//OE Copilot//Calendario//IT", MARCA, false],
+    ["la riga e nessun PRODID", null, MARCA, false],
+    ["il solo PRODID", PRODID, "", false],
+    ["il PRODID in un altro punto della riga", "x " + PRODID, MARCA, false],
+  ];
+
+  it.each(casi)("%s", async (_nome, prodid, riga, atteso) => {
+    iscrivi();
+    risposta.corpo = corpo(prodid, riga);
+    fs.rmSync(copia(), { force: true });
+    const e = await eventiFeed();
+    expect(e).toHaveLength(1);
+    expect("da_condivisione" in e[0]).toBe(atteso);
+  });
+
+  it("un calendario che porta solo la riga non nasconde i suoi eventi alla pagina pubblica di chi lo ha importato: contano come impegni", async () => {
+    iscrivi();
+    risposta.corpo = corpo("-//Altro//IT", MARCA);
+    fs.rmSync(copia(), { force: true });
+    expect((await occupato(loadConfig(), { a: 2026, m: 10, g: 12 }, 7))[0]).toEqual([["2026-10-13T09:00:00", "2026-10-13T10:00:00"]]);
+  });
+});
+
 describe("la pagina pubblica di chi importa non conta il calendario condiviso", () => {
   const giorni = async () => (await occupato(loadConfig(), { a: 2026, m: 10, g: 12 }, 7))[0];
 

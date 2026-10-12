@@ -207,8 +207,9 @@ export function rimuoviFeed(id: unknown): void {
 }
 
 // ---- Lettura eventi ------------------------------------------------------------------------------------------------------
-/** I calendari che un altro OE Copilot pubblica con un link di condivisione portano questa riga (lib/ics-uscita.ts): i loro eventi si riconoscono. */
+/** I calendari che un altro OE Copilot pubblica con un link di condivisione portano questa riga e questo PRODID (lib/ics-uscita.ts): i loro eventi si riconoscono, ma solo se ci sono tutti e due. */
 const DA_CONDIVISIONE = /^X-OE-COPILOT-SHARE:1[ \t]*\r?$/m;
+const PRODID_CONDIVISIONE = /^PRODID:-\/\/OE Copilot\/\/Condivisione\/\/IT[ \t]*\r?$/m;
 
 type DaAgente = { uid: string; inizio: string; fine: string; tutto_giorno: boolean; titolo: string; luogo: string; organizzatore: string; link: string | null };
 
@@ -264,7 +265,7 @@ export async function eventiFeed(cfg: Config, inizio: Naive, fine: Naive): Promi
     }
     const colore = builtin ? COLORE_FESTIVITA : colorForAccount(cfg, nome);
     // gli eventi di un calendario condiviso da un altro OE Copilot restano segnati: la disponibilità pubblica non li conta come impegni di chi li ha importato
-    const condiviso = DA_CONDIVISIONE.test(testo);
+    const condiviso = DA_CONDIVISIONE.test(testo) && PRODID_CONDIVISIONE.test(testo);
     for (const ev of trovati) {
       eventi.push({
         ...(condiviso ? { da_condivisione: true } : {}),

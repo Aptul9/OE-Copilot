@@ -107,7 +107,7 @@ Cosa è cambiato:
 - **Estensioni personali** (`personale/`): il meccanismo non esiste più. Una scheda Timesheet con `azione` e senza `url` non compare; con `url` apre il gestionale.
 - **Tunnel e chiave dell'agente sul PC** (`agente_remoto` in `personalizzazione.json`, `agente_chiave.bin`): non servono più. Il file locale, se c'è ancora, si può cancellare.
 
-Il successore è il client desktop in `app/` (Tauri, solo Windows per ora): una finestra sull'interfaccia nel browser, con icona nell'area di notifica, avvio con Windows e notifiche di Windows per le riunioni in arrivo. Come si costruisce, cosa include e cosa no (*Apri in Outlook* resta escluso) sta in `app/README.md`.
+Il successore è il client desktop in `app/` (Tauri, per Windows e, ancora da provare, per Android): una finestra sull'interfaccia nel browser, con icona nell'area di notifica, avvio con Windows e notifiche di Windows per le riunioni in arrivo. Come si costruisce, cosa include e cosa no (*Apri in Outlook* resta escluso) sta in `app/README.md`.
 
 ---
 

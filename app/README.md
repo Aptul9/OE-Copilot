@@ -59,12 +59,20 @@ Uno script incluso nell'app (`src-tauri/src/inizializzazione.js`) gira nella fin
 - Il plugin di apertura dei link non inietta il suo script (`open_js_links_on_click` spento): i link li gestisce la lista degli indirizzi ammessi.
 - La finestra non ha strumenti per sviluppatori nelle build di rilascio.
 
+## Android (costruita nel codice, da provare)
+Il codice c'è; la costruzione e le prove sul telefono no: servono memoria e tempo che oggi non c'erano.
+
+- Cos'è: lo stesso client per Android (pacchetto `com.oecopilot.app`): la finestra del sistema (WebView) sul sito, le notifiche del plugin (il permesso `POST_NOTIFICATIONS` si chiede una volta, da Android 13) e la guardia della navigazione come sul PC. Non ci sono le notifiche del web, le passkey (la WebView di Android le espone solo se l'app lo chiede e il sito pubblica gli Asset Links) né i comandi del PC (icona nell'area di notifica, istanza unica, avvio con Windows). I promemoria con l'app chiusa li manda il server su Telegram (GUIDA.md, 4.9).
+- Costruirla (serve il toolchain Android: JDK 17, SDK, NDK e i target Android di Rust): `cd app`, `$env:OE_URL = 'https://<host>'`, `npm ci --ignore-scripts`, `npm run android:build`. Escono un APK per ABI (`aarch64` per i telefoni, `x86_64` per l'emulatore) sotto `src-tauri/gen/android/app/build/outputs/apk/`.
+- Firma: il rilascio si firma con un keystore che sta FUORI dal repository, in `%USERPROFILE%\.oe-copilot\android\` (file `keystore.properties` con `storeFile`, `storePassword`, `keyAlias`, `keyPassword`; un altro percorso con la variabile `OE_KEYSTORE_PROPERTIES`). Le chiavi sono anche nella nota `_secrets/oe-copilot` del vault. Senza il file l'APK esce non firmato e non si installa. Un APK firmato con un'altra chiave non aggiorna quello già installato: la chiave non si rigenera.
+- Prova sull'emulatore: `npm run android:prova`, una build di debug con un altro pacchetto che accetta il traffico in chiaro solo verso `10.0.2.2` (il PC visto dall'emulatore): `OE_URL=http://10.0.2.2:<porta>` con un gateway di prova in locale.
+- Installarla: si copia l'APK sul telefono, si consente l'installazione da quella fonte e si apre; Play Protect avvisa perché lo sviluppatore non è nello store.
 ## Cosa non c'è
 
 - **Apri in Outlook** del vecchio client: non si può riprodurre, gli id degli eventi del sito non sono id di Outlook.
 - **Aggiornamento automatico**: serve un indirizzo pubblico per i file, il repository è privato. Si reinstalla a mano.
 - **Firma del codice** dell'installer.
-- **Android**: pacchetto successivo.
+- **Android**: costruita nel codice e da provare (sezione sopra).
 - **Uso offline**: se il sito non risponde c'è solo il messaggio della pagina di avvio, nessuna copia del calendario.
 
 ## Prove

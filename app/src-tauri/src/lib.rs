@@ -57,12 +57,12 @@ fn prova_menu(app: tauri::AppHandle, azione: Option<String>) -> serde_json::Valu
 }
 
 /// Un'app senza console non lascia traccia se non parte (per esempio WebView2 che non si avvia): gli errori all'avvio
-/// finiscono in %LOCALAPPDATA%\com.oecopilot.desktop\errore.log, con l'ora in secondi dal 1970
+/// finiscono in %LOCALAPPDATA%\<identificativo dell'app>\errore.log (com.oecopilot.desktop), con l'ora in secondi dal 1970
 #[cfg(desktop)]
-fn registra_errore(testo: &str) {
+fn registra_errore(identificativo: &str, testo: &str) {
     use std::io::Write;
 
-    let Some(cartella) = std::env::var_os("LOCALAPPDATA").map(|d| std::path::PathBuf::from(d).join("com.oecopilot.desktop")) else {
+    let Some(cartella) = std::env::var_os("LOCALAPPDATA").map(|d| std::path::PathBuf::from(d).join(identificativo)) else {
         return;
     };
     let _ = std::fs::create_dir_all(&cartella);
@@ -81,7 +81,7 @@ fn crea_finestra_con_tentativi(app: &tauri::AppHandle, nascosta: bool) -> tauri:
     loop {
         match finestra::crea_principale(app, nascosta) {
             Err(errore) if tentativo < TENTATIVI => {
-                registra_errore(&format!("finestra non creata (tentativo {tentativo} di {TENTATIVI}): {errore}"));
+                registra_errore(&app.config().identifier, &format!("finestra non creata (tentativo {tentativo} di {TENTATIVI}): {errore}"));
                 tentativo += 1;
                 std::thread::sleep(std::time::Duration::from_secs(2));
             }
@@ -92,8 +92,12 @@ fn crea_finestra_con_tentativi(app: &tauri::AppHandle, nascosta: bool) -> tauri:
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let contesto = tauri::generate_context!();
     #[cfg(desktop)]
-    std::panic::set_hook(Box::new(|info| registra_errore(&info.to_string().replace('\n', " "))));
+    {
+        let identificativo = contesto.config().identifier.clone();
+        std::panic::set_hook(Box::new(move |info| registra_errore(&identificativo, &info.to_string().replace('\n', " "))));
+    }
 
     let costruttore = tauri::Builder::default();
     #[cfg(desktop)]
@@ -137,6 +141,6 @@ pub fn run() {
             finestra::crea_principale(app.handle(), false)?;
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(contesto)
         .expect("avvio di OE Copilot non riuscito");
 }

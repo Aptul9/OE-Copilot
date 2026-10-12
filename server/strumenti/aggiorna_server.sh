@@ -42,14 +42,15 @@ avvia() {
     docker compose --profile supervisore up -d --build --force-recreate --no-deps supervisore
 }
 
-# Email e password del proprietario possono arrivare dalla Action sullo standard input (due righe NOME=valore), invece che
-# da .env: compose legge prima l'ambiente della shell, quindi bastano esportate. Un valore vuoto non sovrascrive niente.
+# Email e password del proprietario, chiave dell'API e segreto dei cookie possono arrivare dalla Action sullo standard
+# input (righe NOME=valore), invece che da .env: compose legge prima l'ambiente della shell, quindi bastano esportate.
+# Un valore vuoto non sovrascrive niente.
 credenziali_da_stdin() {
     [ -t 0 ] && return 0
     local riga nome valore
     while IFS= read -r riga || [ -n "$riga" ]; do
         nome=${riga%%=*}; valore=${riga#*=}
-        case "$nome" in ADMIN_EMAIL|ADMIN_PASSWORD) [ -z "$valore" ] || export "$nome=$valore" ;; esac
+        case "$nome" in ADMIN_EMAIL|ADMIN_PASSWORD|API_KEY|BETTER_AUTH_SECRET) [ -z "$valore" ] || export "$nome=$valore" ;; esac
     done
 }
 
@@ -104,7 +105,7 @@ avvia_schermo() {
 }
 
 sano() {
-    chiave="$(grep '^API_KEY=' .env | cut -d= -f2)"
+    chiave="${API_KEY:-$(grep '^API_KEY=' .env | cut -d= -f2)}"
     for _ in $(seq 1 20); do
         if curl -fsS --max-time 5 -H "Authorization: Bearer $chiave" \
                 http://127.0.0.1:3180/api/salute >/dev/null 2>&1; then

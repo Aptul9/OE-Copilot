@@ -280,7 +280,7 @@ Per tornare al servizio systemd: `docker compose --profile supervisore rm -sf su
 
 Verifica che l'agente risponda (dal server):
 ```bash
-curl -s -H "Authorization: Bearer $(sudo grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2)" \
+curl -s -H "Authorization: Bearer $(sudo docker exec oe-copilot-agent printenv API_KEY)" \
   http://127.0.0.1:3180/api/calendari | python3 -m json.tool | head
 ```
 
@@ -299,7 +299,7 @@ Con il supervisore l'utente della Action non ha bisogno di `sudo`: prima aveva d
 La chiave pubblica della Action va in `/home/oecopilot/.ssh/authorized_keys`. Nel repository
 servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiave privata) e
 `DEPLOY_KNOWN_HOSTS` (la riga di `ssh-keyscan -t ed25519 <server>`); con l'interfaccia nel browser (4.7)
-anche `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Senza i secret
+anche `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `API_KEY` e `BETTER_AUTH_SECRET`. Senza i secret
 l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la Action.
 
 ### 4.7 L'interfaccia nel browser (facoltativa)
@@ -350,11 +350,12 @@ sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-
 # segreto dei cookie di sessione
 openssl rand -hex 32
 ```
-In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>` e `BETTER_AUTH_SECRET=<il segreto>`. Il
-prossimo aggiornamento costruisce e avvia `gateway` e `caddy-ui`.
+In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`. Il prossimo aggiornamento costruisce e avvia
+`gateway` e `caddy-ui`.
 
-**Email e password del proprietario** (`ADMIN_EMAIL`, `ADMIN_PASSWORD`, almeno 12 caratteri, senza `$`) stanno
-nei secret della Action e non in `.env`: l'aggiornamento (4.6) li passa allo script sullo standard input di SSH,
+**Email e password del proprietario** (`ADMIN_EMAIL`, `ADMIN_PASSWORD`, almeno 12 caratteri, senza `$`), **chiave
+dell'API** (`API_KEY`) e **segreto dei cookie** (`BETTER_AUTH_SECRET`, almeno 32 caratteri, `openssl rand -hex 32`)
+stanno nei secret della Action e non in `.env`: l'aggiornamento (4.6) li passa allo script sullo standard input di SSH,
 e compose li legge dall'ambiente prima che da `.env`. Per cambiarli:
 `gh secret set ADMIN_PASSWORD` e un nuovo aggiornamento (anche `Run workflow` dalla pagina della Action):
 il gateway riparte, la password nuova chiude le sessioni aperte. Con una email nuova nasce un utente nuovo e
@@ -506,9 +507,9 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker: dal
 
 2. **Tunnel**, lasciato aperto: `ssh -N -L 13180:127.0.0.1:3180 oecopilot`.
 
-3. **Chiamata all'agente**. La chiave dell'API sta in `.env` sul server: si legge in una variabile e non si stampa.
+3. **Chiamata all'agente**. La chiave dell'API sta nell'ambiente dell'agente sul server (arriva dai secret della Action, in `.env` non c'è più): si legge in una variabile e non si stampa.
    ```bash
-   CHIAVE=$(ssh oecopilot "sudo grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2-")
+   CHIAVE=$(ssh oecopilot "docker exec oe-copilot-agent printenv API_KEY")
    curl -s -H "Authorization: Bearer $CHIAVE" http://127.0.0.1:13180/api/calendari
    ```
 

@@ -313,8 +313,12 @@ jobs:
         env:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          API_KEY: ${{ secrets.API_KEY }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
         run: |
-          # email e password del proprietario arrivano dai secret, dallo standard input di SSH (non dalla riga di
-          # comando, che si vede in ps): sul server non stanno in nessun file. Se mancano vale ancora il .env.
-          printf 'ADMIN_EMAIL=%s\nADMIN_PASSWORD=%s\n' "$ADMIN_EMAIL" "$ADMIN_PASSWORD" \
+          # email e password del proprietario, chiave dell'API e segreto dei cookie arrivano dai secret, dallo standard
+          # input di SSH (non dalla riga di comando, che si vede in ps): sul server non stanno in nessun file.
+          # Se mancano vale ancora il .env.
+          printf 'ADMIN_EMAIL=%s\nADMIN_PASSWORD=%s\nAPI_KEY=%s\nBETTER_AUTH_SECRET=%s\n' \
+            "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$API_KEY" "$BETTER_AUTH_SECRET" \
             | ssh "$SERVER" "$OE_DIR/strumenti/aggiorna_server.sh avvia ${{ github.sha }}"

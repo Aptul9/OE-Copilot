@@ -75,8 +75,6 @@ jobs:
 
       - name: Supervisore del telefono, tipi, prove e immagine
         working-directory: server/supervisore
-      - name: Agente in TypeScript (ricorrenze), installazione, tipi e prove
-        working-directory: server/agente-ts
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm run typecheck
@@ -94,6 +92,13 @@ jobs:
           trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
           for _ in $(seq 1 30); do [ -s "$d/stato/battito.json" ] && break; sleep 1; done
           grep -q '"telefono": false' "$d/stato/battito.json"
+
+      - name: Agente in TypeScript (ricorrenze), installazione, tipi e prove
+        working-directory: server/agente-ts
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
 
       - name: Agente in TypeScript, immagine e risposte
         run: |

@@ -270,6 +270,17 @@ Con il file `PAUSA` (`telefono/PAUSA`, oppure `stato/schermo/PAUSA` finché una 
 
 **Il PIN non si può togliere.** Il criterio chiede una password del dispositivo: toglierla (`cmd lock_settings clear --old <PIN>` dal server) l'11/10/2026 ha fatto comparire in Outlook la schermata "Imposta la password del dispositivo", con l'avviso che altrimenti la casella viene rimossa. Il PIN si rimette con `cmd lock_settings set-pin <PIN>` dal server (le schermate del PIN in Impostazioni escono nere nella pagina). Lo sblocco lo digita sempre l'utente: se lo schermo è spento il servizio lo riaccende, sulla schermata di blocco, e non manda altro.
 
+**Il supervisore in un container (facoltativo, non ancora il predefinito).** `supervisore/` (Node.js, TypeScript) fa il lavoro dello script e del rilevatore: stessi giri, stesse variabili d'ambiente (`OGNI`, `ACCESSI_OGNI`, `GOOGLE_OGNI`, `TOCCO_OGNI`, `PAUSA_SCHERMO_SCADE`, le soglie della sezione 6) e stessi file in `stato/`. Parla col telefono con adb sulla rete di compose (`telefono:5555`, come il servizio schermo) invece di `docker exec`, quindi non ha `docker.sock` e non gira come root. È il servizio `supervisore` di compose con `profiles: ["supervisore"]`: `docker compose up` non lo avvia, e non va mai avviato insieme al servizio systemd (due giri sullo stesso telefono si pesterebbero). Gira come l'utente 10080, quello di Outlook sul telefono (`u0_a80`): database e log di Outlook sono leggibili solo da lui e da root (un container senza capacità, root compreso, non li legge) e adb non li raggiunge (parla come l'utente `shell`), quindi restano file del server, montati in sola lettura. `stato/` deve essere suo, `stato/schermo` resta dell'utente 10001:
+```bash
+cd /opt/oe-copilot
+sudo chown 10080:10080 stato
+sudo systemctl disable --now oe-copilot-sincronizza
+docker compose --profile supervisore up -d --build --no-deps supervisore
+docker inspect -f '{{.State.Health.Status}}' oe-copilot-supervisore       # healthy entro circa un minuto
+cat stato/battito.json; stat -c '%y' stato/accessi.json                    # battito ogni 35 secondi, accessi ogni 70
+```
+Per tornare al servizio systemd: `docker compose --profile supervisore rm -sf supervisore` e `sudo systemctl enable --now oe-copilot-sincronizza`. L'aggiornamento automatico (4.6) riavvia `oe-copilot-sincronizza` a ogni deploy e controlla `systemctl is-active`: con il supervisore al posto del servizio vanno cambiati nello stesso momento (riavvio del container e `docker inspect` al posto di `systemctl`), altrimenti un deploy riavvierebbe anche il vecchio giro. Il tocco sulla barra di stato parte da adb come utente `shell` e non da root: che conti come attività dell'utente va controllato sul telefono vero dopo il passaggio (`dumpsys power`, `mLastUserActivityTime` prima e dopo un giro con il tocco).
+
 Verifica che l'agente risponda (dal server):
 ```bash
 curl -s -H "Authorization: Bearer $(sudo grep ^API_KEY= /opt/oe-copilot/.env | cut -d= -f2)" \
@@ -530,6 +541,8 @@ lo stato di ogni casella, che l'agente usa per il pallino — **senza mai legger
   internal-error`: non conta.
 
 Le soglie si cambiano con le variabili d'ambiente `OUTLOOK_GIALLO_S`, `OUTLOOK_ROSSO_S`, `GOOGLE_GIALLO_S` e `GOOGLE_ROSSO_S` (nel servizio), e la cadenza del controllo con `ACCESSI_OGNI` (giri di sincronizzazione fra un controllo e l'altro).
+
+Il supervisore (4.5) ha lo stesso rilevatore in TypeScript (`supervisore/src/rilevatore/`): legge gli stessi file di Outlook (database e log, in sola lettura) e `dumpsys content` dal telefono con adb. `supervisore/test/differenziale.test.ts` lo confronta, a ogni modifica, con `rileva_accessi.py` su dati inventati (log con la rotazione, database, battito, `dumpsys content`, ora): `accessi.json` e `google-sync.json` devono uscire uguali byte per byte. L'unica differenza voluta: con byte non UTF-8 in `dumpsys content` il Python non dà verdetti per Google e il TypeScript sì. Il Python resta quello in funzione finché il supervisore non è il predefinito.
 
 ---
 

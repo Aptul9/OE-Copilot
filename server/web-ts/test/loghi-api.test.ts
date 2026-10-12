@@ -4,10 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { chiama, METODI_TS, type NomeMetodoTs } from "@/lib/core/api";
 import { chiudiArchivio, loadConfig } from "@/lib/core/archivio";
-import { attendiScarichi, azzeraScarichi, impostaReteDiProva } from "@/lib/core/loghi";
+import { attendiScarichi, azzeraScarichi, CODA_MAX, impostaReteDiProva, MSG, POSTI_MAX } from "@/lib/core/loghi";
 import { indirizzoAmmesso, type SoloProve } from "@/lib/core/rete-sicura";
 import { handle, MAX_BODY, type Deps } from "@/lib/gateway";
-import { png, SVG_PULITO } from "./immagini-prova";
+import { png, pngIntestazione, SVG_PULITO } from "./immagini-prova";
 import { avviaServerProva, risposta, type ServerProva } from "./server-prova";
 
 // I metodi dei loghi dietro il cancello del gateway: sessione, origine, tipo del corpo, grandezza, argomenti; i file serviti con la loro difesa.
@@ -221,6 +221,93 @@ describe("la guardia vera dietro il gateway", () => {
     }
     expect(s.richieste).toEqual([]);
     expect((await chiamata("get_loghi", [])).corpo).toEqual({ loghi: {} });
+  });
+});
+
+describe("tante richieste insieme", () => {
+  it(`verso un sito che non risponde: al più ${POSTI_MAX} collegamenti aperti, ${CODA_MAX} richieste in coda, le altre 'Troppe richieste'`, { timeout: 30_000 }, async () => {
+    let aperte = 0;
+    let massimo = 0;
+    const appeso = await avviaServerProva({
+      "/appeso": (_, res) => {
+        massimo = Math.max(massimo, ++aperte);
+        res.on("close", () => aperte--);
+      },
+    });
+    try {
+      // il sito non risponde mai: ogni scarico finisce alla scadenza, e il posto passa al successivo
+      impostaReteDiProva({ ...PROVE, attesaMs: 300 });
+      const fuori = 40;
+      const risposte = await Promise.all(Array.from({ length: POSTI_MAX + CODA_MAX + fuori }, (_, i) => chiamata("preview_logo", [`http://sito${i}.test:${appeso.porta}/appeso`])));
+      expect(risposte.every((r) => r.stato === 200 && r.corpo.ok === false)).toBe(true);
+      expect(risposte.filter((r) => r.corpo.error === MSG.troppeRichieste)).toHaveLength(fuori);
+      expect(MSG.troppeRichieste).toBe("Troppe richieste, riprova tra poco");
+      expect(risposte.filter((r) => r.corpo.error === "L'indirizzo non risponde")).toHaveLength(POSTI_MAX + CODA_MAX);
+      // i socket aperti verso il sito non sono mai stati più dei posti, e quelli rifiutati non si sono aperti
+      expect(massimo).toBeLessThanOrEqual(POSTI_MAX);
+      expect(massimo).toBeGreaterThan(0);
+      expect(appeso.richieste).toHaveLength(POSTI_MAX + CODA_MAX);
+      expect(console.error).not.toHaveBeenCalled();
+    } finally {
+      await appeso.chiudi();
+    }
+  });
+
+  it("dopo la raffica i posti sono liberi: la richiesta successiva passa", async () => {
+    impostaReteDiProva(PROVE);
+    expect((await chiamata("preview_logo", [s.url("/a.png")])).corpo).toMatchObject({ ok: true });
+  });
+
+  it("anche set_logo e refresh_logo passano dagli stessi posti: con i posti e la coda occupati rispondono subito 'Troppe richieste', e non cambiano niente", { timeout: 30_000 }, async () => {
+    const appeso = await avviaServerProva({ "/appeso": () => {} });
+    try {
+      impostaReteDiProva({ ...PROVE, attesaMs: 600 });
+      await chiamata("set_logo", ["Alfa", s.url("/a.png")]);
+      const occupanti = Array.from({ length: POSTI_MAX + CODA_MAX }, (_, i) => chiamata("preview_logo", [`http://sito${i}.test:${appeso.porta}/appeso`]));
+      await new Promise((ok) => setTimeout(ok, 100));
+      const t0 = performance.now();
+      expect((await chiamata("refresh_logo", ["Alfa"])).corpo).toEqual({ ok: false, error: MSG.troppeRichieste });
+      expect((await chiamata("set_logo", ["Beta", s.url("/a.png")])).corpo).toEqual({ ok: false, error: MSG.troppeRichieste });
+      expect(performance.now() - t0).toBeLessThan(400);
+      expect(Object.keys((await chiamata("get_loghi", [])).corpo.loghi)).toEqual(["Alfa"]);
+      await Promise.all(occupanti);
+      // liberi i posti, passano
+      expect((await chiamata("refresh_logo", ["Alfa"])).corpo).toMatchObject({ ok: true });
+      expect((await chiamata("set_logo", ["Beta", s.url("/a.png")])).corpo).toMatchObject({ ok: true });
+    } finally {
+      await appeso.chiudi();
+    }
+  });
+});
+describe("i file che bloccavano il controllo non fermano il gateway", () => {
+  const ESEMPI: [string, string | Buffer, string][] = [
+    ["22 commenti vuoti e una x (155 byte)", "<!---->".repeat(22) + "x", "Non è un'immagine"],
+    ["un nome lunghissimo dentro <svg>", "<svg>" + "a".repeat(400_000), MSG.svg],
+    ["< e centinaia di migliaia di spazi", "<svg><" + " ".repeat(400_000) + "x", MSG.svg],
+    ["<!DOCTYPE ripetuto 50000 volte", "<svg>" + "<!DOCTYPE".repeat(50_000), MSG.svg],
+    ["attributeName=a ripetuto 20000 volte", "<svg>" + "attributeName=a".repeat(20_000), MSG.svg],
+    ["una PNG da 65535 x 65535 pixel", pngIntestazione(65535, 65535), MSG.pixel],
+  ];
+
+  it.each(ESEMPI)("%s: upload_logo risponde subito con il suo testo", async (_, contenuto, errore) => {
+    const t0 = performance.now();
+    const r = await chiamata("upload_logo", ["Alfa", Buffer.from(contenuto).toString("base64")]);
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(r.corpo).toEqual({ ok: false, error: errore });
+  });
+
+  it.each(ESEMPI)("%s: preview_logo e set_logo da un indirizzo rispondono subito con il suo testo", async (_, contenuto, errore) => {
+    impostaReteDiProva(PROVE);
+    const sito = await avviaServerProva({ "/x": risposta(contenuto, "image/svg+xml") });
+    try {
+      const t0 = performance.now();
+      expect((await chiamata("preview_logo", [sito.url("/x")])).corpo).toEqual({ ok: false, error: errore });
+      expect((await chiamata("set_logo", ["Alfa", sito.url("/x")])).corpo).toEqual({ ok: false, error: errore });
+      expect(performance.now() - t0).toBeLessThan(2000);
+      expect((await chiamata("get_loghi", [])).corpo).toEqual({ loghi: {} });
+    } finally {
+      await sito.chiudi();
+    }
   });
 });
 

@@ -8,6 +8,7 @@ import { controllaImmagine, LATO_MAX, PIXEL_MAX, type TipoImmagine } from "./imm
 import { personalizzazione } from "./personalizzazione";
 import { type Dict, ErroreValore, isDict, messaggio } from "./py";
 import { controllaUrl, ErroreRete, LIMITE_ACCETTATO, scaricaSicuro, type SoloProve, TESTI } from "./rete-sicura";
+import { Semaforo } from "./semaforo";
 
 // I loghi delle aziende. Quelli di personalizzazione.json (interfaccia.loghi) restano come sono; sopra si mettono le scelte fatte dalla
 // finestra Calendari, tabella `loghi` di gateway.db: nome mostrato -> indirizzo di partenza e file. Un indirizzo lo scarica il gateway
@@ -21,7 +22,13 @@ export const LOGHI_MAX = 60;
 export const STATICI_MAX = 40;
 export const TTL_STATICI_MS = 7 * 24 * 3600 * 1000;
 const RIPROVA_MS = 5 * 60 * 1000;
-const SCARICHI_MAX = 3;
+/** Quanti collegamenti verso siti esterni stanno aperti insieme, in tutto: i metodi della finestra e lo scarico in secondo piano. */
+export const POSTI_MAX = 4;
+/** Chi aspetta un posto: al più CODA_MAX richieste, al più ATTESA_CODA_MS ciascuna; oltre, "Troppe richieste". */
+export const CODA_MAX = 16;
+export const ATTESA_CODA_MS = 5000;
+/** Lo scarico in secondo piano ne tiene aperti al più 3: l'ultimo posto resta a chi ha appena premuto un pulsante nella finestra. */
+const SCARICHI_MAX = POSTI_MAX - 1;
 const NOME_MAX = 200;
 
 export const MSG = {
@@ -29,6 +36,7 @@ export const MSG = {
   nonImmagine: "Non è un'immagine",
   svg: "SVG non ammesso: contiene codice o riferimenti esterni",
   pixel: `Immagine troppo grande (massimo ${LATO_MAX} pixel per lato e ${PIXEL_MAX / 1_000_000} megapixel)`,
+  troppeRichieste: "Troppe richieste, riprova tra poco",
   troppi: `Troppi loghi scelti da qui (massimo ${LOGHI_MAX})`,
   salvataggio: "Non riesco a salvare il logo sul server",
   nonCe: "Per questo nome non c'è un logo scelto da qui",
@@ -61,11 +69,18 @@ function preparaUrl(testo: unknown): string {
   return u.href;
 }
 
-/** I byte del file di `url`, riconosciuti dai primi byte. Solleva con il testo che la pagina mostra. */
-async function scaricaLogo(url: string): Promise<{ tipo: TipoImmagine; dati: Buffer }> {
+// I posti per i collegamenti verso l'esterno: uno solo per tutto il processo, anche se il modulo viene caricato due volte (come lo stato più sotto).
+const globalePosti = globalThis as typeof globalThis & { __oeLoghiPosti?: Semaforo };
+const posti = (): Semaforo => (globalePosti.__oeLoghiPosti ??= new Semaforo(POSTI_MAX, CODA_MAX, ATTESA_CODA_MS, () => new ErroreLogo(MSG.troppeRichieste)));
+
+/** I byte del file di `url`, riconosciuti dai primi byte, senza aspettare un posto. Solleva con il testo che la pagina mostra. */
+async function scarica(url: string): Promise<{ tipo: TipoImmagine; dati: Buffer }> {
   const r = await scaricaSicuro(url, reteDiProva);
   return controllato(r.dati);
 }
+
+/** Come `scarica`, per chi risponde a una richiesta della pagina: aspetta un posto (in coda corta) o risponde "Troppe richieste". */
+const scaricaLogo = (url: string) => posti().esegui(() => scarica(url));
 
 const TESTO_ESITO = { non_immagine: MSG.nonImmagine, svg_non_ammesso: MSG.svg, troppi_pixel: MSG.pixel } as const;
 
@@ -301,14 +316,19 @@ function scriviStatico(url: string, img: TipoImmagine, dati: Buffer): void {
   for (const f of fs.readdirSync(cartella())) if (f !== file && f.startsWith(`url-${hash16(url)}.`) && GESTITO.test(f)) rimuovi(f);
 }
 
-/** Avvia in secondo piano lo scarico di un indirizzo di personalizzazione.json: uno alla volta per indirizzo, al più SCARICHI_MAX insieme, e dopo un errore si riprova dopo 5 minuti. */
+/**
+ * Avvia in secondo piano lo scarico di un indirizzo di personalizzazione.json: uno alla volta per indirizzo, al più SCARICHI_MAX insieme,
+ * solo se un posto c'è subito (la pagina ci riprova al giro dopo, nessuna coda), e dopo un errore si riprova dopo 5 minuti.
+ */
 function avviaScarico(url: string): void {
   const s = stato();
   const fallita = s.fallite.get(url);
   if (s.inVolo.has(url) || s.inVolo.size >= SCARICHI_MAX || (fallita !== undefined && Date.now() - fallita < RIPROVA_MS)) return;
+  const posto = posti().provaPrendere();
+  if (!posto) return;
   const lavoro = (async () => {
     try {
-      const { tipo, dati } = await scaricaLogo(url);
+      const { tipo, dati } = await scarica(url);
       scriviStatico(url, tipo, dati);
       s.fallite.delete(url);
       pulisciLoghi();
@@ -319,6 +339,7 @@ function avviaScarico(url: string): void {
       console.warn(`loghi: ${new URL(url).host}: ${messaggio(e)}`);
     } finally {
       s.inVolo.delete(url);
+      posto();
     }
   })();
   s.inVolo.set(url, lavoro);

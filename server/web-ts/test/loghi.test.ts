@@ -18,6 +18,7 @@ import {
   LOGHI_MAX,
   migraLoghi,
   MSG,
+  POSTI_MAX,
   pulisciLoghi,
   rinominaLogo,
   STATICI_MAX,
@@ -744,6 +745,48 @@ describe("gli indirizzi scritti a mano in personalizzazione.json", () => {
     interfaccia();
     await attendiScarichi();
     expect(conta("/a.png")).toBe(1);
+  });
+
+  it("un file che bloccava il controllo, o un'immagine di miliardi di pixel, non ferma lo scarico: la voce manca e il motivo è nel log", async () => {
+    scrivi({ Alfa: `http://u.prova.test:${s.porta}/ostile155`, Beta: `http://u.prova.test:${s.porta}/gigante.png` });
+    const t0 = performance.now();
+    interfaccia();
+    await attendiScarichi();
+    expect(performance.now() - t0).toBeLessThan(2000);
+    const dopo = interfaccia();
+    expect(dopo.loghi).toEqual({});
+    expect(dopo.loghi_in_corso).toEqual(["Alfa", "Beta"]);
+    const righe = vi.mocked(console.warn).mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(righe).toContain(MSG.nonImmagine);
+    expect(righe).toContain(MSG.pixel);
+    expect(gestiti()).toEqual([]);
+  });
+
+  it("lo scarico in secondo piano usa gli stessi posti dei metodi della finestra: a posti occupati non parte (nessuna coda), liberi riparte", async () => {
+    lentoMs = 400;
+    const occupanti = Array.from({ length: POSTI_MAX }, (_, i) => anteprimaLogo(s.url(`/lento.png?n=${i}`)));
+    await new Promise((ok) => setTimeout(ok, 60));
+    scrivi({ Alfa: `http://u.prova.test:${s.porta}/a.png` });
+    expect(interfaccia().loghi_in_corso).toEqual(["Alfa"]);
+    await attendiScarichi();
+    expect(conta("/a.png")).toBe(0);
+    await Promise.all(occupanti);
+    interfaccia();
+    await attendiScarichi();
+    expect(conta("/a.png")).toBe(1);
+    expect(Object.keys(interfaccia().loghi as object)).toEqual(["Alfa"]);
+  });
+
+  it("tre scarichi lenti in secondo piano lasciano il quarto posto a chi preme un pulsante nella finestra: non aspetta", async () => {
+    lentoMs = 700;
+    scrivi(Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`Voce ${i}`, `http://l${i}.test:${s.porta}/lento.png?n=${i}`])));
+    interfaccia();
+    await new Promise((ok) => setTimeout(ok, 150));
+    expect(massimoInVolo).toBe(3);
+    const t0 = performance.now();
+    expect((await anteprimaLogo(s.url("/a.png"))).tipo).toBe("image/png");
+    expect(performance.now() - t0).toBeLessThan(400);
+    expect(massimoInVolo).toBe(3);
   });
 
   it("gli scarichi insieme sono al più 3 e gli altri partono ai giri dopo", async () => {

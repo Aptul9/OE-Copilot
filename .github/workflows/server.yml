@@ -237,7 +237,17 @@ jobs:
           test "$(codice "$G/condividi/$(openssl rand -hex 22 | cut -c1-43).ics")" = 404
           dopo=$(date -u -d '+3 days' +%F)
           curl -fsS -b jar -X POST "${json[@]}" -d "[{\"title\":\"Titolo riservato\",\"start\":\"${dopo}T10:00:00\",\"end\":\"${dopo}T11:00:00\",\"location\":\"Luogo riservato\",\"notes\":\"Note riservate\"}]" $G/api/add_local_event | grep -q '"ok":true'
-          cond=$(curl -fsS -b jar -X POST "${json[@]}" -d '[{"nome":"Prova","nome_calendario":"Calendario di prova"}]' $G/api/add_condivisione)
+          # l'agente vero ha una fonte che non si legge (assente@alfa.example: nessun calendario nel database), quindi l'azienda Alfa è in errore. Un link a tutti i
+          # calendari la pubblica e senza i suoi eventi il calendario sarebbe incompleto (per chi lo importa: libero): risponde 503 con Retry-After e non pubblica
+          # niente. Un link a un gruppo senza quell'azienda (Beta e gli eventi personali) risponde, ed è quello su cui valgono le prove qui sotto
+          curl -fsS -b jar -X POST "${json[@]}" -d '[{"gruppi_calendari":{"prova":["Beta","Eventi personali"]}}]' $G/api/save_config | grep -q '"ok":true'
+          tutti=$(curl -fsS -b jar -X POST "${json[@]}" -d '[{"nome":"Tutti"}]' $G/api/add_condivisione | jq -r .condivisione.url)
+          [[ $tutti == $G/condividi/*.ics ]]
+          curl -s -D tutti.h -o tutti.ics "$tutti"
+          head -n 1 tutti.h | grep -q ' 503 '
+          grep -qi '^retry-after: 120' tutti.h
+          test -z "$(grep BEGIN:VCALENDAR tutti.ics)"
+          cond=$(curl -fsS -b jar -X POST "${json[@]}" -d '[{"nome":"Prova","nome_calendario":"Calendario di prova","ambito":"gruppo","gruppo":"prova"}]' $G/api/add_condivisione)
           link=$(jq -r .condivisione.url <<<"$cond"); lid=$(jq -r .condivisione.id <<<"$cond")
           [[ $link == $G/condividi/*.ics ]]
           curl -fsS -D feed.h -o feed.ics "$link"
@@ -278,6 +288,19 @@ jobs:
           curl -fsS localhost:3191/api/auth/passkey/generate-authenticate-options | grep -q '"rpId":"localhost"'
           test "$(codice -X POST -H 'Content-Type: application/json' -H 'Origin: http://localhost:3191' -d '{"password":"x"}' localhost:3191/api/auth/two-factor/enable)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' localhost:3191/sicurezza)" = "307 http://localhost:3191/login?next=%2Fsicurezza"
+          # Caddy con il gateway fermo (502): l'errore di inoltro scrive la richiesta, e il testo segreto di un link di condivisione non deve starci, comunque sia
+          # scritto l'indirizzo (// davanti, segmenti col punto, maiuscole, indirizzo intero, ovunque) né in Referer
+          docker stop "$gw" >/dev/null
+          tok=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n')
+          for p in "/condividi/$tok.ics" "//condividi/$tok.ics" "/x/../condividi/$tok.ics" "/CONDIVIDI/$tok.ics" "/condividi/./$tok.ics" "/api/x?t=$tok"; do
+            test "$(codice --path-as-is "$C$p")" = 502
+          done
+          test "$(codice --request-target "$C/condividi/$tok.ics" "$C/")" = 502
+          test "$(codice -H "Referer: $C/condividi/$tok.ics" "$C/")" = 502
+          sleep 1
+          docker logs "$cd" >caddy.log 2>&1
+          grep -q '/condividi/REDATTO' caddy.log
+          test -z "$(grep -F -- "$tok" caddy.log)"
 
   aggiorna:
     name: Aggiorna il server

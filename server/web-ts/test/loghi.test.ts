@@ -27,6 +27,7 @@ import {
 } from "@/lib/core/loghi";
 import { personalizzazione } from "@/lib/core/personalizzazione";
 import { indirizzoAmmesso, type SoloProve } from "@/lib/core/rete-sicura";
+import { mappaLoghi } from "@/lib/oe/logic";
 import { gif, png, pngIntestazione, SVG_PULITO } from "./immagini-prova";
 import { avviaServerProva, risposta, type ServerProva } from "./server-prova";
 
@@ -745,6 +746,57 @@ describe("gli indirizzi scritti a mano in personalizzazione.json", () => {
     interfaccia();
     await attendiScarichi();
     expect(conta("/a.png")).toBe(1);
+  });
+
+  it("un valore con la barra rovesciata, con un tab o con un a capo è un indirizzo come gli altri: lo scarica il gateway e alla pagina non arriva mai il valore", async () => {
+    const B = "\\";
+    const porta = s.porta;
+    const stessoDi = `http://u.prova.test:${porta}/a.png`;
+    scrivi({
+      Alfa: stessoDi,
+      Beta: `http:${B}${B}u.prova.test:${porta}${B}a.png`,
+      Gamma: `  http:/\t/u.prova.test:${porta}/a.png `,
+      Delta: `/${B}u.prova.test:${porta}/b.png`,
+      Epsilon: `${B}${B}u.prova.test:${porta}${B}c.png`,
+      Zeta: `/\t/u.prova.test:${porta}/d.png`,
+      Eta: `/\n/u.prova.test:${porta}/e.png`,
+      Theta: `${B}/u.prova.test:${porta}/f.png`,
+      Iota: "logos/iota.png",
+    });
+    const primo = interfaccia();
+    // nessun valore di questi arriva alla pagina così com'è: o è il file in cache, o manca (e il nome è in corso)
+    expect(Object.values(primo.loghi as object)).toEqual(["logos/iota.png"]);
+    expect(primo.loghi_in_corso).toEqual(["Alfa", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta"]);
+    for (let giro = 0; giro < 6; giro++) {
+      await attendiScarichi();
+      interfaccia();
+    }
+    await attendiScarichi();
+    const fuori = interfaccia();
+    const loghi = fuori.loghi as Record<string, string>;
+    // i tre che portano a http://u.prova.test:PORTA/a.png sono lo stesso file, scaricato una volta sola
+    expect(conta("/a.png")).toBe(1);
+    expect(loghi.Alfa).toBe(loghi.Beta);
+    expect(loghi.Alfa).toBe(loghi.Gamma);
+    expect(loghi.Alfa).toMatch(new RegExp(`^logos/url-${hash16(new URL(stessoDi).href)}\\.png\\?v=\\d+$`));
+    // gli altri sono https (senza schema), e il server di prova parla http: lo scarico non riesce, ma il valore non passa lo stesso
+    for (const nome of ["Delta", "Epsilon", "Zeta", "Eta", "Theta"]) expect(loghi[nome], nome).toBeUndefined();
+    expect(fuori.loghi_in_corso).toEqual(["Delta", "Epsilon", "Zeta", "Eta", "Theta"]);
+    expect(loghi.Iota).toBe("logos/iota.png");
+    // e quello che la pagina mostra non esce mai da questo sito
+    for (const url of Object.values(mappaLoghi(loghi))) expect(new URL(url, "https://app.example.test/").origin).toBe("https://app.example.test");
+  });
+
+  it("un valore che il gateway non scarica (ftp:, data:, https:/ senza due barre) non passa alla pagina in nessun modo: la pagina lo scarta", () => {
+    const valori = { A: "ftp://u.prova.test/x.png", B: "data:image/png;base64,AAAA", C: "https:/u.prova.test/x.png", D: "https:u.prova.test/x.png", E: "javascript:alert(1)", F: "C:\\loghi\\x.png" };
+    scrivi(valori);
+    const fuori = interfaccia();
+    // per il gateway sono file: passano come sono, e non parte nessuno scarico
+    expect(fuori.loghi).toEqual(valori);
+    expect(fuori.loghi_in_corso).toBeUndefined();
+    expect(contatori).toEqual({});
+    // ma la pagina non li usa: nessuno è un percorso di questo sito
+    expect(mappaLoghi(fuori.loghi as Record<string, string>)).toEqual({ "Eventi personali": "/logos/personale.png" });
   });
 
   it("un file che bloccava il controllo, o un'immagine di miliardi di pixel, non ferma lo scarico: la voce manca e il motivo è nel log", async () => {

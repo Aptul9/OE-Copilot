@@ -245,11 +245,12 @@ describe("vista adatta allo schermo", () => {
 });
 
 describe("urlLogo", () => {
+  // un indirizzo di un altro sito non si carica dalla pagina: lo scarica il gateway (lib/core/loghi.ts) e alla pagina arriva il file in cache
   it.each([
     ["logos/serco.png", "/logos/serco.png"],
     ["/logos/serco.png", "/logos/serco.png"],
-    ["https://esempio.example/logo.png", "https://esempio.example/logo.png"],
-    ["//cdn.example/logo.png", "//cdn.example/logo.png"],
+    ["https://esempio.example/logo.png", ""],
+    ["//cdn.example/logo.png", ""],
   ])("%s -> %s", (valore, atteso) => expect(urlLogo(valore)).toBe(atteso));
 });
 

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { comeLoLegge } from "../valore-logo";
 import { archivio, transazione } from "./archivio";
 import { nelleDati } from "./dati";
 import { controllaImmagine, LATO_MAX, PIXEL_MAX, type TipoImmagine } from "./immagine";
@@ -159,11 +160,15 @@ function scrivi(nome: string, dati: Buffer): void {
   }
 }
 
-/** L'indirizzo di un valore di personalizzazione.json, o null se il valore è un file. */
+/**
+ * L'indirizzo di un valore di personalizzazione.json, o null se il valore è un file. Il valore si legge come lo legge il browser
+ * (valore-logo.ts): "/\sito.org/x.png" e "\\sito.org\x.png" sono https://sito.org/x.png, e vanno scaricati qui, mai lasciati alla pagina.
+ */
 function urlDaValore(v: unknown): string | null {
-  if (typeof v !== "string" || !/^(?:https?:)?\/\//i.test(v.trim())) return null;
+  if (typeof v !== "string") return null;
+  const t = comeLoLegge(v);
+  if (!/^(?:https?:)?\/\//i.test(t)) return null;
   try {
-    const t = v.trim();
     const u = new URL(t.startsWith("//") ? `https:${t}` : t);
     u.hash = "";
     return u.href;

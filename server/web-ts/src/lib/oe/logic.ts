@@ -1,3 +1,4 @@
+import { comeLoLegge, portaFuori } from "../valore-logo";
 import type { Calendario, Evento, FonteStato, GruppiCalendari, SchedaTimesheet } from "./types";
 
 // Funzioni pure della pagina, portate dalla vecchia pagina (app.js, nella storia di git fino a 2d57a83^): niente DOM, niente rete, provabili da sole.
@@ -13,8 +14,17 @@ export function iniziali(nome: string | null | undefined): string {
   return s.slice(0, 2).toUpperCase();
 }
 
-/** Dove sta un logo dichiarato in personalizzazione.json: "logos/serco.png" (nella cartella dei loghi del server) o un indirizzo intero. */
-export const urlLogo = (valore: string) => (/^(https?:)?\/\//.test(valore) || valore.startsWith("/") ? valore : `/${valore}`);
+/**
+ * Dove sta un logo dichiarato in personalizzazione.json: "logos/serco.png", nella cartella dei loghi del server. Un indirizzo di un altro
+ * sito qui non arriva: lo scarica il gateway e la pagina riceve il file in cache (lib/core/loghi.ts). Se arrivasse comunque non si carica
+ * da lì ("" e si vedono le iniziali): il valore si legge come lo legge il browser, quindi anche "/\sito.org/x.png" e "\\sito.org\x.png"
+ * (per lui https://sito.org/x.png) restano fuori.
+ */
+export function urlLogo(valore: string): string {
+  const v = comeLoLegge(valore);
+  if (!v || portaFuori(v)) return "";
+  return v.startsWith("/") ? v : `/${v}`;
+}
 
 // Un dominio scritto da solo (esempio.org) non è un indirizzo: si offre l'icona del sito. Se ha già un percorso (esempio.org/logo.png) basta lo schema.
 const DOMINIO = "(?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d+)?";
@@ -29,7 +39,11 @@ export const LOGO_EVENTI_PERSONALI = "/logos/personale.png";
 /** I loghi da mostrare, per nome come lo mostra la barra: quello degli Eventi personali, poi quelli dichiarati (personalizzazione.json e finestra Calendari), che vincono. */
 export const mappaLoghi = (loghi: Record<string, string> | undefined): Record<string, string> => ({
   "Eventi personali": LOGO_EVENTI_PERSONALI,
-  ...Object.fromEntries(Object.entries(loghi ?? {}).filter(([, v]) => typeof v === "string" && v).map(([nome, valore]) => [nome, urlLogo(valore)])),
+  ...Object.fromEntries(
+    Object.entries(loghi ?? {})
+      .map(([nome, valore]) => [nome, typeof valore === "string" ? urlLogo(valore) : ""] as const)
+      .filter(([, url]) => url),
+  ),
 });
 
 /** Il colore mescolato alla superficie del tema, senza trasparenza: la griglia non traspare dall'evento. */

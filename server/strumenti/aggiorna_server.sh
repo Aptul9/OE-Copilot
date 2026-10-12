@@ -98,6 +98,23 @@ avvia_ui() {
     [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3190/logos/personale.png)" = 302 ] \
         && [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H 'Content-Type: application/json' -d '[]' http://127.0.0.1:3190/api/get_config)" = 401 ] \
         || { echo "il gateway non chiude l'accesso come dovrebbe" >&2; return 1; }
+    # Il Caddy: `compose up` dà 0 anche se il suo container si riavvia in continuazione, e con un gateway sano il sito resterebbe spento dietro sslh
+    # con la Action verde. Una richiesta HTTPS alla sua porta pubblicata (4445) con il nome del sito (-k: il certificato può essere non fidato; se
+    # manca del tutto, come alla prima installazione prima che Caddy lo ottenga, la risposta non arriva e il controllo fallisce: si rilancia dopo
+    # qualche minuto) deve dare 200, e il container non deve essersi riavviato.
+    ui_host="${UI_HOST:-$(grep '^UI_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d "\r\"'")}"
+    codice=""
+    for _ in $(seq 1 15); do
+        codice="$(curl -ksS --max-time 5 --resolve "$ui_host:4445:127.0.0.1" -o /dev/null -w '%{http_code}' "https://$ui_host:4445/login" 2>/dev/null)" || true
+        [ "$codice" = 200 ] && break
+        sleep 2
+    done
+    riavvii="$(docker inspect -f '{{.RestartCount}}' oe-copilot-caddy 2>/dev/null)" || riavvii="?"
+    if [ "$codice" != 200 ] || [ "$riavvii" != 0 ]; then
+        echo "il servizio oe-copilot-caddy non serve il sito (https://$ui_host:4445/login: ${codice:-nessuna risposta}, riavvii del container: $riavvii)" >&2
+        docker logs --tail 40 oe-copilot-caddy >&2 || true
+        return 1
+    fi
 }
 
 # Schermo del telefono nel browser (schermo-web, GUIDA.md 4.8). Come la web: se non parte la Action diventa rossa,

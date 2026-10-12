@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { archivio, transazione } from "./archivio";
 import { nelleDati } from "./dati";
-import { controllaImmagine, type TipoImmagine } from "./immagine";
+import { controllaImmagine, LATO_MAX, PIXEL_MAX, type TipoImmagine } from "./immagine";
 import { personalizzazione } from "./personalizzazione";
 import { type Dict, ErroreValore, isDict, messaggio } from "./py";
 import { controllaUrl, ErroreRete, LIMITE_ACCETTATO, scaricaSicuro, type SoloProve, TESTI } from "./rete-sicura";
@@ -28,6 +28,7 @@ export const MSG = {
   nomeNonValido: "Nome non valido",
   nonImmagine: "Non è un'immagine",
   svg: "SVG non ammesso: contiene codice o riferimenti esterni",
+  pixel: `Immagine troppo grande (massimo ${LATO_MAX} pixel per lato e ${PIXEL_MAX / 1_000_000} megapixel)`,
   troppi: `Troppi loghi scelti da qui (massimo ${LOGHI_MAX})`,
   salvataggio: "Non riesco a salvare il logo sul server",
   nonCe: "Per questo nome non c'è un logo scelto da qui",
@@ -66,10 +67,12 @@ async function scaricaLogo(url: string): Promise<{ tipo: TipoImmagine; dati: Buf
   return controllato(r.dati);
 }
 
+const TESTO_ESITO = { non_immagine: MSG.nonImmagine, svg_non_ammesso: MSG.svg, troppi_pixel: MSG.pixel } as const;
+
 function controllato(dati: Buffer): { tipo: TipoImmagine; dati: Buffer } {
   if (dati.length > LIMITE_ACCETTATO) throw new ErroreRete("troppo_grande", TESTI.troppoGrande);
   const esito = controllaImmagine(dati);
-  if ("errore" in esito) throw new ErroreLogo(esito.errore === "svg_non_ammesso" ? MSG.svg : MSG.nonImmagine);
+  if ("errore" in esito) throw new ErroreLogo(TESTO_ESITO[esito.errore]);
   return { tipo: esito.tipo, dati };
 }
 

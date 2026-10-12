@@ -26,7 +26,7 @@ import {
 } from "@/lib/core/loghi";
 import { personalizzazione } from "@/lib/core/personalizzazione";
 import { indirizzoAmmesso, type SoloProve } from "@/lib/core/rete-sicura";
-import { gif, png, SVG_PULITO } from "./immagini-prova";
+import { gif, png, pngIntestazione, SVG_PULITO } from "./immagini-prova";
 import { avviaServerProva, risposta, type ServerProva } from "./server-prova";
 
 // Il logo scelto dalla finestra Calendari e quelli di personalizzazione.json: la tabella, il file in cache, l'unione, il cambio di nome,
@@ -82,6 +82,8 @@ beforeEach(async () => {
     "/a.gif": risposta(gif(), "image/gif"),
     "/s.svg": risposta(SVG_PULITO, "image/svg+xml"),
     "/ostile.svg": risposta('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', "image/svg+xml"),
+    "/ostile155": risposta("<!---->".repeat(22) + "x", "image/svg+xml"),
+    "/gigante.png": risposta(pngIntestazione(65535, 65535)),
     "/pagina": risposta("<!doctype html><title>x</title>", "text/html"),
     "/grande": risposta(Buffer.alloc(600 * 1024, 1)),
     "/e404": risposta("no", "text/plain", 404),
@@ -209,6 +211,8 @@ describe("un logo da un indirizzo", () => {
       ["una pagina web", "/pagina", "Non è un'immagine"],
       ["uno SVG con uno script", "/ostile.svg", "SVG non ammesso: contiene codice o riferimenti esterni"],
       ["un file troppo grande", "/grande", "Immagine troppo grande (massimo 512 KB)"],
+      ["un'immagine di miliardi di pixel in pochi byte", "/gigante.png", "Immagine troppo grande (massimo 4096 pixel per lato e 16 megapixel)"],
+      ["un file che mandava il controllo in tempi lunghissimi", "/ostile155", "Non è un'immagine"],
     ];
     it.each(casi)("%s", async (_, percorso, testo) => {
       await impostaLogo("Alfa", s.url("/a.png"));

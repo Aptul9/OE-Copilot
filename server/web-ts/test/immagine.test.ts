@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { controllaImmagine, svgAmmesso } from "@/lib/core/immagine";
-import { gif, ico, jpeg, png, SVG_PULITO, webp } from "./immagini-prova";
+import { controllaImmagine, LATO_MAX, PIXEL_MAX, svgAmmesso } from "@/lib/core/immagine";
+import { gif, ico, jpeg, png, pngIntestazione, SVG_PULITO, webp, webpEsteso, webpSenzaPerdita } from "./immagini-prova";
 
 const tipo = (dati: Uint8Array | string) => {
   const e = controllaImmagine(typeof dati === "string" ? Buffer.from(dati, "utf-8") : dati);
@@ -16,6 +16,8 @@ describe("il tipo lo dicono i primi byte", () => {
     expect(controllaImmagine(gif("87a"))).toEqual({ tipo: { ext: "gif", mime: "image/gif" } });
     expect(controllaImmagine(gif("89a"))).toEqual({ tipo: { ext: "gif", mime: "image/gif" } });
     expect(controllaImmagine(webp())).toEqual({ tipo: { ext: "webp", mime: "image/webp" } });
+    expect(controllaImmagine(webpEsteso())).toEqual({ tipo: { ext: "webp", mime: "image/webp" } });
+    expect(controllaImmagine(webpSenzaPerdita())).toEqual({ tipo: { ext: "webp", mime: "image/webp" } });
     expect(controllaImmagine(ico(1))).toEqual({ tipo: { ext: "ico", mime: "image/vnd.microsoft.icon" } });
     expect(controllaImmagine(ico(3))).toEqual({ tipo: { ext: "ico", mime: "image/vnd.microsoft.icon" } });
     expect(controllaImmagine(Buffer.from(SVG_PULITO))).toEqual({ tipo: { ext: "svg", mime: "image/svg+xml" } });
@@ -168,7 +170,202 @@ describe("uno SVG che esegue o carica qualcosa si rifiuta", () => {
     expect(svgAmmesso(testo)).toBe(false);
   });
 
-  it("uno SVG con del testo che somiglia a un gestore si rifiuta lo stesso: un dubbio vale un no", () => {
-    expect(tipo(SVG("<text>onore=1</text>"))).toBe("svg_non_ammesso");
+  it("il testo che somiglia a un attributo, fuori da un tag, non è un attributo: si accetta; dentro un tag si rifiuta", () => {
+    expect(tipo(SVG("<text>onore=1 onclick=\"alert(1)\" href='http://x.example/'</text>"))).toBe("svg");
+    expect(tipo(SVG('<text onore="1">x</text>'))).toBe("svg_non_ammesso");
+  });
+});
+
+// ---- La grandezza di un raster ------------------------------------------------------------------------------------------------------
+describe("la grandezza di un raster", () => {
+  const FORMATI: [string, (l: number, a: number) => Buffer][] = [
+    ["PNG", pngIntestazione],
+    ["JPEG", jpeg],
+    ["GIF", (l, a) => gif("89a", l, a)],
+    ["WebP con perdita (VP8)", webp],
+    ["WebP esteso (VP8X)", webpEsteso],
+    ["WebP senza perdita (VP8L)", webpSenzaPerdita],
+  ];
+
+  it("i limiti sono 4096 pixel per lato e 16 megapixel", () => {
+    expect(LATO_MAX).toBe(4096);
+    expect(PIXEL_MAX).toBe(16_000_000);
+  });
+
+  describe.each(FORMATI)("%s", (_, fai) => {
+    it.each([
+      [1, 1],
+      [8, 8],
+      [4096, 1],
+      [1, 4096],
+      [4096, 3906],
+      [3906, 4096],
+      [4000, 4000],
+    ])("%i x %i si accetta", (l, a) => expect(controllaImmagine(fai(l, a))).toMatchObject({ tipo: expect.anything() }));
+
+    it.each([
+      ["un lato sopra 4096 (larghezza)", 4097, 1],
+      ["un lato sopra 4096 (altezza)", 1, 4097],
+      ["16 megapixel sfondati con i due lati nel limite", 4096, 4096],
+      ["16 megapixel sfondati di poco", 4000, 4001],
+      ["due lati grandi", 8000, 8000],
+    ])("%s si rifiuta con il testo della grandezza", (_n, l, a) => {
+      expect(controllaImmagine(fai(l, a))).toEqual({ errore: "troppi_pixel" });
+    });
+
+    it("una testata che dice 0 pixel non è un'immagine", () => {
+      // VP8X e VP8L scrivono "meno uno": lì lo 0 non si può dire
+      if (/VP8[XL]/.test(_)) return;
+      expect(controllaImmagine(fai(0, 8))).toEqual({ errore: "non_immagine" });
+      expect(controllaImmagine(fai(8, 0))).toEqual({ errore: "non_immagine" });
+    });
+  });
+
+  it.each([
+    ["PNG 2147483647 x 2147483647", pngIntestazione(0x7fffffff, 0x7fffffff)],
+    ["PNG 65535 x 65535", pngIntestazione(65535, 65535)],
+    ["PNG 30000 x 30000", pngIntestazione(30000, 30000)],
+    ["PNG 4294967295 x 1", pngIntestazione(0xffffffff, 1)],
+    ["JPEG 65535 x 65535", jpeg(65535, 65535)],
+    ["GIF 65535 x 65535", gif("89a", 65535, 65535)],
+    ["WebP VP8 16383 x 16383", webp(16383, 16383)],
+    ["WebP VP8X 16777216 x 16777216", webpEsteso(1 << 24, 1 << 24)],
+    ["WebP VP8L 16384 x 16384", webpSenzaPerdita(16384, 16384)],
+  ])("%s si rifiuta", (_, dati) => expect(controllaImmagine(dati)).toEqual({ errore: "troppi_pixel" }));
+
+  it("una testata troncata non è un'immagine, in ogni formato", () => {
+    const intero = (b: Buffer, n: number) => b.subarray(0, n);
+    // PNG: la testata arriva a 24 byte
+    for (let n = 8; n < 24; n++) expect(tipo(intero(pngIntestazione(8, 8), n)), `PNG ${n}`).toBe("non_immagine");
+    expect(tipo(intero(pngIntestazione(8, 8), 24))).toBe("png");
+    // GIF: 10 byte
+    for (let n = 6; n < 10; n++) expect(tipo(intero(gif(), n)), `GIF ${n}`).toBe("non_immagine");
+    expect(tipo(intero(gif(), 10))).toBe("gif");
+    // WebP: 30 byte (VP8 e VP8X), 25 (VP8L)
+    for (let n = 12; n < 30; n++) {
+      expect(tipo(intero(webp(), n)), `VP8 ${n}`).toBe("non_immagine");
+      expect(tipo(intero(webpEsteso(), n)), `VP8X ${n}`).toBe("non_immagine");
+    }
+    for (let n = 12; n < 25; n++) expect(tipo(intero(webpSenzaPerdita(), n)), `VP8L ${n}`).toBe("non_immagine");
+    expect(tipo(intero(webp(), 30))).toBe("webp");
+    expect(tipo(intero(webpSenzaPerdita(), 25))).toBe("webp");
+    // JPEG: senza il segmento SOF intero non c'è una grandezza
+    const j = jpeg();
+    const sof = j.indexOf(Buffer.from([0xff, 0xc0]));
+    for (let n = 3; n < sof + 9; n++) expect(tipo(intero(j, n)), `JPEG ${n}`).toBe("non_immagine");
+    expect(tipo(intero(j, sof + 9))).toBe("jpg");
+  });
+
+  it("un WebP con un primo blocco che non è VP8, VP8L o VP8X, o con la firma del frame sbagliata, non è un'immagine", () => {
+    const strano = webp();
+    strano.write("VP8Z", 12, "ascii");
+    expect(tipo(strano)).toBe("non_immagine");
+    const firma = webp();
+    firma[23] = 0x00;
+    expect(tipo(firma)).toBe("non_immagine");
+    const senzaFirma = webpSenzaPerdita();
+    senzaFirma[20] = 0x00;
+    expect(tipo(senzaFirma)).toBe("non_immagine");
+  });
+
+  describe("JPEG: il segmento SOF si cerca come lo cerca il browser", () => {
+    const soi = Buffer.from([0xff, 0xd8]);
+    const segmento = (marker: number, corpo: Buffer) => {
+      const testa = Buffer.from([0xff, marker, 0, 0]);
+      testa.writeUInt16BE(corpo.length + 2, 2);
+      return Buffer.concat([testa, corpo]);
+    };
+    const sofCorpo = (l: number, a: number) => Buffer.from([8, a >> 8, a & 0xff, l >> 8, l & 0xff, 1, 1, 0x11, 0]);
+
+    it("ogni SOF vale, tranne DHT (c4), JPG (c8) e DAC (cc), che hanno quei numeri ma sono altro", () => {
+      for (const m of [0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]) {
+        expect(controllaImmagine(Buffer.concat([soi, segmento(m, sofCorpo(8000, 8))])), m.toString(16)).toEqual({ errore: "troppi_pixel" });
+        expect(tipo(Buffer.concat([soi, segmento(m, sofCorpo(8, 8))])), m.toString(16)).toBe("jpg");
+      }
+      for (const m of [0xc4, 0xc8, 0xcc]) expect(tipo(Buffer.concat([soi, segmento(m, sofCorpo(8, 8))])), m.toString(16)).toBe("non_immagine");
+    });
+
+    it("i segmenti prima del SOF si saltano per la loro lunghezza (anche un APP1 con dentro un SOF finto), i byte di riempimento pure", () => {
+      const finto = segmento(0xe1, Buffer.concat([Buffer.from("Exif\0\0"), soi, segmento(0xc0, sofCorpo(8000, 8000))]));
+      expect(tipo(Buffer.concat([soi, finto, segmento(0xc0, sofCorpo(8, 8))]))).toBe("jpg");
+      expect(controllaImmagine(Buffer.concat([soi, finto, segmento(0xc0, sofCorpo(8000, 8000))]))).toEqual({ errore: "troppi_pixel" });
+      const riempimento = Buffer.from([0xff, 0xff, 0xff]);
+      expect(tipo(Buffer.concat([soi, riempimento, finto, riempimento, segmento(0xc2, sofCorpo(8, 8))]))).toBe("jpg");
+    });
+
+    it("senza un SOF (EOI o inizio dei dati prima, lunghezza assurda, fuori sincronia) non è un'immagine", () => {
+      expect(tipo(Buffer.concat([soi, Buffer.from([0xff, 0xd9]), segmento(0xc0, sofCorpo(8, 8))]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([soi, segmento(0xda, Buffer.alloc(4)), segmento(0xc0, sofCorpo(8, 8))]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([soi, Buffer.from([0xff, 0xe0, 0x00, 0x01]), segmento(0xc0, sofCorpo(8, 8))]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([soi, segmento(0xe0, Buffer.alloc(2)), Buffer.from([0x12, 0x34]), segmento(0xc0, sofCorpo(8, 8))]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([soi, Buffer.from([0xff, 0x00, 0x00, 0x05]), segmento(0xc0, sofCorpo(8, 8))]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([soi, segmento(0xe0, Buffer.alloc(60000)), Buffer.from([0xff, 0xc0])]))).toBe("non_immagine");
+    });
+
+    it("l'altezza 0 (si dice dopo, con DNL) non è un'immagine", () => {
+      expect(tipo(Buffer.concat([soi, segmento(0xc0, sofCorpo(8, 0))]))).toBe("non_immagine");
+    });
+  });
+
+  describe("ICO: la grandezza dell'immagine dentro, non quella che dice la tabella", () => {
+    /** Un ICO con una voce che dice 256 x 256 e il contenuto dato in fondo. */
+    const conVoce = (dentro: Buffer, offset?: number) => {
+      const testa = Buffer.alloc(22);
+      testa.set([0, 0, 1, 0, 1, 0], 0);
+      testa.writeUInt32LE(dentro.length, 14);
+      testa.writeUInt32LE(offset ?? testa.length, 18);
+      return Buffer.concat([testa, dentro]);
+    };
+    const dib = (dimensioneTestata: number, l: number, a: number) => {
+      const b = Buffer.alloc(Math.max(dimensioneTestata, 16) + 8);
+      b.writeUInt32LE(dimensioneTestata, 0);
+      if (dimensioneTestata === 12) {
+        b.writeUInt16LE(l, 4);
+        b.writeUInt16LE(a, 6);
+      } else {
+        b.writeInt32LE(l, 4);
+        b.writeInt32LE(a, 8);
+      }
+      return b;
+    };
+
+    it("un PNG dentro si guarda: 65535 x 65535 dietro una tabella che dice 256 si rifiuta", () => {
+      expect(tipo(conVoce(png(8)))).toBe("ico");
+      expect(tipo(conVoce(pngIntestazione(256, 256)))).toBe("ico");
+      expect(controllaImmagine(conVoce(pngIntestazione(65535, 65535)))).toEqual({ errore: "troppi_pixel" });
+      expect(controllaImmagine(conVoce(pngIntestazione(5000, 1)))).toEqual({ errore: "troppi_pixel" });
+    });
+
+    it("un DIB dentro si guarda: l'altezza conta anche la maschera, il doppio", () => {
+      expect(tipo(conVoce(dib(40, 32, 64)))).toBe("ico");
+      expect(tipo(conVoce(dib(40, 4000, 6000)))).toBe("ico");
+      expect(controllaImmagine(conVoce(dib(40, 5000, 8)))).toEqual({ errore: "troppi_pixel" });
+      expect(controllaImmagine(conVoce(dib(40, 8, 2 * 5000)))).toEqual({ errore: "troppi_pixel" });
+      expect(controllaImmagine(conVoce(dib(40, 4000, 2 * 4001)))).toEqual({ errore: "troppi_pixel" });
+      expect(controllaImmagine(conVoce(dib(108, 65535, 65535)))).toEqual({ errore: "troppi_pixel" });
+      expect(controllaImmagine(conVoce(dib(40, -65535, 8)))).toEqual({ errore: "troppi_pixel" });
+      expect(controllaImmagine(conVoce(dib(12, 65535, 65535)))).toEqual({ errore: "troppi_pixel" });
+      expect(tipo(conVoce(dib(12, 32, 32)))).toBe("ico");
+    });
+
+    it("una voce che non si legge (fuori dal file, formato che non è PNG né DIB) non costa niente: il browser non la disegna", () => {
+      expect(tipo(conVoce(Buffer.alloc(40, 7), 100000))).toBe("ico");
+      expect(tipo(conVoce(Buffer.from("GIF89a" + "\0".repeat(30)), 22))).toBe("ico");
+      expect(tipo(conVoce(Buffer.alloc(3), 21))).toBe("ico");
+    });
+
+    it("basta una voce grande tra molte buone", () => {
+      const buoni = ico(3, 16);
+      const voce = 6 + 16 * 2 + 12;
+      const grande = Buffer.concat([buoni, pngIntestazione(9000, 9000)]);
+      grande.writeUInt32LE(buoni.length, voce);
+      expect(controllaImmagine(grande)).toEqual({ errore: "troppi_pixel" });
+      expect(tipo(buoni)).toBe("ico");
+    });
+
+    it("256 voci si guardano tutte, e una tabella che non sta nel file non è un ICO", () => {
+      expect(tipo(ico(256, 8))).toBe("ico");
+      expect(tipo(Buffer.concat([Buffer.from([0, 0, 1, 0, 0, 1]), Buffer.alloc(100)]))).toBe("non_immagine");
+    });
   });
 });

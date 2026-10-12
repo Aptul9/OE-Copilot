@@ -21,7 +21,7 @@ L'agente di OE Copilot: legge il `calendar.db` del telefono in sola lettura e lo
 `npm test` (Node 26): tutto contro le risposte che l'agente Python diede nella sua immagine, registrate una sola volta in `../strumenti/golden/` quando il Python c'era ancora (cronologia di git). Le risposte attese non si ricalcolano: sono dati di prova fissi, e una differenza è un comportamento dell'agente cambiato, da leggere prima di toccare il file registrato.
 
 - `golden-agente.test.ts` il golden dell'agente (`agente.json`, `agente-righe.json`, `ics/*.ics`) attraverso il vero server HTTP.
-- `agente-unita.test.ts` più di 54000 casi dei pezzi (date, entità, link, percorsi, JSON, ordine dei testi) contro Python: nel repository un campione; `agente-bordi.test.ts` le richieste che nessun cliente normale manda e i modi di non partire.
+- `agente-unita.test.ts` i pezzi (date, entità, link, percorsi, JSON, ordine dei testi) contro le risposte di Python: nel repository un campione di 1404 casi, il registro completo (più di 54000 casi) è fuori dal repository e si è confrontato per intero; `agente-bordi.test.ts` le richieste che nessun cliente normale manda e i modi di non partire.
 - `ricorrenze-extra.test.ts`, `ricorrenze-casuali.test.ts`, `ricorrenze-orarie.test.ts` e `ricorrenze-vtimezone.test.ts` il motore delle ricorrenze: casi inventati e casuali, regole orarie e BYWEEKNO, VTIMEZONE (ognuno parte da una cache dei fusi vuota, tranne quelli che provano la cache).
 - `confronta-http.ts` e `costruisci-db.ts` servono alla CI: il `calendar.db` inventato del golden e le stesse richieste su un agente in ascolto (l'immagine), da confrontare con le risposte registrate.
 

@@ -297,7 +297,7 @@ sudo useradd -m -s /bin/bash -G docker oecopilot
 sudo chown oecopilot:oecopilot /opt/oe-copilot /opt/oe-copilot/.env
 cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-ts apk caddy-ui immagine-telefono schermo-web strumenti supervisore web-ts docker-compose.yml .env.esempio
 ```
-Con il supervisore l'utente della Action non ha bisogno di `sudo`: prima aveva due comandi `systemctl` in `/etc/sudoers.d/oe-copilot` (`daemon-reload` e il riavvio del servizio di sincronizzazione), su questo server il file c'è ancora e non serve più.
+Con il supervisore l'utente della Action non ha bisogno di `sudo`: prima aveva due comandi `systemctl` in `/etc/sudoers.d/oe-copilot` (`daemon-reload` e il riavvio del servizio di sincronizzazione). Su questo server il file è stato tolto il 12/10/2026; dove c'è ancora non serve più e si toglie con `sudo rm /etc/sudoers.d/oe-copilot`.
 
 La chiave pubblica della Action va in `/home/oecopilot/.ssh/authorized_keys`. Nel repository
 servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiave privata) e

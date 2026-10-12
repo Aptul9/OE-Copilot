@@ -6,7 +6,7 @@ import { leggiGolden } from "./ausiliari/dati.ts";
 
 // I pezzi che l'agente TypeScript riscrive, uno per uno contro Python 3.12.15 (immagine dell'agente, TZ=Europe/Rome): datetime.fromisoformat e
 // _locale, html.unescape e _pulisci_link, urlparse e parse_qs, json.dumps, repr, str.strip, sorted, float. Le risposte sono registrate sulla VM
-// (un campione: il registro completo, 40000 casi, è fuori dal repository e si è confrontato per intero).
+// (un campione di 1404 casi: il registro completo, più di 54000 casi, è fuori dal repository e si è confrontato per intero).
 const u = leggiGolden("agente-unita.json");
 
 /** Raccoglie le differenze e le mostra in fondo: se ce ne sono, il test dice le prime. */

@@ -1,9 +1,9 @@
 // Che cosa è un file scaricato o caricato come logo: lo dicono i primi byte, mai l'estensione né il Content-Type dichiarato dal sito.
-// Si ammettono PNG, JPEG, GIF, WebP, ICO e SVG. Di un raster si legge la grandezza dalla testata e si rifiuta oltre LATO_MAX pixel per
-// lato o PIXEL_MAX in tutto: un file da pochi KB può chiedere al browser di chi lo guarda gigabyte di pixel. Un SVG è testo che il
-// browser esegue se lo si apre da solo: si rifiuta se ha qualcosa di attivo o che porta fuori (script, foreignObject, gestori di eventi,
-// javascript: e data:, href che non siano #frammenti, CSS che carica da fuori). Chi serve il file aggiunge comunque la sua difesa
-// (gateway.ts: Content-Security-Policy con sandbox e nosniff).
+// Si ammettono PNG, JPEG, GIF, WebP, ICO e SVG. Di un raster si legge la grandezza dalla testata (di un GIF, di ogni fotogramma e della
+// tela) e si rifiuta oltre LATO_MAX pixel per lato o PIXEL_MAX in tutto: un file da pochi KB può chiedere al browser di chi lo guarda
+// gigabyte di pixel. Un SVG è testo che il browser esegue se lo si apre da solo: si rifiuta se ha qualcosa di attivo o che porta fuori
+// (script, foreignObject, gestori di eventi, javascript: e data:, href che non siano #frammenti, CSS che carica da fuori). Chi serve il
+// file aggiunge comunque la sua difesa (gateway.ts: Content-Security-Policy con sandbox e nosniff).
 // Il file lo sceglie un sito che non si conosce e il controllo gira nello stesso thread del gateway: ogni lettura qui è lineare nella
 // lunghezza del file (indexOf, espressioni regolari che guardano un punto solo e mai un quantificatore dentro un altro), così 512 KB
 // ostili non fermano il gateway. Una prova con tempo massimo per ogni famiglia di input patologico sta in test/immagine-ostile.test.ts.
@@ -50,8 +50,52 @@ const IHDR = [0x49, 0x48, 0x44, 0x52];
 /** PNG: la firma, la lunghezza del blocco, IHDR, poi larghezza e altezza (32 bit). `da` è dove comincia la firma. */
 const misuraPng = (d: Uint8Array, da = 0): Misura => (d.length >= da + 24 && inizia(d, IHDR, da + 12) ? [u32be(d, da + 16), u32be(d, da + 20)] : null);
 
-/** GIF: lo schermo logico, subito dopo i 6 byte della firma (16 bit l'una). */
-const misuraGif = (d: Uint8Array): Misura => (d.length >= 10 ? [u16le(d, 6), u16le(d, 8)] : null);
+/** Quanti byte ha la tabella dei colori che dice un byte "impacchettato" (GIF): il bit 7 dice se c'è, i bit 0-2 il numero di voci da 3 byte, 2^(n+1). */
+const tabellaGif = (impacchettato: number) => (impacchettato & 0x80 ? 3 << ((impacchettato & 7) + 1) : 0);
+
+/** I sotto-blocchi di dati di un blocco GIF: ognuno comincia con la sua lunghezza e il primo da 0 li chiude. L'indice dopo l'ultimo, o -1 se escono dal file. */
+function saltaSottoblocchi(d: Uint8Array, da: number): number {
+  let i = da;
+  while (i < d.length) {
+    const n = d[i];
+    if (n === 0) return i + 1;
+    i += n + 1;
+  }
+  return -1;
+}
+
+/**
+ * GIF: non basta lo schermo logico, perché il browser disegna una tela grande quanto serve a ogni fotogramma, anche oltre lo schermo (un GIF
+ * da 35 byte con lo schermo 16 x 16 e un fotogramma 4200 x 4200 si apre a 4200 x 4200). Si camminano i blocchi con ogni indice controllato
+ * (testata, schermo, tabella globale, estensioni con i loro sotto-blocchi, fotogrammi con la tabella locale e i dati, trailer): ogni
+ * fotogramma e la tela (lo schermo e i bordi di destra e di sotto di ogni fotogramma) devono stare nei limiti. Una struttura che non torna,
+ * senza fotogrammi o che finisce senza il trailer non è un GIF. Un passo per blocco, tempo lineare.
+ */
+function esitoGif(d: Uint8Array): EsitoImmagine {
+  if (d.length < 13) return { errore: "non_immagine" };
+  let tela = [u16le(d, 6), u16le(d, 8)];
+  if (tela[0] < 1 || tela[1] < 1) return { errore: "non_immagine" };
+  let i = 13 + tabellaGif(d[10]);
+  let fotogrammi = 0;
+  while (i >= 0 && i < d.length) {
+    const blocco = d[i];
+    if (blocco === 0x3b) {
+      // il trailer chiude il file, e quello che c'è dopo il browser non lo guarda
+      if (!fotogrammi) return { errore: "non_immagine" };
+      return troppoGrande(tela[0], tela[1]) ? { errore: "troppi_pixel" } : { tipo: TIPI.gif };
+    }
+    if (blocco === 0x21) i = saltaSottoblocchi(d, i + 2);
+    else if (blocco === 0x2c && i + 10 <= d.length) {
+      const [sinistra, sopra, larghezza, altezza] = [u16le(d, i + 1), u16le(d, i + 3), u16le(d, i + 5), u16le(d, i + 7)];
+      if (troppoGrande(larghezza, altezza)) return { errore: "troppi_pixel" };
+      tela = [Math.max(tela[0], sinistra + larghezza), Math.max(tela[1], sopra + altezza)];
+      fotogrammi++;
+      // il descrittore (10 byte), la tabella locale, il byte della lunghezza minima dei codici e i sotto-blocchi dei dati
+      i = saltaSottoblocchi(d, i + 10 + tabellaGif(d[i + 9]) + 1);
+    } else return { errore: "non_immagine" };
+  }
+  return { errore: "non_immagine" };
+}
 
 /** WebP: il primo blocco dopo RIFF, lunghezza e WEBP è VP8X (tela, 24 bit), VP8 (con perdita, 14 bit) o VP8L (senza perdita, 14 bit). */
 function misuraWebp(d: Uint8Array): Misura {
@@ -118,7 +162,7 @@ function raster(d: Uint8Array): EsitoImmagine | null {
   if (inizia(d, FIRMA_PNG)) return verdetto(TIPI.png, misuraPng(d));
   if (inizia(d, [0xff, 0xd8, 0xff])) return verdetto(TIPI.jpg, misuraJpeg(d));
   // GIF87a e GIF89a
-  if (inizia(d, [0x47, 0x49, 0x46, 0x38]) && (d[4] === 0x37 || d[4] === 0x39) && d[5] === 0x61) return verdetto(TIPI.gif, misuraGif(d));
+  if (inizia(d, [0x47, 0x49, 0x46, 0x38]) && (d[4] === 0x37 || d[4] === 0x39) && d[5] === 0x61) return esitoGif(d);
   // RIFF....WEBP
   if (inizia(d, [0x52, 0x49, 0x46, 0x46]) && inizia(d, [0x57, 0x45, 0x42, 0x50], 8)) return verdetto(TIPI.webp, misuraWebp(d));
   // ICO: 00 00 01 00, poi il numero di immagini e la loro tabella (6 byte di testata, 16 per voce)

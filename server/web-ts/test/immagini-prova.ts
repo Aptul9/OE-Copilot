@@ -47,13 +47,50 @@ export const jpeg = (larghezza = 8, altezza = 8) =>
     Buffer.alloc(8),
   ]);
 
-export const gif = (versione: "87a" | "89a" = "89a", larghezza = 8, altezza = 8) => {
-  const b = Buffer.alloc(24);
-  b.write(`GIF${versione}`, 0, "ascii");
-  b.writeUInt16LE(larghezza, 6);
-  b.writeUInt16LE(altezza, 8);
+const le16 = (n: number) => {
+  const b = Buffer.alloc(2);
+  b.writeUInt16LE(n);
   return b;
 };
+
+export type FotogrammaGif = {
+  sinistra?: number;
+  sopra?: number;
+  larghezza: number;
+  altezza: number;
+  /** Le voci della tabella dei colori locale (2, 4, 8, ..., 256), se ce l'ha. */
+  tabella?: number;
+  /** I sotto-blocchi dei dati, uno per elemento (non sono LZW da decodificare: il controllo guarda i blocchi). */
+  dati?: Buffer[];
+};
+
+/**
+ * Un GIF con la struttura vera: testata, schermo, tabella globale, i fotogrammi (ognuno con il suo blocco di controllo grafico e,
+ * se la chiede, la tabella locale) e il trailer. `estensioni` mette in testa il ciclo di Netscape e un commento.
+ */
+export function gifConFotogrammi(schermo: [number, number], fotogrammi: FotogrammaGif[], versione: "87a" | "89a" = "89a", estensioni = false): Buffer {
+  const parti: Buffer[] = [Buffer.from(`GIF${versione}`, "ascii"), le16(schermo[0]), le16(schermo[1]), Buffer.from([0x81, 0, 0]), Buffer.alloc(12)];
+  if (estensioni) {
+    parti.push(Buffer.from([0x21, 0xff, 0x0b]), Buffer.from("NETSCAPE2.0", "ascii"), Buffer.from([0x03, 0x01, 0x00, 0x00, 0x00]));
+    parti.push(Buffer.from([0x21, 0xfe, 0x05]), Buffer.from("ciao!", "ascii"), Buffer.from([0x00]));
+  }
+  for (const f of fotogrammi) {
+    // controllo grafico (ritardo 10 centesimi), descrittore, tabella locale, lunghezza minima dei codici, dati
+    parti.push(Buffer.from([0x21, 0xf9, 0x04, 0x00, 0x0a, 0x00, 0x00, 0x00]));
+    const voci = f.tabella ?? 0;
+    const potenza = voci ? Math.log2(voci) - 1 : 0;
+    parti.push(Buffer.from([0x2c]), le16(f.sinistra ?? 0), le16(f.sopra ?? 0), le16(f.larghezza), le16(f.altezza), Buffer.from([voci ? 0x80 | potenza : 0]));
+    if (voci) parti.push(Buffer.alloc(3 * voci, 7));
+    parti.push(Buffer.from([0x02]));
+    for (const blocco of f.dati ?? [Buffer.from([0x44, 0x01])]) parti.push(Buffer.from([blocco.length]), blocco);
+    parti.push(Buffer.from([0x00]));
+  }
+  parti.push(Buffer.from([0x3b]));
+  return Buffer.concat(parti);
+}
+
+/** Un GIF a un fotogramma, con lo schermo e il fotogramma della grandezza data. */
+export const gif = (versione: "87a" | "89a" = "89a", larghezza = 8, altezza = 8) => gifConFotogrammi([larghezza, altezza], [{ larghezza, altezza }], versione);
 
 const riff = (blocco: Buffer) => {
   const testa = Buffer.alloc(12);

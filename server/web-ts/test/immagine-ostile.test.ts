@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { controllaImmagine } from "@/lib/core/immagine";
-import { jpeg } from "./immagini-prova";
+import { gifConFotogrammi, jpeg } from "./immagini-prova";
 
 // I file ostili contro il controllo delle immagini: una raccolta di SVG che eseguono, caricano o si nascondono (scritta da chi ha attaccato
 // la prima versione) con quello che deve succedere a ciascuno, e gli input che mandavano il controllo in tempi lunghissimi con il tempo
@@ -304,6 +304,33 @@ describe("il tempo: ogni famiglia di input patologico sta sotto 200 ms, e a 512 
     const r = misura(annidato(80_000));
     expect(r.esito).toBe("svg_non_ammesso");
     expect(r.ms).toBeLessThan(PICCOLO_MS);
+  });
+
+  describe("GIF: si cammina sui blocchi in tempo lineare", () => {
+    const base = (estensioni: Buffer, dopo: Buffer = Buffer.alloc(0)) => {
+      const intero = gifConFotogrammi([16, 16], [{ larghezza: 16, altezza: 16 }]);
+      // le estensioni stanno prima del fotogramma, dopo la tabella globale (6 + 7 + 12 byte)
+      return Buffer.concat([intero.subarray(0, 25), estensioni, intero.subarray(25, intero.length - 1), dopo, Buffer.from([0x3b])]);
+    };
+    const ripetuto = (pezzo: number[], volte: number) => Buffer.from(Array.from({ length: volte }, () => pezzo).flat());
+    const FAMIGLIE_GIF: [string, () => Buffer, string][] = [
+      ["centomila estensioni di commento da un byte", () => base(ripetuto([0x21, 0xfe, 0x01, 0x78, 0x00], 100_000)), "gif"],
+      ["un'estensione con duecentomila sotto-blocchi da un byte", () => base(Buffer.concat([Buffer.from([0x21, 0xfe]), ripetuto([0x01, 0x78], 200_000), Buffer.from([0x00])])), "gif"],
+      ["un'estensione che non si chiude mai, a sotto-blocchi da un byte", () => base(Buffer.concat([Buffer.from([0x21, 0xfe]), ripetuto([0x01, 0x78], 250_000)])), "non_immagine"],
+      ["un sotto-blocco da 255 byte ripetuto fino alla fine, senza il byte 0", () => base(Buffer.concat([Buffer.from([0x21, 0xfe]), ripetuto([0xff, ...Array(255).fill(7)], 2000)])), "non_immagine"],
+      ["20000 fotogrammi da un pixel", () => gifConFotogrammi([1, 1], Array.from({ length: 20_000 }, () => ({ larghezza: 1, altezza: 1 }))), "gif"],
+      ["500 fotogrammi con la tabella locale da 256 voci", () => gifConFotogrammi([16, 16], Array.from({ length: 500 }, () => ({ larghezza: 16, altezza: 16, tabella: 256 }))), "gif"],
+      ["20000 fotogrammi da un pixel e l'ultimo da 5000 pixel", () => gifConFotogrammi([1, 1], [...Array.from({ length: 20_000 }, () => ({ larghezza: 1, altezza: 1 })), { larghezza: 5000, altezza: 1 }]), "troppi_pixel"],
+      ["tante estensioni e un fotogramma enorme in fondo", () => base(ripetuto([0x21, 0xfe, 0x01, 0x78, 0x00], 90_000), gifConFotogrammi([1, 1], [{ larghezza: 4200, altezza: 4200 }]).subarray(25 + 8, -1)), "troppi_pixel"],
+    ];
+
+    it.each(FAMIGLIE_GIF)("%s: sotto 200 ms, e alla grandezza massima (512 KB) sotto 1 secondo", (_nome, fai, atteso) => {
+      const dati = fai();
+      expect(dati.length).toBeLessThanOrEqual(GRANDEZZA);
+      const r = misura(dati);
+      expect(r.esito).toBe(atteso);
+      expect(r.ms, `${r.byte} byte: ${r.ms.toFixed(1)} ms`).toBeLessThan(dati.length > 200_000 ? GRANDE_MS : PICCOLO_MS);
+    });
   });
 
   it("un JPEG di 500 KB di byte di riempimento, o di segmenti vuoti, si scorre in un tempo breve e non è un'immagine", () => {

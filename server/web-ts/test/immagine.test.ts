@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { controllaImmagine, LATO_MAX, PIXEL_MAX, svgAmmesso } from "@/lib/core/immagine";
-import { gif, ico, jpeg, png, pngIntestazione, SVG_PULITO, webp, webpEsteso, webpSenzaPerdita } from "./immagini-prova";
+import { type FotogrammaGif, gif, gifConFotogrammi, ico, jpeg, png, pngIntestazione, SVG_PULITO, webp, webpEsteso, webpSenzaPerdita } from "./immagini-prova";
 
 const tipo = (dati: Uint8Array | string) => {
   const e = controllaImmagine(typeof dati === "string" ? Buffer.from(dati, "utf-8") : dati);
@@ -238,9 +238,9 @@ describe("la grandezza di un raster", () => {
     // PNG: la testata arriva a 24 byte
     for (let n = 8; n < 24; n++) expect(tipo(intero(pngIntestazione(8, 8), n)), `PNG ${n}`).toBe("non_immagine");
     expect(tipo(intero(pngIntestazione(8, 8), 24))).toBe("png");
-    // GIF: 10 byte
-    for (let n = 6; n < 10; n++) expect(tipo(intero(gif(), n)), `GIF ${n}`).toBe("non_immagine");
-    expect(tipo(intero(gif(), 10))).toBe("gif");
+    // GIF: si cammina sui blocchi e serve il trailer (la prova di ogni lunghezza di un GIF animato sta più sotto)
+    for (let n = 6; n < gif().length; n++) expect(tipo(intero(gif(), n)), `GIF ${n}`).toBe("non_immagine");
+    expect(tipo(gif())).toBe("gif");
     // WebP: 30 byte (VP8 e VP8X), 25 (VP8L)
     for (let n = 12; n < 30; n++) {
       expect(tipo(intero(webp(), n)), `VP8 ${n}`).toBe("non_immagine");
@@ -366,6 +366,112 @@ describe("la grandezza di un raster", () => {
     it("256 voci si guardano tutte, e una tabella che non sta nel file non è un ICO", () => {
       expect(tipo(ico(256, 8))).toBe("ico");
       expect(tipo(Buffer.concat([Buffer.from([0, 0, 1, 0, 0, 1]), Buffer.alloc(100)]))).toBe("non_immagine");
+    });
+  });
+
+  describe("GIF: ogni fotogramma e la tela, non solo lo schermo logico", () => {
+    const troppi = { errore: "troppi_pixel" };
+    const uno = (schermo: [number, number], f: FotogrammaGif) => gifConFotogrammi(schermo, [f]);
+
+    it("il caso trovato: lo schermo 16 x 16 e un fotogramma 4200 x 4200 (35 byte di struttura) non passa", () => {
+      const grande = uno([16, 16], { larghezza: 4200, altezza: 4200 });
+      expect(controllaImmagine(grande)).toEqual(troppi);
+      // lo stesso con i byte contati a mano: testata, schermo, tabella da 2 voci, un fotogramma di 2 byte di dati, trailer
+      const a_mano = Buffer.concat([
+        Buffer.from("GIF89a"),
+        Buffer.from([16, 0, 16, 0, 0x80, 0, 0, 0, 0, 0, 255, 255, 255]),
+        Buffer.from([0x2c, 0, 0, 0, 0, 0x68, 0x10, 0x68, 0x10, 0, 2, 2, 0x44, 0x01, 0, 0x3b]),
+      ]);
+      expect(a_mano.length).toBe(35);
+      expect(controllaImmagine(a_mano)).toEqual(troppi);
+      // e con un fotogramma della grandezza dello schermo si apre
+      expect(tipo(uno([16, 16], { larghezza: 16, altezza: 16 }))).toBe("gif");
+    });
+
+    it.each([
+      ["un fotogramma sopra 4096 di larghezza", [8, 8], { larghezza: 4097, altezza: 1 }],
+      ["un fotogramma sopra 4096 di altezza", [8, 8], { larghezza: 1, altezza: 4097 }],
+      ["un fotogramma sopra i 16 megapixel con i lati nel limite", [8, 8], { larghezza: 4096, altezza: 4096 }],
+      ["un fotogramma da 65535 x 65535", [8, 8], { larghezza: 65535, altezza: 65535 }],
+      ["lo schermo e il fotogramma da 4200 x 4200", [4200, 4200], { larghezza: 4200, altezza: 4200 }],
+      ["lo schermo sopra il limite con un fotogramma piccolo", [5000, 8], { larghezza: 8, altezza: 8 }],
+      ["la tela cresce a destra: un fotogramma di 200 spostato di 4000", [16, 16], { sinistra: 4000, larghezza: 200, altezza: 16 }],
+      ["la tela cresce in basso: un fotogramma di 200 spostato di 4000", [16, 16], { sopra: 4000, larghezza: 16, altezza: 200 }],
+      ["la tela cresce a 65536 con un fotogramma di un pixel", [16, 16], { sinistra: 65535, larghezza: 1, altezza: 1 }],
+      ["la tela oltre i 16 megapixel con i lati nel limite (4000 x 4001)", [4000, 4001], { larghezza: 4000, altezza: 4001 }],
+    ] as [string, [number, number], FotogrammaGif][])("%s si rifiuta con il testo della grandezza", (_n, schermo, f) => {
+      expect(controllaImmagine(uno(schermo, f))).toEqual(troppi);
+    });
+
+    it("basta un fotogramma grande tra molti buoni, anche l'ultimo", () => {
+      const buoni = Array.from({ length: 20 }, () => ({ larghezza: 16, altezza: 16 }));
+      expect(tipo(gifConFotogrammi([16, 16], buoni))).toBe("gif");
+      expect(controllaImmagine(gifConFotogrammi([16, 16], [...buoni, { larghezza: 4200, altezza: 4200 }]))).toEqual(troppi);
+    });
+
+    it("i GIF veri passano: animato con ciclo e commento, tabelle locali, 87a e 89a, nei limiti (4096 x 3906, 4000 x 4000)", () => {
+      const animato = gifConFotogrammi(
+        [32, 32],
+        [
+          { larghezza: 32, altezza: 32 },
+          { sinistra: 4, sopra: 4, larghezza: 24, altezza: 24, tabella: 16, dati: [Buffer.alloc(255, 1), Buffer.alloc(100, 2)] },
+          { sinistra: 8, sopra: 8, larghezza: 8, altezza: 8, tabella: 256 },
+          { larghezza: 1, altezza: 1, tabella: 2, dati: [] },
+        ],
+        "89a",
+        true,
+      );
+      expect(tipo(animato)).toBe("gif");
+      expect(tipo(gif("87a"))).toBe("gif");
+      expect(tipo(gif("89a", 4096, 3906))).toBe("gif");
+      expect(tipo(gif("89a", 4000, 4000))).toBe("gif");
+      // un fotogramma in un angolo della tela che entra nello schermo
+      expect(tipo(uno([100, 100], { sinistra: 99, sopra: 99, larghezza: 1, altezza: 1 }))).toBe("gif");
+    });
+
+    it("ogni lunghezza più corta di un GIF animato, con tabelle ed estensioni, non è un'immagine; intero sì", () => {
+      const animato = gifConFotogrammi([32, 32], [{ larghezza: 32, altezza: 32 }, { sinistra: 2, larghezza: 8, altezza: 8, tabella: 8, dati: [Buffer.alloc(50, 3)] }], "89a", true);
+      for (let n = 0; n < animato.length; n++) expect(tipo(animato.subarray(0, n)), `${n} byte`).toBe("non_immagine");
+      expect(tipo(animato)).toBe("gif");
+      // quello che c'è dopo il trailer il browser non lo guarda: un file che lo ha si accetta com'è
+      expect(tipo(Buffer.concat([animato, Buffer.from("<script>alert(1)</script>")]))).toBe("gif");
+    });
+
+    it("gli altri formati non cambiano: PNG e ICO nei limiti si accettano, sopra no, e dei byte di un GIF dentro non contano", () => {
+      expect(tipo(png(16))).toBe("png");
+      expect(tipo(ico(2, 16))).toBe("ico");
+      expect(controllaImmagine(pngIntestazione(LATO_MAX + 1, 8))).toEqual(troppi);
+      expect(controllaImmagine(pngIntestazione(4200, 4200))).toEqual(troppi);
+      // un ICO che porta dentro un PNG enorme resta rifiutato come prima
+      const enorme = pngIntestazione(5000, 5000);
+      const voce = Buffer.from([0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 32, 0, enorme.length & 0xff, 0, 0, 0, 22, 0, 0, 0]);
+      expect(controllaImmagine(Buffer.concat([voce, enorme]))).toEqual(troppi);
+      // un PNG e un JPEG che hanno nei dati un GIF con un fotogramma enorme restano quello che dicono le loro testate
+      const nascosto = gifConFotogrammi([16, 16], [{ larghezza: 4200, altezza: 4200 }]);
+      expect(tipo(Buffer.concat([png(16), nascosto]))).toBe("png");
+      expect(tipo(Buffer.concat([jpeg(16, 16), nascosto]))).toBe("jpg");
+      // e un file che comincia con la firma di un GIF 4200 x 4200 senza fotogrammi non è un GIF
+      expect(tipo(gif("89a", 4200, 16).subarray(0, 13))).toBe("non_immagine");
+    });
+
+    it("una struttura che non torna non è un GIF", () => {
+      const intero = gif();
+      const taglia = (da: number, byte: number[]) => Buffer.concat([intero.subarray(0, da), Buffer.from(byte), intero.subarray(da + byte.length)]);
+      // lo schermo a 0, senza fotogrammi (solo il trailer), un blocco che non esiste (0x05), un sotto-blocco più lungo del file
+      expect(tipo(taglia(6, [0, 0, 8, 0]))).toBe("non_immagine");
+      expect(tipo(taglia(6, [8, 0, 0, 0]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([intero.subarray(0, 13 + 12), Buffer.from([0x3b])]))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([intero.subarray(0, 13 + 12), Buffer.from([0x05, 0x3b])]))).toBe("non_immagine");
+      // un blocco che non esiste davanti a un fotogramma buono: non si salta, il file non torna
+      expect(tipo(Buffer.concat([intero.subarray(0, 13 + 12), Buffer.from([0x05]), intero.subarray(13 + 12)]))).toBe("non_immagine");
+      // un'estensione con un'etichetta che non si conosce è un'estensione: si salta per i suoi sotto-blocchi
+      expect(tipo(Buffer.concat([intero.subarray(0, 13 + 12), Buffer.from([0x21, 0x77, 0x02, 0x01, 0x02, 0x00]), intero.subarray(13 + 12)]))).toBe("gif");
+      expect(tipo(Buffer.concat([intero.subarray(0, 13 + 12), Buffer.from([0x21, 0xfe, 0xff, 0x61])]))).toBe("non_immagine");
+      // un fotogramma senza il trailer, e un fotogramma il cui descrittore esce dal file
+      expect(tipo(intero.subarray(0, intero.length - 1))).toBe("non_immagine");
+      expect(tipo(Buffer.concat([intero.subarray(0, 13 + 12), Buffer.from([0x2c, 0, 0, 0, 0, 8, 0])]))).toBe("non_immagine");
+      // la tabella globale che dichiara più di quanto il file ha
+      expect(tipo(Buffer.concat([Buffer.from("GIF89a"), Buffer.from([8, 0, 8, 0, 0xf7, 0, 0]), Buffer.alloc(30)]))).toBe("non_immagine");
     });
   });
 });

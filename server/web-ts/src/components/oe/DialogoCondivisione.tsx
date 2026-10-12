@@ -10,6 +10,7 @@ import {
   AVANTI,
   AVVISO_LIVELLO,
   type CondivisionePubblica,
+  EVENTI_MAX,
   INDIETRO,
   type Livello,
   NOME_CALENDARIO_MAX,
@@ -180,10 +181,36 @@ export function DialogoCondivisione({ aperto, onChiudi }: Props) {
               Preme <b>Aggiungi e verifica</b>. Da lì il calendario si aggiorna da solo: il suo OE Copilot rilegge il link al più ogni {RILETTURA_MINUTI} minuti.
             </li>
             <li>
-              Per smettere: <b>Revoca</b> il link qui, e smette di valere subito. Un OE Copilot aggiornato, alla prossima lettura (al più dopo {RILETTURA_MINUTI} minuti), toglie il calendario e segna il link in rosso; uno più
-              vecchio tiene gli ultimi dati finché il calendario non si toglie da Gestisci calendari. Se il link è finito a chi non doveva averlo, revocalo o cambia l&apos;indirizzo.
+              Per smettere: <b>Revoca</b> il link qui, e smette di valere subito. Un OE Copilot aggiornato, alla prossima lettura (al più dopo {RILETTURA_MINUTI} minuti), vede 404 o 410, toglie la copia che aveva, non mostra più gli
+              eventi finché il link non risponde di nuovo e segna il calendario in rosso; uno più vecchio tiene gli ultimi dati finché il calendario non si toglie da Gestisci calendari. Se il link è finito a chi non doveva averlo,
+              revocalo o cambia l&apos;indirizzo.
             </li>
           </ol>
+        </details>
+
+        <details id="cond-da-sapere" className="rounded-lg border p-3 text-sm">
+          <summary className="cursor-pointer font-medium">Da sapere</summary>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+            <li>
+              Con un gruppo escono le aziende del gruppo e basta: gli interruttori della barra laterale non contano, come nella pagina <b>Disponibilità</b> con un gruppo. Con tutti i calendari valgono gli interruttori.
+            </li>
+            <li>
+              Un cambio agli interruttori, ai gruppi o ai nomi delle aziende arriva nel link entro un minuto (il gateway tiene il testo di ogni link un minuto); chi ha il link lo rilegge al più ogni {RILETTURA_MINUTI} minuti, quindi per
+              lui il cambio può arrivare dopo. Revocare o cambiare indirizzo vale subito.
+            </li>
+            <li>
+              Se una casella o un&apos;azienda che il link pubblica non si legge (pallino rosso nella barra laterale), o gli eventi sono più di {EVENTI_MAX}, il link risponde &quot;non disponibile&quot; al posto di un calendario incompleto: chi lo ha
+              tiene l&apos;ultima copia. Il motivo è nel log del gateway.
+            </li>
+            <li>
+              Il testo segreto di ogni link sta in chiaro nel database del gateway (serve al pulsante <b>Copia</b>): chi legge quel file, o una copia di sicurezza della sua cartella, ha tutti i link attivi. Un link revocato perde il suo
+              testo.
+            </li>
+            <li>
+              Nella notte del cambio d&apos;ora di ottobre l&apos;ora fra le 2 e le 3 c&apos;è due volte e le caselle la danno senza dire quale: gli eventi in quell&apos;ora escono con la prima, e uno della seconda può uscire un&apos;ora prima. È lo stesso
+              limite della pagina Disponibilità.
+            </li>
+          </ul>
         </details>
 
         <DialogFooter>

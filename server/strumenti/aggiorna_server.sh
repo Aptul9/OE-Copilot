@@ -8,7 +8,6 @@ set -euo pipefail
 DIR="${OE_DIR:-/opt/oe-copilot}"
 COPIA=/var/tmp/oe-copilot-prima.tgz
 SUPERVISORE=oe-copilot-supervisore
-VECCHIO_SERVIZIO=oe-copilot-sincronizza
 T=oe-copilot-telefono
 cd "$DIR"
 
@@ -28,18 +27,12 @@ avvia() {
         || { echo "il telefono non ha finito di avviarsi" >&2; return 1; }
     # impostazioni del telefono e negozio delle app: stanno nello script, non a mano
     "$DIR/strumenti/prepara_telefono.sh"
-    # I file .py sono montati uno per uno: rsync li sostituisce con file nuovi e il
-    # container continuerebbe a leggere i vecchi. Per questo l'agente si ricrea sempre.
-    docker compose up -d --build --force-recreate agent
+    # Il codice dell'agente è nell'immagine, niente file montati: compose lo ricrea da sé quando l'immagine o la configurazione cambiano.
+    docker compose up -d --build agent
     # Il giro di sincronizzazione, il battito e il rilevatore degli accessi li fa il supervisore (supervisore/, GUIDA.md 4.5), che si
-    # ricrea a ogni aggiornamento come il servizio systemd di prima si riavviava, senza toccare il telefono (--no-deps). Il servizio
-    # systemd resta spento: due giri sullo stesso telefono si pesterebbero.
-    if systemctl is-active -q "$VECCHIO_SERVIZIO"; then
-        echo "il servizio $VECCHIO_SERVIZIO è ancora acceso: sudo systemctl disable --now $VECCHIO_SERVIZIO (due giri sullo stesso telefono)" >&2
-        return 1
-    fi
+    # ricrea a ogni aggiornamento senza toccare il telefono (--no-deps).
     riavvio=$(date +%s)
-    docker compose --profile supervisore up -d --build --force-recreate --no-deps supervisore
+    docker compose up -d --build --force-recreate --no-deps supervisore
 }
 
 # Email e password del proprietario, chiave dell'API e segreto dei cookie possono arrivare dalla Action sullo standard

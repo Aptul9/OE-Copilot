@@ -24,10 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Sintassi Python
-        run: python3 -m py_compile server/agent/*.py server/strumenti/*.py
-
-      - name: Prova del rilevatore
-        run: python3 server/strumenti/prova_rileva_accessi.py
+        run: python3 -m py_compile server/strumenti/*.py
 
       - name: Sintassi shell
         run: for f in server/strumenti/*.sh; do bash -n "$f"; done
@@ -38,20 +35,8 @@ jobs:
           API_KEY: prova
         run: |
           docker compose config -q
-          # il servizio dell'agente TypeScript sta dietro un profilo: senza, i servizi sono quelli di sempre
-          test "$(docker compose config --services | sort | tr '\n' ' ')" = "agent caddy-ui gateway schermo telefono "
-          test "$(docker compose --profile agente-ts config --services | sort | tr '\n' ' ')" = "agent agente-ts caddy-ui gateway schermo telefono "
-
-      - name: Immagine dell'agente
-        run: docker build -q -t oe-copilot-agent server/agent
-
-      - name: Prova dell'agente, calendario inventato
-        run: |
-          # ricorrenze, annullamenti, fusi e doppioni su un calendar.db costruito dalla prova, contro la risposta registrata
-          # in server/strumenti/golden/agente.json (l'agente vero, in HTTP, con il suo codice montato come sul server), più
-          # i calendari ICS (POST /api/ics) che il gateway gli manda da espandere
-          docker run --rm -v "$PWD/server/agent:/app:ro" -v "$PWD/server/strumenti:/prove:ro" \
-            oe-copilot-agent python /prove/prova_agente_golden.py
+          # nessun servizio sta dietro un profilo: l'elenco è quello che `docker compose up` avvia
+          test "$(docker compose config --services | sort | tr '\n' ' ')" = "agent caddy-ui gateway schermo supervisore telefono "
 
       - name: Caddy dell'interfaccia web
         run: |
@@ -79,11 +64,10 @@ jobs:
           npm ci --ignore-scripts --no-audit --no-fund
           npm run typecheck
           npm test
-          # il servizio di compose si legge solo con il profilo: senza, l'elenco dei servizi non lo ha e non parte con `docker compose up`
+          # il servizio di compose è tra quelli che partono con `docker compose up`, senza profilo
           export API_KEY=prova
-          docker compose -f ../docker-compose.yml --profile supervisore config -q
-          docker compose -f ../docker-compose.yml --profile supervisore config --services | grep -qx supervisore
-          if docker compose -f ../docker-compose.yml config --services | grep -qx supervisore; then echo "supervisore parte senza il profilo" >&2; exit 1; fi
+          docker compose -f ../docker-compose.yml config -q
+          docker compose -f ../docker-compose.yml config --services | grep -qx supervisore
           # l'immagine parte davvero come in compose (sola lettura, utente 10080, senza capacità): senza telefono scrive un battito che lo dice
           docker build -q -t oe-copilot-supervisore .
           d=$(mktemp -d); mkdir -p "$d/stato/schermo" "$d/telefono"; chmod 777 "$d/stato"
@@ -103,14 +87,14 @@ jobs:
       - name: Agente in TypeScript, immagine e risposte
         run: |
           # l'immagine parte davvero come in compose (sola lettura, utente senza privilegi, senza capacità) su un calendar.db inventato e
-          # risponde come l'agente Python: le stesse risposte registrate in server/strumenti/golden/agente.json
-          docker build -q -t oe-copilot-agente-ts server/agente-ts
+          # risponde con le risposte registrate in server/strumenti/golden/agente.json (le diede una volta l'agente Python, tolto dal repository)
+          docker build -q -t oe-copilot-agent server/agente-ts
           dati=$(mktemp -d)
           chmod 755 "$dati"
           node server/agente-ts/test/costruisci-db.ts "$dati"
           id=$(docker run -d --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true -p 8181:8180 \
             -e API_KEY=chiave-di-prova -e BATTITO=/nessun-battito.json -e ACCESSI=/nessun-accesso.json \
-            -v "$dati:/android-calendario:ro" -v "$dati/fonti.json:/app/fonti.json:ro" oe-copilot-agente-ts)
+            -v "$dati:/android-calendario:ro" -v "$dati/fonti.json:/app/fonti.json:ro" oe-copilot-agent)
           trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
           for _ in $(seq 1 30); do curl -s -o /dev/null localhost:8181/api/salute && break; sleep 1; done
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8181/api/salute)" = 401

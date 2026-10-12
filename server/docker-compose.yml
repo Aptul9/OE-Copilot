@@ -3,40 +3,13 @@
 # agent = legge il calendario del telefono e lo serve con un'API a chiave.
 name: oe-copilot
 services:
-  # agent = legge il calendario del telefono e lo serve con un'API a chiave
+  # agent = legge il calendario del telefono (agente-ts/, TypeScript) e lo serve con un'API a chiave
   # al gateway (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (GUIDA.md, sezione 5).
-  agent:
-    build: ./agent
-    container_name: oe-copilot-agent
-    environment:
-      - API_KEY=${API_KEY}
-    volumes:
-      - ./agent/agent.py:/app/agent.py:ro
-      - ./agent/comune.py:/app/comune.py:ro
-      - ./agent/fonte_android.py:/app/fonte_android.py:ro
-      - ./agent/ics.py:/app/ics.py:ro
-      - ./agent/fonti.json:/app/fonti.json:ro
-      # Calendario di sistema del telefono, in sola lettura: Outlook e i servizi Google ci
-      # copiano i calendari, l'agente ne legge una copia.
-      - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
-      # Segno di vita del servizio che aggiorna il telefono (battito.json).
-      - ./stato:/stato:ro
-    # Solo localhost: dal PC ci si arriva con un tunnel SSH e il gateway dalla rete di
-    # compose, niente è esposto su internet.
-    ports:
-      - "127.0.0.1:3180:8180"
-    restart: unless-stopped
-
-  # L'agente in TypeScript (agente-ts/): stessa API di agent, stesse risposte, stesso calendario del telefono in sola lettura. NON è il servizio
-  # in uso: sta dietro il profilo "agente-ts" e non parte con "docker compose up". Per provarlo senza spostare niente: "docker compose --profile
-  # agente-ts up -d --build agente-ts" e lo si interroga su 127.0.0.1:3181. Per farlo servire il gateway si imposta AGENTE_URL=http://agente-ts:8180
-  # in .env e si ricrea il gateway (GUIDA.md, sezioni 4.4 e 5). Non ha un alias "agent": due contenitori con lo stesso nome dividerebbero le
-  # richieste del gateway. Gira senza privilegi: i file del calendario sono del gruppo 10019 (l'utente di Android che li scrive), che entra come
+  # Gira senza privilegi: i file del calendario sono del gruppo 10019 (l'utente di Android che li scrive), che entra come
   # gruppo aggiuntivo; se Android cambia quel numero, in .env si scrive CALENDARIO_GID=<gid dei file di calendar.db> e si ricrea il servizio.
-  agente-ts:
-    profiles: ["agente-ts"]
+  agent:
     build: ./agente-ts
-    container_name: oe-copilot-agente-ts
+    container_name: oe-copilot-agent
     user: "10001:10001"
     group_add:
       - "${CALENDARIO_GID:-10019}"
@@ -51,10 +24,15 @@ services:
       - API_KEY=${API_KEY}
     volumes:
       - ./agent/fonti.json:/app/fonti.json:ro
+      # Calendario di sistema del telefono, in sola lettura: Outlook e i servizi Google ci
+      # copiano i calendari, l'agente ne legge una copia.
       - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
+      # Segno di vita del servizio che aggiorna il telefono (battito.json).
       - ./stato:/stato:ro
+    # Solo localhost: dal PC ci si arriva con un tunnel SSH e il gateway dalla rete di
+    # compose, niente è esposto su internet.
     ports:
-      - "127.0.0.1:3181:8180"
+      - "127.0.0.1:3180:8180"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8180/api/salute').then((r) => process.exit(r.status === 401 ? 0 : 1), () => process.exit(1))"]
       interval: 30s
@@ -64,14 +42,14 @@ services:
     restart: unless-stopped
 
   # Telefono Android virtuale con le app ufficiali: Outlook per le caselle
-  # Microsoft (app di Microsoft, gia' autorizzata in tutti i tenant: dove
+  # Microsoft (app di Microsoft, già autorizzata in tutti i tenant: dove
   # TbSync chiede l'approvazione dell'amministratore, Outlook no) e i servizi
   # Google per i calendari Google (Outlook non li esporta nel calendario di
   # Android; l'immagine con i servizi Google si costruisce da immagine-telefono/).
   # Entrambi copiano i calendari nel calendario del telefono, che l'agente legge.
-  # Il servizio systemd oe-copilot-sincronizza li tiene aggiornati ogni 30 secondi
+  # Il supervisore li tiene aggiornati a ogni giro, circa ogni 35 secondi
   # (da solo Android sincronizzerebbe ogni 15 minuti).
-  # La VM e' ARM come i telefoni: Android gira nativo, senza emulazione.
+  # La VM è ARM come i telefoni: Android gira nativo, senza emulazione.
   # Serve il modulo binder_linux caricato sulla VM.
   telefono:
     build: ./immagine-telefono
@@ -104,7 +82,7 @@ services:
       - GATEWAY_DB=/dati/gateway.db
       # i metodi dell'API (lib/core) leggono e scrivono la cartella dei dati e chiedono all'agente; i loghi stanno in /dati/logos
       - OE_DATI=/dati
-      # l'agente che serve il gateway: quello Python (agent) finché in .env non c'è AGENTE_URL=http://agente-ts:8180
+      # l'agente (servizio agent, in TypeScript) sulla rete di compose
       - AGENTE_URL=${AGENTE_URL:-http://agent:8180}
       - AGENTE_CHIAVE=${API_KEY}
       - APP_URL=https://${UI_HOST:-localhost}
@@ -168,12 +146,10 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # Supervisore del telefono (supervisore/, GUIDA.md 4.5 e 6): il lavoro del servizio systemd oe-copilot-sincronizza (il giro di
-  # sincronizzazione, il battito, il rilevatore degli accessi) con adb sulla rete di compose, senza docker.sock. Facoltativo: non parte con
-  # `docker compose up`, solo con `--profile supervisore`, e mai insieme al servizio systemd (due giri sullo stesso telefono si
-  # pesterebbero). Gira come l'utente 10080, quello di Outlook sul telefono: solo lui e root leggono i suoi dati, e stato/ deve essere suo.
+  # Supervisore del telefono (supervisore/, GUIDA.md 4.5 e 6): il giro di sincronizzazione, il battito e il rilevatore degli accessi,
+  # con adb sulla rete di compose, senza docker.sock. È l'unico che fa questo lavoro e parte con `docker compose up` come gli altri
+  # servizi. Gira come l'utente 10080, quello di Outlook sul telefono: solo lui e root leggono i suoi dati, e stato/ deve essere suo.
   supervisore:
-    profiles: ["supervisore"]
     build: ./supervisore
     container_name: oe-copilot-supervisore
     user: "10080:10080"

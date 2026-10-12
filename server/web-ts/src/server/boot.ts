@@ -2,6 +2,7 @@ import { getMigrations } from "better-auth/db/migration";
 import { auth, authOptions } from "@/lib/auth";
 import { config, modo2fa } from "@/lib/config";
 import { archivio } from "@/lib/core/archivio";
+import { avviaPromemoria } from "@/lib/core/promemoria";
 import { appDb } from "@/lib/db";
 import { migrateLockout } from "@/lib/lockout";
 import { syncOwner } from "@/lib/owner";
@@ -36,4 +37,5 @@ export async function boot() {
   } catch (e) {
     fatal(e instanceof Error ? e.message : String(e));
   }
+  avviaPromemoria();
 }

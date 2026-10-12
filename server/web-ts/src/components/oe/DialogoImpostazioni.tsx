@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Modo2fa } from "@/lib/config";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
+import { ImpostazioniPromemoria } from "./ImpostazioniPromemoria";
 import { useOe } from "./OeProvider";
 
 type Props = { aperto: boolean; onChiudi: () => void; accesso2fa?: Modo2fa };
@@ -83,6 +84,7 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
               </a>
             </section>
           )}
+          <ImpostazioniPromemoria />
 
           <section>
             <h3 className="mb-1 font-semibold">Info</h3>

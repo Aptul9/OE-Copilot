@@ -76,6 +76,14 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       # secondo fattore dell'accesso (GUIDA.md 4.7): off (predefinito), totp o passkey; un altro valore ferma l'avvio
       - AUTH_2FA=${AUTH_2FA:-off}
+      # promemoria dal server (GUIDA.md 4.9): vuoti, il canale Telegram non è configurato; il giro è ogni PROMEMORIA_INTERVALLO_S secondi (da 5 a 3600)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - PROMEMORIA_INTERVALLO_S=${PROMEMORIA_INTERVALLO_S:-30}
+      # notifiche del browser (GUIDA.md 4.9): la coppia di chiavi VAPID e un contatto (mailto: o https:); vuoti, il canale non è configurato
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
     volumes:
       - ./ui-dati:/dati
     ports:

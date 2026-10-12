@@ -106,6 +106,21 @@ export type NuovoEvento = {
 
 export type Esito = { ok: boolean; error?: string };
 
+export type ContenutoPromemoria = "completo" | "minimo";
+/** I promemoria che il server manda (lib/core/promemoria.ts). */
+export type ImpostazioniPromemoria = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: ContenutoPromemoria };
+export type PromemoriaRisposta = {
+  promemoria: ImpostazioniPromemoria;
+  /**
+   * I canali che il server conosce e se può usarli (le chiavi stanno nell'ambiente del server, mai qui). Per le notifiche del browser anche:
+   * se le chiavi VAPID ci sono, la chiave pubblica (serve alla pagina per iscriversi) e quanti browser sono iscritti.
+   */
+  canali: { nome: string; configurato: boolean; chiavi?: boolean; chiave_pubblica?: string | null; iscrizioni?: number }[];
+  ultimo_giro: string | null;
+  ultimo_errore: string | null;
+  ultimo_errore_il: string | null;
+};
+
 /** I metodi dell'API che il gateway serve (apiTs in lib/core/api.ts): argomenti e risposta. */
 export type Metodi = {
   get_config: [[], Config];
@@ -123,6 +138,11 @@ export type Metodi = {
   remove_ics_calendar: [[string], Esito];
   add_local_event: [[NuovoEvento], Esito];
   delete_local_event: [[string], Esito];
+  get_promemoria: [[], PromemoriaRisposta];
+  set_promemoria: [[Partial<ImpostazioniPromemoria>], Esito & { promemoria?: ImpostazioniPromemoria }];
+  prova_promemoria: [[string], Esito];
+  iscrivi_push: [[PushSubscriptionJSON], Esito];
+  disiscrivi_push: [[string], Esito];
 };
 
 export type NomeMetodo = keyof Metodi;

@@ -3,6 +3,8 @@ import type { Ev } from "./caselle";
 import { calendariCaselle, calendariExtra, occupato, raccogli } from "./eventi";
 import { aggiungiFeed, rimuoviFeed } from "./ics";
 import { aggiungiEvento, eliminaEvento } from "./locali";
+import { leggiPromemoria, provaPromemoria, salvaPromemoria } from "./promemoria";
+import { disiscrivi, iscrivi } from "./promemoria-push";
 import { ErroreValore, isDict, messaggio, pyBool, pyStr, testoPulito } from "./py";
 import {
   aliasPerAccount,
@@ -244,6 +246,32 @@ export const apiTs = {
   async delete_local_event(uid: unknown) {
     eliminaEvento(uid);
     return { ok: true };
+  },
+
+  // ---- Promemoria dal server (promemoria.ts) ------------------------------------------------------------------------------
+  /** Le impostazioni, i canali configurati sul server, l'ultimo giro e l'ultimo problema. */
+  async get_promemoria() {
+    return leggiPromemoria();
+  },
+
+  /** Cambia le impostazioni dei promemoria; un campo che manca resta com'è. */
+  async set_promemoria(impostazioni: unknown) {
+    return salvaPromemoria(impostazioni);
+  },
+
+  /** Manda su un canale il testo fisso di prova, mai dati di un evento. */
+  async prova_promemoria(canale: unknown) {
+    return provaPromemoria(canale);
+  },
+
+  /** Salva l'iscrizione di un browser alle notifiche (quello che la pagina riceve da PushSubscription.toJSON()). */
+  async iscrivi_push(iscrizione: unknown) {
+    return iscrivi(iscrizione);
+  },
+
+  /** Toglie l'iscrizione di un browser: l'indirizzo che la pagina ha della sua. */
+  async disiscrivi_push(endpoint: unknown) {
+    return disiscrivi(endpoint);
   },
 };
 

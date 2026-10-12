@@ -1,9 +1,10 @@
 // Le righe di calendar.db del telefono Android rimesse in serie e espanse: quello che server/agent/fonte_android.py fa fra la query SQL e
 // l'espansione (_quando, la durata "P900S", le colonne RRULE/RDATE/EXDATE, le occorrenze annullate che diventano EXDATE, le modifiche).
 
-import { FUSO_LOCALE, leggiElencoTempi, leggiIsoLocale, leggiRdate, leggiRigaIcs } from "./ics";
-import { type Componente, type Rdate, espandi } from "./serie";
-import { type Tempo, ErroreValore, data, fusoEsistente, inFuso, inOraLocale, ora, testoNaive } from "./tempo";
+import { type Riga, FUSO_LOCALE, leggiElencoTempi, leggiIsoLocale, leggiProprieta, leggiRdate, leggiRigaIcs, parametro, regolaPerPython, èRotta } from "./ics.ts";
+import { pyReprStr, pyStrip } from "./pyfmt.ts";
+import { type Componente, type Rdate, espandi } from "./serie.ts";
+import { type Tempo, ErroreValore, data, erroreRotta, fusoEsistente, inFuso, inOraLocale, ora, testoNaive } from "./tempo.ts";
 
 /** Le colonne di Events che servono all'espansione (la riga com'è nel database, già senza gli eventi cancellati). */
 export interface RigaAndroid {
@@ -56,23 +57,23 @@ const DURATA = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S
 
 /** La durata di Android in secondi: scrive anche "P900S", senza la T che iCalendar vuole davanti a ore, minuti e secondi. */
 export function durataAndroid(testo: string | null): number {
-  const m = DURATA.exec((testo ?? "").trim().toUpperCase());
-  if (!m) throw new ErroreValore(`durata non riconosciuta: '${testo}'`);
+  const m = DURATA.exec(pyStrip(testo ?? "").toUpperCase());
+  if (!m) throw new ErroreValore(`durata non riconosciuta: ${testo === null ? "None" : pyReprStr(testo)}`);
   const s = +(m[2] ?? 0) * 604800 + +(m[3] ?? 0) * 86400 + +(m[4] ?? 0) * 3600 + +(m[5] ?? 0) * 60 + +(m[6] ?? 0);
   return m[1] === "-" ? -s : s;
 }
 
-/** Una colonna di ricorrenza (RRULE, RDATE...) come riga iCalendar: EXDATE e RDATE possono arrivare come "TZID=Europe/Rome;2026..." */
-function colonna(nome: string, valore: string | null) {
-  const v = (valore ?? "").trim();
+/** Una colonna di ricorrenza (RRULE, RDATE...) come riga iCalendar: EXDATE e RDATE possono arrivare come "TZID=Europe/Rome;2026..." Una riga che non si legge si salta, come fa Event.from_ical. */
+function colonna(nome: string, valore: string | null): Riga | null {
+  const v = pyStrip(valore ?? "");
   if (!v) return null;
   const i = v.lastIndexOf(";");
-  return leggiRigaIcs(nome !== "RRULE" && nome !== "EXRULE" && i >= 0 ? `${nome};${v.slice(0, i)}:${v.slice(i + 1)}` : `${nome}:${v}`);
-}
-
-function elenco(nome: string, valore: string | null): Tempo[] {
-  const r = colonna(nome, valore);
-  return r ? leggiElencoTempi(r.valore, r.param.get("TZID") ?? null, null) : [];
+  try {
+    return leggiRigaIcs(nome !== "RRULE" && nome !== "EXRULE" && i >= 0 ? `${nome};${v.slice(0, i)}:${v.slice(i + 1)}` : `${nome}:${v}`);
+  } catch (e) {
+    if (e instanceof ErroreValore) return null;
+    throw e;
+  }
 }
 
 function daRighe(righe: RigaAndroid[]): Componente[] {
@@ -95,13 +96,24 @@ function daRighe(righe: RigaAndroid[]): Componente[] {
     let exdate: Tempo[] = [];
     let regole: string[] = [];
     let haRegole = false;
+    const problemi: Error[] = [];
     if (!serie) {
       const rr = colonna("RRULE", r.rrule);
-      if (rr) regole = [rr.valore];
+      if (rr) regole = [regolaPerPython(rr.valore)];
       const rd = colonna("RDATE", r.rdate);
-      if (rd) rdate = leggiRdate(rd.valore, rd.param.get("TZID") ?? null, null);
       colonna("EXRULE", r.exrule);
-      exdate = elenco("EXDATE", r.exdate);
+      const ex = colonna("EXDATE", r.exdate);
+      // una proprietà che non si legge resta rotta e l'errore esce quando il calcolo la usa: prima EXDATE, poi RDATE
+      if (ex) {
+        const e = leggiProprieta(ex, "vDDDLists", "dts", () => leggiElencoTempi(ex.valore, parametro(ex, "TZID")));
+        if (èRotta(e)) problemi.push(erroreRotta(e));
+        else exdate = e;
+      }
+      if (rd) {
+        const d = leggiProprieta(rd, "vDDDLists", "dts", () => leggiRdate(rd.valore, parametro(rd, "TZID")));
+        if (èRotta(d)) problemi.push(erroreRotta(d));
+        else rdate = d;
+      }
       haRegole = Boolean(rr) || Boolean(r.rdate?.trim()) || Boolean(r.exdate?.trim());
     }
     componenti.push({
@@ -116,6 +128,7 @@ function daRighe(righe: RigaAndroid[]): Componente[] {
       rdate,
       rrule: regole,
       haRegole,
+      problemi,
       dati: { uid: `a${serie || r._id}`, titolo: r.title || "", luogo: r.eventLocation || "", descrizione: r.description || "", organizzatore: "" },
     });
   }
@@ -136,11 +149,11 @@ function daRighe(righe: RigaAndroid[]): Componente[] {
  * Le occorrenze degli eventi del telefono fra due date locali (AAAA-MM-GGTHH:MM:SS, senza fuso), prima di togliere i doppioni.
  * Un errore in una serie fa fallire tutto l'intervallo, come in Python.
  */
-export function espandiRigheAndroid(righe: RigaAndroid[], inizio: string, fine: string, opzioni: OpzioniAndroid = {}): OccorrenzaAndroid[] {
+export function espandiRigheAndroid(righe: RigaAndroid[], inizio: string | Temporal.PlainDateTime, fine: string | Temporal.PlainDateTime, opzioni: OpzioniAndroid = {}): OccorrenzaAndroid[] {
   const fuso = opzioni.fuso ?? FUSO_LOCALE;
   const componenti = daRighe(righe);
-  const da = ora(leggiIsoLocale(inizio), fuso);
-  const a = ora(leggiIsoLocale(fine), fuso);
+  const da = ora(typeof inizio === "string" ? leggiIsoLocale(inizio) : inizio, fuso);
+  const a = ora(typeof fine === "string" ? leggiIsoLocale(fine) : fine, fuso);
   return espandi(componenti, da, a).map((o) => ({
     uid: o.c.dati.uid,
     titolo: o.c.dati.titolo,

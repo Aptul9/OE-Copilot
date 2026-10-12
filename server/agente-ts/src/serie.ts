@@ -2,7 +2,7 @@
 // un evento "nucleo" con le sue regole, le modifiche (RECURRENCE-ID) che prendono il posto di un'occorrenza, le date escluse e aggiunte.
 // Ogni scelta qui ha un'origine nella libreria Python, comprese le stranezze: le prove confrontano i risultati con le sue risposte.
 
-import { type Naive, type Regola, chiaveMuro, iteraRegola, leggiRegola } from "./regola";
+import { type Naive, type Regola, chiaveMuro, iteraRegola, leggiRegola } from "./regola.ts";
 import {
   type Ora,
   type Tempo,
@@ -15,12 +15,14 @@ import {
   data,
   differenzaT,
   idRicorrenza,
+  inFuso,
   istante,
   ora,
   rendiComparabili,
   somma,
   sommaT,
-} from "./tempo";
+  testoPy,
+} from "./tempo.ts";
 
 export interface Dati {
   uid: string;
@@ -45,6 +47,8 @@ export interface Componente {
   rdate: Rdate[];
   rrule: string[];
   haRegole: boolean;
+  /** Gli errori di proprietà rotte, nell'ordine in cui il calcolo di Python le incontra: il primo esce quando si costruisce la serie. */
+  problemi?: Error[];
   dati: Dati;
 }
 
@@ -62,8 +66,8 @@ const prima = (t: Tempo, secondi: number): Tempo => (t.tipo === "data" ? data(t.
 /** time_span_contains_event: gli estremi finali sono esclusi, quelli iniziali compresi; un evento senza durata conta nell'istante in cui cade. */
 export function contieneEvento(inizioFinestra: Tempo, fineFinestra: Tempo, inizioEvento: Tempo, fineEvento: Tempo): boolean {
   const [a, b, c, d] = rendiComparabili([inizioFinestra, fineFinestra, inizioEvento, fineEvento]) as [Tempo, Tempo, Tempo, Tempo];
-  if (confrontaT(c, d) > 0) throw new ErroreValore("the event must start before it ends");
-  if (confrontaT(a, b) > 0) throw new ErroreValore("the time span must start before it ends");
+  if (confrontaT(c, d) > 0) throw new ErroreValore(`the event must start before it ends(start: ${testoPy(c)} end: ${testoPy(d)})`);
+  if (confrontaT(a, b) > 0) throw new ErroreValore(`the time span must start before it ends(start: ${testoPy(a)} end: ${testoPy(b)})`);
   if (confrontaT(c, d) === 0) {
     if (confrontaT(a, b) === 0) return confrontaT(c, a) === 0;
     return confrontaT(a, c) <= 0 && confrontaT(c, b) < 0;
@@ -74,7 +78,10 @@ export function contieneEvento(inizioFinestra: Tempo, fineFinestra: Tempo, inizi
 
 class Adattatore {
   private _span: [Tempo, Tempo] | null = null;
-  constructor(readonly c: Componente) {}
+  readonly c: Componente;
+  constructor(c: Componente) {
+    this.c = c;
+  }
 
   get fineGrezza(): Tempo {
     const c = this.c;
@@ -153,7 +160,10 @@ class Ricorrenze {
   readonly regole: RegolaUntil[] = [];
   readonly insieme: Ora[] = [];
 
-  constructor(readonly nucleo: Adattatore) {
+  readonly nucleo: Adattatore;
+
+  constructor(nucleo: Adattatore) {
+    this.nucleo = nucleo;
     this.inizioOrig = nucleo.inizio;
     this.fineOrig = nucleo.fine;
     for (const e of nucleo.c.exdate) {
@@ -200,7 +210,26 @@ class Ricorrenze {
 
   /** create_rule_with_start: UNTIL deve avere la stessa natura di DTSTART (con o senza fuso); se no si adatta, come fa la libreria. */
   private creaRegola(testo: string): RegolaUntil {
-    const regola = leggiRegola(testo, this.muro(this.inizio));
+    let regola: Regola;
+    try {
+      regola = leggiRegola(testo, this.muro(this.inizio));
+    } catch (e) {
+      if (!(e instanceof ErroreValore)) throw e;
+      // create_rule_with_start: dateutil rifiuta la regola, si riprova con UNTIL adattato a DTSTART; senza UNTIL (o con due) è un errore
+      const parti = testo.split(";UNTIL=");
+      if (parti.length !== 2) throw new ErroreValore(`UNTIL parameter is missing: ${testo}`);
+      let fineData = parti[1]!.indexOf(";");
+      if (fineData === -1) fineData = parti[1]!.length;
+      let until = parti[1]!.slice(0, fineData);
+      if (this.tutteDate) until = until.slice(0, 8);
+      else if (this.tz === null) until = until.slice(0, -1);
+      else {
+        if (until.length === 8) until += "T000000";
+        if (until.length !== 15) throw new ErroreValore(`UNTIL parameter has a bad format: ${testo}`);
+        until += "Z";
+      }
+      regola = leggiRegola(`${parti[0]}${parti[1]!.slice(fineData)};UNTIL=${until}`, this.muro(this.inizio));
+    }
     let until: Tempo | null = null;
     const u = regola.until;
     if (u !== null) {
@@ -230,7 +259,7 @@ class Ricorrenze {
   /** La chiave sul muro di un estremo, nel fuso della serie: serve a saltare in fretta i risultati lontani dalla finestra. */
   private chiaveEstremo(o: Ora): number {
     if (this.tz === null || o.z === this.tz) return chiaveMuro(this.muro(o));
-    return chiaveMuro(this.muro(ora(Temporal.Instant.fromEpochMilliseconds(istante(o)).toZonedDateTimeISO(this.tz).toPlainDateTime(), this.tz)));
+    return chiaveMuro(this.muro(inFuso(istante(o), this.tz)));
   }
 
   *tra(inizioFinestra: Tempo, fineFinestra: Tempo): Generator<Ora> {
@@ -371,8 +400,13 @@ export function espandi(componenti: Componente[], inizio: Tempo, fine: Tempo): O
     if (lista) lista.push(c);
     else perUid.set(c.uid, [c]);
   }
+  // recurring_ical_events costruisce tutte le serie prima di chiedere la finestra: un errore di costruzione esce prima di ogni calcolo
+  const serie = [...perUid.values()].map((lista) => {
+    for (const c of lista) if (c.problemi?.length) throw c.problemi[0];
+    return new Serie(lista);
+  });
   const out: Occorrenza[] = [];
-  for (const lista of perUid.values()) out.push(...new Serie(lista).tra(inizio, fine));
+  for (const s of serie) out.push(...s.tra(inizio, fine));
   return out;
 }
 

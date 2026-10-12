@@ -27,6 +27,42 @@ services:
       - "127.0.0.1:3180:8180"
     restart: unless-stopped
 
+  # L'agente in TypeScript (agente-ts/): stessa API di agent, stesse risposte, stesso calendario del telefono in sola lettura. NON è il servizio
+  # in uso: sta dietro il profilo "agente-ts" e non parte con "docker compose up". Per provarlo senza spostare niente: "docker compose --profile
+  # agente-ts up -d --build agente-ts" e lo si interroga su 127.0.0.1:3181. Per farlo servire il gateway si imposta AGENTE_URL=http://agente-ts:8180
+  # in .env e si ricrea il gateway (GUIDA.md, sezioni 4.4 e 5). Non ha un alias "agent": due contenitori con lo stesso nome dividerebbero le
+  # richieste del gateway. Gira senza privilegi: i file del calendario sono del gruppo 10019 (l'utente di Android che li scrive), che entra come
+  # gruppo aggiuntivo; se Android cambia quel numero, in .env si scrive CALENDARIO_GID=<gid dei file di calendar.db> e si ricrea il servizio.
+  agente-ts:
+    profiles: ["agente-ts"]
+    build: ./agente-ts
+    container_name: oe-copilot-agente-ts
+    user: "10001:10001"
+    group_add:
+      - "${CALENDARIO_GID:-10019}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - API_KEY=${API_KEY}
+    volumes:
+      - ./agent/fonti.json:/app/fonti.json:ro
+      - ./telefono/data/data/com.android.providers.calendar/databases:/android-calendario:ro
+      - ./stato:/stato:ro
+    ports:
+      - "127.0.0.1:3181:8180"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8180/api/salute').then((r) => process.exit(r.status === 401 ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
   # Telefono Android virtuale con le app ufficiali: Outlook per le caselle
   # Microsoft (app di Microsoft, gia' autorizzata in tutti i tenant: dove
   # TbSync chiede l'approvazione dell'amministratore, Outlook no) e i servizi
@@ -68,7 +104,8 @@ services:
       - GATEWAY_DB=/dati/gateway.db
       # i metodi dell'API (lib/core) leggono e scrivono la cartella dei dati e chiedono all'agente; i loghi stanno in /dati/logos
       - OE_DATI=/dati
-      - AGENTE_URL=http://agent:8180
+      # l'agente che serve il gateway: quello Python (agent) finché in .env non c'è AGENTE_URL=http://agente-ts:8180
+      - AGENTE_URL=${AGENTE_URL:-http://agent:8180}
       - AGENTE_CHIAVE=${API_KEY}
       - APP_URL=https://${UI_HOST:-localhost}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}

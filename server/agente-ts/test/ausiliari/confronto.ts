@@ -1,5 +1,5 @@
-import { ErroreNonSupportato, ErroreValore, espandiIcs, espandiRigheAndroid, validaIcs } from "../../src/index";
-import { type Db, type Fonte, type RigaDb, eventiAgente } from "./android";
+import { ErroreNonSupportato, ErroreTipo, ErroreValore, espandiIcs, espandiRigheAndroid, validaIcs } from "../../src/index.ts";
+import { type Db, type Fonte, type RigaDb, eventiAgente } from "./android.ts";
 
 export const FONTE_PROVA: Fonte = { id: "android::mario@alfa.example", nome: "Alfa", account: "mario@alfa.example" };
 export const dbDiUnCaso = (righe: RigaDb[]): Db => ({ calendari: [[1, "mario@alfa.example", "com.microsoft.office.outlook", "Calendar", 1, 0, 1]], eventi: righe, invitati: [] });
@@ -28,7 +28,11 @@ function confrontaLista(atteso: unknown, ottenuto: { valore: unknown[] } | { err
   const errAtteso = !Array.isArray(atteso);
   if ("errore" in ottenuto) {
     if (ottenuto.errore instanceof ErroreNonSupportato && !errAtteso) return { stato: "non-supportato", dettaglio: ottenuto.errore.message };
-    return errAtteso ? { stato: "uguale", dettaglio: "" } : { stato: "diverso", dettaglio: `errore ${String(ottenuto.errore)} dove Python risponde ${sintesi(atteso)}` };
+    if (!errAtteso) return { stato: "diverso", dettaglio: `errore ${String(ottenuto.errore)} dove Python risponde ${sintesi(atteso)}` };
+    // il testo dell'errore è quello che il gateway mostra: deve essere lo stesso di Python (registrato fino a 200 caratteri)
+    const messaggio = (atteso as { messaggio?: string }).messaggio;
+    const nostro = ottenuto.errore instanceof Error ? ottenuto.errore.message.slice(0, 200) : String(ottenuto.errore);
+    return messaggio === undefined || messaggio === nostro ? { stato: "uguale", dettaglio: "" } : { stato: "diverso", dettaglio: `errore con un altro testo: Python ${JSON.stringify(messaggio)}, qui ${JSON.stringify(nostro)}` };
   }
   if (errAtteso) return { stato: "diverso", dettaglio: `Python dà errore ${sintesi(atteso)}, qui ${ottenuto.valore.length} occorrenze` };
   if (soloErrore) return { stato: "uguale", dettaglio: "" };
@@ -64,10 +68,10 @@ export function esitoIcs(caso: any, finestra: string): Esito[] {
   const [inizio, fine] = finestra.split("|") as [string, string];
   const atteso = caso.atteso.eventi[finestra];
   const ottenuto = tentativo(() => espandiIcs(caso.testo, inizio, fine));
-  const e1 = confrontaLista(atteso.ok ? atteso.eventi : { errore: atteso.errore }, ottenuto, CHIAVI_ICS);
+  const e1 = confrontaLista(atteso.ok ? atteso.eventi : { errore: atteso.errore, messaggio: atteso.messaggio }, ottenuto, CHIAVI_ICS);
   const out = [e1];
   if (!atteso.ok && "errore" in ottenuto && e1.stato === "uguale") {
-    const valore = ottenuto.errore instanceof ErroreValore;
+    const valore = ottenuto.errore instanceof ErroreValore || ottenuto.errore instanceof ErroreTipo;
     if (valore !== atteso.valore) out.push({ stato: "diverso", dettaglio: `tipo di errore: Python valore=${atteso.valore}, qui ${valore}` });
   }
   return out;
@@ -77,8 +81,9 @@ export function esitoValida(caso: any): Esito {
   const atteso = caso.atteso.valida;
   const ottenuto = tentativo(() => validaIcs(caso.testo));
   if ("errore" in ottenuto) {
-    const valore = ottenuto.errore instanceof ErroreValore;
-    return !atteso.ok && valore === atteso.valore ? { stato: "uguale", dettaglio: "" } : { stato: "diverso", dettaglio: `valida: errore ${String(ottenuto.errore)} contro ${sintesi(atteso)}` };
+    const valore = ottenuto.errore instanceof ErroreValore || ottenuto.errore instanceof ErroreTipo;
+    const messaggio = ottenuto.errore instanceof Error ? ottenuto.errore.message.slice(0, 200) : "";
+    return !atteso.ok && valore === atteso.valore && messaggio === atteso.messaggio ? { stato: "uguale", dettaglio: "" } : { stato: "diverso", dettaglio: `valida: errore ${String(ottenuto.errore)} contro ${sintesi(atteso)}` };
   }
   return atteso.ok && atteso.nome === ottenuto.valore ? { stato: "uguale", dettaglio: "" } : { stato: "diverso", dettaglio: `valida: ${sintesi(ottenuto.valore)} contro ${sintesi(atteso)}` };
 }

@@ -2,6 +2,9 @@
 // calendari: un orario con fuso è l'ora sul muro più il nome del fuso (e se è la seconda delle due ore ripetute dal cambio dell'ora).
 // Due orari dello stesso fuso si confrontano e si sottraggono sul muro, due di fusi diversi sugli istanti: è la regola di Python.
 
+import { fusiPersonalizzati } from "./fusi.ts";
+import { pyReprStr } from "./pyfmt.ts";
+
 export type Data = { tipo: "data"; d: Temporal.PlainDate };
 export type Ora = { tipo: "ora"; w: Temporal.PlainDateTime; z: string | null; fold: 0 | 1 };
 export type Tempo = Data | Ora;
@@ -10,6 +13,20 @@ export type Tempo = Data | Ora;
 export class ErroreValore extends Error {}
 /** Un errore che Python non classifica come valore (KeyError, fuso sconosciuto...). */
 export class ErroreAltro extends Error {}
+/** Una proprietà che iCalendar non ha saputo leggere (vBroken): l'errore esce solo quando il calcolo la usa, e dice quale attributo si cercava. */
+export interface Rotta {
+  nome: string;
+  atteso: string;
+  attributo: string;
+  errore: string;
+}
+export const erroreRotta = (r: Rotta) =>
+  new ErroreValore(`Cannot access ${pyReprStr(r.attributo)} on broken property ${pyReprStr(r.nome)} (expected ${pyReprStr(r.atteso)}): ${r.errore}`);
+
+/** TypeError di Python (confronti e sottrazioni fra tipi che non si mescolano): per il gateway vale come un valore non valido. */
+export class ErroreTipo extends ErroreAltro {}
+/** Un'eccezione che l'agente Python non prende: il gestore muore e la connessione si chiude senza risposta. */
+export class ErroreSenzaRisposta extends Error {}
 
 export const data = (d: Temporal.PlainDate): Data => ({ tipo: "data", d });
 export const ora = (w: Temporal.PlainDateTime, z: string | null = null, fold: 0 | 1 = 0): Ora => ({ tipo: "ora", w, z, fold });
@@ -20,6 +37,11 @@ export const èUtc = (o: Ora) => o.z !== null && UTC_ALIAS.has(o.z);
 /** L'istante in millisecondi dall'epoca. */
 export function istante(o: Ora): number {
   if (o.z === null) throw new ErroreValore("orario senza fuso");
+  const p = fusiPersonalizzati.get(o.z);
+  if (p) {
+    const m = muro(o.w);
+    return (m - p.scarto(m, o.fold)) * 1000;
+  }
   return o.w.toZonedDateTime(o.z, { disambiguation: o.fold ? "later" : "compatible" }).epochMilliseconds;
 }
 
@@ -27,14 +49,14 @@ const muro = (w: Temporal.PlainDateTime) => Date.UTC(w.year, w.month - 1, w.day,
 
 /** -1, 0, 1 come il confronto fra datetime: sul muro se hanno lo stesso fuso (o nessuno), sugli istanti se no. */
 export function confronta(a: Ora, b: Ora): number {
-  if ((a.z === null) !== (b.z === null)) throw new ErroreAltro("can't compare offset-naive and offset-aware datetimes");
+  if ((a.z === null) !== (b.z === null)) throw new ErroreTipo("can't compare offset-naive and offset-aware datetimes");
   if (a.z === b.z) return Math.sign(Temporal.PlainDateTime.compare(a.w, b.w));
   return Math.sign(istante(a) - istante(b));
 }
 
 /** a - b in secondi, con la stessa regola di confronto. */
 export function differenza(a: Ora, b: Ora): number {
-  if ((a.z === null) !== (b.z === null)) throw new ErroreAltro("can't subtract offset-naive and offset-aware datetimes");
+  if ((a.z === null) !== (b.z === null)) throw new ErroreTipo("can't subtract offset-naive and offset-aware datetimes");
   return a.z === b.z ? muro(a.w) - muro(b.w) : (istante(a) - istante(b)) / 1000;
 }
 
@@ -46,6 +68,17 @@ export function somma(o: Ora, secondi: number): Ora {
 export const mezzanotte = (d: Temporal.PlainDate) => d.toPlainDateTime();
 
 export function inFuso(ms: number, fuso: string): Ora {
+  const p = fusiPersonalizzati.get(fuso);
+  if (p) {
+    // _tzinfo.fromutc di dateutil: lo scarto e l'ora legale dell'ora UTC letta come ora sul muro, poi l'ora legale del risultato (con fold=1)
+    const utc = Math.floor(ms / 1000);
+    const delta = p.scarto(utc, 0) - p.dst(utc, 0);
+    const prima = utc + delta;
+    const muroSecondi = prima + p.dst(prima, 1);
+    const ripetuta = p.scarto(muroSecondi, 0) !== p.scarto(muroSecondi, 1);
+    const w = Temporal.Instant.fromEpochMilliseconds(muroSecondi * 1000).toZonedDateTimeISO("UTC").toPlainDateTime();
+    return ora(w, fuso, ripetuta && muroSecondi - utc === delta ? 1 : 0);
+  }
   const z = Temporal.Instant.fromEpochMilliseconds(ms).toZonedDateTimeISO(fuso);
   const w = z.toPlainDateTime();
   const primo = w.toZonedDateTime(fuso, { disambiguation: "compatible" }).epochMilliseconds;
@@ -78,7 +111,7 @@ export function rendiComparabili(v: Tempo[]): Tempo[] {
 export function confrontaT(a: Tempo, b: Tempo): number {
   if (a.tipo === "data" && b.tipo === "data") return Math.sign(Temporal.PlainDate.compare(a.d, b.d));
   if (a.tipo === "ora" && b.tipo === "ora") return confronta(a, b);
-  throw new ErroreAltro("can't compare datetime.datetime to datetime.date");
+  throw new ErroreTipo("can't compare datetime.datetime to datetime.date");
 }
 
 export function confrontaGrande(a: Tempo, b: Tempo): boolean {
@@ -90,7 +123,7 @@ export function confrontaGrande(a: Tempo, b: Tempo): boolean {
 export function differenzaT(a: Tempo, b: Tempo): number {
   if (a.tipo === "data" && b.tipo === "data") return a.d.since(b.d, { largestUnit: "days" }).days * 86400;
   if (a.tipo === "ora" && b.tipo === "ora") return differenza(a, b);
-  throw new ErroreAltro("unsupported operand type(s) for -: date and datetime");
+  throw new ErroreTipo("unsupported operand type(s) for -: date and datetime");
 }
 
 /** Tempo + timedelta: a una data si aggiungono solo i giorni interi. */
@@ -102,6 +135,22 @@ export function sommaT(t: Tempo, secondi: number): Tempo {
 export const comeData = (t: Tempo): Temporal.PlainDate => (t.tipo === "data" ? t.d : t.w.toPlainDate());
 
 const due = (n: number) => String(n).padStart(2, "0");
+
+/** str() di una data o di un orario come Python lo scrive nei messaggi: AAAA-MM-GG, o AAAA-MM-GG HH:MM:SS[.ffffff] con lo scarto (+HH:MM) se ha un fuso. */
+export function testoPy(t: Tempo): string {
+  if (t.tipo === "data") return t.d.toString();
+  const w = t.w;
+  const micro = w.millisecond * 1000 + w.microsecond;
+  const base = `${String(w.year).padStart(4, "0")}-${due(w.month)}-${due(w.day)} ${due(w.hour)}:${due(w.minute)}:${due(w.second)}${micro ? "." + String(micro).padStart(6, "0") : ""}`;
+  if (t.z === null) return base;
+  const p = fusiPersonalizzati.get(t.z);
+  if (p) {
+    const s = p.scarto(muro(w), t.fold);
+    const assoluto = Math.abs(s);
+    return `${base}${s < 0 ? "-" : "+"}${due(Math.floor(assoluto / 3600))}:${due(Math.floor((assoluto % 3600) / 60))}${assoluto % 60 ? ":" + due(assoluto % 60) : ""}`;
+  }
+  return base + w.toZonedDateTime(t.z, { disambiguation: t.fold ? "later" : "compatible" }).offset;
+}
 export const testoNaive = (w: Temporal.PlainDateTime) =>
   `${String(w.year).padStart(4, "0")}-${due(w.month)}-${due(w.day)}T${due(w.hour)}:${due(w.minute)}:${due(w.second)}`;
 

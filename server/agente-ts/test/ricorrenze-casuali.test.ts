@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { esitoCaso } from "./ausiliari/confronto";
-import { leggiGolden } from "./ausiliari/dati";
+import { esitoCaso } from "./ausiliari/confronto.ts";
+import { leggiGolden } from "./ausiliari/dati.ts";
 
 // Serie e calendari generati a caso (seme fisso: righe di calendar.db con serie, esclusioni, aggiunte, occorrenze annullate e
 // spostate, fusi diversi, cambi dell'ora; testi ICS con X-WR-TIMEZONE, orari UTC e senza fuso, giorni interi, RECURRENCE-ID), registrati

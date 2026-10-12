@@ -36,7 +36,11 @@ jobs:
         working-directory: server
         env:
           API_KEY: prova
-        run: docker compose config -q
+        run: |
+          docker compose config -q
+          # il servizio dell'agente TypeScript sta dietro un profilo: senza, i servizi sono quelli di sempre
+          test "$(docker compose config --services | sort | tr '\n' ' ')" = "agent caddy-ui gateway schermo telefono "
+          test "$(docker compose --profile agente-ts config --services | sort | tr '\n' ' ')" = "agent agente-ts caddy-ui gateway schermo telefono "
 
       - name: Immagine dell'agente
         run: docker build -q -t oe-copilot-agent server/agent
@@ -90,6 +94,23 @@ jobs:
           trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
           for _ in $(seq 1 30); do [ -s "$d/stato/battito.json" ] && break; sleep 1; done
           grep -q '"telefono": false' "$d/stato/battito.json"
+
+      - name: Agente in TypeScript, immagine e risposte
+        run: |
+          # l'immagine parte davvero come in compose (sola lettura, utente senza privilegi, senza capacità) su un calendar.db inventato e
+          # risponde come l'agente Python: le stesse risposte registrate in server/strumenti/golden/agente.json
+          docker build -q -t oe-copilot-agente-ts server/agente-ts
+          dati=$(mktemp -d)
+          chmod 755 "$dati"
+          node server/agente-ts/test/costruisci-db.ts "$dati"
+          id=$(docker run -d --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true -p 8181:8180 \
+            -e API_KEY=chiave-di-prova -e BATTITO=/nessun-battito.json -e ACCESSI=/nessun-accesso.json \
+            -v "$dati:/android-calendario:ro" -v "$dati/fonti.json:/app/fonti.json:ro" oe-copilot-agente-ts)
+          trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
+          for _ in $(seq 1 30); do curl -s -o /dev/null localhost:8181/api/salute && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8181/api/salute)" = 401
+          curl -fsS -H 'Authorization: Bearer chiave-di-prova' localhost:8181/api/salute | grep -q '"fonti": {"Alfa"'
+          node server/agente-ts/test/confronta-http.ts http://localhost:8181
 
       - name: Schermo del telefono, tipi, costruzione e prova di fumo
         working-directory: server/schermo-web

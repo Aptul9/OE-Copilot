@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { type Esito, esitoCaso } from "./ausiliari/confronto";
-import { leggiGolden } from "./ausiliari/dati";
+import { type Esito, esitoCaso } from "./ausiliari/confronto.ts";
+import { leggiGolden } from "./ausiliari/dati.ts";
 
 // Casi inventati per le categorie che il golden dell'agente non copre (cambio dell'ora, esclusioni in tutte le forme, modifiche e
 // annullamenti, giorni interi, fusi, regole, bordi della finestra, durate, calendari ICS...), con la risposta che le librerie vere
@@ -8,14 +8,7 @@ import { leggiGolden } from "./ausiliari/dati";
 // Ogni caso è uguale a Python salvo quelli elencati qui, con il perché: se uno cambia esito la prova lo dice.
 const extra = leggiGolden<{ librerie: Record<string, string>; casi: any[] }>("ricorrenze-extra.json");
 
-const NOTI: Record<string, { stato: Esito["stato"]; motivo: string }> = {
-  "regola-yearly-byweekno": { stato: "non-supportato", motivo: "BYWEEKNO: non lo scrivono né Outlook né Google" },
-  "regola-hourly": { stato: "non-supportato", motivo: "frequenza oraria: non la scrivono né Outlook né Google" },
-  "regola-hourly-attraversa-cambio": { stato: "non-supportato", motivo: "frequenza oraria" },
-  "regola-minutely": { stato: "non-supportato", motivo: "frequenza al minuto" },
-  "ics-regola-hourly": { stato: "non-supportato", motivo: "frequenza oraria" },
-  "ics-vtimezone-personalizzata": { stato: "diverso", motivo: "un VTIMEZONE definito nel file non si interpreta: valgono i nomi IANA e una tabella dei nomi di Windows" },
-};
+const NOTI: Record<string, { stato: Esito["stato"]; motivo: string }> = {};
 
 const esiti = new Map<string, Esito>();
 const categorie = [...new Set(extra.casi.map((c) => `${c.tipo}/${c.categoria}`))];

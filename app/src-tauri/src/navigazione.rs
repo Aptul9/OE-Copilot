@@ -15,9 +15,10 @@ pub enum Esito {
 
 /// Cosa fare di un indirizzo che la finestra vuole caricare o aprire: nella finestra entrano solo il sito, la pagina di
 /// avvio inclusa nell'app e about:blank; gli altri indirizzi http(s) vanno al browser, gli altri schemi vengono rifiutati.
+/// Su Android about:blank è rifiutato: la vista è una sola e window.open("about:blank") la lascerebbe bianca.
 pub fn classifica(url: &Url, origine: &Url) -> Esito {
     match url.scheme() {
-        "about" if url.as_str() == "about:blank" => Esito::Consenti,
+        "about" if url.as_str() == "about:blank" && !cfg!(target_os = "android") => Esito::Consenti,
         "http" | "https" => {
             if url.origin() == origine.origin() || pagina_di_avvio(url) {
                 Esito::Consenti

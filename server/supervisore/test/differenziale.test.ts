@@ -15,8 +15,16 @@ const REGISTRAZIONE = path.join(import.meta.dirname, "golden", "rilevatore-acces
 const registrati = (JSON.parse(readFileSync(REGISTRAZIONE, "utf8")) as { casi: Record<string, Atteso> }).casi;
 
 // Con byte non UTF-8 in dumpsys content Python (text=True) si ferma e non dà verdetti Google, il rilevatore in TypeScript legge con i
-// caratteri di sostituzione e li dà: è l'unica differenza voluta.
-const DIFFERENZE_VOLUTE = ["google-dump-utf8-invalido"];
+// caratteri di sostituzione e li dà: è l'unica differenza voluta, e si controlla per intero (quali file e quali righe cambiano), non solo
+// che il caso differisca.
+const DIFFERENZE_VOLUTE: Record<string, string[]> = {
+  "google-dump-utf8-invalido": [
+    "stato/accessi.json: byte diversi",
+    "stato/google-sync.json: c'è solo in TypeScript",
+    "riga di riepilogo diversa",
+    "comandi al telefono diversi",
+  ],
+};
 
 const radice = mkdtempSync(path.join(os.tmpdir(), "differenziale-"));
 // su Windows togliere qualche migliaio di file può durare più dei 10 secondi di un gancio
@@ -36,6 +44,6 @@ describe("il rilevatore in TypeScript contro le uscite registrate di rileva_acce
       const d = differenze(registrati[nome] as Atteso, uscitaTs);
       if (d.length > 0) diversi[nome] = d;
     }
-    expect(Object.keys(diversi)).toEqual(DIFFERENZE_VOLUTE);
+    expect(diversi).toEqual(DIFFERENZE_VOLUTE);
   }, 600_000);
 });

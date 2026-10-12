@@ -11,7 +11,7 @@ npm test
 ```
 
 - `test/ciclo.test.ts`: il giro contro le sequenze registrate in `test/golden/ciclo-<scenario>.txt`. Un telefono inventato (`test/telefono-simulato.ts`) risponde al ciclo in TypeScript: i comandi al telefono, le attese e il battito devono essere quelli che il vecchio script bash produsse una sola volta, con `docker`, `sleep` e `date` finti. I file non si rigenerano: sono dati di prova fissi, e lo script è nella cronologia di git.
-- `test/differenziale.test.ts`: il rilevatore contro le uscite registrate del rilevatore in Python (`test/golden/rilevatore-accessi.json`, registrato una sola volta sui dati inventati di `test/differenziale/casi.ts`): `accessi.json` e `google-sync.json` devono uscire uguali byte per byte, con la stessa riga di riepilogo e gli stessi comandi al telefono. Non serve Python. L'unica differenza voluta è `google-dump-utf8-invalido`.
+- `test/differenziale.test.ts`: il rilevatore contro le uscite registrate del rilevatore in Python (`test/golden/rilevatore-accessi.json`, registrato una sola volta sui dati inventati di `test/differenziale/casi.ts`): `accessi.json` e `google-sync.json` devono uscire uguali byte per byte, con la stessa riga di riepilogo e gli stessi comandi al telefono. Non serve Python. L'unica differenza voluta è `google-dump-utf8-invalido`, controllata riga per riga. I casi nuovi del rilevatore vanno in `test/rilevatore.test.ts`, non in `casi.ts`: il confronto controlla che i nomi dei casi siano quelli registrati.
 - `test/rileva-accessi.test.ts`: i casi della vecchia prova Python del rilevatore, con le stesse attese.
 
 ## Variabili d'ambiente

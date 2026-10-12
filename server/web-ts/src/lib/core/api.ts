@@ -5,6 +5,7 @@ import { calendariCaselle, calendariExtra, occupato, raccogli } from "./eventi";
 import { aggiungiFeed, rimuoviFeed } from "./ics";
 import { aggiungiEvento, eliminaEvento } from "./locali";
 import { leggiPromemoria, provaPromemoria, salvaPromemoria } from "./promemoria";
+import { aggiornaLogo, anteprimaLogo, caricaLogo, esitoNegativo, impostaLogo, interfacciaConLoghi, leggiVoci, pulisciLoghi, rinominaLogo, togliLogo } from "./loghi";
 import { disiscrivi, iscrivi } from "./promemoria-push";
 import { ErroreValore, isDict, messaggio, pyBool, pyStr, testoPulito } from "./py";
 import {
@@ -92,9 +93,9 @@ export const apiTs = {
     return loadConfig();
   },
 
-  /** Le impostazioni dell'interfaccia (sigle, loghi, schede): arrivano da personalizzazione.json, nel codice non ci sono nomi di aziende. */
+  /** Le impostazioni dell'interfaccia (sigle, loghi, schede): arrivano da personalizzazione.json, nel codice non ci sono nomi di aziende. I loghi scelti dalla finestra Calendari ci stanno sopra. */
   async get_personalizzazione() {
-    return { interfaccia: personalizzazione().interfaccia };
+    return { interfaccia: interfacciaConLoghi(personalizzazione().interfaccia) };
   },
 
   /** Calendari delle caselle + quelli sottoscritti da link ICS e quelli locali. */
@@ -205,7 +206,7 @@ export const apiTs = {
     return { ok: true };
   },
 
-  /** Il nome da mostrare per un account. Vuoto = torna a quello automatico. Le aziende nei gruppi seguono il nuovo nome. */
+  /** Il nome da mostrare per un account. Vuoto = torna a quello automatico. Le aziende nei gruppi, e il loro logo, seguono il nuovo nome. */
   async set_account_alias(account: unknown, alias: unknown) {
     modificaConfig((cfg) => {
       if (!isDict(cfg.account_aliases)) cfg.account_aliases = {};
@@ -215,8 +216,11 @@ export const apiTs = {
       const nuovo = testoPulito(alias);
       if (nuovo) scelti[conto] = nuovo;
       else delete scelti[conto];
-      rinominaNeiGruppi(cfg, prima, aliasPerAccount(cfg, [conto])[conto]);
+      const dopo = aliasPerAccount(cfg, [conto])[conto];
+      rinominaNeiGruppi(cfg, prima, dopo);
+      rinominaLogo(prima, dopo);
     });
+    pulisciLoghi();
     return { ok: true };
   },
 
@@ -247,6 +251,58 @@ export const apiTs = {
   async delete_local_event(uid: unknown) {
     eliminaEvento(uid);
     return { ok: true };
+  },
+
+  // ---- Loghi delle aziende (loghi.ts) --------------------------------------------------------------------------------------
+  /** I loghi scelti dalla finestra Calendari: nome mostrato -> indirizzo di partenza e data. Quelli di personalizzazione.json non ci sono. */
+  async get_loghi() {
+    return { loghi: leggiVoci() };
+  },
+
+  /** Scarica un indirizzo (qui, mai dal browser) e lo restituisce come immagine da mostrare: non salva niente. */
+  async preview_logo(indirizzo: unknown) {
+    try {
+      return { ok: true, ...(await anteprimaLogo(indirizzo)) };
+    } catch (e) {
+      return esitoNegativo("preview_logo", e);
+    }
+  },
+
+  /** Il logo di un nome mostrato da un indirizzo: scaricato qui una volta e servito da /logos/. Se qualcosa non va non cambia niente. */
+  async set_logo(nome: unknown, indirizzo: unknown) {
+    try {
+      return { ok: true, logo: await impostaLogo(nome, indirizzo) };
+    } catch (e) {
+      return esitoNegativo("set_logo", e);
+    }
+  },
+
+  /** Il logo di un nome mostrato da un file (base64), con le stesse regole e gli stessi limiti dell'indirizzo. */
+  async upload_logo(nome: unknown, base64: unknown) {
+    try {
+      return { ok: true, logo: caricaLogo(nome, base64) };
+    } catch (e) {
+      return esitoNegativo("upload_logo", e);
+    }
+  },
+
+  /** Rilegge l'indirizzo del logo scelto per un nome. */
+  async refresh_logo(nome: unknown) {
+    try {
+      return { ok: true, logo: await aggiornaLogo(nome) };
+    } catch (e) {
+      return esitoNegativo("refresh_logo", e);
+    }
+  },
+
+  /** Toglie la scelta fatta da qui: torna il logo di personalizzazione.json, o le iniziali. */
+  async remove_logo(nome: unknown) {
+    try {
+      togliLogo(nome);
+      return { ok: true };
+    } catch (e) {
+      return esitoNegativo("remove_logo", e);
+    }
   },
 
   // ---- Promemoria dal server (promemoria.ts) ------------------------------------------------------------------------------

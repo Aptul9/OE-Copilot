@@ -3,6 +3,7 @@ import { auth, authOptions } from "@/lib/auth";
 import { config, modo2fa } from "@/lib/config";
 import { archivio } from "@/lib/core/archivio";
 import { preparaCondivisioni } from "@/lib/core/condivisione";
+import { migraLoghi } from "@/lib/core/loghi";
 import { avviaPromemoria } from "@/lib/core/promemoria";
 import { appDb } from "@/lib/db";
 import { migrateLockout } from "@/lib/lockout";
@@ -32,6 +33,8 @@ export async function boot() {
     archivio();
     // i link di condivisione del calendario: una tabella in più, senza toccare le altre
     preparaCondivisioni();
+    // la tabella dei loghi scelti dalla finestra Calendari: si aggiunge e basta
+    migraLoghi();
   } catch (e) {
     console.error("archivio: stato dell'app non pronto", e);
   }

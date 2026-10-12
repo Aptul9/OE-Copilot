@@ -25,6 +25,12 @@ const risposta = (status: number, body: unknown) =>
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
   });
 
+/**
+ * Un logo aperto da solo in una scheda è un documento di questo sito: un SVG potrebbe eseguire script con i suoi permessi. Con questa
+ * politica (nessuna risorsa, nessuno script, origine isolata) non esegue e non carica niente; dentro un <img> non cambia nulla.
+ */
+const POLITICA_LOGHI = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
 /** Il nome del metodo di POST /api/<metodo>, o null per qualunque altro percorso. */
 const nomeMetodo = (percorso: string) => /^\/api\/([A-Za-z_][A-Za-z0-9_]*)$/.exec(percorso)?.[1] ?? null;
 
@@ -122,6 +128,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
       "Content-Length": String(logo.dati.length),
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": POLITICA_LOGHI,
     },
   });
 }

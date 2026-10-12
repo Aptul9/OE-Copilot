@@ -27,7 +27,7 @@ const comeValore = (v: Verdetto): ValoreJson =>
   ]);
 
 /**
- * Il rilevatore degli accessi (main di rileva_accessi.py): per ogni casella uno stato (ok, avviso, errore) e un messaggio in
+ * Il rilevatore degli accessi (il main del rilevatore in Python, tolto dal repository): per ogni casella uno stato (ok, avviso, errore) e un messaggio in
  * accessi.json, che l'agente legge per il pallino. Un controllo che si rompe non ferma gli altri. Restituisce la riga di riepilogo.
  */
 export async function rilevaAccessi(c: ContestoRilevatore): Promise<string> {

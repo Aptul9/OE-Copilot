@@ -59,9 +59,9 @@ Sul server (provato su Ubuntu ARM64; servono Docker e il modulo del kernel `bind
 
 1. copia `server/` in `/opt/oe-copilot`; crea `.env` da `.env.esempio` con una `API_KEY` lunga e casuale e `agent/fonti.json` da `agent/fonti.esempio.json` con le tue caselle;
 2. `docker compose up -d telefono agent` (costruisce l'immagine del telefono, con i servizi Google), poi `strumenti/prepara_telefono.sh` installa Outlook (l'APK sta nella release `apk`) e mette a posto il telefono. Gli accessi si fanno dal telefono: in Outlook per le caselle Microsoft, in *Impostazioni → Password e account* per quelle Google. Lo schermo si vede dalla pagina `/telefono/` o dal PC con [scrcpy](https://github.com/Genymobile/scrcpy) attraverso un tunnel SSH verso la porta 5555. In Outlook va acceso, casella per casella, *Impostazioni → Calendario → Sincronizza calendari*;
-3. avvia il supervisore (il servizio `supervisore` di compose, `supervisore/`; prima era il servizio systemd `strumenti/oe-copilot-sincronizza.service`): a ogni giro, circa ogni 35 secondi, forza la sincronizzazione del telefono (da solo Android la farebbe ogni 15 minuti) e lo tiene sbloccato per Outlook (GUIDA.md, 4.5).
+3. avvia il supervisore (il servizio `supervisore` di compose, `supervisore/`, sempre acceso): a ogni giro, circa ogni 35 secondi, forza la sincronizzazione del telefono (da solo Android la farebbe ogni 15 minuti) e lo tiene sbloccato per Outlook (GUIDA.md, 4.5).
 
-Un accesso può scadere sul server (password cambiata, sessione revocata): il calendario sul telefono resterebbe fermo e la lettura riuscirebbe lo stesso, col pallino verde su dati vecchi. Per evitarlo `strumenti/rileva_accessi.py` (lanciato dal servizio di sincronizzazione) scrive in `stato/accessi.json` lo stato di ogni casella, che l'agente usa per il pallino, senza mai leggere un token: accesso scaduto in Outlook (rosso), Outlook che non conferma la sincronizzazione (giallo, poi rosso), telefono bloccato (giallo: le cancellazioni e le modifiche arrivano in ritardo), calendari Google che non sincronizzano (giallo, poi rosso). Soglie e dettagli: GUIDA.md, sezione 6.
+Un accesso può scadere sul server (password cambiata, sessione revocata): il calendario sul telefono resterebbe fermo e la lettura riuscirebbe lo stesso, col pallino verde su dati vecchi. Per evitarlo il rilevatore degli accessi (`supervisore/src/rilevatore/`, lanciato dal supervisore) scrive in `stato/accessi.json` lo stato di ogni casella, che l'agente usa per il pallino, senza mai leggere un token: accesso scaduto in Outlook (rosso), Outlook che non conferma la sincronizzazione (giallo, poi rosso), telefono bloccato (giallo: le cancellazioni e le modifiche arrivano in ritardo), calendari Google che non sincronizzano (giallo, poi rosso). Soglie e dettagli: GUIDA.md, sezione 6.
 
 ---
 
@@ -75,7 +75,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 ## Controlli prima di un push
 
 - `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>`: cerca i dati della personalizzazione nei file del repository e fallisce se ne trova.
-- Le prove della Action (`.github/workflows/server.yml`): sintassi, prove Python in `server/strumenti/` (il rilevatore degli accessi e l'agente su un calendario di Android inventato, `prova_agente_golden.py`), gateway (tipi, `npm test` con le risposte registrate in `server/strumenti/golden/`, build; GUIDA.md, sezione 7), schermo, immagini e il cancello dell'accesso.
+- Le prove della Action (`.github/workflows/server.yml`): sintassi (Python e shell di `server/strumenti/`), agente (`server/agente-ts/`: tipi, `npm test` con le risposte registrate in `server/strumenti/golden/`, immagine e risposte su un calendario di Android inventato), supervisore (tipi, `npm test`, immagine), gateway (tipi, `npm test` con le risposte registrate in `server/strumenti/golden/`, build; GUIDA.md, sezione 7), schermo, immagini e il cancello dell'accesso.
 
 ## File principali
 
@@ -83,7 +83,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 |------|---------|
 | `genera_icona.py`, `icon.png` | L'icona (tre calendari sovrapposti) e lo script che la disegna |
 | `server/web-ts/logos-predefiniti/` | `personale.png`, l'icona degli *Eventi personali*: il gateway la serve se in `ui-dati/logos/` non c'è un file con lo stesso nome |
-| `server/` | Il server: agente, telefono virtuale, interfaccia nel browser (`web-ts/`, `caddy-ui/`), schermo del telefono (`schermo-web/`) e script (`strumenti/`); vedi *Caselle lette dal server*. La logica dell'app è in TypeScript, nel gateway (`web-ts/src/lib/core/`): Python resta solo nell'agente (`agent/`) e negli script |
+| `server/` | Il server: agente (`agente-ts/`), supervisore (`supervisore/`), telefono virtuale, interfaccia nel browser (`web-ts/`, `caddy-ui/`), schermo del telefono (`schermo-web/`) e script (`strumenti/`); vedi *Caselle lette dal server*. La logica dell'app è in TypeScript, nel gateway (`web-ts/src/lib/core/`), come l'agente e il supervisore: Python resta solo in uno script di controllo (`strumenti/controlla_dati_personali.py`) |
 
 Restano sul server (`ui-dati/`) e fuori dal repository: `personalizzazione.json`, le cache
 (`events_cache.json`, `ics_cache/`, `agente_caselle.json`) e il database `gateway.db`, che tiene gli accessi

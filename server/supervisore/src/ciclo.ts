@@ -6,7 +6,7 @@ import { scriviAtomico } from "./file.js";
 import type { Orologio } from "./orologio.js";
 import { ErroreTelefono, type Telefono } from "./telefono.js";
 
-// Il ciclo di sincronizza_telefono.sh: stesse decisioni nello stesso ordine, stessi comandi al telefono, stesso battito. Un giro dura
+// Il ciclo del vecchio servizio systemd (uno script bash, tolto dal repository): stesse decisioni nello stesso ordine, stessi comandi al telefono, stesso battito. Un giro dura
 // circa 35 secondi: 30 di pausa (OGNI) più il lavoro e le attese del giro (1 se si riaccende lo schermo, 2 e 2 per la schermata
 // iniziale e per Outlook, 3 se Outlook non torna sulla vista principale).
 
@@ -21,7 +21,7 @@ export interface DipendenzeCiclo {
   config: Configurazione;
   telefono: Telefono;
   orologio: Orologio;
-  /** rileva_accessi.py: gira ogni ACCESSI_OGNI giri se il telefono risponde. */
+  /** Il rilevatore degli accessi: gira ogni ACCESSI_OGNI giri se il telefono risponde. */
   rilevatore: () => Promise<unknown>;
   log: (messaggio: string) => void;
   /** I guasti già scritti nel log: lo mette `esegui`, chi lancia un giro solo (le prove) può non darlo. */

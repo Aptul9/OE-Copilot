@@ -13,7 +13,8 @@ import { leggiGolden, leggiTestoGolden } from "./ausiliari/dati.ts";
 import { type CasoRichiesta, type RispostaGrezza, richiestaCompleta } from "./ausiliari/http.ts";
 import { type Db, scriviDb } from "./ausiliari/memdb.ts";
 
-// L'agente Python vero (agent.py in HTTP, sulla VM, nell'immagine dell'agente, come utente senza privilegi) su 14 scenari del disco e 152
+// Le risposte registrate una volta sola dall'agente Python vero (agent.py in HTTP, sulla VM, nell'immagine dell'agente, come utente senza
+// privilegi; ora nella cronologia di git) su 14 scenari del disco e 152
 // richieste che nessun cliente normale manda: chiave mancante, sbagliata, di altra lunghezza o con caratteri non ASCII, percorsi strani,
 // finestre in ogni forma sbagliata, corpi enormi o in altre codifiche, metodi che l'agente non ha, calendar.db che manca, è vuoto, è
 // rotto, non si apre; più sette modi di non partire. Per ogni richiesta: stato, frase dello stato, tipo, lunghezza e corpo uguali. Un corpo

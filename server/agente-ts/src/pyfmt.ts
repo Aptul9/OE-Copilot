@@ -1,5 +1,5 @@
 // Come Python scrive, confronta e converte un valore: str(), repr(), bool(), strip(), json.dumps(ensure_ascii=False) e l'ordine delle
-// stringhe. L'agente Python risponde con queste forme e il gateway le legge così: qui sono riprodotte una per una.
+// stringhe. L'agente Python rispondeva con queste forme e il gateway le legge così: qui sono riprodotte una per una.
 
 /** I caratteri che str.strip() e \s di re considerano spazio: non sono quelli di String.trim() (U+001C a U+001F e U+0085 sì, U+FEFF no). */
 export const SPAZI_PY = "\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-// Le variabili d'ambiente e i valori di partenza sono quelli di sincronizza_telefono.sh e di rileva_accessi.py. Un valore che non
+// Le variabili d'ambiente e i valori di partenza sono quelli del vecchio script di sincronizzazione e del rilevatore in Python (tolti dal repository). Un valore che non
 // si legge non ferma il servizio: vale quello di partenza e l'avviso finisce nel log (lo script e il rilevatore si fermavano o
 // davano un errore di aritmetica).
 

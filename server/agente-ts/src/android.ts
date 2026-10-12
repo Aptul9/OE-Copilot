@@ -1,4 +1,4 @@
-// Le righe di calendar.db del telefono Android rimesse in serie e espanse: quello che server/agent/fonte_android.py fa fra la query SQL e
+// Le righe di calendar.db del telefono Android rimesse in serie e espanse: quello che l'agente Python (tolto dal repository) faceva fra la query SQL e
 // l'espansione (_quando, la durata "P900S", le colonne RRULE/RDATE/EXDATE, le occorrenze annullate che diventano EXDATE, le modifiche).
 
 import { type Riga, FUSO_LOCALE, leggiElencoTempi, leggiIsoLocale, leggiProprieta, leggiRdate, leggiRigaIcs, parametro, regolaPerPython, èRotta } from "./ics.ts";

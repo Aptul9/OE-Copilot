@@ -1,4 +1,4 @@
-// Un cliente HTTP minimo e i passi di server/strumenti/prova_agente_golden.py (leggi_tutto, leggi_ics, normalizza), per parlare con l'agente
+// Un cliente HTTP minimo e i passi della vecchia prova Python dell'agente (leggi_tutto, leggi_ics, normalizza; tolta dal repository), per parlare con l'agente
 // vero come fa il gateway: una richiesta, la risposta intera.
 
 import http from "node:http";
@@ -72,7 +72,7 @@ export async function chiediIcs(base: string, corpo: unknown, chiave: string | n
   return { stato: r.stato, dati: r.corpo ? (JSON.parse(r.corpo) as Record<string, unknown>) : null };
 }
 
-// ---- le richieste dei casi di bordo (golden/agente-bordi.json), costruite come le costruisce il registratore di Python -------------------------------------
+// ---- le richieste dei casi di bordo (golden/agente-bordi.json), costruite come le costruiva il registratore di Python -------------------------------------
 
 export interface CasoRichiesta {
   nome: string;

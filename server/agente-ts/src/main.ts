@@ -1,4 +1,4 @@
-// Avvio dell'agente: stesse variabili d'ambiente e stessi valori di partenza di server/agent/agent.py.
+// Avvio dell'agente: le variabili d'ambiente e i valori di partenza sono quelli dell'agente Python (tolto dal repository).
 //   API_KEY   la chiave dell'API (senza, l'agente non parte)       PORTA     8180
 //   FONTI     /app/fonti.json (le caselle da leggere)               ANDROID_DB  /android-calendario (la cartella di calendar.db, in sola lettura)
 //   BATTITO   /stato/battito.json (il segno di vita del servizio)   ACCESSI   /stato/accessi.json (lo stato degli accessi dal rilevatore)

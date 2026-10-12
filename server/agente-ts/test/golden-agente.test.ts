@@ -10,9 +10,9 @@ import { leggiGolden, leggiTestoGolden } from "./ausiliari/dati.ts";
 import { CHIAVE_PROVA, chiediIcs, leggiTutto } from "./ausiliari/http.ts";
 import { scriviDb } from "./ausiliari/memdb.ts";
 
-// L'agente Python (server/agent) su un calendar.db inventato: la risposta intera registrata in golden/agente.json (calendari, caselle,
-// servizio, eventi di cinque finestre, i calendari ICS), contro l'agente TypeScript vero, in HTTP su una porta libera, come lo fa
-// server/strumenti/prova_agente_golden.py per quello Python.
+// L'agente Python (tolto dal repository) su un calendar.db inventato: la risposta intera registrata una volta sola in golden/agente.json
+// (calendari, caselle, servizio, eventi di cinque finestre, i calendari ICS), contro l'agente TypeScript vero, in HTTP su una porta libera,
+// come faceva la vecchia prova in Python (prova_agente_golden.py, nella cronologia di git).
 const golden = leggiGolden("agente.json");
 const righe = leggiGolden("agente-righe.json");
 const db: Db = { calendari: righe.calendari, eventi: righe.eventi, invitati: righe.invitati };

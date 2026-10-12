@@ -1,5 +1,5 @@
 // Il testo iCalendar (ICS) e la sua espansione: la lettura che fa icalendar 7.3.0 (righe, parametri, date, durate, fusi, proprietà rotte),
-// la correzione di X-WR-TIMEZONE di x-wr-timezone 2.0.1, e l'uscita di server/agent/ics.py (eventi con ora locale di Roma senza fuso).
+// la correzione di X-WR-TIMEZONE di x-wr-timezone 2.0.1, e l'uscita dell'agente Python (eventi con ora locale di Roma senza fuso).
 // I testi degli errori sono quelli di Python: il gateway li mostra così com'escono dall'agente.
 
 import { cacheFusi, fusiPersonalizzati } from "./fusi.ts";
@@ -708,7 +708,7 @@ export interface OpzioniIcs {
   fuso?: string;
 }
 
-/** Gli eventi del calendario nell'intervallo (ora locale senza fuso, come in server/agent/ics.py), con le ricorrenze espanse. */
+/** Gli eventi del calendario nell'intervallo (ora locale senza fuso, come nell'agente Python), con le ricorrenze espanse. */
 export function espandiIcs(testo: string, inizio: string, fine: string, opzioni: OpzioniIcs = {}): EventoIcs[] {
   const fuso = opzioni.fuso ?? FUSO_LOCALE;
   const { cal, prop } = leggiCalendario(testo);

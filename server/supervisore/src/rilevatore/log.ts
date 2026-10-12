@@ -22,7 +22,7 @@ async function leggiFinoAllaFine(file: FileHandle, inizio: number): Promise<Buff
 }
 
 /**
- * Le ultime righe intere di un log di Outlook, o null se non c'è (_coda di rileva_accessi.py). Quando il log è appena ruotato quello
+ * Le ultime righe intere di un log di Outlook, o null se non c'è (_coda del rilevatore in Python). Quando il log è appena ruotato quello
  * nuovo è quasi vuoto: si guarda anche la coda del precedente (.1), altrimenti ogni casella sembrerebbe muta.
  */
 export async function coda(percorso: string, byte = BYTE_DELLA_CODA): Promise<string | null> {

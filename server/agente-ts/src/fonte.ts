@@ -1,4 +1,4 @@
-// Una casella di Outlook (o di Google) sul telefono Android virtuale, come la legge server/agent/fonte_android.py: una copia di calendar.db
+// Una casella di Outlook (o di Google) sul telefono Android virtuale, come la leggeva l'agente Python (tolto dal repository): una copia di calendar.db
 // con i suoi file di appoggio, la scelta dei calendari, gli invitati, le serie espanse, i doppioni tolti, lo stato di ogni lettura.
 
 import fs from "node:fs";
@@ -300,7 +300,7 @@ export class CalendarioAndroid {
     }
     this.conteggio = grezzi.eventi.length;
     // Si dice solo cosa si è verificato davvero: la lettura è riuscita. L'ora di scrittura di calendar.db non dice niente di Outlook (la
-    // muove ogni 2 minuti la sincronizzazione Google): la freschezza di ogni casella la misura strumenti/rileva_accessi.py.
+    // muove ogni 2 minuti la sincronizzazione Google): la freschezza di ogni casella la misura il rilevatore del supervisore (supervisore/src/rilevatore/).
     const ora = new Date(this.ctx.adesso()).toLocaleTimeString("en-GB", { timeZone: this.ctx.zona, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
     this.stato = { stato: "ok", msg: `Letto dal telefono alle ${ora}` };
     this.applicaStatoAccesso();

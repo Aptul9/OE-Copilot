@@ -1,5 +1,5 @@
 // datetime.fromisoformat di Python 3.12 (il C di _datetimemodule.c, passo per passo: accetta più forme di quelle che ci si aspetta, e il
-// testo dell'errore dipende da dove si ferma) e _locale() di agent.py: un estremo ISO, con o senza scarto, come ora locale senza fuso.
+// testo dell'errore dipende da dove si ferma) e _locale() dell'agente Python: un estremo ISO, con o senza scarto, come ora locale senza fuso.
 
 import { pyReprDelta, pyReprStr } from "./pyfmt.ts";
 import { ErroreSenzaRisposta, ErroreValore } from "./tempo.ts";
@@ -267,7 +267,7 @@ export function isoNaive(w: Temporal.PlainDateTime): string {
   return us ? `${base}.${String(us).padStart(6, "0")}` : base;
 }
 
-/** _locale() di agent.py: un estremo ISO come ora locale senza fuso (con uno scarto si converte, senza si lascia com'è). */
+/** _locale() dell'agente Python: un estremo ISO come ora locale senza fuso (con uno scarto si converte, senza si lascia com'è). */
 export function oraLocaleDa(testo: string, zona: string): Temporal.PlainDateTime {
   const d = fromIsoformat(testo.replaceAll("Z", "+00:00"));
   const base = { year: d.a, month: d.m, day: d.g, hour: d.h, minute: d.mi, second: d.s };

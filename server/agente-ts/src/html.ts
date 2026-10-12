@@ -1,4 +1,4 @@
-// html.unescape di Python 3.12 e _pulisci_link di fonte_android.py: le entità HTML5 con la tabella completa (entita.ts, generata da
+// html.unescape di Python 3.12 e _pulisci_link dell'agente Python (tolto dal repository): le entità HTML5 con la tabella completa (entita.ts, generata da
 // html.entities.html5), i riferimenti numerici con le regole dello standard (caratteri non validi, intervalli proibiti).
 
 import { HTML5 } from "./entita.ts";

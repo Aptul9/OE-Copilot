@@ -1,5 +1,5 @@
 // Un calendar.db come quello del telefono (tabelle Calendars, Events, Attendees), costruito con node:sqlite da righe in memoria: stesse tabelle
-// di server/strumenti/prova_agente_golden.py, così le prove passano dalla vera lettura SQL dell'agente.
+// della vecchia prova Python dell'agente (tolta dal repository), così le prove passano dalla vera lettura SQL dell'agente.
 
 import fs from "node:fs";
 import path from "node:path";

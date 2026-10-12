@@ -1,5 +1,6 @@
-// Le poche regole di Python su cui rileva_accessi.py faceva affidamento: il rilevatore in TypeScript deve dare lo stesso risultato sugli
-// stessi dati, quindi righe, JSON, base64, date e divisioni si comportano come là.
+// Le poche regole di Python su cui faceva affidamento il rilevatore in Python (tolto dal repository): il rilevatore in TypeScript deve dare lo
+// stesso risultato sugli stessi dati (le uscite registrate in test/golden/rilevatore-accessi.json), quindi righe, JSON, base64, date e
+// divisioni si comportano come là.
 
 /** Il ValueError di Python. */
 export class ErroreValore extends Error {}

@@ -1,4 +1,4 @@
-// L'agente di Oe Copilot sulla VM: legge i calendari del telefono e li serve al gateway. Stessa API di server/agent/agent.py, con le stesse
+// L'agente di Oe Copilot sulla VM: legge i calendari del telefono e li serve al gateway. Stessa API dell'agente Python (tolto dal repository), con le stesse
 // risposte, gli stessi codici e gli stessi testi di errore (tutte con "Authorization: Bearer <API_KEY>"):
 //   GET /api/eventi?inizio=ISO&fine=ISO  eventi del periodo + stato di ogni casella
 //   GET /api/calendari                   le caselle, con stato e numero di appuntamenti

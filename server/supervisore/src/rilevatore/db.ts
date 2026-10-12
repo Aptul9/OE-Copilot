@@ -17,7 +17,7 @@ const inMemoria = (): string => {
   }
 };
 
-/** Copia il database coi suoi file di appoggio e lo apre: Android lo tiene aperto (_apri_ro di rileva_accessi.py). */
+/** Copia il database coi suoi file di appoggio e lo apre: Android lo tiene aperto (_apri_ro del rilevatore in Python). */
 export async function apriCopia(percorso: string): Promise<CopiaDb> {
   const cartella = await mkdtemp(path.join(inMemoria(), "oe-accessi-"));
   await chmod(cartella, 0o700);

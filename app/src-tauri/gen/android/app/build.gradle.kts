@@ -34,6 +34,8 @@ android {
                 storePassword = firma.getProperty("storePassword")
                 keyAlias = firma.getProperty("keyAlias")
                 keyPassword = firma.getProperty("keyPassword")
+                // lo schema v3 permette di cambiare chiave in futuro senza rompere gli aggiornamenti (v1 non serve, minSdk 24)
+                enableV3Signing = true
             }
         }
     }
@@ -47,8 +49,11 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            // La variante di prova ha un altro pacchetto: non sostituisce mai l'app firmata, e il traffico in chiaro
-            // è limitato a 10.0.2.2 da src/debug/res/xml/network_security_config.xml
+            applicationIdSuffix = ".prova"
+            // La variante di prova ha un altro pacchetto: non sostituisce mai l'app firmata. Il suffisso sopra lo scrive la
+            // CLI di Tauri a ogni build da bundle.android.debugApplicationIdSuffix (tauri.android.conf.json): una riga
+            // messa a mano qui verrebbe tolta. Il traffico in chiaro è limitato a 10.0.2.2 da
+            // src/debug/res/xml/network_security_config.xml
             versionNameSuffix = "-prova"
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true

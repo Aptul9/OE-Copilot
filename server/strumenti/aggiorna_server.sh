@@ -42,6 +42,17 @@ avvia() {
     docker compose --profile supervisore up -d --build --force-recreate --no-deps supervisore
 }
 
+# Email e password del proprietario possono arrivare dalla Action sullo standard input (due righe NOME=valore), invece che
+# da .env: compose legge prima l'ambiente della shell, quindi bastano esportate. Un valore vuoto non sovrascrive niente.
+credenziali_da_stdin() {
+    [ -t 0 ] && return 0
+    local riga nome valore
+    while IFS= read -r riga || [ -n "$riga" ]; do
+        nome=${riga%%=*}; valore=${riga#*=}
+        case "$nome" in ADMIN_EMAIL|ADMIN_PASSWORD) [ -z "$valore" ] || export "$nome=$valore" ;; esac
+    done
+}
+
 # Interfaccia web (facoltativa, GUIDA.md 4.7): il gateway, che chiede l'accesso e serve la
 # pagina, l'API e i loghi, e il Caddy che le mette HTTPS davanti. Parte solo se in .env c'è UI_HOST.
 # Gira dopo che agente e battito sono a posto e non fa tornare indietro niente: se la web
@@ -51,7 +62,8 @@ avvia_ui() {
     grep -q '^UI_HOST=.' .env || { echo "interfaccia web non configurata (UI_HOST in .env): salto"; return 0; }
     [ -d ui-dati ] || { echo "manca $DIR/ui-dati (vedi GUIDA.md, 4.7)" >&2; return 1; }
     for v in ADMIN_EMAIL ADMIN_PASSWORD BETTER_AUTH_SECRET; do
-        grep -q "^$v=." .env || { echo "manca $v in $DIR/.env (vedi GUIDA.md, 4.7): l'interfaccia web resta com'è" >&2; return 1; }
+        [ -n "${!v:-}" ] || grep -q "^$v=." .env \
+            || { echo "manca $v (né nei secret della Action né in $DIR/.env, vedi GUIDA.md, 4.7): l'interfaccia web resta com'è" >&2; return 1; }
     done
     docker compose up -d --build gateway caddy-ui \
         || { echo "docker compose non ha avviato gateway e caddy-ui" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
@@ -123,6 +135,7 @@ case "${1:-}" in
         ;;
     avvia)
         sha="${2:-sconosciuto}"
+        credenziali_da_stdin
         for f in .env agent/fonti.json; do
             [ -f "$f" ] || { echo "$f mancante in $DIR: la prima installazione va fatta a mano (vedi GUIDA.md)" >&2; exit 1; }
         done

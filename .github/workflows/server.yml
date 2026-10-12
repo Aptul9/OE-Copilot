@@ -310,4 +310,11 @@ jobs:
             server/ "$SERVER:$OE_DIR/"
 
       - name: Ricostruisci e riavvia
-        run: ssh "$SERVER" "$OE_DIR/strumenti/aggiorna_server.sh avvia ${{ github.sha }}"
+        env:
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          # email e password del proprietario arrivano dai secret, dallo standard input di SSH (non dalla riga di
+          # comando, che si vede in ps): sul server non stanno in nessun file. Se mancano vale ancora il .env.
+          printf 'ADMIN_EMAIL=%s\nADMIN_PASSWORD=%s\n' "$ADMIN_EMAIL" "$ADMIN_PASSWORD" \
+            | ssh "$SERVER" "$OE_DIR/strumenti/aggiorna_server.sh avvia ${{ github.sha }}"

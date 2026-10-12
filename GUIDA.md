@@ -298,7 +298,8 @@ Con il supervisore l'utente della Action non ha bisogno di `sudo`: prima aveva d
 
 La chiave pubblica della Action va in `/home/oecopilot/.ssh/authorized_keys`. Nel repository
 servono quattro secret: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (la chiave privata) e
-`DEPLOY_KNOWN_HOSTS` (la riga di `ssh-keyscan -t ed25519 <server>`). Senza i secret
+`DEPLOY_KNOWN_HOSTS` (la riga di `ssh-keyscan -t ed25519 <server>`); con l'interfaccia nel browser (4.7)
+anche `ADMIN_EMAIL` e `ADMIN_PASSWORD`. Senza i secret
 l'aggiornamento fallisce al collegamento SSH: chi non ha un server disattiva la Action.
 
 ### 4.7 L'interfaccia nel browser (facoltativa)
@@ -349,10 +350,17 @@ sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-
 # segreto dei cookie di sessione
 openssl rand -hex 32
 ```
-In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>`, `ADMIN_EMAIL=<email>`,
-`ADMIN_PASSWORD=<almeno 12 caratteri, lunga e casuale, senza $>`, `BETTER_AUTH_SECRET=<il segreto>`. Il
-prossimo aggiornamento costruisce e avvia `gateway` e `caddy-ui`. Per cambiare la password
-si cambia `ADMIN_PASSWORD` e si riavvia il gateway: le sessioni aperte si chiudono.
+In `.env` (modello in `.env.esempio`): `UI_HOST=<nome del sito>` e `BETTER_AUTH_SECRET=<il segreto>`. Il
+prossimo aggiornamento costruisce e avvia `gateway` e `caddy-ui`.
+
+**Email e password del proprietario** (`ADMIN_EMAIL`, `ADMIN_PASSWORD`, almeno 12 caratteri, senza `$`) stanno
+nei secret della Action e non in `.env`: l'aggiornamento (4.6) li passa allo script sullo standard input di SSH,
+e compose li legge dall'ambiente prima che da `.env`. Per cambiarli:
+`gh secret set ADMIN_PASSWORD` e un nuovo aggiornamento (anche `Run workflow` dalla pagina della Action):
+il gateway riparte, la password nuova chiude le sessioni aperte. Con una email nuova nasce un utente nuovo e
+quello vecchio resta con la sua password: va tolto da `gateway.db` (tabelle `session`, `account`, `user`).
+Se i secret mancano vale ancora `.env`, e una `docker compose up` a mano senza i secret ricrea il gateway
+senza proprietario nuovo (gli utenti già nel database restano).
 
 **HTTPS.** Caddy ottiene da solo il certificato, e per farlo il suo nome deve arrivargli da
 internet. Dove la 443 è libera basta pubblicare `caddy-ui` su `443:443` e `80:80` al posto di

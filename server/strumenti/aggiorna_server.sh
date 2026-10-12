@@ -7,7 +7,8 @@
 set -euo pipefail
 DIR="${OE_DIR:-/opt/oe-copilot}"
 COPIA=/var/tmp/oe-copilot-prima.tgz
-SERVIZIO=oe-copilot-sincronizza
+SUPERVISORE=oe-copilot-supervisore
+VECCHIO_SERVIZIO=oe-copilot-sincronizza
 T=oe-copilot-telefono
 cd "$DIR"
 
@@ -30,9 +31,15 @@ avvia() {
     # I file .py sono montati uno per uno: rsync li sostituisce con file nuovi e il
     # container continuerebbe a leggere i vecchi. Per questo l'agente si ricrea sempre.
     docker compose up -d --build --force-recreate agent
-    sudo -n systemctl daemon-reload
+    # Il giro di sincronizzazione, il battito e il rilevatore degli accessi li fa il supervisore (supervisore/, GUIDA.md 4.5), che si
+    # ricrea a ogni aggiornamento come il servizio systemd di prima si riavviava, senza toccare il telefono (--no-deps). Il servizio
+    # systemd resta spento: due giri sullo stesso telefono si pesterebbero.
+    if systemctl is-active -q "$VECCHIO_SERVIZIO"; then
+        echo "il servizio $VECCHIO_SERVIZIO è ancora acceso: sudo systemctl disable --now $VECCHIO_SERVIZIO (due giri sullo stesso telefono)" >&2
+        return 1
+    fi
     riavvio=$(date +%s)
-    sudo -n systemctl restart "$SERVIZIO"
+    docker compose --profile supervisore up -d --build --force-recreate --no-deps supervisore
 }
 
 # Interfaccia web (facoltativa, GUIDA.md 4.7): il gateway, che chiede l'accesso e serve la
@@ -78,10 +85,10 @@ avvia_schermo() {
         sleep 2
     done
     [ "$stato" = healthy ] || { echo "il servizio oe-copilot-schermo non risponde" >&2; docker logs --tail 40 oe-copilot-schermo >&2 || true; return 1; }
-    # la cartella del file PAUSA (stato/schermo, la crea il servizio di sincronizzazione) deve essere scrivibile dal container: senza,
+    # la cartella del file PAUSA (stato/schermo, utente 10001, si crea una volta a mano: GUIDA.md 4.5) deve essere scrivibile dal container: senza,
     # la sincronizzazione continuerebbe a portare Outlook in primo piano mentre si usa il telefono nel browser
     docker exec oe-copilot-schermo sh -c 'touch /pausa/.prova && rm /pausa/.prova' \
-        || { echo "stato/schermo non è scrivibile dal servizio schermo (lo crea oe-copilot-sincronizza, utente 10001)" >&2; return 1; }
+        || { echo "stato/schermo non è scrivibile dal servizio schermo (sudo install -d -o 10001 -g 10001 -m 755 /opt/oe-copilot/stato/schermo)" >&2; return 1; }
 }
 
 sano() {
@@ -93,11 +100,11 @@ sano() {
             # riavvio, quello di prima non dice niente
             for _ in $(seq 1 30); do
                 [ "$(stat -c %Y stato/battito.json 2>/dev/null || echo 0)" -ge "$riavvio" ] \
-                    && systemctl is-active -q "$SERVIZIO" && return 0
+                    && [ "$(docker inspect -f '{{.State.Running}}' "$SUPERVISORE" 2>/dev/null)" = true ] && return 0
                 sleep 3
             done
-            echo "nessun battito dopo il riavvio: il servizio $SERVIZIO non gira" >&2
-            systemctl status "$SERVIZIO" --no-pager -n 5 >&2 || true
+            echo "nessun battito dopo il riavvio: il supervisore $SUPERVISORE non gira" >&2
+            docker logs --tail 5 "$SUPERVISORE" >&2 || true
             return 1
         fi
         sleep 3

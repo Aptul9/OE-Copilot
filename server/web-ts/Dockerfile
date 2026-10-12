@@ -1,6 +1,7 @@
 # Gateway dell'interfaccia web: pagina di accesso, sessioni, metodi dell'API in TypeScript e loghi.
 # L'immagine si costruisce sulla macchina che la esegue (arm64 sulla VM).
-FROM node:26-slim AS build
+# Fissata per digest (indice amd64 e arm64): per aggiornarla `docker buildx imagetools inspect node:26-slim` e si riscrive lo sha256 in tutti i FROM node di agente-ts, supervisore e web-ts.
+FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 # better-sqlite3 porta i binari già compilati: niente script di installazione, niente compilatore
@@ -9,7 +10,8 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx next build
 
-FROM node:26-slim
+# Stesso digest della fase di costruzione: per aggiornarlo `docker buildx imagetools inspect node:26-slim` e si riscrive lo sha256 in tutti i FROM node.
+FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build /app/.next/standalone ./

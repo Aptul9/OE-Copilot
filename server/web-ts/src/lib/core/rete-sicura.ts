@@ -43,7 +43,8 @@ export class ErroreRete extends ErroreValore {
 // ---- Quali indirizzi sono pubblici -------------------------------------------------------------------------------------------
 // Tutto quello che non è un indirizzo unicast globale: loopback, privati, link-local (anche 169.254.169.254, i metadati), CGNAT,
 // documentazione, multicast, riservati, non specificato; IPv6: loopback e non specificato (::/96 comprende anche gli IPv4 "compatibili"),
-// IPv4 mappati, NAT64, unique-local, link-local, site-local, multicast, 6to4 e Teredo, che portano un IPv4 dentro.
+// IPv4 mappati (::ffff:a.b.c.d) e "tradotti" (::ffff:0:a.b.c.d), NAT64, unique-local, link-local, site-local, multicast, 6to4 e Teredo,
+// che portano un IPv4 dentro.
 const RETI_VIETATE: [string, number, "ipv4" | "ipv6"][] = [
   ["0.0.0.0", 8, "ipv4"],
   ["10.0.0.0", 8, "ipv4"],
@@ -62,6 +63,7 @@ const RETI_VIETATE: [string, number, "ipv4" | "ipv6"][] = [
   ["240.0.0.0", 4, "ipv4"],
   ["::", 96, "ipv6"],
   ["::ffff:0:0", 96, "ipv6"],
+  ["::ffff:0:0:0", 96, "ipv6"],
   ["64:ff9b::", 96, "ipv6"],
   ["64:ff9b:1::", 48, "ipv6"],
   ["100::", 64, "ipv6"],
@@ -151,13 +153,15 @@ type Rete = Required<Omit<SoloProve, "ca">> & { ca?: string | Buffer };
 /**
  * La funzione che Node chiama per sapere a quale indirizzo collegarsi: risolve il nome e rifiuta se un solo indirizzo non è pubblico.
  * Gli indirizzi buoni li ricorda in `consentiti`, per controllare quello a cui il socket si collega davvero.
+ * Un nome che porta a un indirizzo non pubblico risponde come un nome che non esiste ("non risponde"): chi ha una sessione non deve poter
+ * ricavare dal testo quali nomi della rete interna esistono.
  */
 function creaLookup(rete: Rete, consentiti: Set<string>) {
   return (host: string, opzioni: dns.LookupOptions, cb: (err: NodeJS.ErrnoException | null, indirizzo?: string | dns.LookupAddress[], famiglia?: number) => void) => {
     rete.risolvi(host).then(
       (indirizzi) => {
         if (!indirizzi.length || !indirizzi.every((a) => rete.ammettiIndirizzo(a))) {
-          return cb(new ErroreRete("non_ammesso", TESTI.nonAmmesso) as unknown as NodeJS.ErrnoException);
+          return cb(new ErroreRete("non_risponde", TESTI.nonRisponde) as unknown as NodeJS.ErrnoException);
         }
         for (const a of indirizzi) consentiti.add(canonico(a));
         if (opzioni.all) return cb(null, indirizzi.map((address) => ({ address, family: net.isIPv6(address) ? 6 : 4 })));
@@ -212,14 +216,16 @@ function unPasso(url: URL, rete: Rete, segnale: AbortSignal): Promise<Passo> {
       }
       const dichiarata = Number(res.headers["content-length"]);
       if (Number.isFinite(dichiarata) && dichiarata > LIMITE_LETTURA) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
-      const pezzi: Buffer[] = [];
+      // Un buffer solo, riempito pezzo per pezzo, e quello che arriva oltre il limite non si tiene: un sito che manda un byte per volta
+      // (un milione di pezzi da un byte, 6 MB sul filo) non deve costare un oggetto per pezzo.
+      const corpo = Buffer.alloc(Number.isFinite(dichiarata) && dichiarata >= 0 ? dichiarata : LIMITE_LETTURA);
       let totale = 0;
       res.on("data", (c: Buffer) => {
+        if (totale + c.length > corpo.length) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
+        corpo.set(c, totale);
         totale += c.length;
-        if (totale > LIMITE_LETTURA) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
-        pezzi.push(c);
       });
-      res.on("end", () => fine(() => ok({ stato, location: null, tipo: res.headers["content-type"] ?? null, dati: Buffer.concat(pezzi, totale) })));
+      res.on("end", () => fine(() => ok({ stato, location: null, tipo: res.headers["content-type"] ?? null, dati: corpo.subarray(0, totale) })));
       res.on("error", (e) => rifiuta(errore(e)));
       res.on("close", () => res.complete || rifiuta(errore(null)));
     });

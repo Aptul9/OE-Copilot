@@ -51,7 +51,8 @@ describe("quali indirizzi IP sono pubblici", () => {
     "255.255.255.255",
     // IPv6
     "::", "::1", "::2", "0:0:0:0:0:0:0:1", "::127.0.0.1", "::ffff:127.0.0.1", "::ffff:7f00:1", "::FFFF:7F00:1", "::ffff:10.0.0.1",
-    "::ffff:169.254.169.254", "::ffff:8.8.8.8", "64:ff9b::7f00:1", "64:ff9b::808:808", "64:ff9b:1::1", "100::1", "2001::1", "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+    "::ffff:169.254.169.254", "::ffff:8.8.8.8", "::ffff:0:7f00:1", "::ffff:0:127.0.0.1", "::ffff:0:a9fe:a9fe", "::ffff:0:8.8.8.8", "::ffff:0:0:0", "::ffff:0:ffff:ffff",
+    "0:0:0:0:ffff:0:7f00:1", "64:ff9b::7f00:1", "64:ff9b::808:808", "64:ff9b:1::1", "100::1", "2001::1", "2001:0:4136:e378:8000:63bf:3fff:fdd2",
     "2001:db8::1", "2002::1", "2002:7f00:1::1", "2002:a9fe:a9fe::1", "fc00::1", "fd00::1", "fdff:ffff:ffff::1", "fe80::1", "FE80::1", "febf::1", "fec0::1",
     "ff00::", "ff02::1", "ff05::2",
   ];
@@ -140,7 +141,8 @@ describe("controllaUrl", () => {
       "un indirizzo IPv6 che non è pubblico, in ogni modo di scriverlo",
       [
         "http://[::1]/", "http://[::]/", "http://[0:0:0:0:0:0:0:1]/", "http://[::ffff:127.0.0.1]/", "http://[::ffff:7f00:1]/", "http://[::ffff:a9fe:a9fe]/",
-        "http://[::ffff:8.8.8.8]/", "http://[fe80::1]/", "http://[FE80::1]/", "http://[fd00::1]/", "http://[fc00::1]:80/", "http://[ff02::1]/",
+        "http://[::ffff:8.8.8.8]/", "http://[::ffff:0:127.0.0.1]/", "http://[::ffff:0:7f00:1]/", "http://[::ffff:0:a9fe:a9fe]/", "http://[::ffff:0:8.8.8.8]/",
+        "http://[fe80::1]/", "http://[FE80::1]/", "http://[fd00::1]/", "http://[fc00::1]:80/", "http://[ff02::1]/",
         "http://[64:ff9b::7f00:1]/", "http://[2002:7f00:1::]/", "http://[::127.0.0.1]/", "https://[2001:db8::1]/", "http://[fec0::1]/",
       ],
     ],
@@ -227,6 +229,7 @@ describe("lo scarico", () => {
       "/a-mappato": rimanda("http://[::ffff:7f00:1]/x.png"),
       "/a-decimale": rimanda("http://2852039166/x.png"),
       "/a-localhost": rimanda("http://localhost/x.png"),
+      "/a-nome-interno": rimanda("http://interno.test/x.png"),
       "/a-ftp": rimanda("ftp://example.org/x.png"),
       "/a-file": rimanda("file:///etc/passwd"),
       "/a-javascript": rimanda("javascript:alert(1)"),
@@ -410,7 +413,7 @@ describe("lo scarico", () => {
       };
       const prima = s.richieste.length;
       const e = await rifiutato(scaricaSicuro(`http://rebind.test:${s.porta}/rebind`, locale({ risolvi })));
-      expect(e.message).toBe("Indirizzo non ammesso");
+      expect(e.message).toBe("L'indirizzo non risponde");
       expect(chiamate).toBe(2);
       expect(s.richieste.slice(prima)).toEqual(["/rebind"]);
     });
@@ -419,9 +422,25 @@ describe("lo scarico", () => {
       for (const indirizzi of [["8.8.8.8", "10.0.0.5"], ["10.0.0.5", "8.8.8.8"], ["8.8.8.8", "169.254.169.254"], ["127.0.0.1", "::1"], ["2606:4700:4700::1111", "fe80::1"], []]) {
         const prima = s.richieste.length;
         const e = await rifiutato(scaricaSicuro(`http://misto.test:${s.porta}/png`, locale({ risolvi: async () => indirizzi, ammettiIndirizzo: indirizzoAmmesso })));
-        expect(e.motivo, indirizzi.join(",")).toBe("non_ammesso");
+        expect(e.motivo, indirizzi.join(",")).toBe("non_risponde");
         expect(s.richieste.length).toBe(prima);
       }
+    });
+
+    it("un nome che porta alla rete interna risponde come un nome che non esiste: dal testo non si ricava quali nomi interni esistono", async () => {
+      const nonEsiste = Object.assign(new Error("getaddrinfo ENOTFOUND x.test"), { code: "ENOTFOUND" });
+      const nessuno = await rifiutato(scaricaSicuro("http://nessuno.test/x.png", locale({ risolvi: () => Promise.reject(nonEsiste) })));
+      for (const risposta of [["10.0.0.5"], ["169.254.169.254"], ["127.0.0.1"], ["::1"], ["fe80::1"], ["::ffff:0:7f00:1"], ["8.8.8.8", "10.0.0.5"]]) {
+        const e = await rifiutato(scaricaSicuro("http://interno.test/x.png", locale({ risolvi: async () => risposta, ammettiIndirizzo: indirizzoAmmesso })));
+        expect(e.message, risposta.join(",")).toBe(nessuno.message);
+        expect(e.motivo, risposta.join(",")).toBe(nessuno.motivo);
+      }
+      // anche a una tappa di reindirizzamento: un indirizzo scritto è 'non ammesso' (lo ha scelto chi lo manda), un nome no
+      const prima = s.richieste.length;
+      const tappa = await rifiutato(scaricaSicuro(s.url("/a-nome-interno"), locale({ risolvi: async (h) => (h === "interno.test" ? ["10.0.0.5"] : [h]), ammettiIndirizzo: (ip) => ip === "127.0.0.1" || indirizzoAmmesso(ip) })));
+      expect(tappa.message).toBe(nessuno.message);
+      expect(tappa.motivo).toBe("non_risponde");
+      expect(s.richieste.slice(prima)).toEqual(["/a-nome-interno"]);
     });
 
     it("un nome che non si risolve, o un server che rifiuta il collegamento, è 'non risponde'", async () => {

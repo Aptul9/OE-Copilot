@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Modo2fa } from "@/lib/config";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
+import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
 import { ImpostazioniPromemoria } from "./ImpostazioniPromemoria";
 import { useOe } from "./OeProvider";
 
@@ -85,6 +86,7 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
             </section>
           )}
           <ImpostazioniPromemoria />
+          <ImpostazioniCondivisione />
 
           <section>
             <h3 className="mb-1 font-semibold">Info</h3>

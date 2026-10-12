@@ -25,7 +25,7 @@ describe("testoIcs: i valori di tipo TEXT", () => {
     expect(testoIcs("a\u0000b\u0007c\u001fd\u007fe\u009ff\tg")).toBe("abcdef g");
   });
   it("lascia stare accenti, simboli ed emoji", () => {
-    expect(testoIcs("Città è più €5 😀")).toBe("Città è più €5 😀");
+    expect(testoIcs("Città è più €5 𝄞")).toBe("Città è più €5 𝄞");
   });
   it("una coppia surrogata spezzata diventa il carattere di sostituzione, non un testo che UTF-8 non sa scrivere", () => {
     expect(testoIcs("a\ud83dz")).toBe("a\ufffdz");
@@ -54,7 +54,7 @@ describe("piega: righe di al più 75 ottetti", () => {
     }
   });
   it("con testo a più ottetti per carattere (è 2, € 3, emoji 4) non spezza mai un carattere e rimettendo insieme si ha il testo di prima", () => {
-    for (const unita of ["è", "€", "😀", "aè€😀", "日本語のテキスト"]) {
+    for (const unita of ["è", "€", "𝄞", "aè€𝄞", "日本語のテキスト"]) {
       for (let n = 20; n < 90; n += 7) {
         const riga = "SUMMARY:" + unita.repeat(n);
         const p = fisiche(riga);
@@ -158,7 +158,7 @@ describe("costruisciIcs: la forma del calendario", () => {
   });
 
   it("un titolo lungo con testo non ASCII si piega e si rilegge uguale", () => {
-    const titolo = "Riunione di verifica dell'avanzamento è più lunga di così: " + "perché sì, €100; 😀 ".repeat(12);
+    const titolo = "Riunione di verifica dell'avanzamento è più lunga di così: " + "perché sì, €100; 𝄞 ".repeat(12);
     const testo = costruisciIcs(pub({ eventi: [{ ...EVENTO, titolo }] }));
     expect(testo.split("\r\n").every((r) => Buffer.byteLength(r, "utf8") <= 75)).toBe(true);
     expect(righe(testo).find((r) => r.startsWith("SUMMARY:"))).toBe("SUMMARY:" + testoIcs(titolo));

@@ -108,9 +108,10 @@ function soloAziendeAccese(cfg: Config, eventi: Ev[], aziendeCaselle: Record<str
 
 /**
  * Tutti gli eventi dell'intervallo, da ogni sorgente. -> (eventi, errori, meta). `allowCache` false vieta di rispondere con l'ultima
- * lettura salvata: serve alla disponibilità, che non deve dire "libero" per dati vecchi.
+ * lettura salvata: serve alla disponibilità, che non deve dire "libero" per dati vecchi. `conFeed` false lascia fuori i calendari da link ICS
+ * (anche le festività): la condivisione del calendario non pubblica mai quello che l'app ha ricevuto da altri.
  */
-export async function raccogli(cfg: Config, startIso: string, endIso: string, allowCache = true): Promise<[Ev[], string[], Meta]> {
+export async function raccogli(cfg: Config, startIso: string, endIso: string, allowCache = true, conFeed = true): Promise<[Ev[], string[], Meta]> {
   let [eventi, errori, meta] = await tuttiGliEventi(cfg, startIso, endIso, allowCache);
   if (!personalizzazione().mostraTuttoIlGiorno) eventi = eventi.filter((e) => !e.allDay);
   let inizio, fine;
@@ -122,7 +123,7 @@ export async function raccogli(cfg: Config, startIso: string, endIso: string, al
     return [eventi, [...errori, `Intervallo non valido: ${e.message}`], meta];
   }
   try {
-    const [trovati, erroriFonte] = await eventiFeed(cfg, inizio, fine);
+    const [trovati, erroriFonte] = conFeed ? await eventiFeed(cfg, inizio, fine) : [[], []];
     eventi = [...eventi, ...trovati];
     errori = [...errori, ...erroriFonte];
   } catch (e) {
@@ -161,5 +162,6 @@ export async function occupato(cfg: Config, primoGiorno: { a: number; m: number;
   const inizio = mezzanotte(primoGiorno.a, primoGiorno.m, primoGiorno.g);
   const [eventi, errori, meta] = await raccogli(copia, iso(inizio), iso(piuGiorni(inizio, giorni)), false);
   const completo = !errori.length && !meta.outlook_starting && !meta.stale;
-  return [impegni(eventi, primoGiorno, giorni, membri), festivita(eventi, FESTIVITA_NOME), completo];
+  // il calendario che un altro OE Copilot ha condiviso con noi non è un impegno nostro: non rende occupata la pagina pubblica
+  return [impegni(eventi.filter((e) => !e.da_condivisione), primoGiorno, giorni, membri), festivita(eventi, FESTIVITA_NOME), completo];
 }

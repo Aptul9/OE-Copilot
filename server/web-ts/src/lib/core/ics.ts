@@ -100,9 +100,22 @@ function erroreHttp(r: Response): string {
   return `${r.status} ${r.status >= 500 ? "Server" : "Client"} Error: ${r.statusText} for url: ${r.url}`;
 }
 
+/** Uno stato HTTP da 400 in su: il testo è quello di requests, lo stato serve a chi deve decidere cosa fare. */
+export class ErroreHttp extends Error {
+  constructor(
+    readonly stato: number,
+    messaggio: string,
+  ) {
+    super(messaggio);
+  }
+}
+
+/** Stati con cui il proprietario di un link dice che non c'è più: un calendario revocato o con l'indirizzo cambiato (anche Google, quando rigenera l'indirizzo segreto). */
+const LINK_FINITO = new Set([404, 410]);
+
 export async function scarica(url: string): Promise<string> {
   const r = await fetch(url, { headers: { "User-Agent": "CalendarHub/1.0" }, signal: AbortSignal.timeout(ATTESA_MS), cache: "no-store" });
-  if (r.status >= 400) throw new Error(erroreHttp(r));
+  if (r.status >= 400) throw new ErroreHttp(r.status, erroreHttp(r));
   return decodifica(await r.arrayBuffer(), r.headers.get("content-type"));
 }
 
@@ -134,7 +147,13 @@ export async function testoCalendario(id: string, url: string): Promise<[string 
     salvaCache(id, testo);
     return [testo, null];
   } catch (e) {
-    // Rete assente: meglio dati vecchi che nessun dato
+    // Un link che non c'è più (404, 410) è stato revocato o cambiato da chi lo aveva dato: la copia che si ha non è più un dato che si può mostrare, e si toglie.
+    // Per le festività, che sono nostre, no: lì un 404 è un guasto del servizio
+    if (e instanceof ErroreHttp && LINK_FINITO.has(e.stato) && id !== FESTIVITA_ID) {
+      togliCache(id);
+      return [null, `il link non risponde più (${e.stato}): è stato revocato o cambiato da chi lo aveva dato`];
+    }
+    // Rete assente, o il servizio che non risponde: meglio dati vecchi che nessun dato
     try {
       return [fs.readFileSync(percorso, "utf-8"), `aggiornamento non riuscito (${motivoDiRete(e)})`];
     } catch {
@@ -188,6 +207,9 @@ export function rimuoviFeed(id: unknown): void {
 }
 
 // ---- Lettura eventi ------------------------------------------------------------------------------------------------------
+/** I calendari che un altro OE Copilot pubblica con un link di condivisione portano questa riga (lib/ics-uscita.ts): i loro eventi si riconoscono. */
+const DA_CONDIVISIONE = /^X-OE-COPILOT-SHARE:1[ \t]*\r?$/m;
+
 type DaAgente = { uid: string; inizio: string; fine: string; tutto_giorno: boolean; titolo: string; luogo: string; organizzatore: string; link: string | null };
 
 // L'ultima espansione riuscita di ogni calendario e intervallo: se l'agente non risponde, le festività e gli altri link restano
@@ -241,8 +263,11 @@ export async function eventiFeed(cfg: Config, inizio: Naive, fine: Naive): Promi
       continue;
     }
     const colore = builtin ? COLORE_FESTIVITA : colorForAccount(cfg, nome);
+    // gli eventi di un calendario condiviso da un altro OE Copilot restano segnati: la disponibilità pubblica non li conta come impegni di chi li ha importato
+    const condiviso = DA_CONDIVISIONE.test(testo);
     for (const ev of trovati) {
       eventi.push({
+        ...(condiviso ? { da_condivisione: true } : {}),
         id: `${feed.id}|${ev.uid}|${ev.inizio}`,
         account: nome,
         alias: nome, // per gli ICS il nome scelto è già l'etichetta

@@ -1,5 +1,6 @@
 import { AgenteNonDisponibile } from "./agente";
 import type { Ev } from "./caselle";
+import { aggiornaCondivisione, creaCondivisione, elencoCondivisioni, eliminaCondivisione, revocaCondivisione, ruotaCondivisione } from "./condivisione";
 import { calendariCaselle, calendariExtra, occupato, raccogli } from "./eventi";
 import { aggiungiFeed, rimuoviFeed } from "./ics";
 import { aggiungiEvento, eliminaEvento } from "./locali";
@@ -272,6 +273,37 @@ export const apiTs = {
   /** Toglie l'iscrizione di un browser: l'indirizzo che la pagina ha della sua. */
   async disiscrivi_push(endpoint: unknown) {
     return disiscrivi(endpoint);
+  },
+
+  // ---- Condivisione del calendario con un altro OE Copilot (condivisione.ts, e /condividi/<testo>.ics in lib/condividi.ts) -----------------------
+  /** I link di condivisione, con il loro indirizzo (il testo segreto sta lì dentro e basta). */
+  async get_condivisioni() {
+    return elencoCondivisioni();
+  },
+
+  /** Crea un link: nome di chi lo riceve, livello, cosa condividere, giorni indietro e avanti, nome del calendario. */
+  async add_condivisione(dati: unknown) {
+    return creaCondivisione(dati);
+  },
+
+  /** Cambia i campi dati di un link; quelli che mancano restano come sono. */
+  async update_condivisione(id: unknown, dati: unknown) {
+    return aggiornaCondivisione(id, dati);
+  },
+
+  /** Revoca un link: smette di valere subito. */
+  async revoke_condivisione(id: unknown) {
+    return revocaCondivisione(id);
+  },
+
+  /** Toglie un link dall'elenco. */
+  async delete_condivisione(id: unknown) {
+    return eliminaCondivisione(id);
+  },
+
+  /** Cambia l'indirizzo di un link: il vecchio smette di valere subito. */
+  async rotate_condivisione(id: unknown) {
+    return ruotaCondivisione(id);
   },
 };
 

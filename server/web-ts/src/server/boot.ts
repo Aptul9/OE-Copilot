@@ -2,6 +2,7 @@ import { getMigrations } from "better-auth/db/migration";
 import { auth, authOptions } from "@/lib/auth";
 import { config, modo2fa } from "@/lib/config";
 import { archivio } from "@/lib/core/archivio";
+import { preparaCondivisioni } from "@/lib/core/condivisione";
 import { avviaPromemoria } from "@/lib/core/promemoria";
 import { appDb } from "@/lib/db";
 import { migrateLockout } from "@/lib/lockout";
@@ -29,6 +30,8 @@ export async function boot() {
   try {
     // lo stato dell'app: la prima volta importa config.json e local_events.json; se non riesce si riprova alla prima richiesta
     archivio();
+    // i link di condivisione del calendario: una tabella in più, senza toccare le altre
+    preparaCondivisioni();
   } catch (e) {
     console.error("archivio: stato dell'app non pronto", e);
   }

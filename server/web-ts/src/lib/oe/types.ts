@@ -1,3 +1,5 @@
+import type { CondivisioneEsito, CondivisioniRisposta } from "@/lib/condivisione-comune";
+
 // Le forme dei dati che l'API del gateway (lib/core/api.ts) restituisce alla pagina. Sono quelle della
 // vecchia pagina (app.js, nella storia di git fino a 2d57a83^): qui si danno solo i tipi.
 
@@ -143,6 +145,12 @@ export type Metodi = {
   prova_promemoria: [[string], Esito];
   iscrivi_push: [[PushSubscriptionJSON], Esito];
   disiscrivi_push: [[string], Esito];
+  get_condivisioni: [[], CondivisioniRisposta];
+  add_condivisione: [[Record<string, unknown>], CondivisioneEsito];
+  update_condivisione: [[string, Record<string, unknown>], CondivisioneEsito];
+  revoke_condivisione: [[string], CondivisioneEsito];
+  delete_condivisione: [[string], CondivisioneEsito];
+  rotate_condivisione: [[string], CondivisioneEsito];
 };
 
 export type NomeMetodo = keyof Metodi;

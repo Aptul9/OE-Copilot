@@ -10,6 +10,8 @@ Il server serve la pagina dietro HTTPS e una pagina di accesso. Come si mette in
 
 I promemoria delle riunioni li può mandare il server su Telegram o nelle notifiche del browser, anche a pagina chiusa: facoltativo e spento di norma, **GUIDA.md**, sezione 4.9.
 
+Il calendario si può condividere con un altro OE Copilot (un link ICS per ogni persona, solo gli orari occupati oppure anche i titoli, riletto ogni 30 minuti): *Impostazioni → Condivisione*, **GUIDA.md**, sezione 4.10.
+
 ---
 
 ## Personalizzazione

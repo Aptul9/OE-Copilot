@@ -72,24 +72,70 @@ Uno script incluso nell'app (`src-tauri/src/inizializzazione.js`) gira nella fin
 - Il plugin di apertura dei link non inietta il suo script (`open_js_links_on_click` spento): i link li gestisce la lista degli indirizzi ammessi.
 - La finestra non ha strumenti per sviluppatori nelle build di rilascio.
 
-## Android (costruita nel codice, da provare)
-Il codice c'è; la costruzione e le prove sul telefono no: servono memoria e tempo che oggi non c'erano.
+## Android (costruita e provata su un emulatore)
 
-- Cos'è: lo stesso client per Android (pacchetto `com.oecopilot.app`): la finestra del sistema (WebView) sul sito, le notifiche del plugin (il permesso `POST_NOTIFICATIONS` si chiede una volta, da Android 13) e la guardia della navigazione come sul PC. Non ci sono le notifiche del web, le passkey (la WebView di Android le espone solo se l'app lo chiede e il sito pubblica gli Asset Links) né i comandi del PC (icona nell'area di notifica, istanza unica, avvio con Windows). I promemoria con l'app chiusa li manda il server su Telegram (GUIDA.md, 4.9).
-- Costruirla (serve il toolchain Android: JDK 17, SDK, NDK e i target Android di Rust): `cd app`, `$env:OE_URL = 'https://<host>'`, `npm ci --ignore-scripts`, `npm run android:build`. Escono un APK per ABI (`aarch64` per i telefoni, `x86_64` per l'emulatore) sotto `src-tauri/gen/android/app/build/outputs/apk/`.
-- Firma: il rilascio si firma con un keystore che sta FUORI dal repository, in `%USERPROFILE%\.oe-copilot\android\` (file `keystore.properties` con `storeFile`, `storePassword`, `keyAlias`, `keyPassword`; un altro percorso con la variabile `OE_KEYSTORE_PROPERTIES`). Le chiavi sono anche nella nota `_secrets/oe-copilot` del vault. Senza il file l'APK esce non firmato e non si installa. Un APK firmato con un'altra chiave non aggiorna quello già installato: la chiave non si rigenera.
-- Prova sull'emulatore: `npm run android:prova`, una build di debug con un altro pacchetto che accetta il traffico in chiaro solo verso `10.0.2.2` (il PC visto dall'emulatore): `OE_URL=http://10.0.2.2:<porta>` con un gateway di prova in locale.
-- Installarla: si copia l'APK sul telefono, si consente l'installazione da quella fonte e si apre; Play Protect avvisa perché lo sviluppatore non è nello store.
+Lo stesso client per Android (pacchetto `com.oecopilot.app`): la finestra del sistema (WebView) sul sito, con le notifiche del plugin e la lista degli indirizzi ammessi come sul PC. È costruita, firmata e provata su un emulatore (Android 15, WebView 124, x86_64). Su un telefono vero non è mai stata provata.
+
+### Cosa fa
+
+- Mostra il sito con lo stesso accesso del browser: il cookie di sessione dura 30 giorni e la WebView lo scrive su disco quando l'app passa in secondo piano (altrimenti ogni 30 secondi circa, e un login seguito subito da una chiusura andrebbe perso). La pagina sta fra la barra di stato e quella di navigazione e si accorcia quando compare la tastiera.
+- Lista degli indirizzi ammessi: un link a un altro sito (anche `target=_blank` e `window.open`) si apre nel browser e la pagina resta dov'è; `file:`, `data:` e `about:blank` sono rifiutati. Una pagina del sito aperta con `window.open` (il pulsante *Telefono*) prende il posto della pagina corrente, perché la vista è una sola: il tasto indietro riporta al calendario.
+- Notifiche per le riunioni con orario che iniziano entro 10 minuti: lo stesso script del PC (sezione *Notifiche*). Da Android 13 il permesso `POST_NOTIFICATIONS` si chiede una volta, alla prima verifica dopo l'accesso (finestra di sistema *Consenti*); se si rifiuta non parte niente. Lo script gira solo mentre il processo dell'app è vivo: dopo il tasto indietro dalla prima pagina, o con l'app tolta dalle recenti, non parte niente. I promemoria con l'app chiusa li manda il server su Telegram (GUIDA.md, 4.9).
+- Se il sito non risponde si vede la pagina di avvio con il messaggio in italiano e il pulsante *Riprova ora*; l'app riprova ogni 5 secondi e porta la vista sul sito da sola.
+- Non ci sono le notifiche del web, le passkey (la WebView di Android le espone solo se l'app lo chiede e il sito pubblica gli Asset Links) né i comandi del PC (icona nell'area di notifica, istanza unica, avvio con Windows).
+
+### Costruirla
+
+Servono JDK 17, l'SDK di Android con la piattaforma 37 e gli strumenti di compilazione 37.0.0, l'NDK 29.0.14206865, Rust con i target `aarch64-linux-android` e `x86_64-linux-android`, e le variabili `JAVA_HOME`, `ANDROID_HOME` e `NDK_HOME`. Su questo PC le imposta `env-android.ps1`, accanto a `env-win.ps1` nella cartella di prova di Tauri (solo variabili del processo).
+
+```powershell
+. <percorso>\env-android.ps1               # solo se l'ambiente non è già quello giusto
+$env:OE_URL = 'https://oe.tuodominio.it'   # l'indirizzo del sito
+cd app
+npm ci --ignore-scripts
+npm run android:build
+```
+
+Escono due APK sotto `src-tauri/gen/android/app/build/outputs/apk/`: `arm64/release/app-arm64-release.apk` per i telefoni (arm64-v8a, circa 7,5 MB) e `x86_64/release/app-x86_64-release.apk` per l'emulatore (circa 8,0 MB). `OE_URL` è come per il PC: senza, la build si ferma; l'indirizzo sta nell'APK e non in nessun file del repository.
+
+La prima volta serve circa un quarto d'ora (Gradle scarica sé stesso e le dipendenze, Rust compila due architetture), le volte dopo da 4 a 7 minuti (misurato su questo PC, 8 core). Gradle usa circa 3 GB di memoria e cargo circa 2 GB: conviene chiudere il browser. Alla fine `gradlew --stop`, nella cartella `src-tauri/gen/android`, ferma il demone di Gradle.
+
+### Firma
+
+Il rilascio si firma con un keystore che sta FUORI dal repository, in `%USERPROFILE%\.oe-copilot\android\` (file `keystore.properties` con `storeFile`, `storePassword`, `keyAlias`, `keyPassword`; un altro percorso con la variabile `OE_KEYSTORE_PROPERTIES`). Le chiavi sono anche nella nota `_secrets/oe-copilot` del vault. Senza il file l'APK esce non firmato e non si installa. Le firme sono v2 e v3 (v1 non serve, minSdk 24).
+
+L'impronta SHA-256 del certificato è `47:F3:FD:35:FD:C8:0E:9E:D6:15:93:90:05:2B:8F:E3:84:24:25:20:69:AB:15:F3:6A:09:D5:1B:90:FB:31:F5` e si controlla con `apksigner verify --print-certs <apk>`. Un APK firmato con un'altra chiave non aggiorna quello già installato (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`, provato): la chiave non si rigenera.
+
+### Installarla
+
+- A mano: si copia l'APK sul telefono e lo si apre; Android chiede di consentire l'installazione da quella fonte (*origini sconosciute*) e Play Protect avvisa perché lo sviluppatore non è nello store.
+- Con adb, telefono collegato in debug USB: `adb install OE-Copilot-0.1.0-arm64-v8a.apk`. Per aggiornare: `adb install -r` con l'APK nuovo, firmato con la stessa chiave.
+- Il sito si apre da solo; l'accesso è quello del sito (password, passkey e TOTP del sito). Alla prima notifica Android chiede il permesso: va concesso.
+
+### Provarla sull'emulatore
+
+`npm run android:prova` costruisce una variante di debug con un altro pacchetto, `com.oecopilot.app.prova` (il suffisso viene da `bundle.android.debugApplicationIdSuffix` in `tauri.android.conf.json`: la CLI di Tauri riscrive la riga `applicationIdSuffix` di `build.gradle.kts` a ogni build, una riga messa a mano sparisce), che si installa accanto all'app firmata e accetta il traffico in chiaro solo verso `10.0.2.2`, il PC visto dall'emulatore (`src/debug/res/xml/network_security_config.xml`; verso altri indirizzi la WebView risponde `ERR_CLEARTEXT_NOT_PERMITTED`). Si usa con `OE_URL=http://10.0.2.2:<porta>` e un gateway di prova in locale.
+
+Solo la variante di prova espone il socket di DevTools: `adb forward tcp:<porta> localabstract:webview_devtools_remote_<pid dell'app>` (il pid si trova in `/proc/net/unix`) e poi si guida la pagina come un Chrome senza finestra. L'emulatore parte con `emulator -avd <nome> -no-window -no-audio -no-snapshot -gpu angle_indirect -dns-server 8.8.8.8,1.1.1.1` (senza `-dns-server` la WebView non risolve i nomi). `uiautomator dump` non vede il testo della WebView: si usano schermate e DevTools.
+
+### Trappole
+
+- La WebView di Android lancia lo script di inizializzazione due volte sulle pagine del sito (all'avvio del documento e a pagina iniziata): lo script lo ignora la seconda volta (`window.__oeInizializzato`), senza questo i giri sono doppi e il permesso si chiede due volte.
+- Le icone di `gen/android/app/src/main/res` vanno copiate da `src-tauri/icons/android` (le fa `tauri icon` solo se il progetto Android esiste già); quelle del modello sono il logo di Tauri. Il primo piano dell'icona adattiva passa da `drawable/ic_launcher_foreground_inset.xml` (margine del 20%): il disegno arriva agli angoli e la maschera rotonda del telefono lo taglierebbe. Rifare `tauri icon` riscrive `mipmap-anydpi-v26/ic_launcher.xml` e toglie il margine.
+- Il plugin delle notifiche aggiunge `RECEIVE_BOOT_COMPLETED` e `WAKE_LOCK`, per le notifiche programmate che l'app non usa: `AndroidManifest.xml` li toglie, restano `INTERNET` e `POST_NOTIFICATIONS`.
+- La CLI avvisa che l'identificativo `com.oecopilot.app` finisce per `.app`: vale solo per macOS, qui non conta.
+
 ## Cosa non c'è
 
 - **Apri in Outlook** del vecchio client: non si può riprodurre, gli id degli eventi del sito non sono id di Outlook.
 - **Aggiornamento automatico**: serve un indirizzo pubblico per i file, il repository è privato. Si reinstalla a mano.
 - **Firma del codice** dell'installer.
-- **Android**: costruita nel codice e da provare (sezione sopra).
+- **Android**: provata solo su un emulatore, mai su un telefono vero; senza notifiche del web né passkey (sezione sopra).
 - **Uso offline**: se il sito non risponde c'è solo il messaggio della pagina di avvio, nessuna copia del calendario.
 
 ## Prove
 
 - `npm test` (in `app/`, solo Node) prova lo script delle notifiche con una pagina finta: ora di Roma, un avviso solo per riunione, esclusioni, sessione finita, attese dopo gli errori.
-- `cargo test` (in `src-tauri/`) prova la lista degli indirizzi ammessi e il passaggio dei link di Teams a `msteams:`.
+- `cargo test` (in `src-tauri/`) prova la lista degli indirizzi ammessi e il passaggio dei link di Teams a `msteams:`. Gira sul PC: la regola che su Android rifiuta `about:blank` si prova solo sull'emulatore.
+- Android: la variante di prova contro un gateway locale (con un agente dei dati inventati) ha provato accesso, calendario, permesso e avviso di notifica (uno solo, senza ripetizioni dopo il ricaricamento e il riavvio), sessione che resta dopo la chiusura forzata, uscita che ferma i giri, link esterni, `file:`, `data:` e `about:blank`, sito non raggiungibile e ritorno da solo, tasto indietro. L'APK di rilascio è provato in installazione, avvio sul sito vero (schermata di accesso, niente digitato), aggiornamento con la stessa chiave e rifiuto con un'altra.
 - Il resto (finestra, accesso, notifiche vere, icona, istanza unica) si prova con una build `--features prova` contro un gateway locale: la feature aggiunge solo un comando che legge e gira gli interruttori del menu e, con la variabile `OE_PROVA_APRI`, fa scrivere su un file gli indirizzi destinati al sistema invece di aprirli. Non fa parte di nessuna build di rilascio.

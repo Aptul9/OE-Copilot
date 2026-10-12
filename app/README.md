@@ -42,6 +42,19 @@ Dati dell'app: `%APPDATA%\com.oecopilot.desktop` (impostazioni, posizione della 
 
 Se l'app non parte o la finestra tarda ad aprirsi, i messaggi di errore stanno in `%LOCALAPPDATA%\com.oecopilot.desktop\errore.log` (con l'ora in secondi dal 1970). Riaprendola subito dopo una chiusura forzata WebView2 può risultare occupato per qualche secondo (errore 0x800700AA): l'app riprova fino a 10 volte, poi si ferma.
 
+## Accesso e sessione
+
+Il login si fa una volta e resta salvato: il sito dà un cookie di sessione (`__Secure-better-auth.session_token`) che dura 30 giorni, ed è un cookie persistente (`Max-Age`), quindi WebView2 lo scrive nel profilo in `%LOCALAPPDATA%\com.oecopilot.desktop`. Chiudere la finestra, uscire dall'app o riavviare Windows non lo toglie: alla riapertura la finestra mostra subito il calendario. La password non è salvata da nessuna parte: nell'app resta solo il cookie.
+
+Se la sessione non vale più, l'app torna da sola alla pagina di accesso, senza fare niente di speciale: è il sito a deciderlo.
+- le pagine senza sessione rimandano a `/login?next=...`;
+- una risposta 401 dell'API (per esempio dopo che la sessione è stata chiusa) riporta la pagina a `/login`;
+- le sessioni si chiudono quando cambia `ADMIN_PASSWORD` (nuovo secret e nuovo aggiornamento, GUIDA.md 4.7), quando l'utente viene tolto da `gateway.db` o dopo i 30 giorni.
+
+Si deve rifare il login anche se si cancellano i dati dell'app (la cartella `%LOCALAPPDATA%\com.oecopilot.desktop`) o i cookie di WebView2.
+
+**Trappola: l'installer va eseguito da Windows, non da una sessione dell'app Claude.** Claude per Windows è un'app impacchettata (MSIX) e rimanda in una cartella sua (`%LOCALAPPDATA%\Packages\Claude_...\LocalCache\Local`) tutto ciò che un programma lanciato da lei scrive in `%LOCALAPPDATA%` e `%APPDATA%`. Un'app installata o avviata così ha programma, profilo e cookie in quella cartella, e ne esiste un'altra copia "vera" per chi la lancia dal desktop o dal menu Start: due profili, due login, e il login "sparisce" a seconda dell'icona con cui si apre. Sintomo: ogni avvio chiede di nuovo la password, e `session` in `ui-dati/gateway.db` ha una riga nuova a ogni avvio (user agent `Mozilla/5.0 (Windows NT 10.0...`). Rimedio: disinstallare, cancellare la cartella virtuale `OE Copilot` e `com.oecopilot.desktop` dentro `Packages\Claude_...\LocalCache\Local`, e reinstallare con un doppio clic sull'installer. Da uno strumento che gira dentro Claude si esce dal pacchetto creando il processo con WMI: `Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = '"<installer>" /S' }`; le icone create puntano così a `C:\Users\<utente>\AppData\Local\OE Copilot`.
+
 ## Notifiche
 
 Uno script incluso nell'app (`src-tauri/src/inizializzazione.js`) gira nella finestra principale, e solo sulla pagina del sito:

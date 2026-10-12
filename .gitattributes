@@ -7,3 +7,11 @@ server/**/*.png binary
 # I file binari dentro server/ (il server del telefono di ws-scrcpy) non vanno toccati dalla regola sopra.
 server/**/*.jar binary
 server/**/*.asset binary
+
+# Il client desktop (app/): testo con i fine riga di Linux, immagini e archivi lasciati intatti.
+app/** text eol=lf
+app/**/gradlew text eol=lf
+app/**/*.ico binary
+app/**/*.icns binary
+app/**/*.png binary
+app/**/*.jar binary

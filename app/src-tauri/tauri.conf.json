@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "OE Copilot",
+  "version": "0.1.0",
+  "identifier": "com.oecopilot.desktop",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://oe.example.com",
+      "capabilities": [
+        {
+          "identifier": "remoto-oe",
+          "description": "Comandi concessi solo alla pagina del sito, mai alla pagina di avvio inclusa nell'app",
+          "windows": ["main"],
+          "local": false,
+          "remote": {
+            "urls": ["https://oe.example.com/*"]
+          },
+          "permissions": [
+            "allow-notifiche-attive",
+            "notification:allow-notify",
+            "notification:allow-is-permission-granted",
+            "notification:allow-request-permission"
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/128x128.png", "icons/128x128@2x.png", "icons/32x32.png", "icons/icon.ico"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["Italian"],
+        "displayLanguageSelector": false
+      }
+    }
+  },
+  "plugins": {
+    "oe": {
+      "url": "https://oe.example.com"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "oe-copilot-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "configura": "node scripts/configura.mjs",
+    "build": "node scripts/configura.mjs --release && tauri build --config src-tauri/tauri.conf.local.json",
+    "test": "node --test \"test/*.test.mjs\"",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.2"
+  }
+}

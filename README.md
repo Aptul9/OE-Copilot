@@ -8,6 +8,8 @@ Nessuna registrazione su Azure e nessun consenso dell'amministratore: gli access
 
 Il server serve la pagina dietro HTTPS e una pagina di accesso. Come si mette in piedi il server: *Caselle lette dal server* qui sotto e **GUIDA.md**, sezione 4.7. L'accesso può avere un secondo fattore, spento di default (il codice di un'app di autenticazione con i codici di recupero, oppure le passkey): variabile `AUTH_2FA` in `.env`, attivazione e recupero in **GUIDA.md**, sezione 4.7.
 
+I promemoria delle riunioni li può mandare il server su Telegram o nelle notifiche del browser, anche a pagina chiusa: facoltativo e spento di norma, **GUIDA.md**, sezione 4.9.
+
 ---
 
 ## Personalizzazione

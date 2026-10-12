@@ -427,6 +427,53 @@ Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di w
 - **Spegnerlo.** Togliere il pulsante e la strada: `docker stop oe-copilot-schermo` (da `docker compose` si può anche togliere il servizio `schermo` e ridistribuire; con il servizio fermo `/telefono/` risponde 502 solo a chi ha la sessione). Il server di scrcpy nel telefono resta in esecuzione (circa 0,02 core): per fermarlo, prima di spegnere il servizio, tasto *Kill server* nella pagina dei dispositivi.
 - Prova senza telefono: `cd server/schermo-web && npm ci --ignore-scripts && npm run dist && npm run smoke && npm test`.
 
+### 4.9 I promemoria sul server (facoltativo)
+Il gateway può avvisare prima delle riunioni su **Telegram** (e, in più, nelle notifiche del browser), anche a pagina chiusa e con il PC spento: è quello che faceva l'app per Windows (sezione 3), ma solo ad app aperta. Di norma è **spento**. Non servono porte aperte: è il server a chiamare i servizi. Il motore è `server/web-ts/src/lib/core/promemoria.ts`, i canali `promemoria-canali.ts` (Telegram) e `promemoria-push.ts` (notifiche del browser, con `public/sw.js`); nessuna dipendenza nuova.
+
+**Attivarlo**, una volta sola:
+1. In Telegram scrivi a `@BotFather`, `/newbot`, scegli nome e username: risponde con il **token** (`123456:ABC...`). Il token è una password: sta solo in `.env` sul server e nel lockbox, mai in una chat, in uno screenshot, in un ticket o nel repository.
+2. Apri il bot e premi *Start* (un bot non può scrivere per primo). Per un gruppo: aggiungi il bot e scrivi un messaggio nel gruppo.
+3. Sul server, in `.env` (`sudoedit /opt/oe-copilot/.env`), aggiungi `TELEGRAM_BOT_TOKEN=<il token>`. L'id della chat si legge con il token preso da `.env`, senza scriverlo sulla riga di comando (finirebbe nella cronologia della shell e nell'elenco dei processi):
+   ```bash
+   TOKEN=$(sudo grep ^TELEGRAM_BOT_TOKEN= /opt/oe-copilot/.env | cut -d= -f2-)
+   printf 'url = "https://api.telegram.org/bot%s/getUpdates"\n' "$TOKEN" | curl -s -K - | grep -o '"chat":{"id":-\?[0-9]*'
+   unset TOKEN
+   ```
+   Esce `"chat":{"id":123456789`: il numero è l'id (negativo per un gruppo). Se non esce niente scrivi un altro messaggio al bot e ripeti.
+4. In `.env` aggiungi `TELEGRAM_CHAT_ID=<il numero>` (i nomi sono in `.env.esempio`).
+5. Il compose passa i due valori al gateway, che li legge solo all'avvio: `cd /opt/oe-copilot && sudo docker compose up -d gateway`. Un `docker restart` non basta, perché non rilegge `.env`.
+6. Nell'app: *Impostazioni*, sezione *Promemoria*. Sotto *Dove* la riga di Telegram non deve più dire "non configurato sul server". *Invia una prova* manda il testo fisso "Prova dei promemoria", mai dati di una riunione: se arriva nella chat il canale funziona. Poi si accende *Avvisami prima delle riunioni*. Senza un canale configurato l'interruttore non si accende.
+
+**Notifiche del browser (il secondo canale, facoltativo).** Il server spedisce il messaggio al servizio di notifiche del browser (Google, Mozilla o Apple, secondo il browser), che lo consegna al browser a pagina chiusa. Il testo viaggia cifrato da un capo all'altro (RFC 8291): il servizio di notifiche vede a chi e quando, non cosa. Non funziona dentro le finestre dell'app Tauri (Windows e Android), che non hanno le notifiche web (misurato il 12/10/2026): per quelle resta Telegram. Serve una coppia di chiavi VAPID, una volta sola, che si fa con node (senza installare niente):
+   ```bash
+   node -e "const c=require('crypto');const j=c.generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({format:'jwk'});console.log('VAPID_PUBLIC_KEY='+Buffer.concat([Buffer.from([4]),Buffer.from(j.x,'base64url'),Buffer.from(j.y,'base64url')]).toString('base64url'));console.log('VAPID_PRIVATE_KEY='+j.d)"
+   ```
+   Le due righe che escono vanno in `.env` (la privata è un segreto come il token: lockbox, mai in chat), con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), il contatto che il servizio di notifiche può usare se il server si comporta male. Poi `sudo docker compose up -d gateway`. Nelle Impostazioni, sotto *Dove*, *Notifiche del browser* offre *Attiva su questo browser*: il browser chiede il permesso e iscrive sé stesso (si fa una volta per browser o telefono, fino a 20). Poi *Invia una prova* e l'interruttore. *Togli da questo browser* toglie l'iscrizione, e il server toglie da solo quelle che il servizio dichiara scadute. L'indirizzo di un'iscrizione vale come una password: sta solo in `ui-dati/gateway.db` (tabella `push_iscrizioni`), non compare nei log né nelle risposte dell'app, e il server accetta solo indirizzi https con un nome di servizio (mai un indirizzo IP o un nome della rete interna) e non segue i reindirizzamenti. Il messaggio è lo stesso di Telegram: la prima riga è il titolo della notifica, il resto il corpo.
+
+**Cosa arriva.** Testo semplice, senza formattazione. Con *Completo* (di norma):
+```
+Promemoria: tra 10 minuti, alle 15:30
+Riunione di prova
+Luogo: Sala 3
+Partecipa: https://teams.microsoft.com/l/meetup-join/...
+```
+I minuti sono quelli che mancano davvero (un avviso in ritardo dice "tra 4 minuti"), l'ora è di Roma, il luogo e il link ci sono se la riunione li ha; per un'altra giornata c'è "domani" o la data. Con *Minimo* restano i minuti, l'ora e l'etichetta dell'azienda, niente titolo, luogo, link o indirizzi.
+
+**Quando parte.**
+- Per ogni valore dei *minuti prima* (da uno a cinque valori, da 1 a 1440, di norma 10) un avviso per ogni riunione a orario non ancora iniziata, quando mancano al più quei minuti. I giorni interi non avvisano mai. Vale quello che mostra la pagina: un calendario spento nella barra a sinistra non avvisa. Gli eventi annullati o cancellati non arrivano dal telefono e non avvisano; "libero", "provvisorio" e "rifiutato" l'agente non li legge, e questi eventi avvisano come gli altri. Nei calendari da link (ICS) l'agente non guarda `STATUS` né `TRANSP`: un evento annullato nel calendario di origine compare nella pagina e avvisa.
+- Un avviso per riunione, valore dei minuti e canale. Se il server era fermo, l'avviso parte quando torna, se la riunione non è ancora iniziata; se più valori sono già scaduti parte un messaggio solo. Una riunione spostata (inizio nuovo) avvisa di nuovo, una cancellata prima dell'avviso no, le occorrenze di una serie hanno ognuna il suo.
+- Il server cerca le riunioni ogni 30 secondi (`PROMEMORIA_INTERVALLO_S`, da 5 a 3600, nel compose): l'avviso arriva fino a 30 secondi dopo il momento esatto. Un evento è fresco quanto il calendario del telefono: una cancellazione fatta in Outlook arriva sul telefono solo a telefono sbloccato (sezione 1), e fino ad allora la riunione cancellata può ancora avvisare.
+- Quello che è già partito sta in `ui-dati/gateway.db`, tabella `promemoria_inviati` (chiave, evento, inizio, minuti, canale, ora, esito, tentativi), righe tenute 14 giorni. Un riavvio o un deploy non rimanda niente.
+- Se un canale non risponde o rifiuta, l'avviso non si segna come inviato su quel canale e si riprova al giro dopo, fino all'inizio della riunione e al più 5 volte; se il servizio dice di attendere (429) il server aspetta il tempo che indica (al più 15 minuti). Gli altri canali non ne risentono. Nelle Impostazioni si vedono l'ora dell'ultimo controllo e l'ultimo problema (una frase, senza dati delle riunioni). Nel log `docker logs oe-copilot-gateway 2>&1 | grep promemoria`: mai titoli, luoghi, partecipanti, token o chat.
+
+**Privacy.** Con *Completo* titolo, luogo e link passano dai server di Telegram (i messaggi dei bot non sono cifrati da un capo all'altro); con *Minimo* passano solo l'ora e l'etichetta dell'azienda. Nelle notifiche del browser il testo è cifrato da un capo all'altro: il servizio di notifiche non lo legge. Il token e l'id della chat stanno solo in `.env` e nell'ambiente del gateway: non compaiono nei log, nelle risposte dell'app né nelle impostazioni.
+
+**Deploy e riavvio.** Il deploy ricrea il gateway: impostazioni e avvisi già inviati restano in `ui-dati/gateway.db` e il giro riparte 10 secondi dopo l'avvio. Spento (di norma), o senza un canale scelto e configurato, il server non legge eventi per i promemoria e non manda niente. `/sw.js` è un file pubblico (senza accesso), come le icone: contiene solo il codice che mostra la notifica.
+
+**Spegnerlo.** L'interruttore nelle Impostazioni vale dal giro dopo, senza riavvio. Per toglierlo del tutto: via i valori dei canali da `.env` (`TELEGRAM_*`, `VAPID_*`) e `sudo docker compose up -d gateway`.
+
+**Prove.** `cd server/web-ts && npx vitest run test/promemoria`: motore, canale Telegram contro un server HTTP locale, notifiche del browser contro l'esempio dell'RFC 8291 e un servizio finto, e metodi dell'API attraverso il gateway, senza rete.
+
 ---
 
 ## 5. Prove dal PC: tunnel verso l'agente

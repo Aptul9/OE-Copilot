@@ -53,3 +53,4 @@ app/src-tauri/gen/android/.gradle/
 app/src-tauri/gen/android/**/build/
 *.keystore
 *.jks
+keystore.properties

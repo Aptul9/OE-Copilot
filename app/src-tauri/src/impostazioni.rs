@@ -16,6 +16,7 @@ pub fn notifiche_accese(app: &AppHandle) -> bool {
         .unwrap_or(true)
 }
 
+#[cfg(desktop)]
 pub fn salva_notifiche(app: &AppHandle, accese: bool) {
     if let Some(p) = percorso(app) {
         if let Some(cartella) = p.parent() {

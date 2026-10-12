@@ -36,9 +36,11 @@ fn pagina_di_avvio(url: &Url) -> bool {
     url.host_str() == Some("tauri.localhost")
 }
 
-/// Il link per entrare in una riunione Teams (https://teams.microsoft.com/l/meetup-join/..., teams.live.com)
+/// Il link per entrare in una riunione Teams (https://teams.microsoft.com/l/meetup-join/..., teams.live.com).
+/// Su Android non serve lo schema msteams:, il sistema dà il link https all'app Teams se c'è (link verificati), altrimenti al browser
 fn link_teams(url: &Url) -> bool {
-    url.scheme() == "https"
+    cfg!(not(target_os = "android"))
+        && url.scheme() == "https"
         && matches!(url.host_str(), Some("teams.microsoft.com" | "teams.live.com"))
         && (url.path().starts_with("/l/meetup-join/") || url.path().starts_with("/meet/"))
 }
@@ -70,12 +72,26 @@ fn prova_apri(indirizzo: &str) -> Option<bool> {
     Some(!(indirizzo.starts_with("msteams:") && std::env::var_os("OE_PROVA_SENZA_TEAMS").is_some()))
 }
 
+/// Su Android il gestore della navigazione gira sul thread dell'interfaccia, e il plugin di apertura chiama Kotlin passando
+/// da quel thread e ne aspetta la risposta: da lì si bloccherebbe, quindi l'apertura parte da un altro thread
+fn apri_senza_bloccare(app: &AppHandle, indirizzo: &str) {
+    #[cfg(target_os = "android")]
+    {
+        let (app, indirizzo) = (app.clone(), indirizzo.to_string());
+        std::thread::spawn(move || {
+            apri(&app, &indirizzo);
+        });
+    }
+    #[cfg(not(target_os = "android"))]
+    apri(app, indirizzo);
+}
+
 /// Per la navigazione della finestra: true se l'indirizzo si carica, altrimenti lo gira a chi di dovere e risponde no
 pub fn consenti_navigazione(app: &AppHandle, origine: &Url, url: &Url) -> bool {
     match classifica(url, origine) {
         Esito::Consenti => true,
         Esito::Browser => {
-            apri(app, url.as_str());
+            apri_senza_bloccare(app, url.as_str());
             false
         }
         Esito::Teams => {

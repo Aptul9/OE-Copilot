@@ -87,6 +87,21 @@
   const sessioneFinita = (r) =>
     r.status === 401 || r.redirected || (r.ok && !(r.headers.get("content-type") || "").includes("application/json"));
 
+  // Su Android 13 e successivi le notifiche vogliono il permesso POST_NOTIFICATIONS: lo si chiede una volta per pagina,
+  // appena c'è una sessione, e non si manda niente finché non c'è. Sul PC il plugin risponde sempre "concesso"
+  let permesso = null;
+  let permessoChiesto = false;
+
+  async function permessoNotifiche() {
+    if (permesso === true) return true;
+    permesso = await invoca("plugin:notification|is_permission_granted");
+    if (permesso === null && !permessoChiesto) {
+      permessoChiesto = true;
+      permesso = (await invoca("plugin:notification|request_permission")) === "granted";
+    }
+    return permesso === true;
+  }
+
   let preavviso = MINUTI_PREAVVISO;
   let preavvisoAl = 0;
 
@@ -100,7 +115,9 @@
         preavviso = MINUTI_PREAVVISO;
       } else if (r.ok && !sessioneFinita(r)) {
         const dati = await r.json();
-        const minuti = (Array.isArray(dati && dati.minuti) ? dati.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 1440);
+        // le impostazioni stanno dentro "promemoria" nella risposta del server; una risposta piatta si legge lo stesso
+        const impostazioni = dati && typeof dati.promemoria === "object" && dati.promemoria ? dati.promemoria : dati;
+        const minuti = (Array.isArray(impostazioni && impostazioni.minuti) ? impostazioni.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 1440);
         preavviso = minuti.length ? [...new Set(minuti)].sort((a, b) => a - b) : MINUTI_PREAVVISO;
       }
     } catch {
@@ -139,13 +156,17 @@
   }
 
   async function controlla() {
-    const ora = Date.now();
+    let ora = Date.now();
     const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS))]);
     if (sessioneFinita(r)) return "non-autenticato";
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const dati = await r.json();
+    const concesso = await permessoNotifiche();
     // un promemoria vale solo su dati freschi, non su quelli tenuti in cache quando l'agente non risponde
     if (dati && dati.stale) return "dati-non-freschi";
+    if (!concesso) return "senza-permesso";
+    // la richiesta del permesso può aver aspettato la risposta di chi usa il telefono
+    ora = Date.now();
     await aggiornaPreavviso();
     const inviate = leggiInviate(ora);
     for (const ev of Array.isArray(dati && dati.events) ? dati.events : []) {

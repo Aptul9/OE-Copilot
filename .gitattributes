@@ -11,6 +11,7 @@ server/**/*.asset binary
 # Il client desktop (app/): testo con i fine riga di Linux, immagini e archivi lasciati intatti.
 app/** text eol=lf
 app/**/gradlew text eol=lf
+app/**/*.bat text eol=crlf
 app/**/*.ico binary
 app/**/*.icns binary
 app/**/*.png binary

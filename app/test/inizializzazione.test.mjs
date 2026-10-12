@@ -20,10 +20,11 @@ function risposta(stato, corpo, { json = true, redirected = false } = {}) {
 }
 
 /** Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, l'interruttore delle notifiche */
-function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE, protocollo = "https:", memoria = {} } = {}) {
+function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted" } = {}) {
   const timer = [];
   const notifiche = [];
   const chiamate = [];
+  const sistema = { permesso, esitoRichiesta, richieste: 0, controlli: 0 };
   let ora = adesso;
   const DataFinta = class extends Date {
     constructor(...a) {
@@ -58,6 +59,15 @@ function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE,
   sandbox.__TAURI_INTERNALS__ = {
     invoke: async (comando, argomenti) => {
       if (comando === "notifiche_attive") return notificheAttive;
+      if (comando === "plugin:notification|is_permission_granted") {
+        sistema.controlli += 1;
+        return sistema.permesso;
+      }
+      if (comando === "plugin:notification|request_permission") {
+        sistema.richieste += 1;
+        if (sistema.esitoRichiesta === "granted") sistema.permesso = true;
+        return sistema.esitoRichiesta;
+      }
       if (comando === "plugin:notification|notify") {
         notifiche.push(JSON.parse(JSON.stringify(argomenti.options)));
         return null;
@@ -73,6 +83,7 @@ function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE,
     notifiche,
     chiamate,
     memoria,
+    sistema,
     imposta: (ms) => (ora = ms),
     /** Esegue il prossimo giro e aspetta che ne programmi un altro */
     async giro() {
@@ -178,7 +189,7 @@ test("get_promemoria: anticipi del server, una notifica per riunione e anticipo,
   const inizio = Date.UTC(2026, 9, 12, 8, 0); // 10:00 a Roma
   const api = {
     get_events: json([evento("e1", "Riunione F", "2026-10-12T10:00:00")]),
-    get_promemoria: risposta(200, { attivo: false, minuti: [30, 10, 10, "x", -5, 0] }),
+    get_promemoria: risposta(200, { promemoria: { attivo: false, minuti: [30, 10, 10, "x", -5, 0], canali: ["telegram"], contenuto: "minimo" }, canali: [], ultimo_giro: null }),
   };
   const a = ambiente({ adesso: inizio - 20 * MIN, api });
   await a.giro();
@@ -263,4 +274,58 @@ test("la richiesta è la stessa della pagina: POST get_events con inizio e fine 
   assert.equal(argomenti.length, 2);
   assert.match(argomenti[0], /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
   assert.equal(new Date(argomenti[1]).getTime() - new Date(argomenti[0]).getTime(), 24 * 3_600_000);
+});
+
+test("permesso di notifica da chiedere (Android 13+): si chiede una volta, poi l'avviso parte", async () => {
+  const adesso = Date.UTC(2026, 9, 12, 7, 55);
+  const a = ambiente({ adesso, permesso: null, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  await a.giro();
+  assert.equal(a.sistema.richieste, 1);
+  assert.equal(a.notifiche.length, 1);
+  await a.giro();
+  assert.equal(a.sistema.richieste, 1);
+  assert.equal(a.notifiche.length, 1);
+});
+
+test("permesso rifiutato: niente avviso, niente nuova richiesta, l'avviso parte quando il permesso arriva", async () => {
+  const adesso = Date.UTC(2026, 9, 12, 7, 55);
+  const a = ambiente({ adesso, permesso: null, esitoRichiesta: "denied", api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  await a.giro();
+  assert.equal(a.sistema.richieste, 1);
+  assert.equal(a.notifiche.length, 0);
+  assert.equal(a.stato().esito, "senza-permesso");
+  await a.giro();
+  assert.equal(a.sistema.richieste, 1);
+  assert.equal(a.notifiche.length, 0);
+  a.sistema.permesso = true;
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  assert.equal(a.stato().esito, "ok");
+});
+
+test("permesso già negato per sempre (false): nessuna richiesta", async () => {
+  const adesso = Date.UTC(2026, 9, 12, 7, 55);
+  const a = ambiente({ adesso, permesso: false, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  await a.giro();
+  assert.equal(a.sistema.richieste, 0);
+  assert.equal(a.notifiche.length, 0);
+  assert.equal(a.stato().esito, "senza-permesso");
+});
+
+test("permesso già concesso (PC): nessuna richiesta, il controllo non si ripete dopo il primo sì", async () => {
+  const adesso = Date.UTC(2026, 9, 12, 7, 55);
+  const a = ambiente({ adesso, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  await a.giro();
+  await a.giro();
+  assert.equal(a.sistema.richieste, 0);
+  assert.equal(a.sistema.controlli, 1);
+  assert.equal(a.notifiche.length, 1);
+});
+
+test("senza sessione il permesso non si chiede", async () => {
+  const adesso = Date.UTC(2026, 9, 12, 7, 55);
+  const a = ambiente({ adesso, permesso: null, api: { get_events: risposta(401, { error: "non autenticato" }) } });
+  await a.giro();
+  assert.equal(a.sistema.richieste, 0);
+  assert.equal(a.sistema.controlli, 0);
 });

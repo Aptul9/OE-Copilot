@@ -1,0 +1,128 @@
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 12
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+rilevatore
+battito {"quando": 1760000004, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd input keyevent 224
+sleep 1
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+battito {"quando": 1760000039, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+rilevatore
+battito {"quando": 1760000073, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+battito {"quando": 1760000107, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 12
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+rilevatore
+battito {"quando": 1760000141, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+battito {"quando": 1760000175, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+rilevatore
+battito {"quando": 1760000209, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30
+cmd true
+cmd dumpsys jobscheduler
+cmd cmd jobscheduler run -f android 10
+cmd cmd jobscheduler run -f android 9
+cmd dumpsys power
+cmd am start -a android.intent.action.MAIN -c android.intent.category.HOME
+sleep 2
+cmd am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n com.microsoft.office.outlook/.MainActivity
+sleep 2
+cmd dumpsys window
+cmd dumpsys window
+cmd dumpsys power
+cmd input tap 360 5
+battito {"quando": 1760000243, "pausa": false, "telefono": true, "outlook_davanti": true, "bloccato": false}
+sleep 30

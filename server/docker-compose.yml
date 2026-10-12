@@ -131,6 +131,46 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  # Supervisore del telefono (supervisore/, GUIDA.md 4.5 e 6): il lavoro del servizio systemd oe-copilot-sincronizza (il giro di
+  # sincronizzazione, il battito, il rilevatore degli accessi) con adb sulla rete di compose, senza docker.sock. Facoltativo: non parte con
+  # `docker compose up`, solo con `--profile supervisore`, e mai insieme al servizio systemd (due giri sullo stesso telefono si
+  # pesterebbero). Gira come l'utente 10080, quello di Outlook sul telefono: solo lui e root leggono i suoi dati, e stato/ deve essere suo.
+  supervisore:
+    profiles: ["supervisore"]
+    build: ./supervisore
+    container_name: oe-copilot-supervisore
+    user: "10080:10080"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 128
+    environment:
+      - TELEFONO=telefono:5555
+    volumes:
+      # telefono/PAUSA e i dati di Outlook che legge il rilevatore (database e log), in sola lettura
+      - ./telefono:/opt/oe-copilot/telefono:ro
+      # battito.json, accessi.json, google-sync.json e, da leggere, stato/schermo/PAUSA
+      - ./stato:/opt/oe-copilot/stato
+    healthcheck:
+      # il battito si riscrive ogni 35 secondi circa: più vecchio di 2 minuti vuol dire che il giro non gira
+      test: ["CMD", "node", "-e", "process.exit(Date.now() - process.getBuiltinModule('fs').statSync('/opt/oe-copilot/stato/battito.json').mtimeMs < 120000 ? 0 : 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 1m
+        max-file: "3"
+    restart: unless-stopped
+
   # HTTPS davanti al gateway. L'indirizzo viene da .env (UI_HOST). Solo localhost: sslh
   # della VM gli gira il TLS del suo nome (SNI) sulla 4445, e da lì passa anche il
   # certificato (TLS-ALPN).

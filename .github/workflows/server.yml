@@ -69,6 +69,26 @@ jobs:
           npm test
           npm run build
 
+      - name: Supervisore del telefono, tipi, prove e immagine
+        working-directory: server/supervisore
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run typecheck
+          npm test
+          # il servizio di compose si legge solo con il profilo: senza, l'elenco dei servizi non lo ha e non parte con `docker compose up`
+          export API_KEY=prova
+          docker compose -f ../docker-compose.yml --profile supervisore config -q
+          docker compose -f ../docker-compose.yml --profile supervisore config --services | grep -qx supervisore
+          if docker compose -f ../docker-compose.yml config --services | grep -qx supervisore; then echo "supervisore parte senza il profilo" >&2; exit 1; fi
+          # l'immagine parte davvero come in compose (sola lettura, utente 10080, senza capacità): senza telefono scrive un battito che lo dice
+          docker build -q -t oe-copilot-supervisore .
+          d=$(mktemp -d); mkdir -p "$d/stato/schermo" "$d/telefono"; chmod 777 "$d/stato"
+          id=$(docker run -d --read-only --tmpfs /tmp --user 10080:10080 --cap-drop ALL --security-opt no-new-privileges:true -e OGNI=2 \
+            -v "$d/stato:/opt/oe-copilot/stato" -v "$d/telefono:/opt/oe-copilot/telefono:ro" oe-copilot-supervisore)
+          trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
+          for _ in $(seq 1 30); do [ -s "$d/stato/battito.json" ] && break; sleep 1; done
+          grep -q '"telefono": false' "$d/stato/battito.json"
+
       - name: Schermo del telefono, tipi, costruzione e prova di fumo
         working-directory: server/schermo-web
         run: |

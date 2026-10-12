@@ -1,7 +1,7 @@
 #!/bin/bash
 # Oe Copilot - aggiornamento del server, lanciato dalla GitHub Action via SSH.
 #   aggiorna_server.sh salva        mette da parte il codice attuale (per tornare indietro)
-#   aggiorna_server.sh avvia <sha>  ricostruisce e riavvia; se l'agente non risponde torna alla versione salvata
+#   aggiorna_server.sh avvia <sha>  ricostruisce e riavvia; se un passo non riesce o l'agente non risponde torna alla versione salvata
 # Il codice arriva con rsync dalla Action; .env, agent/fonti.json, telefono/, stato/ e
 # ui-dati/ restano sul server e non vengono toccati.
 set -euo pipefail
@@ -11,12 +11,15 @@ SUPERVISORE=oe-copilot-supervisore
 T=oe-copilot-telefono
 cd "$DIR"
 
+# Gira dentro `if avvia && sano`: lì errexit è spento, quindi ogni passo che può fallire ha il suo `|| return 1` e
+# l'ultimo comando (il supervisore) dà lo stato di ritorno della funzione.
 avvia() {
     lsmod | grep -q '^binder_linux' \
         || { echo "modulo binder_linux non caricato (vedi GUIDA.md, 4.1)" >&2; return 1; }
     # Il telefono si ricrea solo se la sua configurazione è cambiata: un riavvio
     # inutile fermerebbe le sincronizzazioni per un paio di minuti.
-    docker compose up -d --build telefono
+    docker compose up -d --build telefono \
+        || { echo "docker compose non ha avviato il telefono" >&2; return 1; }
     # L'agente monta la cartella del calendario del telefono: deve esistere prima,
     # altrimenti Docker la crea vuota e di root al posto di Android.
     for _ in $(seq 1 60); do
@@ -26,9 +29,11 @@ avvia() {
     [ "$(docker exec "$T" getprop sys.boot_completed 2>/dev/null)" = 1 ] \
         || { echo "il telefono non ha finito di avviarsi" >&2; return 1; }
     # impostazioni del telefono e negozio delle app: stanno nello script, non a mano
-    "$DIR/strumenti/prepara_telefono.sh"
+    "$DIR/strumenti/prepara_telefono.sh" \
+        || { echo "prepara_telefono.sh non è riuscito" >&2; return 1; }
     # Il codice dell'agente è nell'immagine, niente file montati: compose lo ricrea da sé quando l'immagine o la configurazione cambiano.
-    docker compose up -d --build agent
+    docker compose up -d --build agent \
+        || { echo "docker compose non ha avviato l'agente" >&2; return 1; }
     # Il giro di sincronizzazione, il battito e il rilevatore degli accessi li fa il supervisore (supervisore/, GUIDA.md 4.5), che si
     # ricrea a ogni aggiornamento senza toccare il telefono (--no-deps).
     riavvio=$(date +%s)
@@ -74,6 +79,21 @@ avvia_ui() {
         sleep 2
     done
     [ "$stato" = healthy ] || { echo "il servizio oe-copilot-gateway non risponde" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
+    # Il servizio agente-ts non c'è più: l'agente in TypeScript è `agent`. Il container e l'immagine oe-copilot-agente-ts di prima si
+    # tolgono solo se il gateway sano non li usa (AGENTE_URL vuoto o quello di partenza, http://agent:8180); con un AGENTE_URL che
+    # punta altrove restano, e il motivo finisce nel log.
+    if docker container inspect oe-copilot-agente-ts >/dev/null 2>&1; then
+        if url="$(docker exec oe-copilot-gateway printenv AGENTE_URL 2>/dev/null)"; then
+            case "$url" in
+                ""|http://agent:8180)
+                    docker rm -f oe-copilot-agente-ts >/dev/null && echo "tolto il container oe-copilot-agente-ts: il servizio agente-ts non c'è più, l'agente è agent"
+                    docker image rm oe-copilot-agente-ts >/dev/null 2>&1 || true ;;
+                *) echo "container oe-copilot-agente-ts lasciato: il gateway usa AGENTE_URL=$url, non http://agent:8180" ;;
+            esac
+        else
+            echo "container oe-copilot-agente-ts lasciato: AGENTE_URL non si legge dal gateway" >&2
+        fi
+    fi
     # il cancello deve chiudere davvero: senza sessione la pagina rimanda a /login e l'API risponde 401
     [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3190/logos/personale.png)" = 302 ] \
         && [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST -H 'Content-Type: application/json' -d '[]' http://127.0.0.1:3190/api/get_config)" = 401 ] \

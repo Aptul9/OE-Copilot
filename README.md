@@ -36,9 +36,9 @@ calendario prende il nome dal dominio della sua casella.
 | `aziende_inoltrate` | Aziende le cui riunioni arrivano copiate in un'altra casella (vedi sotto) |
 | `interfaccia` | Sigle e loghi, calendari secondari (sbiaditi), calendari senza "Apri in Teams", schede Timesheet |
 
-I loghi si indicano come `"logos/nome.png"` e stanno sul server in `ui-dati/logos/` (GUIDA.md, 4.7); l'icona
+I loghi si indicano come `"logos/nome.png"` (file in `ui-dati/logos/`) o come indirizzo intero (`"https://..."`, scaricato dal server: GUIDA.md, 4.7); l'icona
 degli *Eventi personali* (`personale.png`) la porta l'immagine del gateway. Il gateway legge i loghi da disco e rilegge
-`personalizzazione.json` quando cambia: dopo una modifica non si riavvia niente.
+`personalizzazione.json` quando cambia: dopo una modifica non si riavvia niente. Il logo di ogni azienda si sceglie anche dalla finestra *Gestisci calendari*.
 
 ### Calendari Google
 

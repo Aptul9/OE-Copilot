@@ -5,6 +5,13 @@
 # 4445 del localhost, e la porta 80 è di un altro Caddy: il certificato arriva col
 # TLS-ALPN, passando da sslh. Il tentativo HTTP-01 fallisce prima: è previsto.
 {
+	# Caddy non scrive un log di accesso, ma un errore di inoltro (gateway fermo o in riavvio: 502) scrive la richiesta intera, indirizzo compreso, e
+	# /condividi/<testo segreto>.ics (GUIDA.md, 4.10) ha il testo segreto nell'indirizzo: nei log resta un nome fisso
+	log {
+		format filter {
+			request>uri regexp ^/condividi/[^?]* /condividi/REDATTO.ics
+		}
+	}
 	servers {
 		# UDP non è pubblicato: niente HTTP/3 da annunciare ai browser
 		protocols h1 h2

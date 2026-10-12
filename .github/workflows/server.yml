@@ -132,7 +132,12 @@ jobs:
           # lo schermo del telefono (senza telefono) e il Caddy vero davanti a gateway e schermo, in HTTP (UI_HOST con http://)
           sc=$(docker run -d --network prova --network-alias schermo --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL oe-copilot-schermo)
           cd=$(docker run -d --network prova -p 8080:8080 -e UI_HOST=http://:8080 oe-copilot-caddy)
-          trap 'rc=$?; [ $rc = 0 ] || { docker logs "$gw"; docker logs "$sc"; docker logs "$cd"; [ -z "${pk:-}" ] || docker logs "$pk"; }; docker rm -f "$gw" "$sc" "$cd" ${pk:-} >/dev/null; docker network rm prova >/dev/null' EXIT
+          # l'agente vero (l'immagine dell'agente in TypeScript) su un calendar.db inventato: il calendario condiviso legge gli eventi da lui, e senza risponde 503
+          docker build -q -t oe-copilot-agent server/agente-ts
+          dbd=$(mktemp -d); chmod 755 "$dbd"; node server/agente-ts/test/costruisci-db.ts "$dbd"
+          ag=$(docker run -d --network prova --network-alias agent --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true -e API_KEY=prova \
+            -e BATTITO=/nessun-battito.json -e ACCESSI=/nessun-accesso.json -v "$dbd:/android-calendario:ro" -v "$dbd/fonti.json:/app/fonti.json:ro" oe-copilot-agent)
+          trap 'rc=$?; [ $rc = 0 ] || { docker logs "$gw"; docker logs "$sc"; docker logs "$cd"; docker logs "$ag"; [ -z "${pk:-}" ] || docker logs "$pk"; }; docker rm -f "$gw" "$sc" "$cd" "$ag" ${pk:-} >/dev/null; docker network rm prova >/dev/null' EXIT
           for _ in $(seq 1 30); do curl -fsS localhost:3190/salute >/dev/null 2>&1 && break; sleep 1; done
           for _ in $(seq 1 30); do curl -fsS localhost:8080/telefono/ -H 'Accept: text/html' -o /dev/null -w '%{http_code}' 2>/dev/null | grep -q 302 && break; sleep 1; done
           # senza AUTH_2FA il gateway parte in modalità off, e le tabelle del secondo fattore ci sono comunque (si aggiungono, non si tolgono)
@@ -142,7 +147,7 @@ jobs:
           const db = new D('/tmp/gw.db', { readonly: true });
           const tabelle = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").pluck().all();
           const colonne = db.prepare('PRAGMA table_info("user")').all().map((c) => c.name);
-          for (const t of ['twoFactor', 'passkey', 'login_failures']) if (!tabelle.includes(t)) throw new Error('manca la tabella ' + t);
+          for (const t of ['twoFactor', 'passkey', 'login_failures', 'condivisioni']) if (!tabelle.includes(t)) throw new Error('manca la tabella ' + t);
           if (!colonne.includes('twoFactorEnabled')) throw new Error('manca la colonna user.twoFactorEnabled');
           JS
           G=http://localhost:3190
@@ -226,6 +231,33 @@ jobs:
           test "$(ws -b jar "$C/telefono/?action=goog-device-list")" = 403
           # il resto del sito resta come prima dietro lo stesso Caddy
           curl -fsS -b jar $C/ | grep -q 'Cerca tra le riunioni'
+          # calendario condiviso (GUIDA.md, 4.10): un indirizzo che non vale è 404 come un percorso che non c'è; con la sessione si crea un link, e il calendario si legge
+          # senza sessione (text/calendar, rilettura ogni 30 minuti) e nel livello occupato non ha niente di quello che chi lo condivide ha scritto
+          test "$(codice $G/condividi/prova.ics)" = 404
+          test "$(codice "$G/condividi/$(openssl rand -hex 22 | cut -c1-43).ics")" = 404
+          dopo=$(date -u -d '+3 days' +%F)
+          curl -fsS -b jar -X POST "${json[@]}" -d "[{\"title\":\"Titolo riservato\",\"start\":\"${dopo}T10:00:00\",\"end\":\"${dopo}T11:00:00\",\"location\":\"Luogo riservato\",\"notes\":\"Note riservate\"}]" $G/api/add_local_event | grep -q '"ok":true'
+          cond=$(curl -fsS -b jar -X POST "${json[@]}" -d '[{"nome":"Prova","nome_calendario":"Calendario di prova"}]' $G/api/add_condivisione)
+          link=$(jq -r .condivisione.url <<<"$cond"); lid=$(jq -r .condivisione.id <<<"$cond")
+          [[ $link == $G/condividi/*.ics ]]
+          curl -fsS -D feed.h -o feed.ics "$link"
+          grep -qi '^content-type: text/calendar; charset=utf-8' feed.h
+          grep -q '^BEGIN:VCALENDAR' feed.ics
+          grep -q '^X-PUBLISHED-TTL:PT30M' feed.ics
+          grep -q '^X-WR-CALNAME:Calendario di prova' feed.ics
+          grep -q '^SUMMARY:Occupato' feed.ics
+          test -z "$(grep -E 'Titolo riservato|Luogo riservato|Note riservate' feed.ics)"
+          test "$(codice -I "$link")" = 200
+          etag=$(grep -i '^etag:' feed.h | cut -d' ' -f2 | tr -d '\r')
+          test "$(codice -H "If-None-Match: $etag" "$link")" = 304
+          # con i titoli escono titolo e luogo, mai le note; revocato, l'indirizzo dà 404 subito
+          curl -fsS -b jar -X POST "${json[@]}" -d "[\"$lid\",{\"livello\":\"titoli\"}]" $G/api/update_condivisione | grep -q '"ok":true'
+          curl -fsS "$link" >titoli.ics
+          grep -q '^SUMMARY:Titolo riservato' titoli.ics
+          grep -q '^LOCATION:Luogo riservato' titoli.ics
+          test -z "$(grep 'Note riservate' titoli.ics)"
+          curl -fsS -b jar -X POST "${json[@]}" -d "[\"$lid\"]" $G/api/revoke_condivisione | grep -q '"ok":true'
+          test "$(codice "$link")" = 404
           # uscita: la sessione non vale più
           curl -fsS -b jar -c jar -o /dev/null -X POST "${json[@]}" -d '{}' $G/api/auth/sign-out
           test "$(codice -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config)" = 401

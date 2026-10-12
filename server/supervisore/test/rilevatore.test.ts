@@ -158,7 +158,7 @@ describe("accessi di Outlook: la bandierina needsReauth", () => {
   });
 });
 
-describe("rilevaAccessi, il main di rileva_accessi.py", () => {
+describe("rilevaAccessi, il main del rilevatore in Python", () => {
   test("scrive accessi.json come json.dump e dice quante caselle e quali sistemare", async () => {
     creaDb(c.db, [MAIL_ACCOUNTS]);
     scrivi(c.log, "calendarSync.log", [rigaCasella(fa(30), 32768), rigaCasella(fa(3600), 32772)]);

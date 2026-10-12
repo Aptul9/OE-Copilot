@@ -1,4 +1,5 @@
-// Dati inventati per il confronto fra rileva_accessi.py e il rilevatore in TypeScript: nessun dato vero. Un caso è una cartella con quello
+// Dati inventati per il confronto fra il rilevatore in TypeScript e le uscite registrate del rilevatore in Python (test/golden/rilevatore-accessi.json):
+// nessun dato vero. Un caso è una cartella con quello
 // che il rilevatore legge (dati/data/com.microsoft.office.outlook/{app_logs,databases}, stato/{battito.json,google-sync.json}), le risposte
 // del telefono (dumpsys-content.txt, date.txt), l'ora (adesso) e le variabili d'ambiente (env.json).
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";

@@ -8,7 +8,7 @@ import { peggiore } from "../src/rilevatore/accessi.js";
 import { secondiDaDataOra } from "../src/python.js";
 import { MAIL_ACCOUNTS, SOGLIE, TelefonoFinto, creaCartelle, contesto, creaDb, rigaCasella, rigaPush, scrivi, type Cartelle } from "./aiuti.js";
 
-// Ogni caso di server/strumenti/prova_rileva_accessi.py (dati finti, nessun telefono) con le stesse attese, nello stesso ordine: i
+// Ogni caso della vecchia prova Python del rilevatore (tolta dal repository; dati finti, nessun telefono) con le stesse attese, nello stesso ordine: i
 // file di una sezione restano per la successiva, come nella prova in Python.
 
 const ADESSO = 1_760_000_000;

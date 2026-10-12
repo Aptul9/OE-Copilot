@@ -4,7 +4,23 @@ import { leggiConfigurazione } from "../../src/configurazione.js";
 import { rilevaAccessi } from "../../src/rilevatore/accessi.js";
 import { ErroreTelefono, type Telefono } from "../../src/telefono.js";
 
-/** Il rilevatore in TypeScript su un caso, con gli stessi file di uscita dell'oracolo (oracolo.py): stato/, stdout.txt, stderr.txt, comandi.txt, crash.txt. */
+/** Le uscite registrate di rileva_accessi.py su un caso (test/golden/rilevatore-accessi.json). I file di stato sono testo ASCII: Python li scriveva con json.dump. */
+export interface Atteso {
+  /** stato/accessi.json come scritto, null se main() non lo scriveva. */
+  accessi: string | null;
+  /** stato/google-sync.json alla fine del giro, null se non c'era. */
+  google: string | null;
+  /** La riga che main() stampa, con l'a capo (vuota se non stampava niente). */
+  riepilogo: string;
+  /** I controlli che main() segnalava non riusciti sullo standard error, per nome. */
+  nonRiusciti: string[];
+  /** I comandi chiesti al telefono, uno per riga, col timeout in secondi. */
+  comandi: string;
+  /** Il nome dell'errore che fermava main(), null se non si fermava. */
+  crash: string | null;
+}
+
+/** Il rilevatore in TypeScript su un caso: stato/ (dove scrive accessi.json e google-sync.json), stdout.txt, stderr.txt, comandi.txt, crash.txt. */
 export async function eseguiTs(caso: string, uscita: string): Promise<void> {
   const adesso = Number(readFileSync(path.join(caso, "adesso"), "utf8"));
   const env = JSON.parse(readFileSync(path.join(caso, "env.json"), "utf8")) as Record<string, string>;
@@ -54,19 +70,21 @@ const controlliNonRiusciti = (t: string | null): string[] =>
     .filter((r) => r.includes("non riuscito"))
     .map((r) => r.replace(/^rilevatore: (.+?) non riuscito.*$/, "$1"));
 
-/** Le differenze fra le uscite dell'oracolo e del rilevatore in TypeScript su un caso: vuoto se sono uguali (file, byte per byte). */
-export function differenze(oracolo: string, ts: string): string[] {
+/** Le differenze fra le uscite registrate e quelle del rilevatore in TypeScript su un caso: vuoto se sono uguali (file, byte per byte). */
+export function differenze(atteso: Atteso, ts: string): string[] {
   const difetti: string[] = [];
-  for (const file of ["stato/accessi.json", "stato/google-sync.json"]) {
-    const x = leggi(oracolo, file);
+  for (const [file, registrato] of [
+    ["stato/accessi.json", atteso.accessi],
+    ["stato/google-sync.json", atteso.google],
+  ] as const) {
     const y = leggi(ts, file);
-    if (x === null && y === null) continue;
-    if (x === null || y === null) difetti.push(`${file}: c'è solo ${x === null ? "in TypeScript" : "in Python"}`);
-    else if (!x.equals(y)) difetti.push(`${file}: byte diversi`);
+    if (registrato === null && y === null) continue;
+    if (registrato === null || y === null) difetti.push(`${file}: c'è solo ${registrato === null ? "in TypeScript" : "nella registrazione"}`);
+    else if (!Buffer.from(registrato, "latin1").equals(y)) difetti.push(`${file}: byte diversi`);
   }
-  if (testo(oracolo, "stdout.txt") !== testo(ts, "stdout.txt")) difetti.push("riga di riepilogo diversa");
-  if (controlliNonRiusciti(testo(oracolo, "stderr.txt")).join("|") !== controlliNonRiusciti(testo(ts, "stderr.txt")).join("|")) difetti.push("controlli non riusciti diversi");
-  if (testo(oracolo, "comandi.txt") !== testo(ts, "comandi.txt")) difetti.push("comandi al telefono diversi");
-  if (testo(oracolo, "crash.txt") !== testo(ts, "crash.txt")) difetti.push("uno dei due si ferma con un errore");
+  if (atteso.riepilogo !== testo(ts, "stdout.txt")) difetti.push("riga di riepilogo diversa");
+  if (atteso.nonRiusciti.join("|") !== controlliNonRiusciti(testo(ts, "stderr.txt")).join("|")) difetti.push("controlli non riusciti diversi");
+  if (atteso.comandi !== testo(ts, "comandi.txt")) difetti.push("comandi al telefono diversi");
+  if (atteso.crash !== (testo(ts, "crash.txt")?.replace(/\n$/, "") ?? null)) difetti.push("uno dei due si ferma con un errore");
   return difetti;
 }

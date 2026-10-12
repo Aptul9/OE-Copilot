@@ -1,6 +1,5 @@
-// Un telefono inventato che risponde ai comandi del ciclo con lo stato di un giro. Non importa niente e usa solo sintassi che Node toglie da
-// sé (node file.ts): lo carica la prova del ciclo e, con gli stessi scenari, i finti `docker` e `sleep` che fanno girare lo script
-// sincronizza_telefono.sh, così le due sequenze di comandi si confrontano riga per riga.
+// Un telefono inventato che risponde ai comandi del ciclo con lo stato di un giro: lo usa la prova del ciclo (ciclo.test.ts). Gli scenari
+// sono quelli con cui lo script bash del vecchio servizio systemd registrò le sequenze di comandi in test/golden/ciclo-<scenario>.txt.
 
 export interface Fase {
   vivo: boolean;

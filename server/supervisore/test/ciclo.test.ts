@@ -8,9 +8,10 @@ import { OrologioFinto } from "../src/orologio.js";
 import { ErroreTelefono, type Telefono } from "../src/telefono.js";
 import { INIZIO, LAVORI_DEL_TELEFONO, OGNI, SCENARI, faseNormale, iniziaGiro, nuovoStato, rispondi, type Scenario } from "./telefono-simulato.js";
 
-// Il ciclo contro lo script: per ogni scenario la sequenza dei comandi al telefono, delle attese e dei battiti è quella che
-// sincronizza_telefono.sh ha prodotto con docker, sleep e date finti (test/golden/ciclo-<scenario>.txt, scritti dallo script vero
-// con la stessa simulazione del telefono di telefono-simulato.ts: test/script-finto/tutti.sh li rigenera). Se il ciclo cambia, il confronto
+// Il ciclo contro le sequenze registrate: per ogni scenario la sequenza dei comandi al telefono, delle attese e dei battiti è quella che
+// sincronizza_telefono.sh, lo script bash del vecchio servizio systemd, produsse una volta sola con docker, sleep e date finti
+// (test/golden/ciclo-<scenario>.txt, con la stessa simulazione del telefono di telefono-simulato.ts). Lo script è stato tolto dal
+// repository (è nella cronologia di git, per esempio nel commit 00307be): i file non si rigenerano, e se il ciclo cambia il confronto
 // dice dove.
 
 const dellaFase = <T>(v: readonly T[], n: number): T => v[Math.min(n, v.length - 1)] as T;

@@ -1,7 +1,9 @@
 "use client";
 
-import { CheckIcon } from "lucide-react";
-import { iniziali, salute, urlLogo } from "@/lib/oe/logic";
+import { CheckIcon, SearchIcon } from "lucide-react";
+import { useState } from "react";
+import { Input } from "@/components/ui/input";
+import { filtraAziende, iniziali, salute, urlLogo } from "@/lib/oe/logic";
 import { cn } from "@/lib/utils";
 import { useOe } from "./OeProvider";
 
@@ -18,6 +20,8 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
   const loghi = pers.interfaccia.loghi ?? {};
   const sigle = pers.interfaccia.sigle ?? {};
   const nomiGruppi = Object.keys(gruppiCalendari);
+  const [ricerca, setRicerca] = useState("");
+  const visibili = filtraAziende(gruppi, ricerca);
   return (
     <section aria-label="I miei calendari" className="px-1">
       <div className="mb-1 flex items-center justify-between px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -52,9 +56,28 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
           })}
         </div>
       )}
+      {gruppi.length > 1 && (
+        <div className="relative mb-1.5 px-2">
+          <SearchIcon className="pointer-events-none absolute left-[18px] top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input
+            id="mycal-cerca"
+            type="search"
+            value={ricerca}
+            placeholder="Cerca calendari"
+            aria-label="Cerca tra i miei calendari"
+            autoComplete="off"
+            className="h-7 pl-7 text-[13px] md:text-[13px]"
+            onChange={(e) => setRicerca(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setRicerca("");
+            }}
+          />
+        </div>
+      )}
       <div id="legend" className="flex flex-col">
         {gruppi.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun calendario. Apri “Gestisci calendari”.</span>}
-        {gruppi.map((g) => {
+        {gruppi.length > 0 && visibili.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun calendario per “{ricerca.trim()}”.</span>}
+        {visibili.map((g) => {
           const attivo = g.on > 0;
           const s = salute(statoFonti, g, pallinoInAttesa);
           return (

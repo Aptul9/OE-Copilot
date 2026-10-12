@@ -85,6 +85,15 @@ export type GruppoAzienda = {
   motivi: string[];
 };
 
+const senzaAccenti = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Le aziende il cui nome, o quello di una delle loro caselle, contiene il testo cercato (senza badare a maiuscole e accenti). Testo vuoto = tutte. */
+export function filtraAziende(gruppi: GruppoAzienda[], ricerca: string): GruppoAzienda[] {
+  const q = senzaAccenti(ricerca.trim());
+  if (!q) return gruppi;
+  return gruppi.filter((g) => [g.azienda, ...g.caselle].some((t) => senzaAccenti(t).includes(q)));
+}
+
 /** Una voce per azienda mostrata, non per casella: la stessa azienda può avere calendari in posti diversi. */
 export function raggruppaAziende(cals: Calendario[]): GruppoAzienda[] {
   const gruppi = new Map<string, GruppoAzienda>();

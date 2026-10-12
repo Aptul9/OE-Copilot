@@ -8,6 +8,7 @@ import {
   eATreGiorni,
   etichettaSync,
   eventiPerGriglia,
+  filtraAziende,
   fmtRange,
   giorniTra,
   iniziali,
@@ -250,4 +251,20 @@ describe("urlLogo", () => {
     ["https://esempio.example/logo.png", "https://esempio.example/logo.png"],
     ["//cdn.example/logo.png", "//cdn.example/logo.png"],
   ])("%s -> %s", (valore, atteso) => expect(urlLogo(valore)).toBe(atteso));
+});
+
+describe("filtraAziende", () => {
+  const az = (azienda: string, ...caselle: string[]) => ({ azienda, color: "#000", caselle, tot: 1, on: 1, rotto: false, avviso: false, motivi: [] });
+  const tutte = [az("Serco", "antonio.maritato@serco.eu"), az("Prisma", "s.maritato@prismaprogetti.it"), az("Festività")];
+  it("testo vuoto o di soli spazi: tutte, nello stesso ordine", () => {
+    expect(filtraAziende(tutte, "")).toBe(tutte);
+    expect(filtraAziende(tutte, "   ")).toBe(tutte);
+  });
+  it("cerca nel nome dell'azienda senza badare alle maiuscole", () => expect(filtraAziende(tutte, "SER").map((g) => g.azienda)).toEqual(["Serco"]));
+  it("cerca anche nelle caselle", () => expect(filtraAziende(tutte, "prismaprogetti").map((g) => g.azienda)).toEqual(["Prisma"]));
+  it("ignora gli accenti, in un senso e nell'altro", () => {
+    expect(filtraAziende(tutte, "festivita").map((g) => g.azienda)).toEqual(["Festività"]);
+    expect(filtraAziende(tutte, "festività").map((g) => g.azienda)).toEqual(["Festività"]);
+  });
+  it("niente che corrisponda: elenco vuoto", () => expect(filtraAziende(tutte, "zzz")).toEqual([]));
 });

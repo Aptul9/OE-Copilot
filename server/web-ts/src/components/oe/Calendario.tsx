@@ -8,10 +8,11 @@ import listPlugin from "@fullcalendar/list";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import FullCalendar from "@fullcalendar/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { VISTA_3G, chiaveGiorno, iniziali, urlLogo } from "@/lib/oe/logic";
+import { VISTA_3G, chiaveGiorno, iniziali, mappaLoghi } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import "./calendario.css";
+import { ImgLogo } from "./ImgLogo";
 import { useOe } from "./OeProvider";
 import { useScorrimentoTreGiorni } from "./useScorrimentoTreGiorni";
 
@@ -104,10 +105,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     [onEventClick],
   );
 
-  const loghi = useMemo<Record<string, string>>(
-    () => ({ "Eventi personali": "/logos/personale.png", ...Object.fromEntries(Object.entries(pers.interfaccia.loghi ?? {}).map(([nome, file]) => [nome, urlLogo(file)])) }),
-    [pers],
-  );
+  const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
   const sigle = pers.interfaccia.sigle ?? {};
 
   const eventContent = useCallback(
@@ -119,10 +117,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         const logoRiga = loghi[p.alias || p.account || ""];
         return (
           <div className="ev-line">
-            {logoRiga && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img className="ev-logo" src={logoRiga} alt="" />
-            )}
+            {logoRiga && <ImgLogo key={logoRiga} src={logoRiga} className="ev-logo" alternativa={null} />}
             {arg.timeText && <span className="ev-time">{arg.timeText} </span>}
             {arg.event.title}
           </div>
@@ -130,14 +125,15 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       }
       const alias = p.alias || p.account || "";
       const logo = loghi[alias];
+      const sigla = sigle[alias] || iniziali(alias);
       const angolo = arg.event.allDay ? null : logo ? (
         <span className="ev-corner" title={alias}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={logo} alt="" />
+          {/* se il logo non si carica restano le iniziali nel colore dell'azienda */}
+          <ImgLogo key={logo} src={logo} alternativa={<span className="grid size-full place-items-center" style={{ background: p.color }}>{sigla}</span>} />
         </span>
       ) : alias ? (
         <span className="ev-corner iniziali" style={{ background: p.color }} title={alias}>
-          {sigle[alias] || iniziali(alias)}
+          {sigla}
         </span>
       ) : null;
       // nella vista Giorno e a 3 giorni c'è la larghezza per scrivere anche di che azienda è la riunione

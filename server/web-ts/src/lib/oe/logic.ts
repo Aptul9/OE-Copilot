@@ -16,6 +16,22 @@ export function iniziali(nome: string | null | undefined): string {
 /** Dove sta un logo dichiarato in personalizzazione.json: "logos/serco.png" (nella cartella dei loghi del server) o un indirizzo intero. */
 export const urlLogo = (valore: string) => (/^(https?:)?\/\//.test(valore) || valore.startsWith("/") ? valore : `/${valore}`);
 
+// Un dominio scritto da solo (esempio.org) non è un indirizzo: si offre l'icona del sito. Se ha già un percorso (esempio.org/logo.png) basta lo schema.
+const DOMINIO = "(?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d+)?";
+export const dominioScritto = (testo: string): string | null => (new RegExp(`^${DOMINIO}$`, "i").test(testo.trim()) ? testo.trim().toLowerCase() : null);
+export const iconaDelSito = (dominio: string) => `https://${dominio}/favicon.ico`;
+/** L'indirizzo da mandare al server: quello scritto, con https:// davanti se è un dominio con un percorso e niente schema. */
+export const indirizzoDaTesto = (testo: string): string => (new RegExp(`^${DOMINIO}[/?#]`, "i").test(testo.trim()) ? `https://${testo.trim()}` : testo.trim());
+
+/** Il logo degli Eventi personali sta nell'immagine del gateway (logos-predefiniti/personale.png): nessuno lo dichiara in personalizzazione.json. */
+export const LOGO_EVENTI_PERSONALI = "/logos/personale.png";
+
+/** I loghi da mostrare, per nome come lo mostra la barra: quello degli Eventi personali, poi quelli dichiarati (personalizzazione.json e finestra Calendari), che vincono. */
+export const mappaLoghi = (loghi: Record<string, string> | undefined): Record<string, string> => ({
+  "Eventi personali": LOGO_EVENTI_PERSONALI,
+  ...Object.fromEntries(Object.entries(loghi ?? {}).filter(([, v]) => typeof v === "string" && v).map(([nome, valore]) => [nome, urlLogo(valore)])),
+});
+
 /** Il colore mescolato alla superficie del tema, senza trasparenza: la griglia non traspare dall'evento. */
 export const tintaOpaca = (colore: string, percento: number, base = "var(--card)") =>
   `color-mix(in srgb, ${colore} ${percento}%, ${base})`;

@@ -1,10 +1,11 @@
 "use client";
 
 import { CheckIcon, SearchIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { filtraAziende, iniziali, salute, urlLogo } from "@/lib/oe/logic";
+import { filtraAziende, iniziali, mappaLoghi, salute } from "@/lib/oe/logic";
 import { cn } from "@/lib/utils";
+import { ImgLogo } from "./ImgLogo";
 import { useOe } from "./OeProvider";
 
 const COLORE_PALLINO: Record<string, string> = {
@@ -17,7 +18,7 @@ const COLORE_PALLINO: Record<string, string> = {
 /** "I miei calendari": una voce per azienda, con interruttore, "only" e il pallino di salute. */
 export function Legenda({ onGestisci }: { onGestisci: () => void }) {
   const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo, pers } = useOe();
-  const loghi = pers.interfaccia.loghi ?? {};
+  const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
   const sigle = pers.interfaccia.sigle ?? {};
   const nomiGruppi = Object.keys(gruppiCalendari);
   const [ricerca, setRicerca] = useState("");
@@ -80,6 +81,12 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
         {visibili.map((g) => {
           const attivo = g.on > 0;
           const s = salute(statoFonti, g, pallinoInAttesa);
+          const logo = loghi[g.azienda];
+          const sigla = (
+            <span className="grid size-full place-items-center text-[9.5px] font-extrabold leading-none text-white" style={{ background: g.color }}>
+              {sigle[g.azienda] || iniziali(g.azienda)}
+            </span>
+          );
           return (
             <div key={g.azienda} className={cn("acct group/acct flex items-center rounded-md hover:bg-accent", attivo ? "on" : "off")} data-azienda={g.azienda} style={{ ["--c" as string]: g.color }}>
               <button
@@ -96,14 +103,8 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
                 </span>
                 {/* il logo dell'azienda (personalizzazione.json, interfaccia.loghi), o le sue iniziali nel suo colore: si riconosce a colpo d'occhio */}
                 <span className="acct-logo grid size-[22px] flex-none place-items-center overflow-hidden rounded-md bg-white ring-1 ring-black/10">
-                  {loghi[g.azienda] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={urlLogo(loghi[g.azienda])} alt="" className="size-full object-contain p-[2px]" />
-                  ) : (
-                    <span className="grid size-full place-items-center text-[9.5px] font-extrabold leading-none text-white" style={{ background: g.color }}>
-                      {sigle[g.azienda] || iniziali(g.azienda)}
-                    </span>
-                  )}
+                  {/* se il logo non si carica restano le iniziali, mai l'icona dell'immagine rotta */}
+                  {logo ? <ImgLogo key={logo} src={logo} className="size-full object-contain p-[2px]" alternativa={sigla} /> : sigla}
                 </span>
                 <span className="acct-name truncate">{g.azienda}</span>
               </button>

@@ -38,6 +38,8 @@ type Valori = {
   gruppoPubblico: string;
   pronta: boolean;
   pers: Personalizzazione;
+  /** Rilegge la personalizzazione (i loghi scelti dalla finestra Calendari ci stanno sopra). */
+  ricaricaPers: () => Promise<void>;
   config: Config;
   vistaIniziale: string | null;
   // calendari e legenda
@@ -145,6 +147,29 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const ricaricaPers = useCallback(async () => {
+    try {
+      setPers(await api("get_personalizzazione"));
+    } catch {
+      // resta quella di prima
+    }
+  }, []);
+
+  // I loghi scritti come indirizzo in personalizzazione.json il server li scarica in secondo piano: finché mancano si rilegge ogni 6 secondi, al più 5 volte
+  const riletture = useRef(0);
+  useEffect(() => {
+    if (!pers.interfaccia.loghi_in_corso?.length) {
+      riletture.current = 0;
+      return;
+    }
+    if (riletture.current >= 5) return;
+    const t = setTimeout(() => {
+      riletture.current++;
+      void ricaricaPers();
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [pers, ricaricaPers]);
 
   // ---- sincronizzazione: contatore e orologio dell'etichetta ---------------------------
   const syncInizio = useCallback(() => setInCorso((n) => n + 1), []);
@@ -378,7 +403,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
 
   const valori: Valori = {
     pubblico: inPubblico, gruppoPubblico,
-    pronta, pers, config, vistaIniziale,
+    pronta, pers, ricaricaPers, config, vistaIniziale,
     calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, soloAzienda,
     gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi,
     periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync,

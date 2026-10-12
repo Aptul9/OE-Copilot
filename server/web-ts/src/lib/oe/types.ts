@@ -86,10 +86,15 @@ export type SchedaTimesheet = {
   sotto?: string;
 };
 
+/** Un logo scelto dalla finestra Calendari (lib/core/loghi.ts): l'indirizzo da cui viene (se non è un file caricato) e quando è stato letto. */
+export type VoceLogo = { url: string | null; tipo: "url" | "file"; aggiornato: number };
+
 export type Personalizzazione = {
   interfaccia: {
     schede_timesheet?: SchedaTimesheet[];
     loghi?: Record<string, string>;
+    /** I nomi i cui loghi, scritti come indirizzo in personalizzazione.json, il server sta ancora scaricando: la pagina li rilegge dopo qualche secondo. */
+    loghi_in_corso?: string[];
     sigle?: Record<string, string>;
     calendari_secondari?: string[];
     calendari_senza_teams?: string[];
@@ -151,6 +156,12 @@ export type Metodi = {
   revoke_condivisione: [[string], CondivisioneEsito];
   delete_condivisione: [[string], CondivisioneEsito];
   rotate_condivisione: [[string], CondivisioneEsito];
+  get_loghi: [[], { loghi: Record<string, VoceLogo> }];
+  preview_logo: [[string], Esito & { anteprima?: string; tipo?: string; byte?: number }];
+  set_logo: [[string, string], Esito & { logo?: VoceLogo }];
+  upload_logo: [[string, string], Esito & { logo?: VoceLogo }];
+  refresh_logo: [[string], Esito & { logo?: VoceLogo }];
+  remove_logo: [[string], Esito];
 };
 
 export type NomeMetodo = keyof Metodi;

@@ -7,16 +7,19 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/oe/api";
 import { aggiungiGruppo, eliminaGruppo, GRUPPO_NOME_MAX, impostaAppartenenza, rinominaGruppo } from "@/lib/oe/logic";
-import type { CalendariRisposta, Calendario } from "@/lib/oe/types";
+import type { CalendariRisposta, Calendario, VoceLogo } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
+import { BottoneLogo, PannelloLogo } from "./ControlloLogo";
 import { useOe } from "./OeProvider";
 
 type Props = { aperto: boolean; onChiudi: () => void };
 
 /** "Calendari da mostrare": un interruttore per calendario, il nome di ogni account, i calendari da link. */
 export function DialogoCalendari({ aperto, onChiudi }: Props) {
-  const { aggiornaCalendari, ricarica } = useOe();
+  const { aggiornaCalendari, ricarica, ricaricaPers } = useOe();
   const [dati, setDati] = useState<CalendariRisposta | null>(null);
+  // i loghi scelti da qui (quelli di personalizzazione.json non ci sono): nome mostrato -> indirizzo e data
+  const [loghi, setLoghi] = useState<Record<string, VoceLogo>>({});
   const [errore, setErrore] = useState("");
   const [nome, setNome] = useState("");
   const [url, setUrl] = useState("");
@@ -24,8 +27,9 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
   const [occupato, setOccupato] = useState(false);
 
   const carica = useCallback(
-    async (forza: boolean) => {
-      setDati(null);
+    async (forza: boolean, silenzioso = false) => {
+      // silenzioso: l'elenco resta com'è finché non arriva quello nuovo (dopo un cambio di nome)
+      if (!silenzioso) setDati(null);
       setErrore("");
       try {
         setDati(await api("get_calendars", forza));
@@ -36,16 +40,30 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
     [],
   );
 
+  const caricaLoghi = useCallback(async () => {
+    try {
+      setLoghi((await api("get_loghi")).loghi);
+    } catch {
+      // senza, le scelte non si vedono ma la finestra funziona
+    }
+  }, []);
+
   useEffect(() => {
     if (aperto) {
       setEsito("");
       void carica(false);
+      void caricaLoghi();
     }
-  }, [aperto, carica]);
+  }, [aperto, carica, caricaLoghi]);
 
   const dopo = async () => {
     await aggiornaCalendari();
     ricarica();
+  };
+
+  // una scelta di logo (o un cambio di nome, che sposta il logo) cambia la mappa che la pagina usa: la si rilegge
+  const loghiCambiati = async () => {
+    await Promise.all([ricaricaPers(), caricaLoghi()]);
   };
 
   const aggiungi = async () => {
@@ -103,7 +121,7 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
           )}
           {gruppi.map(({ account, cals }) => (
             <div key={account} className="mb-2">
-              <GruppoAccount cals={cals} account={account} onModificato={dopo} onRicarica={() => carica(false)} />
+              <GruppoAccount cals={cals} account={account} onModificato={dopo} onRicarica={() => carica(false)} onRinominato={() => carica(false, true)} loghi={loghi} onLoghiCambiati={loghiCambiati} />
             </div>
           ))}
         </div>
@@ -145,10 +163,21 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
   );
 }
 
-function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Calendario[]; account: string; onModificato: () => Promise<void>; onRicarica: () => Promise<void> }) {
+type PropsAccount = {
+  cals: Calendario[];
+  account: string;
+  onModificato: () => Promise<void>;
+  onRicarica: () => Promise<void>;
+  onRinominato: () => Promise<void>;
+  loghi: Record<string, VoceLogo>;
+  onLoghiCambiati: () => Promise<void>;
+};
+
+function GruppoAccount({ cals, account, onModificato, onRicarica, onRinominato, loghi, onLoghiCambiati }: PropsAccount) {
   const primo = cals[0];
   const alias = primo.alias || primo.account;
   const [valore, setValore] = useState(alias);
+  const [logoAperto, setLogoAperto] = useState(false);
   useEffect(() => setValore(alias), [alias]);
   const { gruppiCalendari, salvaGruppi } = useOe();
   const nomiGruppi = Object.keys(gruppiCalendari);
@@ -156,13 +185,19 @@ function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Cale
     if (valore === alias) return;
     await api("set_account_alias", account, valore);
     await onModificato();
+    // il server sposta anche il logo sul nuovo nome: si rilegge l'elenco della finestra (che porta il nome) e le scelte
+    await Promise.all([onRinominato(), onLoghiCambiati()]);
   };
+  const bottoneLogo = <BottoneLogo nome={alias} colore={primo.color} aperto={logoAperto} onClick={() => setLogoAperto((a) => !a)} />;
   return (
     <>
       <div className="cal-group flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
         <span className="size-2.5 flex-none rounded-full" style={{ background: primo.color }} />
         {primo.is_ics ? (
-          <span className="cal-group-name font-semibold">{alias}</span>
+          <>
+            <span className="cal-group-name font-semibold">{alias}</span>
+            {bottoneLogo}
+          </>
         ) : (
           <>
             <Input
@@ -175,7 +210,9 @@ function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Cale
               onBlur={() => void salva()}
               onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
-            <span className="cal-group-mail min-w-0 flex-1 truncate text-xs text-muted-foreground" title={primo.account}>
+            {bottoneLogo}
+            {/* su uno schermo stretto l'indirizzo va a capo invece di ridursi a una lettera */}
+            <span className="cal-group-mail min-w-[7rem] flex-1 truncate text-xs text-muted-foreground" title={primo.account}>
               {primo.account}
             </span>
           </>
@@ -205,6 +242,7 @@ function GruppoAccount({ cals, account, onModificato, onRicarica }: { cals: Cale
           </span>
         )}
       </div>
+      {logoAperto && <PannelloLogo key={alias} nome={alias} colore={primo.color} voce={loghi[alias]} onCambiato={onLoghiCambiati} />}
       {cals.map((c) => (
         <RigaCalendario key={c.id} c={c} onModificato={onModificato} onRicarica={onRicarica} />
       ))}

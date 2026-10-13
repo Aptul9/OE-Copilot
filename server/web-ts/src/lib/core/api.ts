@@ -219,6 +219,12 @@ export const apiTs = {
       const dopo = aliasPerAccount(cfg, [conto])[conto];
       rinominaNeiGruppi(cfg, prima, dopo);
       rinominaLogo(prima, dopo);
+      // la scelta di "secondario" segue il nome, come i gruppi e il logo; se il nome nuovo ne ha già una vale quella
+      const sec = isDict(cfg.secondari_scelti) ? (cfg.secondari_scelti as Record<string, boolean>) : null;
+      if (prima !== dopo && sec && prima in sec) {
+        if (!(dopo in sec)) sec[dopo] = sec[prima];
+        delete sec[prima];
+      }
     });
     pulisciLoghi();
     return { ok: true };

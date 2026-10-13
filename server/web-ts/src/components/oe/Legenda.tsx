@@ -17,13 +17,13 @@ const COLORE_PALLINO: Record<string, string> = {
 
 /** "I miei calendari": una voce per azienda, con interruttore, "only" e il pallino di salute. */
 export function Legenda({ onGestisci }: { onGestisci: () => void }) {
-  const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo, pers } = useOe();
+  const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo, pers, secondari } = useOe();
   const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
   const sigle = pers.interfaccia.sigle ?? {};
   const nomiGruppi = Object.keys(gruppiCalendari);
   const [ricerca, setRicerca] = useState("");
   const visibili = filtraAziende(gruppi, ricerca);
-  const [principali, altri] = separaSecondari(visibili, pers.interfaccia.calendari_secondari ?? []);
+  const [principali, altri] = separaSecondari(visibili, secondari);
   const riga = (g: GruppoAzienda) => {
     const attivo = g.on > 0;
     const s = salute(statoFonti, g, pallinoInAttesa);

@@ -72,6 +72,8 @@ export type Config = {
   zoom_calendario?: number;
   vista?: string;
   gruppi_calendari?: GruppiCalendari;
+  /** Calendari secondari scelti dalla finestra Calendari: nome -> true (secondario) o false (principale, anche se il file dice il contrario). */
+  secondari_scelti?: Record<string, boolean>;
   reminder_poll_seconds?: number;
   reminder_minutes_before?: number[];
   [chiave: string]: unknown;

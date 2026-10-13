@@ -14,6 +14,7 @@ import {
   periodoLargo,
   raccogliFestivi,
   raggruppaAziende,
+  secondariEffettivi,
   testoDatiVecchi,
   vicinoAlBordo,
   type CacheLarga,
@@ -55,6 +56,8 @@ type Valori = {
   gruppiAccesi: string[];
   soloGruppo: (gruppo: string) => Promise<void>;
   salvaGruppi: (gruppi: GruppiCalendari) => Promise<void>;
+  secondari: ReadonlySet<string>;
+  impostaSecondario: (nome: string, secondario: boolean) => Promise<void>;
   // eventi
   periodo: Periodo | null;
   impostaPeriodo: (p: Periodo) => void;
@@ -347,7 +350,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     ricarica();
   }, [ricarica]);
 
-  const secondari = useMemo(() => new Set(pers.interfaccia.calendari_secondari ?? []), [pers]);
+  const secondari = useMemo(() => secondariEffettivi(pers.interfaccia.calendari_secondari, config.secondari_scelti), [pers, config.secondari_scelti]);
   const eventiGriglia = useMemo(() => eventiPerGriglia(eventi, { secondari, ricerca }), [eventi, secondari, ricerca]);
   const infoGiorni = useMemo(() => raccogliFestivi(eventi), [eventi]);
 
@@ -366,6 +369,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   const gruppiCalendari = useMemo(() => leggiGruppi(config.gruppi_calendari), [config.gruppi_calendari]);
   const gruppiAccesi = useMemo(() => gruppiAttivi(gruppiCalendari, gruppi), [gruppiCalendari, gruppi]);
   const salvaGruppi = useCallback((g: GruppiCalendari) => salvaConfig({ gruppi_calendari: g }), [salvaConfig]);
+  const impostaSecondario = useCallback((nome: string, on: boolean) => salvaConfig({ secondari_scelti: { ...config.secondari_scelti, [nome]: on } }), [salvaConfig, config.secondari_scelti]);
   const soloGruppo = useCallback(
     async (nome: string) => {
       await api("mostra_solo_gruppo", nome);
@@ -405,7 +409,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     pubblico: inPubblico, gruppoPubblico,
     pronta, pers, ricaricaPers, config, vistaIniziale,
     calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, soloAzienda,
-    gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi,
+    gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi, secondari, impostaSecondario,
     periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync,
     avviso, datiVecchi, sincronizzando: inCorso > 0, etichetta: etichettaSync(ultimaSync, adesso, inCorso),
     salvaConfig, zoom, cambiaZoom, intervalloSync, impostaIntervallo,

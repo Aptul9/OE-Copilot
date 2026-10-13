@@ -34,7 +34,7 @@ calendario prende il nome dal dominio della sua casella.
 | `account_nascosti` | Caselle da non mostrare mai |
 | `mostra_tutto_il_giorno` | `true` mostra gli eventi di un giorno intero delle caselle (per esempio i "Home" di Google Calendar); senza la voce non si mostrano. Le festività non cambiano |
 | `aziende_inoltrate` | Aziende le cui riunioni arrivano copiate in un'altra casella (vedi sotto) |
-| `interfaccia` | Sigle e loghi, calendari secondari (sbiaditi), calendari senza "Apri in Teams", schede Timesheet |
+| `interfaccia` | Sigle e loghi, calendari secondari (sotto *Altri calendari*, sbiaditi; si scelgono anche da *Gestisci calendari*), calendari senza "Apri in Teams", schede Timesheet |
 
 I loghi si indicano come `"logos/nome.png"` (file in `ui-dati/logos/`) o come indirizzo intero (`"https://..."`, scaricato dal server: GUIDA.md, 4.7); l'icona
 degli *Eventi personali* (`personale.png`) la porta l'immagine del gateway. Il gateway legge i loghi da disco e rilegge

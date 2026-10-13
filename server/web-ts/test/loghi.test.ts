@@ -465,6 +465,14 @@ describe("il cambio di nome", () => {
     expect(Object.keys(leggiVoci())).toEqual(["Alfa Italia"]);
   });
 
+  it("segue anche la scelta di secondario; se il nome nuovo ne ha già una vale quella", async () => {
+    await chiama("save_config", [{ secondari_scelti: { Alfa: true, Beta: false } }]);
+    await chiama("set_account_alias", ["mario@alfa.example", "Alfa Italia"]);
+    expect(loadConfig().secondari_scelti).toEqual({ "Alfa Italia": true, Beta: false });
+    await chiama("set_account_alias", ["luigi@beta.example", "Alfa Italia"]);
+    expect(loadConfig().secondari_scelti).toEqual({ "Alfa Italia": true });
+  });
+
   it("un nome vuoto riporta quello automatico, e il logo lo segue", async () => {
     await chiama("set_account_alias", ["mario@alfa.example", "Alfa Italia"]);
     await impostaLogo("Alfa Italia", s.url("/a.png"));

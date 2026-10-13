@@ -125,9 +125,18 @@ export function filtraAziende(gruppi: GruppoAzienda[], ricerca: string): GruppoA
 }
 
 /** Le voci della barra divise in (principali, secondarie): le secondarie sono quelle di `interfaccia.calendari_secondari`, ognuna nel suo ordine. */
-export function separaSecondari(gruppi: GruppoAzienda[], secondari: readonly string[]): [GruppoAzienda[], GruppoAzienda[]] {
-  const sec = new Set(secondari);
-  return [gruppi.filter((g) => !sec.has(g.azienda)), gruppi.filter((g) => sec.has(g.azienda))];
+export function separaSecondari(gruppi: GruppoAzienda[], secondari: ReadonlySet<string>): [GruppoAzienda[], GruppoAzienda[]] {
+  return [gruppi.filter((g) => !secondari.has(g.azienda)), gruppi.filter((g) => secondari.has(g.azienda))];
+}
+
+/** I calendari secondari: quelli di personalizzazione.json, con sopra le scelte della finestra Calendari (true li mette, false li toglie). */
+export function secondariEffettivi(delFile: readonly string[] | undefined, scelti: Record<string, boolean> | undefined): Set<string> {
+  const s = new Set(delFile ?? []);
+  for (const [nome, on] of Object.entries(scelti ?? {})) {
+    if (on) s.add(nome);
+    else s.delete(nome);
+  }
+  return s;
 }
 
 /** Una voce per azienda mostrata, non per casella: la stessa azienda può avere calendari in posti diversi. */

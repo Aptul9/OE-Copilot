@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusIcon, RotateCwIcon, Trash2Icon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -91,12 +91,22 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
     }
   };
 
-  const gruppi: { account: string; cals: Calendario[] }[] = [];
+  // un blocco per nome mostrato: gli account uniti sotto lo stesso nome stanno insieme
+  const blocchi: { alias: string; conti: { account: string; cals: Calendario[] }[] }[] = [];
   for (const c of dati?.calendars ?? []) {
-    const ultimo = gruppi[gruppi.length - 1];
-    if (ultimo && ultimo.account === c.account) ultimo.cals.push(c);
-    else gruppi.push({ account: c.account, cals: [c] });
+    const alias = c.alias || c.account;
+    let b = blocchi.find((x) => x.alias === alias);
+    if (!b) blocchi.push((b = { alias, conti: [] }));
+    const conto = b.conti.find((x) => x.account === c.account);
+    if (conto) conto.cals.push(c);
+    else b.conti.push({ account: c.account, cals: [c] });
   }
+  const accountUnibili = blocchi.flatMap((b) => b.conti.filter((x) => !x.cals[0].is_ics).map((x) => ({ account: x.account, alias: b.alias })));
+  // un cambio di nome sposta anche il logo e i gruppi: si rilegge l'elenco della finestra e le scelte
+  const dopoRinomina = async () => {
+    await dopo();
+    await Promise.all([carica(false, true), loghiCambiati()]);
+  };
 
   return (
     <Dialog open={aperto} onOpenChange={(o) => !o && onChiudi()}>
@@ -109,6 +119,7 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
         </DialogHeader>
 
         <GestioneGruppi />
+        <UnisciAccount account={accountUnibili} onFatto={dopoRinomina} />
 
         <div id="cal-list" className="flex flex-col gap-0.5 text-sm">
           {!dati && !errore && (
@@ -119,9 +130,9 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
           {dati && !dati.error && dati.calendars.length === 0 && (
             <p className="text-muted-foreground">Il server dei calendari non ha caselle da mostrare.</p>
           )}
-          {gruppi.map(({ account, cals }) => (
-            <div key={account} className="mb-2">
-              <GruppoAccount cals={cals} account={account} onModificato={dopo} onRicarica={() => carica(false)} onRinominato={() => carica(false, true)} loghi={loghi} onLoghiCambiati={loghiCambiati} />
+          {blocchi.map(({ alias, conti }) => (
+            <div key={alias} className="mb-2">
+              <BloccoAzienda alias={alias} conti={conti} onModificato={dopo} onRicarica={() => carica(false)} onRinominato={dopoRinomina} loghi={loghi} onLoghiCambiati={loghiCambiati} />
             </div>
           ))}
         </div>
@@ -163,9 +174,9 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
   );
 }
 
-type PropsAccount = {
-  cals: Calendario[];
-  account: string;
+type PropsBlocco = {
+  alias: string;
+  conti: { account: string; cals: Calendario[] }[];
   onModificato: () => Promise<void>;
   onRicarica: () => Promise<void>;
   onRinominato: () => Promise<void>;
@@ -173,19 +184,26 @@ type PropsAccount = {
   onLoghiCambiati: () => Promise<void>;
 };
 
-function GruppoAccount({ cals, account, onModificato, onRicarica, onRinominato, loghi, onLoghiCambiati }: PropsAccount) {
-  const primo = cals[0];
-  const alias = primo.alias || primo.account;
+function BloccoAzienda({ alias, conti, onModificato, onRicarica, onRinominato, loghi, onLoghiCambiati }: PropsBlocco) {
+  const primo = conti[0].cals[0];
+  const unito = conti.length > 1;
   const [valore, setValore] = useState(alias);
   const [logoAperto, setLogoAperto] = useState(false);
   useEffect(() => setValore(alias), [alias]);
-  const { gruppiCalendari, salvaGruppi } = useOe();
+  const { gruppiCalendari, salvaGruppi, secondari, impostaSecondario } = useOe();
   const nomiGruppi = Object.keys(gruppiCalendari);
+  const secondario = secondari.has(alias);
   const salva = async () => {
     if (valore === alias) return;
-    await api("set_account_alias", account, valore);
+    for (const { account } of conti) await api("set_account_alias", account, valore);
     await onModificato();
     // il server sposta anche il logo sul nuovo nome: si rilegge l'elenco della finestra (che porta il nome) e le scelte
+    await Promise.all([onRinominato(), onLoghiCambiati()]);
+  };
+  // l'account esce dal nome comune col suo indirizzo come nome, che si cambia subito dopo
+  const separa = async (account: string) => {
+    await api("set_account_alias", account, account);
+    await onModificato();
     await Promise.all([onRinominato(), onLoghiCambiati()]);
   };
   const bottoneLogo = <BottoneLogo nome={alias} colore={primo.color} aperto={logoAperto} onClick={() => setLogoAperto((a) => !a)} />;
@@ -194,29 +212,40 @@ function GruppoAccount({ cals, account, onModificato, onRicarica, onRinominato, 
       <div className="cal-group flex flex-wrap items-center gap-x-2 gap-y-1 py-1">
         <span className="size-2.5 flex-none rounded-full" style={{ background: primo.color }} />
         {primo.is_ics ? (
-          <>
-            <span className="cal-group-name font-semibold">{alias}</span>
-            {bottoneLogo}
-          </>
+          <span className="cal-group-name font-semibold">{alias}</span>
         ) : (
-          <>
-            <Input
-              className="alias-input h-8 max-w-[220px] font-semibold"
-              value={valore}
-              data-account={account}
-              title="Come vuoi chiamare questo account"
-              spellCheck={false}
-              onChange={(e) => setValore(e.target.value)}
-              onBlur={() => void salva()}
-              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            />
-            {bottoneLogo}
-            {/* su uno schermo stretto l'indirizzo va a capo invece di ridursi a una lettera */}
-            <span className="cal-group-mail min-w-[7rem] flex-1 truncate text-xs text-muted-foreground" title={primo.account}>
-              {primo.account}
-            </span>
-          </>
+          <Input
+            className="alias-input h-8 max-w-[220px] font-semibold"
+            value={valore}
+            data-account={conti[0].account}
+            title={unito ? "Come vuoi chiamare questi account" : "Come vuoi chiamare questo account"}
+            spellCheck={false}
+            onChange={(e) => setValore(e.target.value)}
+            onBlur={() => void salva()}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          />
         )}
+        {bottoneLogo}
+        <button
+          type="button"
+          data-secondario={alias}
+          aria-pressed={secondario}
+          title={secondario ? `${alias} sta sotto "Altri calendari": clic per riportarlo fra i principali` : `Metti ${alias} sotto "Altri calendari", con gli eventi più tenui`}
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+            secondario ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background hover:text-foreground",
+          )}
+          onClick={() => void impostaSecondario(alias, !secondario)}
+        >
+          Secondario
+        </button>
+        {/* su uno schermo stretto l'indirizzo va a capo invece di ridursi a una lettera */}
+        {!primo.is_ics && !unito && (
+          <span className="cal-group-mail min-w-[7rem] flex-1 truncate text-xs text-muted-foreground" title={primo.account}>
+            {primo.account}
+          </span>
+        )}
+        {unito && <span className="min-w-[7rem] flex-1 text-xs text-muted-foreground">{conti.length} account uniti</span>}
         {nomiGruppi.length > 0 && (
           <span className="ml-auto flex flex-wrap items-center gap-1" role="group" aria-label={`Gruppi di ${alias}`}>
             {nomiGruppi.map((g) => {
@@ -243,8 +272,28 @@ function GruppoAccount({ cals, account, onModificato, onRicarica, onRinominato, 
         )}
       </div>
       {logoAperto && <PannelloLogo key={alias} nome={alias} colore={primo.color} voce={loghi[alias]} onCambiato={onLoghiCambiati} />}
-      {cals.map((c) => (
-        <RigaCalendario key={c.id} c={c} onModificato={onModificato} onRicarica={onRicarica} />
+      {conti.map(({ account, cals }) => (
+        <Fragment key={account}>
+          {unito && (
+            <div className="flex items-center gap-2 pl-5 pt-1 text-xs text-muted-foreground">
+              <span className="min-w-0 flex-1 truncate" title={account}>
+                {account}
+              </span>
+              <button
+                type="button"
+                data-separa={account}
+                title={`Separa ${account} da ${alias}`}
+                className="rounded px-1.5 py-0.5 hover:bg-background hover:text-foreground"
+                onClick={() => void separa(account)}
+              >
+                Separa
+              </button>
+            </div>
+          )}
+          {cals.map((c) => (
+            <RigaCalendario key={c.id} c={c} onModificato={onModificato} onRicarica={onRicarica} />
+          ))}
+        </Fragment>
       ))}
     </>
   );
@@ -287,6 +336,54 @@ function RigaCalendario({ c, onModificato, onRicarica }: { c: Calendario; onModi
         </button>
       )}
     </label>
+  );
+}
+
+/** Unisce due o più account sotto un nome solo: nella barra laterale sono una voce sola, con un logo e un interruttore. */
+function UnisciAccount({ account, onFatto }: { account: { account: string; alias: string }[]; onFatto: () => Promise<void> }) {
+  const [nome, setNome] = useState("");
+  const [scelti, setScelti] = useState<string[]>([]);
+  const [errore, setErrore] = useState("");
+  const unisci = async () => {
+    if (!nome.trim()) return setErrore("Scrivi il nome con cui compaiono.");
+    if (!scelti.length) return setErrore("Scegli almeno un account.");
+    setErrore("");
+    for (const a of scelti) await api("set_account_alias", a, nome.trim());
+    setNome("");
+    setScelti([]);
+    await onFatto();
+  };
+  return (
+    <details id="unisci-account" className="rounded-lg border p-3 text-sm">
+      <summary className="cursor-pointer font-medium">Unisci account sotto un nome</summary>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Gli account uniti compaiono come un calendario solo nella barra laterale: un nome, un logo, un interruttore. Per aggiungerne uno a un nome che c&apos;è già, scrivi quel nome.
+      </p>
+      <ul className="mt-2 flex flex-col gap-0.5">
+        {account.map((a) => (
+          <li key={a.account}>
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-md px-1 py-1 hover:bg-accent">
+              <input
+                type="checkbox"
+                className="size-4 accent-[var(--primary)]"
+                data-unisci={a.account}
+                checked={scelti.includes(a.account)}
+                onChange={(e) => setScelti((s) => (e.target.checked ? [...s, a.account] : s.filter((x) => x !== a.account)))}
+              />
+              <span className="min-w-0 flex-1 truncate">{a.account}</span>
+              <span className="text-xs text-muted-foreground">{a.alias}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center gap-2">
+        <Input id="unisci-nome" className="h-8 max-w-[220px]" value={nome} placeholder="Nome, es. Personale" onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void unisci()} />
+        <Button id="unisci-crea" variant="outline" size="sm" onClick={() => void unisci()}>
+          Unisci
+        </Button>
+      </div>
+      {errore && <p className="mt-1 text-xs text-destructive">{errore}</p>}
+    </details>
   );
 }
 

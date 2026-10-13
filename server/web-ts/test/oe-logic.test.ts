@@ -9,6 +9,7 @@ import {
   etichettaSync,
   eventiPerGriglia,
   filtraAziende,
+  secondariEffettivi,
   separaSecondari,
   fmtRange,
   giorniTra,
@@ -275,12 +276,20 @@ describe("separaSecondari", () => {
   const az = (azienda: string) => ({ azienda, color: "#000", caselle: [], tot: 1, on: 1, rotto: false, avviso: false, motivi: [] });
   const tutte = [az("Serco"), az("Personale"), az("Eventi personali"), az("Festività")];
   it("le secondarie vanno in coda al loro gruppo e ognuna tiene il suo ordine", () => {
-    const [principali, altri] = separaSecondari(tutte, ["Festività", "Eventi personali"]);
+    const [principali, altri] = separaSecondari(tutte, new Set(["Festività", "Eventi personali"]));
     expect(principali.map((g) => g.azienda)).toEqual(["Serco", "Personale"]);
     expect(altri.map((g) => g.azienda)).toEqual(["Eventi personali", "Festività"]);
   });
   it("senza secondarie, o con nomi che non ci sono, tutte restano principali", () => {
-    expect(separaSecondari(tutte, [])).toEqual([tutte, []]);
-    expect(separaSecondari(tutte, ["Altro"])).toEqual([tutte, []]);
+    expect(separaSecondari(tutte, new Set())).toEqual([tutte, []]);
+    expect(separaSecondari(tutte, new Set(["Altro"]))).toEqual([tutte, []]);
   });
+});
+
+describe("secondariEffettivi", () => {
+  it("senza scelte valgono quelli del file", () => expect([...secondariEffettivi(["Festività"], undefined)]).toEqual(["Festività"]));
+  it("la scelta della finestra mette e toglie, sopra il file", () => {
+    expect([...secondariEffettivi(["Festività", "Eventi personali"], { Festività: false, Personale: true })].sort()).toEqual(["Eventi personali", "Personale"]);
+  });
+  it("niente file e niente scelte: nessuno", () => expect(secondariEffettivi(undefined, undefined).size).toBe(0));
 });

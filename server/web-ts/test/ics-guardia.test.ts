@@ -582,10 +582,11 @@ describe("la copia su disco e la regola 404 e 410 restano quelle di prima", () =
     expect(s.richieste.length).toBe(prima);
   });
 
-  it("nella pagina il pallino è giallo con la copia e rosso senza, con il testo breve: l'indirizzo che non si raggiunge non lo ripete in giro", async () => {
+  it("nella pagina il pallino è giallo con la copia e rosso senza, e il testo non ripete l'indirizzo", async () => {
+    // le festività hanno la copia fresca (nessuna rete); quella del calendario è di un'ora fa e il suo indirizzo ora non si raggiunge
     salvaCache(FESTIVITA_ID, COPIA_FESTE);
     modificaConfig((c) => void (c.ics_calendars = [{ id: ID, name: "Amico", url: "http://10.1.2.3/c.ics" }]));
-    invecchia();
+    fs.utimesSync(percorsoCache(ID), new Date(Date.now() - 3_600_000), new Date(Date.now() - 3_600_000));
     const da = parseBound("2026-10-12T00:00:00");
     const a = parseBound("2026-10-19T00:00:00");
     const [, errori] = await eventiFeed(loadConfig(), da, a);
@@ -608,10 +609,11 @@ describe("i collegamenti verso l'esterno: gli stessi posti dei loghi", () => {
       "/lento.ics": (_, res) => {
         aperte++;
         massimo = Math.max(massimo, aperte);
+        // tanto da far arrivare tutti e 4 i primi collegamenti prima che il primo finisca, anche su una macchina lenta
         setTimeout(() => {
           aperte--;
           res.writeHead(200, { "Content-Type": TIPO_ICS }).end(ICS());
-        }, 40);
+        }, 150);
       },
     });
     try {

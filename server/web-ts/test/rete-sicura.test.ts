@@ -14,6 +14,7 @@ import {
   LIMITE_ACCETTATO,
   LIMITE_LETTURA,
   MAX_REINDIRIZZAMENTI,
+  type Opzioni,
   portaAmmessa,
   scaricaSicuro,
   TESTI,
@@ -213,6 +214,7 @@ describe("lo scarico", () => {
       "/vuoto": risposta("", "image/png", 204),
       "/e404": risposta("non c'è", "text/plain", 404),
       "/e500": risposta("guasto", "text/plain", 500),
+      "/a-404": rimanda("/e404"),
       "/r1": rimanda("/r2"),
       "/r2": rimanda("/r3"),
       "/r3": rimanda("/png"),
@@ -307,7 +309,7 @@ describe("lo scarico", () => {
       }
     });
 
-    it("il modulo non legge l'ambiente, e l'unico punto che scarica non passa altro che il punto di prova", () => {
+    it("il modulo non legge l'ambiente, e i soli due punti che scaricano (loghi, calendari da link) non passano altro che il punto di prova", () => {
       expect(fs.readFileSync(path.join(SORGENTI, "lib/core/rete-sicura.ts"), "utf-8")).not.toMatch(/process\.env/);
       const chiamate: string[] = [];
       const visita = (cartella: string) => {
@@ -320,7 +322,10 @@ describe("lo scarico", () => {
         }
       };
       visita(SORGENTI);
-      expect(chiamate).toEqual(["lib/core/loghi.ts: const r = await scaricaSicuro(url, reteDiProva);"]);
+      expect(chiamate.sort()).toEqual([
+        "lib/core/ics.ts: r = await posti().esegui(() => scaricaSicuro(url, reteDiProva(), OPZIONI_ICS));",
+        "lib/core/loghi.ts: const r = await scaricaSicuro(url, reteDiProva());",
+      ]);
     });
 
     it("un nome che porta a un indirizzo non pubblico (localhost, o un nome che risolve a 127.0.0.1) si rifiuta prima di collegarsi", async () => {
@@ -511,6 +516,65 @@ describe("lo scarico", () => {
       it("il limite per un chiamante che ne accetta di più (la pagina da cui prendere un'icona) arriva a 1 MB", async () => {
         const r = await scaricaSicuro(s.url("/a-pezzi"), locale(), LIMITE_LETTURA);
         expect(r.dati.length).toBe(11 * 64 * 1024);
+      });
+    });
+
+    describe("Opzioni: quello che cambia per chi non scarica loghi (il calendario da link)", () => {
+      const DUE_MB = 2 * 1024 * 1024;
+
+      it("senza opzioni valgono quelli dei loghi (8 secondi, 1 MB letto, 512 KB accettati, il testo delle immagini), anche con un oggetto vuoto", async () => {
+        expect(ATTESA_MS).toBe(8000);
+        expect(LIMITE_LETTURA).toBe(1024 * 1024);
+        expect(LIMITE_ACCETTATO).toBe(512 * 1024);
+        expect((await rifiutato(scaricaSicuro(s.url("/grande"), locale()))).message).toBe(TESTI.troppoGrande);
+        expect((await rifiutato(scaricaSicuro(s.url("/grande"), locale(), {}))).message).toBe(TESTI.troppoGrande);
+        expect((await rifiutato(scaricaSicuro(s.url("/due-mega"), locale(), {}))).motivo).toBe("troppo_grande");
+      });
+
+      it("il limite letto e quello accettato si cambiano, e con loro il testo dell'errore", async () => {
+        const r = await scaricaSicuro(s.url("/due-mega"), locale(), { limiteLettura: DUE_MB, limiteAccettato: DUE_MB });
+        expect(r.dati.length).toBe(DUE_MB);
+        // letto fin dove si dice, accettato un byte meno
+        const e = await rifiutato(scaricaSicuro(s.url("/due-mega"), locale(), { limiteLettura: DUE_MB, limiteAccettato: DUE_MB - 1, testoTroppoGrande: "Il calendario è troppo grande" }));
+        expect(e.motivo).toBe("troppo_grande");
+        expect(e.message).toBe("Il calendario è troppo grande");
+        // dichiarato oltre quello che si legge: non si legge niente
+        expect((await rifiutato(scaricaSicuro(s.url("/due-mega"), locale(), { limiteLettura: DUE_MB - 1, limiteAccettato: DUE_MB }))).message).toBe(TESTI.troppoGrande);
+      });
+
+      it("Accept e User-Agent si cambiano; Accept-Encoding resta identity e nessuna credenziale parte", async () => {
+        await scaricaSicuro(s.url("/echo"), locale(), { accept: "text/calendar", userAgent: "Prova/2.0" });
+        expect(intestazioni.accept).toBe("text/calendar");
+        expect(intestazioni["user-agent"]).toBe("Prova/2.0");
+        expect(intestazioni["accept-encoding"]).toBe("identity");
+        for (const h of ["cookie", "authorization", "referer", "origin"]) expect(intestazioni[h], h).toBeUndefined();
+      });
+
+      it("il tempo totale si cambia; quello di una prova, se c'è, vince", async () => {
+        const t0 = Date.now();
+        const e = await rifiutato(scaricaSicuro(s.url("/appeso"), locale({ attesaMs: undefined }), { attesaMs: 300 }));
+        expect(e.motivo).toBe("non_risponde");
+        expect(Date.now() - t0).toBeLessThan(2500);
+        const u0 = Date.now();
+        await rifiutato(scaricaSicuro(s.url("/appeso"), locale({ attesaMs: 300 }), { attesaMs: 60_000 }));
+        expect(Date.now() - u0).toBeLessThan(2500);
+      });
+
+      it("uno stato HTTP porta anche lo stato, la frase e l'indirizzo dell'ultima tappa; il testo per la pagina non cambia e gli altri errori non hanno il dettaglio", async () => {
+        const e = await rifiutato(scaricaSicuro(s.url("/a-404"), locale()));
+        expect(e.motivo).toBe("errore_http");
+        expect(e.message).toBe("L'indirizzo risponde con un errore (404)");
+        expect(e.http).toEqual({ stato: 404, testo: "Not Found", url: s.url("/e404") });
+        expect((await rifiutato(scaricaSicuro(s.url("/grande"), locale()))).http).toBeUndefined();
+        expect((await rifiutato(scaricaSicuro("http://10.0.0.5/x.png", locale()))).http).toBeUndefined();
+      });
+
+      it("le regole sugli indirizzi, sulle porte e sui reindirizzamenti non si cambiano con le opzioni", async () => {
+        const larghe: Opzioni = { limiteLettura: DUE_MB, limiteAccettato: DUE_MB, attesaMs: 60_000, accept: "*/*" };
+        expect((await rifiutato(scaricaSicuro("http://169.254.169.254/latest/meta-data/", undefined, larghe))).motivo).toBe("non_ammesso");
+        expect((await rifiutato(scaricaSicuro("http://calendari.example.org:8080/c.ics", undefined, larghe))).motivo).toBe("non_ammesso");
+        expect((await rifiutato(scaricaSicuro(s.url("/a-metadati"), locale(), larghe))).motivo).toBe("non_ammesso");
+        expect((await rifiutato(scaricaSicuro(s.url("/q1"), locale(), larghe))).motivo).toBe("reindirizzamenti");
       });
     });
 

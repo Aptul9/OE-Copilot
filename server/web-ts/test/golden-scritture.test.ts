@@ -7,7 +7,9 @@ import { chiama, type NomeMetodoTs } from "@/lib/core/api";
 import { chiudiArchivio } from "@/lib/core/archivio";
 import { azzeraFeed } from "@/lib/core/ics";
 import { fissaOra } from "@/lib/core/orologio";
+import { impostaReteDiProva } from "@/lib/core/uscita";
 import { avviaAgente, avviaIcs, CHIAVE, fixture, leggi, normalizza, ORA_FISSA_MS, preparaDati } from "./golden-comune";
+import { PROVE_LOCALI } from "./server-prova";
 
 // La scrittura del gateway contro le risposte registrate dal servizio ui (Python): la stessa sequenza di modifiche (interruttori, gruppi,
 // alias, calendari da link, eventi personali, configurazione) sulla stessa cartella dei dati. Dopo ogni chiamata la risposta e lo stato
@@ -37,6 +39,8 @@ describe("scritture del gateway contro le risposte registrate", () => {
   };
 
   beforeAll(async () => {
+    // il server dei calendari è su 127.0.0.1: la guardia di rete-sicura.ts lo lascia raggiungere solo con il punto di prova
+    impostaReteDiProva(PROVE_LOCALI);
     ics = await avviaIcs();
     agente = await avviaAgente(stato);
     dati = preparaDati("base", ics.url);
@@ -50,6 +54,7 @@ describe("scritture del gateway contro le risposte registrate", () => {
   });
 
   afterAll(() => {
+    impostaReteDiProva(undefined);
     fissaOra(null);
     agente.server.close();
     ics.server.close();

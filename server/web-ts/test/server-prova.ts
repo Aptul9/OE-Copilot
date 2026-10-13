@@ -1,8 +1,15 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { indirizzoAmmesso, type SoloProve } from "@/lib/core/rete-sicura";
 
 // Un server HTTP di prova su 127.0.0.1, con le risposte che una prova chiede: un percorso, una risposta. Conta le richieste arrivate:
 // una richiesta che la guardia doveva fermare prima di collegarsi si riconosce dal conto che resta zero.
+
+/** Le regole di prova per raggiungere un server di prova: 127.0.0.1 e una porta qualunque; il resto (reti private, metadati) resta vietato. Per impostaReteDiProva. */
+export const PROVE_LOCALI: SoloProve = {
+  ammettiIndirizzo: (ip) => ip === "127.0.0.1" || indirizzoAmmesso(ip),
+  ammettiPorta: () => true,
+};
 
 export type Gestore = (req: http.IncomingMessage, res: http.ServerResponse) => void;
 

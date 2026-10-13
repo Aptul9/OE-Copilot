@@ -8,15 +8,32 @@ import { iso, type Naive } from "./fuso";
 import { adesso } from "./orologio";
 import { COLORE_FESTIVITA, FESTIVITA_ID, FESTIVITA_NOME, FESTIVITA_URL } from "./personalizzazione";
 import { ErroreValore, messaggio, testoPulito } from "./py";
+import { type DettaglioHttp, ErroreRete, type Opzioni, type Scaricato, scaricaSicuro } from "./rete-sicura";
 import { colorForAccount, impostaAcceso, modificaConfig, type Config } from "./stato";
+import { posti, reteDiProva, TROPPE_RICHIESTE } from "./uscita";
 
 // Calendari sottoscritti con un link ICS (era ics_feed.py, fino al commit 142e789): Google, Apple, le festività italiane. Il link è di fatto una chiave: chi ce
 // l'ha legge il calendario, quindi sta solo nella configurazione sul server. Il testo si scarica da qui, con la sua copia su disco
 // e il suo ritardo; le ricorrenze (RRULE, EXDATE, RECURRENCE-ID, fusi) le espande l'agente, la stessa libreria che legge il telefono.
+// Il link lo sceglie chi usa l'app: lo scarico passa dalla guardia di rete-sicura.ts (solo siti pubblici, come per i loghi).
 
 /** Google rigenera l'ICS ogni qualche ora: scaricarlo a ogni cambio di vista sarebbe inutile e lento. */
 export const TTL_S = 1800;
-const ATTESA_MS = 25_000;
+/** Quanto può essere grande un calendario: si legge e si accetta fino a qui. */
+export const LIMITE_ICS = 8 * 1024 * 1024;
+const ATTESA_MS = 15_000;
+/** Il Content-Type non è richiesto; se c'è, è uno di questi. Quello che decide sono i primi byte (inizioCalendario). */
+const TIPI_ICS = new Set(["text/calendar", "text/plain", "application/octet-stream"]);
+
+/** Come si scarica un calendario: i limiti del calendario, non quelli dei loghi; le regole sugli indirizzi sono quelle di sempre. */
+export const OPZIONI_ICS: Opzioni = {
+  limiteLettura: LIMITE_ICS,
+  limiteAccettato: LIMITE_ICS,
+  attesaMs: ATTESA_MS,
+  accept: "text/calendar, text/plain;q=0.9, */*;q=0.1",
+  userAgent: "CalendarHub/1.0",
+  testoTroppoGrande: `Il calendario è troppo grande (massimo ${LIMITE_ICS / 1024 / 1024} MB)`,
+};
 
 export type Feed = { id: string; name?: string; url: string; builtin?: boolean };
 
@@ -85,7 +102,7 @@ export function togliCache(id: string): void {
   fs.rmSync(percorsoCache(id), { force: true });
 }
 
-function decodifica(corpo: ArrayBuffer, tipo: string | null): string {
+function decodifica(corpo: Uint8Array, tipo: string | null): string {
   // Come requests: il charset dell'intestazione; per un text/* senza charset ISO-8859-1; altrimenti UTF-8
   const charset = /charset=["']?([\w-]+)/i.exec(tipo ?? "")?.[1] ?? (/text/i.test(tipo ?? "") ? "iso-8859-1" : "utf-8");
   try {
@@ -95,9 +112,9 @@ function decodifica(corpo: ArrayBuffer, tipo: string | null): string {
   }
 }
 
-/** Il testo con cui requests rifiuta uno stato HTTP da 400 in su (raise_for_status). */
-function erroreHttp(r: Response): string {
-  return `${r.status} ${r.status >= 500 ? "Server" : "Client"} Error: ${r.statusText} for url: ${r.url}`;
+/** Il testo con cui requests rifiuta uno stato HTTP da 400 in su (raise_for_status). L'indirizzo è quello dell'ultima tappa: ha passato i controlli, non può essere interno. */
+function erroreHttp(d: DettaglioHttp): string {
+  return `${d.stato} ${d.stato >= 500 ? "Server" : "Client"} Error: ${d.testo} for url: ${d.url}`;
 }
 
 /** Uno stato HTTP da 400 in su: il testo è quello di requests, lo stato serve a chi deve decidere cosa fare. */
@@ -113,10 +130,40 @@ export class ErroreHttp extends Error {
 /** Stati con cui il proprietario di un link dice che non c'è più: un calendario revocato o con l'indirizzo cambiato (anche Google, quando rigenera l'indirizzo segreto). */
 const LINK_FINITO = new Set([404, 410]);
 
+/** Una risposta che non è un calendario iCal: lo dice il Content-Type, o i primi byte. */
+class ErroreNonIcs extends ErroreValore {
+  constructor() {
+    super("il link risponde ma non contiene un calendario iCal");
+  }
+}
+
+const INIZIO_ICS = Buffer.from("BEGIN:VCALENDAR", "latin1");
+const minuscolo = (b: number) => (b >= 0x41 && b <= 0x5a ? b + 0x20 : b);
+
+/** Dopo il BOM UTF-8 (se c'è: `bom` byte) e degli spazi comincia BEGIN:VCALENDAR (le maiuscole non contano, come nel formato)? */
+function inizioCalendario(d: Uint8Array, bom: number): boolean {
+  let i = bom;
+  while (i < d.length && (d[i] === 0x20 || d[i] === 0x09 || d[i] === 0x0a || d[i] === 0x0d)) i++;
+  return d.length - i >= INIZIO_ICS.length && INIZIO_ICS.every((b, j) => minuscolo(d[i + j]) === minuscolo(b));
+}
+
+/**
+ * Il testo di un calendario da un link. Passa dalla guardia di rete-sicura.ts (solo siti pubblici, tutte le tappe) e da uno dei posti
+ * dei collegamenti verso l'esterno (uscita.ts). Una risposta che non comincia come un calendario non è un calendario: non finisce né
+ * nella copia né all'agente. Uno stato HTTP da 400 in su solleva ErroreHttp, con il testo di sempre.
+ */
 export async function scarica(url: string): Promise<string> {
-  const r = await fetch(url, { headers: { "User-Agent": "CalendarHub/1.0" }, signal: AbortSignal.timeout(ATTESA_MS), cache: "no-store" });
-  if (r.status >= 400) throw new ErroreHttp(r.status, erroreHttp(r));
-  return decodifica(await r.arrayBuffer(), r.headers.get("content-type"));
+  let r: Scaricato;
+  try {
+    r = await posti().esegui(() => scaricaSicuro(url, reteDiProva(), OPZIONI_ICS));
+  } catch (e) {
+    if (e instanceof ErroreRete && e.http) throw new ErroreHttp(e.http.stato, erroreHttp(e.http));
+    throw e;
+  }
+  const tipo = (r.tipoDichiarato ?? "").split(";")[0].trim().toLowerCase();
+  const bom = r.dati[0] === 0xef && r.dati[1] === 0xbb && r.dati[2] === 0xbf ? 3 : 0;
+  if ((tipo && !TIPI_ICS.has(tipo)) || !inizioCalendario(r.dati, bom)) throw new ErroreNonIcs();
+  return decodifica(r.dati.subarray(bom), r.tipoDichiarato);
 }
 
 /** Perché una richiesta di rete non è andata a buon fine: fetch dice solo "fetch failed", il motivo sta nella causa. */
@@ -176,6 +223,9 @@ export async function aggiungiFeed(nome: unknown, url: unknown): Promise<{ id: s
   try {
     testo = await scarica(indirizzo);
   } catch (e) {
+    if (e instanceof ErroreNonIcs) throw new ErroreValore(ILLEGGIBILE);
+    // la coda piena non dice niente del link
+    if (messaggio(e) === TROPPE_RICHIESTE) throw new ErroreValore(TROPPE_RICHIESTE);
     throw new ErroreValore(`Il link non risponde: ${motivoDiRete(e)}`);
   }
   const verifica = await invia("/api/ics", { testo });

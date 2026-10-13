@@ -289,6 +289,40 @@ describe("un sito che manda il corpo a un byte per volta", () => {
     }
   });
 
+  it("con un limite di lettura di 8 MB (calendari da link) i pezzi si contano in proporzione (8 volte PEZZI_MAX): 8 MB a pezzi da 64 byte arrivano interi, 200000 pezzi da un byte no; per i loghi resta PEZZI_MAX", { timeout: 60_000 }, async () => {
+    const OTTO_MB = 8 * 1024 * 1024;
+    const opzioni = { limiteLettura: OTTO_MB, limiteAccettato: OTTO_MB };
+    const corpo = Buffer.alloc(OTTO_MB);
+    for (let i = 0; i < corpo.length; i++) corpo[i] = (i * 7 + (i >> 8)) & 0xff;
+    expect(Math.ceil(corpo.length / 64)).toBe(131_072);
+    const intero = await server(aPezzi(corpo, 64), true);
+    try {
+      const r = await scaricaSicuro(`http://pezzi.test:${intero.porta}/x.ics`, PROVA, opzioni);
+      expect(r.dati.length).toBe(OTTO_MB);
+      expect(r.dati.equals(corpo)).toBe(true);
+    } finally {
+      await intero.chiudi();
+    }
+    // 100000 pezzi da un byte: più di PEZZI_MAX (loghi), meno dei 160000 che si accettano per 8 MB
+    expect(PEZZI_MAX).toBeLessThan(100_000);
+    expect(PEZZI_MAX * 8).toBeGreaterThan(corpo.length / 64 + 1000);
+    const sotto = await server(aPezzi(Buffer.alloc(100_000, 66), 1), true);
+    try {
+      expect((await scaricaSicuro(`http://pezzi.test:${sotto.porta}/x.ics`, PROVA, opzioni)).dati.length).toBe(100_000);
+      const loghi = await scaricaSicuro(`http://pezzi.test:${sotto.porta}/x.png`, PROVA).then(() => null, (x: unknown) => x as ErroreRete);
+      expect(loghi?.motivo).toBe("non_risponde");
+    } finally {
+      await sotto.chiudi();
+    }
+    const sopra = await server(aPezzi(Buffer.alloc(200_000, 66), 1), true);
+    try {
+      const e = await scaricaSicuro(`http://pezzi.test:${sopra.porta}/x.ics`, PROVA, opzioni).then(() => null, (x: unknown) => x as ErroreRete);
+      expect(e?.motivo).toBe("non_risponde");
+    } finally {
+      await sopra.chiudi();
+    }
+  });
+
   it("pezzi di ogni grandezza ricostruiscono lo stesso corpo: 1, 7, 1000, 65536 byte, e un corpo vuoto", async () => {
     const corpo = Buffer.from(Array.from({ length: 200_000 }, (_, i) => (i * 31 + 5) & 0xff));
     for (const pezzo of [1000, 7, 65536, 199_999, 200_000]) {

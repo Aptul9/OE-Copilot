@@ -7,7 +7,9 @@ import { chiama, type NomeMetodoTs } from "@/lib/core/api";
 import { chiudiArchivio } from "@/lib/core/archivio";
 import { azzeraFeed } from "@/lib/core/ics";
 import { fissaOra } from "@/lib/core/orologio";
+import { impostaReteDiProva } from "@/lib/core/uscita";
 import { avviaAgente, avviaIcs, CHIAVE, fixture, leggi, normalizza, ORA_FISSA_MS, preparaDati } from "./golden-comune";
+import { PROVE_LOCALI } from "./server-prova";
 
 // La lettura del gateway contro le risposte registrate dal servizio ui (Python): le stesse chiamate sulla stessa cartella dei dati, con
 // lo stesso agente finto, devono dare le stesse risposte e la stessa cartella a fine sequenza. Le risposte "giuste" (golden/ui-lettura.json)
@@ -27,6 +29,8 @@ describe.each(Object.keys(fixture.profili))("gateway contro le risposte registra
   let dati: string;
 
   beforeAll(async () => {
+    // il server dei calendari è su 127.0.0.1: la guardia di rete-sicura.ts lo lascia raggiungere solo con il punto di prova
+    impostaReteDiProva(PROVE_LOCALI);
     ics = await avviaIcs();
     agente = await avviaAgente(stato);
     dati = preparaDati(profilo, ics.url);
@@ -40,6 +44,7 @@ describe.each(Object.keys(fixture.profili))("gateway contro le risposte registra
   });
 
   afterAll(() => {
+    impostaReteDiProva(undefined);
     fissaOra(null);
     agente.server.close();
     ics.server.close();

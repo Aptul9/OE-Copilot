@@ -10,8 +10,10 @@ import { azzeraFeed, percorsoCache, statoFeed, testoCalendario } from "@/lib/cor
 import { fissaOra } from "@/lib/core/orologio";
 import { FESTIVITA_ID } from "@/lib/core/personalizzazione";
 import { loadConfig, modificaConfig } from "@/lib/core/stato";
+import { impostaReteDiProva } from "@/lib/core/uscita";
 import { costruisciIcs } from "@/lib/ics-uscita";
 import { avviaAgenteFinto, CHIAVE_AGENTE, cartellaDati, type AgenteFinto } from "./agente-condivisione";
+import { PROVE_LOCALI } from "./server-prova";
 
 // Il lato di chi importa (lib/core/ics.ts, eventi.ts): un calendario condiviso da un altro OE Copilot si legge come ogni calendario da link, ma i suoi
 // eventi restano segnati e non rendono occupata la pagina pubblica di chi li ha importati; un link revocato (404, 410) non lascia in giro la sua ultima
@@ -29,6 +31,8 @@ let url: string;
 let risposta: { stato: number; corpo: string; chiudi?: boolean };
 
 beforeEach(async () => {
+  // l'altro OE Copilot è un server su 127.0.0.1: la guardia di rete-sicura.ts lo lascia raggiungere solo con il punto di prova
+  impostaReteDiProva(PROVE_LOCALI);
   dati = cartellaDati();
   agente = await avviaAgenteFinto([]);
   risposta = { stato: 200, corpo: COPIA_CONDIVISA };
@@ -56,6 +60,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  impostaReteDiProva(undefined);
   await agente.chiudi();
   await new Promise<void>((ok) => {
     server.closeAllConnections();
@@ -222,12 +227,11 @@ describe("un link revocato non lascia la sua ultima copia", () => {
   });
 
   it("le festività non seguono la regola: un 404 di Google è un guasto, la copia resta", async () => {
-    const urlFesta = (await import("@/lib/core/personalizzazione")).FESTIVITA_URL;
-    const spia = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("no", { status: 404, statusText: "Not Found" }));
+    // la regola guarda l'id del calendario, non l'indirizzo: il server di prova risponde 404 al posto di Google
+    risposta.stato = 404;
     invecchia();
     fs.utimesSync(percorsoCache(FESTIVITA_ID), new Date(ORA - 3_600_000), new Date(ORA - 3_600_000));
-    const [testo, errore] = await testoCalendario(FESTIVITA_ID, urlFesta);
-    spia.mockRestore();
+    const [testo, errore] = await testoCalendario(FESTIVITA_ID, url);
     expect(testo).toBe(COPIA_FESTE);
     expect(errore).toContain("aggiornamento non riuscito");
     expect(fs.existsSync(percorsoCache(FESTIVITA_ID))).toBe(true);

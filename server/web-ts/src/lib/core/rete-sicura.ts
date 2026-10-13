@@ -5,11 +5,12 @@ import net from "node:net";
 import { ErroreValore } from "./py";
 
 // Il gateway gira su una macchina con altri servizi e con l'indirizzo dei metadati del cloud: quando scarica un indirizzo scelto da chi usa
-// l'app (i loghi delle aziende) deve arrivare solo a siti pubblici. Ogni controllo sta qui, con i moduli di Node e nessuna dipendenza:
-// solo http e https sulle porte 80 e 443, mai credenziali nell'indirizzo, il nome si risolve qui e ogni indirizzo trovato deve essere
-// pubblico (si rifiuta tutto il nome se anche uno solo non lo è), l'indirizzo a cui ci si collega è quello controllato, e di nuovo
-// controllato a collegamento fatto; ogni reindirizzamento (al massimo 3) ricomincia da capo. Tempo totale 8 secondi, al più 1 MB letto.
-// Il contenuto dichiarato dal sito non conta: il tipo lo decide chi chiama, dai primi byte (immagine.ts).
+// l'app (i loghi delle aziende, i calendari da link) deve arrivare solo a siti pubblici. Ogni controllo sta qui, con i moduli di Node e
+// nessuna dipendenza: solo http e https sulle porte 80 e 443, mai credenziali nell'indirizzo, il nome si risolve qui e ogni indirizzo
+// trovato deve essere pubblico (si rifiuta tutto il nome se anche uno solo non lo è), l'indirizzo a cui ci si collega è quello controllato,
+// e di nuovo controllato a collegamento fatto; ogni reindirizzamento (al massimo 3) ricomincia da capo. Senza altre richieste valgono i
+// limiti dei loghi: tempo totale 8 secondi, al più 1 MB letto (Opzioni li cambia, le regole sugli indirizzi no).
+// Il contenuto dichiarato dal sito non conta: il tipo lo decide chi chiama, dai primi byte (immagine.ts, ics.ts).
 
 export const ATTESA_MS = 8000;
 export const MAX_REINDIRIZZAMENTI = 3;
@@ -36,15 +37,41 @@ export const TESTI = {
   troppoGrande: `Immagine troppo grande (massimo ${LIMITE_ACCETTATO / 1024} KB)`,
 } as const;
 
-/** Un errore con il testo che la pagina mostra (come ErroreValore) e il motivo per le prove. */
+/** Lo stato con cui un sito ha risposto, la sua frase e l'indirizzo che ha risposto (sempre pubblico: ogni tappa passa dai controlli). */
+export type DettaglioHttp = { stato: number; testo: string; url: string };
+
+/** Un errore con il testo che la pagina mostra (come ErroreValore) e il motivo per le prove; per uno stato HTTP anche quale. */
 export class ErroreRete extends ErroreValore {
   constructor(
     readonly motivo: Motivo,
     messaggio: string,
+    readonly http?: DettaglioHttp,
   ) {
     super(messaggio);
   }
 }
+
+/**
+ * Quello che cambia da uno scarico all'altro. Senza altre richieste valgono i valori dei loghi (immagini piccole, 8 secondi); chi scarica
+ * altro (il calendario da link, ics.ts) li chiede qui. Le regole sugli indirizzi, sulle porte e sui reindirizzamenti sono le stesse per
+ * tutti e non si cambiano.
+ */
+export type Opzioni = {
+  /** Quello che si legge dalla rete al massimo (LIMITE_LETTURA). */
+  limiteLettura?: number;
+  /** Quello che si accetta (LIMITE_ACCETTATO). */
+  limiteAccettato?: number;
+  /** Il tempo totale (ATTESA_MS). */
+  attesaMs?: number;
+  /** L'intestazione Accept (di norma i formati di immagine che si accettano). */
+  accept?: string;
+  userAgent?: string;
+  /** Il testo dell'errore quando il corpo supera il limite. */
+  testoTroppoGrande?: string;
+};
+
+const ACCEPT_IMMAGINI = "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,*/*;q=0.5";
+const USER_AGENT = "OECopilot/1.0";
 
 // ---- Quali indirizzi sono pubblici -------------------------------------------------------------------------------------------
 // Tutto quello che non è un indirizzo unicast globale: loopback, privati, link-local (anche 169.254.169.254, i metadati), CGNAT,
@@ -141,10 +168,10 @@ export type Risolutore = (host: string) => Promise<string[]>;
 const risolviDns: Risolutore = async (host) => (await dns.promises.lookup(host, { all: true, verbatim: true })).map((r) => r.address);
 
 /**
- * Solo per le prove: nessuna variabile d'ambiente e nessuna richiesta lo imposta, e il solo punto del gateway che scarica (loghi.ts)
- * passa quello che una prova ha messo con impostaReteDiProva, che in produzione non si può chiamare. Il risolutore di nomi, le regole
- * sugli indirizzi e sulle porte, il tempo e la CA di un certificato inventato sono quello che una prova vuole cambiare per raggiungere
- * un server su 127.0.0.1.
+ * Solo per le prove: nessuna variabile d'ambiente e nessuna richiesta lo imposta, e i soli punti del gateway che scaricano (loghi.ts e
+ * ics.ts) passano quello che una prova ha messo con impostaReteDiProva (uscita.ts), che in produzione non si può chiamare. Il
+ * risolutore di nomi, le regole sugli indirizzi e sulle porte, il tempo e la CA di un certificato inventato sono quello che una prova
+ * vuole cambiare per raggiungere un server su 127.0.0.1.
  */
 export type SoloProve = {
   risolvi?: Risolutore;
@@ -154,7 +181,7 @@ export type SoloProve = {
   ca?: string | Buffer;
 };
 
-type Rete = Required<Omit<SoloProve, "ca">> & { ca?: string | Buffer };
+type Rete = Required<Omit<SoloProve, "ca">> & Required<Omit<Opzioni, "attesaMs">> & { ca?: string | Buffer };
 
 /**
  * La funzione che Node chiama per sapere a quale indirizzo collegarsi: risolve il nome e rifiuta se un solo indirizzo non è pubblico.
@@ -184,7 +211,7 @@ export function controllaCollegato(socket: { remoteAddress?: string }, consentit
   if (!a || !consentiti.has(a) || !ammettiIndirizzo(a)) throw new ErroreRete("non_ammesso", TESTI.nonAmmesso);
 }
 
-type Passo = { stato: number; location: string | null; tipo: string | null; dati: Buffer | null };
+type Passo = { stato: number; testoStato: string; location: string | null; tipo: string | null; dati: Buffer | null };
 
 function errore(e: unknown): ErroreRete {
   if (e instanceof ErroreRete) return e;
@@ -207,7 +234,7 @@ function unPasso(url: URL, rete: Rete, segnale: AbortSignal): Promise<Passo> {
       // un socket per richiesta: niente connessioni tenute aperte e riusate tra un sito e l'altro
       agent: false,
       // solo i tipi che si accettano (un sito che sceglie il formato dall'intestazione non risponde con uno che non va bene), nessuna compressione
-      headers: { Accept: "image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/x-icon,image/vnd.microsoft.icon,*/*;q=0.5", "Accept-Encoding": "identity", "User-Agent": "OECopilot/1.0" },
+      headers: { Accept: rete.accept, "Accept-Encoding": "identity", "User-Agent": rete.userAgent },
       lookup: creaLookup(rete, consentiti) as unknown as net.LookupFunction,
       ...(rete.ca ? { ca: rete.ca } : {}),
     };
@@ -218,22 +245,25 @@ function unPasso(url: URL, rete: Rete, segnale: AbortSignal): Promise<Passo> {
       if (stato < 200 || stato >= 300) {
         // rimando, errore: il corpo non serve
         res.destroy();
-        return fine(() => ok({ stato, location, tipo: null, dati: null }));
+        return fine(() => ok({ stato, testoStato: res.statusMessage ?? "", location, tipo: null, dati: null }));
       }
+      const { limiteLettura, testoTroppoGrande } = rete;
       const dichiarata = Number(res.headers["content-length"]);
-      if (Number.isFinite(dichiarata) && dichiarata > LIMITE_LETTURA) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
+      if (Number.isFinite(dichiarata) && dichiarata > limiteLettura) return rifiuta(new ErroreRete("troppo_grande", testoTroppoGrande));
       // Un buffer solo, riempito pezzo per pezzo, e quello che arriva oltre il limite non si tiene: un sito che manda un byte per volta
-      // (un milione di pezzi da un byte, 6 MB sul filo) non deve costare un oggetto per pezzo, né il tempo di leggerli tutti (PEZZI_MAX).
-      const corpo = Buffer.alloc(Number.isFinite(dichiarata) && dichiarata >= 0 ? dichiarata : LIMITE_LETTURA);
+      // (un milione di pezzi da un byte, 6 MB sul filo) non deve costare un oggetto per pezzo, né il tempo di leggerli tutti (PEZZI_MAX; con
+      // un limite di lettura più grande di quello dei loghi cresce in proporzione, con gli stessi byte a pezzo in media).
+      const pezziMax = Math.ceil(PEZZI_MAX * Math.max(1, limiteLettura / LIMITE_LETTURA));
+      const corpo = Buffer.alloc(Number.isFinite(dichiarata) && dichiarata >= 0 ? dichiarata : limiteLettura);
       let totale = 0;
       let pezzi = 0;
       res.on("data", (c: Buffer) => {
-        if (++pezzi > PEZZI_MAX) return rifiuta(errore(null));
-        if (totale + c.length > corpo.length) return rifiuta(new ErroreRete("troppo_grande", TESTI.troppoGrande));
+        if (++pezzi > pezziMax) return rifiuta(errore(null));
+        if (totale + c.length > corpo.length) return rifiuta(new ErroreRete("troppo_grande", testoTroppoGrande));
         corpo.set(c, totale);
         totale += c.length;
       });
-      res.on("end", () => fine(() => ok({ stato, location: null, tipo: res.headers["content-type"] ?? null, dati: corpo.subarray(0, totale) })));
+      res.on("end", () => fine(() => ok({ stato, testoStato: res.statusMessage ?? "", location: null, tipo: res.headers["content-type"] ?? null, dati: corpo.subarray(0, totale) })));
       res.on("error", (e) => rifiuta(errore(e)));
       res.on("close", () => res.complete || rifiuta(errore(null)));
     });
@@ -269,15 +299,22 @@ export type Scaricato = { dati: Buffer; url: URL; /** Il Content-Type che dichia
 
 /**
  * Scarica `indirizzo` con le regole del modulo e restituisce i byte e l'indirizzo a cui si è arrivati. Solleva ErroreRete, con il testo
- * che la pagina mostra. `soloProve` non lo passa nessun codice del gateway (vedi SoloProve).
+ * che la pagina mostra. `soloProve` non lo passa nessun codice del gateway (vedi SoloProve). `opzioni` cambia i limiti e le intestazioni
+ * (vedi Opzioni; un numero è il solo `limiteAccettato`, come prima): senza, valgono quelli dei loghi.
  */
-export async function scaricaSicuro(indirizzo: string, soloProve?: SoloProve, limiteAccettato = LIMITE_ACCETTATO): Promise<Scaricato> {
+export async function scaricaSicuro(indirizzo: string, soloProve?: SoloProve, opzioni: Opzioni | number = {}): Promise<Scaricato> {
+  const chieste: Opzioni = typeof opzioni === "number" ? { limiteAccettato: opzioni } : opzioni;
   const rete: Rete = {
     risolvi: soloProve?.risolvi ?? risolviDns,
     ammettiIndirizzo: soloProve?.ammettiIndirizzo ?? indirizzoAmmesso,
     ammettiPorta: soloProve?.ammettiPorta ?? portaAmmessa,
-    attesaMs: soloProve?.attesaMs ?? ATTESA_MS,
+    attesaMs: soloProve?.attesaMs ?? chieste.attesaMs ?? ATTESA_MS,
     ca: soloProve?.ca,
+    limiteLettura: chieste.limiteLettura ?? LIMITE_LETTURA,
+    limiteAccettato: chieste.limiteAccettato ?? LIMITE_ACCETTATO,
+    accept: chieste.accept ?? ACCEPT_IMMAGINI,
+    userAgent: chieste.userAgent ?? USER_AGENT,
+    testoTroppoGrande: chieste.testoTroppoGrande ?? TESTI.troppoGrande,
   };
   const segnale = AbortSignal.timeout(rete.attesaMs);
   let url = controllaUrl(indirizzo, rete.ammettiIndirizzo, rete.ammettiPorta);
@@ -296,9 +333,9 @@ export async function scaricaSicuro(indirizzo: string, soloProve?: SoloProve, li
       continue;
     }
     if (passo.stato < 200 || passo.stato >= 300 || !passo.dati) {
-      throw new ErroreRete("errore_http", `L'indirizzo risponde con un errore (${passo.stato})`);
+      throw new ErroreRete("errore_http", `L'indirizzo risponde con un errore (${passo.stato})`, { stato: passo.stato, testo: passo.testoStato, url: url.href });
     }
-    if (passo.dati.length > limiteAccettato) throw new ErroreRete("troppo_grande", TESTI.troppoGrande);
+    if (passo.dati.length > rete.limiteAccettato) throw new ErroreRete("troppo_grande", rete.testoTroppoGrande);
     return { dati: passo.dati, url, tipoDichiarato: passo.tipo };
   }
 }

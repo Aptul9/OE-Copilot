@@ -8,8 +8,11 @@ import { nelleDati } from "./dati";
 import { controllaImmagine, LATO_MAX, PIXEL_MAX, type TipoImmagine } from "./immagine";
 import { personalizzazione } from "./personalizzazione";
 import { type Dict, ErroreValore, isDict, messaggio } from "./py";
-import { controllaUrl, ErroreRete, LIMITE_ACCETTATO, scaricaSicuro, type SoloProve, TESTI } from "./rete-sicura";
-import { Semaforo } from "./semaforo";
+import { controllaUrl, ErroreRete, LIMITE_ACCETTATO, scaricaSicuro, TESTI } from "./rete-sicura";
+import { POSTI_MAX, posti, reteDiProva, TROPPE_RICHIESTE } from "./uscita";
+
+// Il punto di prova e i posti stanno in uscita.ts (li usa anche il calendario da link); da qui si esportano come sempre.
+export { ATTESA_CODA_MS, CODA_MAX, impostaReteDiProva, POSTI_MAX } from "./uscita";
 
 // I loghi delle aziende. Quelli di personalizzazione.json (interfaccia.loghi) restano come sono; sopra si mettono le scelte fatte dalla
 // finestra Calendari, tabella `loghi` di gateway.db: nome mostrato -> indirizzo di partenza e file. Un indirizzo lo scarica il gateway
@@ -23,11 +26,6 @@ export const LOGHI_MAX = 60;
 export const STATICI_MAX = 40;
 export const TTL_STATICI_MS = 7 * 24 * 3600 * 1000;
 const RIPROVA_MS = 5 * 60 * 1000;
-/** Quanti collegamenti verso siti esterni stanno aperti insieme, in tutto: i metodi della finestra e lo scarico in secondo piano. */
-export const POSTI_MAX = 4;
-/** Chi aspetta un posto: al più CODA_MAX richieste, al più ATTESA_CODA_MS ciascuna; oltre, "Troppe richieste". */
-export const CODA_MAX = 16;
-export const ATTESA_CODA_MS = 5000;
 /** Lo scarico in secondo piano ne tiene aperti al più 3: l'ultimo posto resta a chi ha appena premuto un pulsante nella finestra. */
 const SCARICHI_MAX = POSTI_MAX - 1;
 const NOME_MAX = 200;
@@ -37,7 +35,7 @@ export const MSG = {
   nonImmagine: "Non è un'immagine",
   svg: "SVG non ammesso: contiene codice o riferimenti esterni",
   pixel: `Immagine troppo grande (massimo ${LATO_MAX} pixel per lato e ${PIXEL_MAX / 1_000_000} megapixel)`,
-  troppeRichieste: "Troppe richieste, riprova tra poco",
+  troppeRichieste: TROPPE_RICHIESTE,
   troppi: `Troppi loghi scelti da qui (massimo ${LOGHI_MAX})`,
   salvataggio: "Non riesco a salvare il logo sul server",
   nonCe: "Per questo nome non c'è un logo scelto da qui",
@@ -51,32 +49,17 @@ export class ErroreLogo extends ErroreValore {}
 export type VoceLogo = { url: string | null; tipo: "url" | "file"; aggiornato: number };
 type Riga = VoceLogo & { nome: string; file: string };
 
-// ---- La rete, e il suo punto di prova --------------------------------------------------------------------------------------------
-let reteDiProva: SoloProve | undefined;
-
-/**
- * Solo per le prove (vitest): permette a un server di prova su 127.0.0.1 di rispondere. Nessun codice del gateway la chiama, nessuna
- * variabile d'ambiente la attiva, e in produzione (NODE_ENV, fissato dalla build) solleva: senza, scaricaSicuro usa solo le regole vere.
- */
-export function impostaReteDiProva(prove: SoloProve | undefined): void {
-  if (process.env.NODE_ENV === "production") throw new Error("impostaReteDiProva esiste solo per le prove");
-  reteDiProva = prove;
-}
-
+// ---- La rete ----------------------------------------------------------------------------------------------------------------------
 /** L'indirizzo scritto da chi usa l'app, controllato e ripulito del frammento: sempre lo stesso testo per lo stesso indirizzo. */
 function preparaUrl(testo: unknown): string {
-  const u = controllaUrl(testo, reteDiProva?.ammettiIndirizzo, reteDiProva?.ammettiPorta);
+  const u = controllaUrl(testo, reteDiProva()?.ammettiIndirizzo, reteDiProva()?.ammettiPorta);
   u.hash = "";
   return u.href;
 }
 
-// I posti per i collegamenti verso l'esterno: uno solo per tutto il processo, anche se il modulo viene caricato due volte (come lo stato più sotto).
-const globalePosti = globalThis as typeof globalThis & { __oeLoghiPosti?: Semaforo };
-const posti = (): Semaforo => (globalePosti.__oeLoghiPosti ??= new Semaforo(POSTI_MAX, CODA_MAX, ATTESA_CODA_MS, () => new ErroreLogo(MSG.troppeRichieste)));
-
 /** I byte del file di `url`, riconosciuti dai primi byte, senza aspettare un posto. Solleva con il testo che la pagina mostra. */
 async function scarica(url: string): Promise<{ tipo: TipoImmagine; dati: Buffer }> {
-  const r = await scaricaSicuro(url, reteDiProva);
+  const r = await scaricaSicuro(url, reteDiProva());
   return controllato(r.dati);
 }
 

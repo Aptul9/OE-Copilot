@@ -142,7 +142,7 @@ Il successore è il client in `app/` (Tauri v2): una finestra sull'interfaccia n
 - Le notifiche sono quelle normali del sistema, con titolo, ora e luogo, senza pulsanti né link per entrare; un avviso in stile Teams non c'è. Partono solo finché l'app è in esecuzione: con l'app chiusa i promemoria li manda il server (4.9).
 - L'indirizzo del sito si fissa alla costruzione (`OE_URL`): cambiare sito vuol dire ricostruire. Come si costruisce, si firma, si installa e si prova, e cosa non c'è (*Apri in Outlook*, aggiornamento automatico, firma del codice, uso offline), sta in `app/README.md`.
 
-Il login si fa una volta: il cookie di sessione dura 30 giorni e resta nel profilo dell'app anche dopo averla chiusa; quando non vale più (password cambiata, utente tolto, 30 giorni passati) il sito riporta da solo alla pagina di accesso. L'installer va eseguito da Windows e non da una sessione dell'app Claude, che sposta i dati in una cartella virtuale (sezione "Accesso e sessione" di `app/README.md`).
+Il login si fa una volta: il cookie di sessione dura 30 giorni e resta nel profilo dell'app anche dopo averla chiusa; quando non vale più (password cambiata, utente tolto, 30 giorni passati) il sito riporta da solo alla pagina di accesso. L'installer va eseguito da Windows e non da dentro un'app impacchettata (MSIX), che sposta i dati in una cartella virtuale (sezione "Accesso e sessione" di `app/README.md`).
 
 ---
 

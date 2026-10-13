@@ -77,7 +77,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 ## Controlli prima di un push
 
 - `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>`: cerca i dati della personalizzazione nei file del repository e fallisce se ne trova.
-- Le prove della Action (`.github/workflows/server.yml`): sintassi (Python e shell di `server/strumenti/`), agente (`server/agente-ts/`: tipi, `npm test` con le risposte registrate in `server/strumenti/golden/`, immagine e risposte su un calendario di Android inventato), supervisore (tipi, `npm test`, immagine), gateway (tipi, `npm test` con le risposte registrate in `server/strumenti/golden/`, build; GUIDA.md, sezione 7), schermo, immagini e il cancello dell'accesso.
+- Le prove della Action (`.github/workflows/server.yml`, job *Controlli*): sintassi (Python e shell di `server/strumenti/`), `docker compose config` (l'elenco dei servizi), Caddyfile, gateway (tipi, `npm test`, build), supervisore (tipi, `npm test`, immagine), agente (`server/agente-ts/`: tipi, `npm test`, immagine e risposte su un calendario di Android inventato), schermo e il cancello dell'accesso su container veri. Le risposte registrate (`server/strumenti/golden/`, `server/supervisore/test/golden/`) le diedero una sola volta le implementazioni in Python e in bash tolte dal repository: sono dati fissi (GUIDA.md, sezione 7). La Action non prova `app/` (`npm test` e `cargo test` a mano: `app/README.md`), e un push che tocca solo file fuori da `server/` e dal workflow (per esempio `GUIDA.md`, `README.md` o `app/`) non lancia niente.
 
 ## File principali
 

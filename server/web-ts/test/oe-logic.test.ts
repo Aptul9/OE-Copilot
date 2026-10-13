@@ -9,6 +9,7 @@ import {
   etichettaSync,
   eventiPerGriglia,
   filtraAziende,
+  separaSecondari,
   fmtRange,
   giorniTra,
   iniziali,
@@ -268,4 +269,18 @@ describe("filtraAziende", () => {
     expect(filtraAziende(tutte, "festività").map((g) => g.azienda)).toEqual(["Festività"]);
   });
   it("niente che corrisponda: elenco vuoto", () => expect(filtraAziende(tutte, "zzz")).toEqual([]));
+});
+
+describe("separaSecondari", () => {
+  const az = (azienda: string) => ({ azienda, color: "#000", caselle: [], tot: 1, on: 1, rotto: false, avviso: false, motivi: [] });
+  const tutte = [az("Serco"), az("Personale"), az("Eventi personali"), az("Festività")];
+  it("le secondarie vanno in coda al loro gruppo e ognuna tiene il suo ordine", () => {
+    const [principali, altri] = separaSecondari(tutte, ["Festività", "Eventi personali"]);
+    expect(principali.map((g) => g.azienda)).toEqual(["Serco", "Personale"]);
+    expect(altri.map((g) => g.azienda)).toEqual(["Eventi personali", "Festività"]);
+  });
+  it("senza secondarie, o con nomi che non ci sono, tutte restano principali", () => {
+    expect(separaSecondari(tutte, [])).toEqual([tutte, []]);
+    expect(separaSecondari(tutte, ["Altro"])).toEqual([tutte, []]);
+  });
 });

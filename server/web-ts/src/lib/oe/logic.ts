@@ -124,6 +124,12 @@ export function filtraAziende(gruppi: GruppoAzienda[], ricerca: string): GruppoA
   return gruppi.filter((g) => [g.azienda, ...g.caselle].some((t) => senzaAccenti(t).includes(q)));
 }
 
+/** Le voci della barra divise in (principali, secondarie): le secondarie sono quelle di `interfaccia.calendari_secondari`, ognuna nel suo ordine. */
+export function separaSecondari(gruppi: GruppoAzienda[], secondari: readonly string[]): [GruppoAzienda[], GruppoAzienda[]] {
+  const sec = new Set(secondari);
+  return [gruppi.filter((g) => !sec.has(g.azienda)), gruppi.filter((g) => sec.has(g.azienda))];
+}
+
 /** Una voce per azienda mostrata, non per casella: la stessa azienda può avere calendari in posti diversi. */
 export function raggruppaAziende(cals: Calendario[]): GruppoAzienda[] {
   const gruppi = new Map<string, GruppoAzienda>();

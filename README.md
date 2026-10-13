@@ -2,11 +2,11 @@
 
 OE Copilot **unisce in un calendario solo i calendari di tutti gli account** (aziendali e personali), con un colore per azienda. Le caselle le legge un **agente su un server**, da un telefono Android virtuale con le app ufficiali (Outlook e i servizi Google) in cui gli accessi si fanno una volta sola. Si vedono **nel browser**, dietro una pagina di accesso: sul PC non si installa niente. C'è anche una sezione **Timesheet** con le schede dei gestionali delle aziende.
 
-Nessuna registrazione su Azure e nessun consenso dell'amministratore: gli accessi stanno nel telefono del server. Installazione passo per passo e perché delle scelte: **[GUIDA.md](GUIDA.md)**. L'app per Windows (promemoria, avvio con Windows, *Apri in Outlook*) è stata ritirata l'11/10/2026: GUIDA.md, sezione 3.
+Nessuna registrazione su Azure e nessun consenso dell'amministratore: gli accessi stanno nel telefono del server. Installazione passo per passo e perché delle scelte: **[GUIDA.md](GUIDA.md)**. L'app per Windows in Python (promemoria, avvio con Windows, *Apri in Outlook*) è stata ritirata l'11/10/2026: GUIDA.md, sezione 3. Il successore è il client in `app/`, per Windows e per Android: una finestra sul sito con le notifiche delle riunioni, descritto in **[app/README.md](app/README.md)**.
 
 ## Nel browser
 
-Il server serve la pagina dietro HTTPS e una pagina di accesso. Come si mette in piedi il server: *Caselle lette dal server* qui sotto e **GUIDA.md**, sezione 4.7. L'accesso può avere un secondo fattore, spento di default (il codice di un'app di autenticazione con i codici di recupero, oppure le passkey): variabile `AUTH_2FA` in `.env`, attivazione e recupero in **GUIDA.md**, sezione 4.7.
+Il server serve la pagina dietro HTTPS e una pagina di accesso. Come si mette in piedi il server: *Caselle lette dal server* qui sotto e **GUIDA.md**, sezione 4 (l'interfaccia è la 4.7). L'accesso può avere un secondo fattore, spento di default (il codice di un'app di autenticazione con i codici di recupero, oppure le passkey): variabile `AUTH_2FA` in `.env`, attivazione e recupero in **GUIDA.md**, sezione 4.7.
 
 I promemoria delle riunioni li può mandare il server su Telegram o nelle notifiche del browser, anche a pagina chiusa: facoltativo e spento di norma, **GUIDA.md**, sezione 4.9.
 
@@ -44,7 +44,7 @@ degli *Eventi personali* (`personale.png`) la porta l'immagine del gateway. Il g
 
 Un calendario Google si vede in due modi:
 
-1. **Link iCal** (il più semplice): in Google Calendar, *Impostazioni → il calendario → Indirizzo segreto in formato iCal*; nell'app, **Gestisci calendari → Aggiungi un calendario da link**. Il link vale come una password e resta solo in `ui-dati/config.json` sul server.
+1. **Link iCal** (il più semplice): in Google Calendar, *Impostazioni → il calendario → Indirizzo segreto in formato iCal*; nell'app, **Gestisci calendari → Aggiungi un calendario da link**. Il link vale come una password e resta solo sul server, in `ui-dati/` (database `gateway.db` e copia `config.json`).
 2. **Dal telefono del server**, se l'amministratore ha disattivato il link iCal: l'account Google si aggiunge nel telefono virtuale (*Impostazioni → Password e account*) e i servizi Google ne sincronizzano il calendario, che arriva come quelli di Outlook (GUIDA.md, 4.4).
 
 ### Aziende inoltrate
@@ -57,7 +57,7 @@ Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede
 
 Come funziona: sul server gira un telefono Android virtuale ([redroid](https://github.com/remote-android/redroid-doc), in Docker) con le app ufficiali, **Outlook** per le caselle Microsoft e i **servizi Google** per i calendari Google, in cui si fanno gli accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge quel calendario e lo espone con una piccola API, in ascolto **solo sul localhost del server** e sulla rete di Docker. Il browser passa da HTTPS e dalla pagina di accesso (servizi `gateway` e `caddy-ui`, GUIDA.md, 4.7); il telefono si vede e si comanda dalla pagina `/telefono/` (GUIDA.md, 4.8), dietro lo stesso accesso. Dal PC l'agente si interroga con un tunnel SSH (GUIDA.md, sezione 5).
 
-Sul server (provato su Ubuntu ARM64; servono Docker e il modulo del kernel `binder_linux`):
+Prima installazione a mano, sul server (provato su Ubuntu ARM64; servono Docker e il modulo del kernel `binder_linux`). Su un server aggiornato dalla Action niente si lancia a mano: `API_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `BETTER_AUTH_SECRET` arrivano dai secret e un `docker compose up` ricrea i servizi con i valori vuoti (GUIDA.md, 4.6 e 4.7):
 
 1. copia `server/` in `/opt/oe-copilot`; crea `.env` da `.env.esempio` con una `API_KEY` lunga e casuale e `agent/fonti.json` da `agent/fonti.esempio.json` con le tue caselle;
 2. `docker compose up -d telefono` (costruisce l'immagine del telefono, con i servizi Google), poi, a telefono avviato (`docker exec oe-copilot-telefono getprop sys.boot_completed` risponde `1`), `docker compose up -d agent`: se l'agente parte prima, Docker crea di root la cartella del calendario di Android. Poi `strumenti/prepara_telefono.sh` installa Outlook (l'APK sta nella release `apk`) e mette a posto il telefono. Gli accessi si fanno dal telefono: in Outlook per le caselle Microsoft, in *Impostazioni → Password e account* per quelle Google. Lo schermo si vede dalla pagina `/telefono/` o dal PC con [scrcpy](https://github.com/Genymobile/scrcpy) attraverso un tunnel SSH verso la porta 5555. In Outlook va acceso, casella per casella, *Impostazioni → Calendario → Sincronizza calendari*;
@@ -85,6 +85,7 @@ apre il gestionale (`url`) in una scheda nuova del browser.
 |------|---------|
 | `genera_icona.py`, `icon.png` | L'icona (tre calendari sovrapposti) e lo script che la disegna |
 | `server/web-ts/logos-predefiniti/` | `personale.png`, l'icona degli *Eventi personali*: il gateway la serve se in `ui-dati/logos/` non c'è un file con lo stesso nome |
+| `app/` | Il client per Windows e per Android (Tauri): una finestra sul sito, con icona nell'area di notifica (Windows) e notifiche delle riunioni; costruzione, installazione e prove in `app/README.md` |
 | `server/` | Il server: agente (`agente-ts/`), supervisore (`supervisore/`), telefono virtuale, interfaccia nel browser (`web-ts/`, `caddy-ui/`), schermo del telefono (`schermo-web/`) e script (`strumenti/`); vedi *Caselle lette dal server*. La logica dell'app è in TypeScript, nel gateway (`web-ts/src/lib/core/`), come l'agente e il supervisore: Python resta solo in uno script di controllo (`strumenti/controlla_dati_personali.py`) |
 
 Restano sul server (`ui-dati/`) e fuori dal repository: `personalizzazione.json`, le cache

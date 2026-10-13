@@ -1,6 +1,6 @@
-# OE Copilot per Windows
+# OE Copilot per Windows e per Android
 
-Client desktop dell'interfaccia di OE Copilot: una finestra (Tauri v2, WebView2) che mostra il sito vero, con la stessa sessione e gli stessi cookie del browser. Non contiene l'interfaccia: gli aggiornamenti del sito arrivano con il deploy del server, l'app cambia solo quando serve una funzione nativa.
+Client dell'interfaccia di OE Copilot: una finestra (Tauri v2, WebView2 su Windows) che mostra il sito vero, con la stessa sessione e gli stessi cookie del browser. Esiste per Windows e per Android (sezione *Android*, più sotto). Non contiene l'interfaccia: gli aggiornamenti del sito arrivano con il deploy del server, l'app cambia solo quando serve una funzione nativa.
 
 Cosa aggiunge a una scheda del browser:
 - **Icona nell'area di notifica** con il menu *Apri*, *Notifiche*, *Avvia con Windows*, *Esci*. Chiudere la finestra la nasconde, l'app resta attiva; *Esci* la chiude davvero.
@@ -96,7 +96,7 @@ npm ci --ignore-scripts
 npm run android:build
 ```
 
-Escono due APK sotto `src-tauri/gen/android/app/build/outputs/apk/`: `arm64/release/app-arm64-release.apk` per i telefoni (arm64-v8a, circa 7,5 MB) e `x86_64/release/app-x86_64-release.apk` per l'emulatore (circa 8,0 MB). `OE_URL` è come per il PC: senza, la build si ferma; l'indirizzo sta nell'APK e non in nessun file del repository.
+Escono due APK sotto `src-tauri/gen/android/app/build/outputs/apk/`: `arm64/release/app-arm64-release.apk` per i telefoni (arm64-v8a, circa 7,5 MiB) e `x86_64/release/app-x86_64-release.apk` per l'emulatore (circa 8,0 MiB). `OE_URL` è come per il PC: senza, la build si ferma; l'indirizzo sta nell'APK e non in nessun file del repository.
 
 La prima volta serve circa un quarto d'ora (Gradle scarica sé stesso e le dipendenze, Rust compila due architetture), le volte dopo da 4 a 7 minuti (misurato su questo PC, 8 core). Gradle usa circa 3 GB di memoria e cargo circa 2 GB: conviene chiudere il browser. Alla fine `gradlew --stop`, nella cartella `src-tauri/gen/android`, ferma il demone di Gradle.
 
@@ -130,6 +130,7 @@ Solo la variante di prova espone il socket di DevTools: `adb forward tcp:<porta>
 - **Apri in Outlook** del vecchio client: non si può riprodurre, gli id degli eventi del sito non sono id di Outlook.
 - **Aggiornamento automatico**: serve un indirizzo pubblico per i file, il repository è privato. Si reinstalla a mano.
 - **Firma del codice** dell'installer.
+- **Pulsanti nelle notifiche** (*Partecipa*) e avviso in stile Teams (finestra propria, sempre in primo piano): non ci sono. La notifica è quella normale del sistema, con titolo, ora e luogo.
 - **Android**: provata solo su un emulatore, mai su un telefono vero; senza notifiche del web né passkey (sezione sopra).
 - **Uso offline**: se il sito non risponde c'è solo il messaggio della pagina di avvio, nessuna copia del calendario.
 

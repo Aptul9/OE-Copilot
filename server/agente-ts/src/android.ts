@@ -93,6 +93,8 @@ function colonna(nome: string, valore: string | null): Riga | null {
 function daRighe(righe: RigaAndroid[]): Componente[] {
   const perSync = new Map<string, number>();
   for (const r of righe) if (r._sync_id) perSync.set(r._sync_id, r._id);
+  const perId = new Map<number, RigaAndroid>();
+  for (const r of righe) perId.set(r._id, r);
   const annullate = new Map<number, [number, number | null][]>();
   const componenti: Componente[] = [];
   for (const r of righe) {
@@ -130,11 +132,22 @@ function daRighe(righe: RigaAndroid[]): Componente[] {
       }
       haRegole = Boolean(rr) || Boolean(r.rdate?.trim()) || Boolean(r.exdate?.trim());
     }
+    let fineProp = r.dtend !== null ? quando(r.dtend, r.eventEndTimezone || fuso, giorno) : null;
+    let durata = r.dtend === null && r.duration ? durataAndroid(r.duration) : null;
+    // Le copie con lo stato annullato (annullata() le lascia passare) hanno spesso la fine uguale all'inizio: la durata vera è quella della serie
+    if (serie && r.eventStatus === ANNULLATO && (r.dtend === null ? !r.duration : r.dtend <= r.dtstart)) {
+      const m = perId.get(serie);
+      const secondi = !m ? 0 : m.dtend !== null && m.dtstart !== null ? Math.round((m.dtend - m.dtstart) / 1000) : m.duration ? durataAndroid(m.duration) : 0;
+      if (secondi > 0) {
+        fineProp = null;
+        durata = secondi;
+      }
+    }
     componenti.push({
       uid: `a${serie || r._id}`,
       inizio: quando(r.dtstart, fuso, giorno),
-      fineProp: r.dtend !== null ? quando(r.dtend, r.eventEndTimezone || fuso, giorno) : null,
-      durata: r.dtend === null && r.duration ? durataAndroid(r.duration) : null,
+      fineProp,
+      durata,
       recId: serie && r.originalInstanceTime !== null ? quando(r.originalInstanceTime, fuso, Boolean(r.originalAllDay)) : null,
       recRange: false,
       sequenza: -1,

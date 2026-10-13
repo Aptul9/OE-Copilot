@@ -47,6 +47,7 @@ const eccezione = (extra: Partial<RigaAndroid> = {}): RigaAndroid => ({
   ...extra,
 });
 const inizi = (righe: RigaAndroid[]) => espandiRigheAndroid(righe, "2026-10-12T00:00:00", "2026-10-28T00:00:00").map((o) => o.inizio);
+const fini = (righe: RigaAndroid[]) => espandiRigheAndroid(righe, "2026-10-12T00:00:00", "2026-10-28T00:00:00").map((o) => o.fine);
 
 const TUTTE = ["2026-10-13T15:30:00", "2026-10-20T15:30:00", "2026-10-27T15:30:00"];
 const SENZA_LA_PRIMA = TUTTE.slice(1);
@@ -84,5 +85,27 @@ describe("occorrenza che sostituisce una della serie, con lo stato annullato", (
   it("la copia con lo stato annullato di una sola occorrenza non fa uscire le altre", () => {
     const seconda = eccezione({ _id: 3, originalInstanceTime: ms("2026-10-20T13:30:00Z"), dtstart: ms("2026-10-20T13:30:00Z"), dtend: ms("2026-10-20T14:00:00Z"), isOrganizer: 0, hasAttendeeData: 1 });
     expect(inizi([serie(), eccezione({ isOrganizer: 1, hasAttendeeData: 0 }), seconda])).toEqual(["2026-10-13T15:30:00", "2026-10-27T15:30:00"]);
+  });
+});
+
+describe("la fine di una copia con lo stato annullato", () => {
+  const copia = (extra: Partial<RigaAndroid> = {}) => eccezione({ isOrganizer: 1, hasAttendeeData: 0, ...extra });
+  it("uguale all'inizio (come la scrive Outlook): vale la durata della serie, 30 minuti", () => {
+    const zero = copia({ dtend: ms("2026-10-13T13:30:00Z") });
+    expect(fini([serie(), zero])).toEqual(["2026-10-13T16:00:00", "2026-10-20T16:00:00", "2026-10-27T16:00:00"]);
+  });
+  it("mancante del tutto: vale la durata della serie", () => {
+    expect(fini([serie(), copia({ dtend: null, duration: null })])[0]).toBe("2026-10-13T16:00:00");
+  });
+  it("la serie con la fine scritta e non la durata: si misura la sua", () => {
+    const m = serie({ dtend: ms("2026-10-13T14:30:00Z"), duration: null });
+    expect(fini([m, copia({ dtend: ms("2026-10-13T13:30:00Z") })])[0]).toBe("2026-10-13T16:30:00");
+  });
+  it("una fine vera della copia resta, 45 minuti", () => {
+    expect(fini([serie(), copia({ dtend: ms("2026-10-13T14:15:00Z") })])[0]).toBe("2026-10-13T16:15:00");
+  });
+  it("la serie senza durata: la copia resta com'è", () => {
+    const m = serie({ duration: null, dtend: null });
+    expect(fini([m, copia({ dtend: ms("2026-10-13T13:30:00Z") })])[0]).toBe("2026-10-13T15:30:00");
   });
 });

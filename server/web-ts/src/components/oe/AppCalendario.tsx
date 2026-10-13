@@ -17,6 +17,7 @@ import { DialogoNuovoEvento } from "./DialogoNuovoEvento";
 import { Legenda } from "./Legenda";
 import { MiniCalendario } from "./MiniCalendario";
 import { OeProvider, useOe } from "./OeProvider";
+import { PannelloLaterale } from "./PannelloLaterale";
 import { SchedaEvento, type Scheda } from "./SchedaEvento";
 import { Timesheet } from "./Timesheet";
 
@@ -231,10 +232,10 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
         </nav>
 
         {sezione === "calendario" && pannello && (
-          <aside id="sidepane" className="sidepane hidden w-64 flex-none overflow-y-auto border-r bg-sidebar py-3 lg:block">
+          <PannelloLaterale>
             <h2 className="sidepane-title mb-3 px-4 text-lg font-bold">Calendario</h2>
             {contenutoPannello}
-          </aside>
+          </PannelloLaterale>
         )}
 
         <main className="main flex min-w-0 flex-1 flex-col gap-2 p-2">

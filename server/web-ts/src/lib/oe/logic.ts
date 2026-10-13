@@ -124,6 +124,11 @@ export function filtraAziende(gruppi: GruppoAzienda[], ricerca: string): GruppoA
   return gruppi.filter((g) => [g.azienda, ...g.caselle].some((t) => senzaAccenti(t).includes(q)));
 }
 
+/** La colonna di sinistra: da quanto a quanto si allarga con la maniglia, e la larghezza di partenza (px). */
+export const LARGHEZZA_PANNELLO = { min: 220, max: 480, predefinita: 256 } as const;
+export const limitaLarghezza = (px: number): number =>
+  Number.isFinite(px) ? Math.round(Math.min(LARGHEZZA_PANNELLO.max, Math.max(LARGHEZZA_PANNELLO.min, px))) : LARGHEZZA_PANNELLO.predefinita;
+
 /** Le voci della barra divise in (principali, secondarie): le secondarie sono quelle di `interfaccia.calendari_secondari`, ognuna nel suo ordine. */
 export function separaSecondari(gruppi: GruppoAzienda[], secondari: ReadonlySet<string>): [GruppoAzienda[], GruppoAzienda[]] {
   return [gruppi.filter((g) => !secondari.has(g.azienda)), gruppi.filter((g) => secondari.has(g.azienda))];

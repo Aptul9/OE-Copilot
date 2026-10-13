@@ -52,9 +52,11 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
             {/* se il logo non si carica restano le iniziali, mai l'icona dell'immagine rotta */}
             {logo ? <ImgLogo key={logo} src={logo} className="size-full object-contain p-[2px]" alternativa={sigla} /> : sigla}
           </span>
-          <span className="acct-name truncate">{g.azienda}</span>
-          {/* più account sotto un nome solo (Gestisci calendari, Unisci account) */}
-          {g.caselle.length > 1 && <span className="acct-uniti flex-none text-[11px] text-muted-foreground">({g.caselle.length} account)</span>}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="acct-name truncate">{g.azienda}</span>
+            {/* più account sotto un nome solo (Gestisci calendari, Unisci account): su una riga a parte, il nome non si accorcia */}
+            {g.caselle.length > 1 && <span className="acct-uniti truncate text-[11px] leading-tight text-muted-foreground">{g.caselle.length} account uniti</span>}
+          </span>
         </button>
         <button
           className="acct-only mr-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/acct:opacity-100 max-md:opacity-100"

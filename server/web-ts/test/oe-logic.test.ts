@@ -9,6 +9,8 @@ import {
   etichettaSync,
   eventiPerGriglia,
   filtraAziende,
+  limitaLarghezza,
+  LARGHEZZA_PANNELLO,
   secondariEffettivi,
   separaSecondari,
   fmtRange,
@@ -283,6 +285,18 @@ describe("separaSecondari", () => {
   it("senza secondarie, o con nomi che non ci sono, tutte restano principali", () => {
     expect(separaSecondari(tutte, new Set())).toEqual([tutte, []]);
     expect(separaSecondari(tutte, new Set(["Altro"]))).toEqual([tutte, []]);
+  });
+});
+
+describe("limitaLarghezza", () => {
+  it("tiene la larghezza fra il minimo e il massimo, in pixel interi", () => {
+    expect(limitaLarghezza(300.4)).toBe(300);
+    expect(limitaLarghezza(10)).toBe(LARGHEZZA_PANNELLO.min);
+    expect(limitaLarghezza(9999)).toBe(LARGHEZZA_PANNELLO.max);
+  });
+  it("un valore che non è un numero torna a quello di partenza", () => {
+    expect(limitaLarghezza(NaN)).toBe(LARGHEZZA_PANNELLO.predefinita);
+    expect(limitaLarghezza(Infinity)).toBe(LARGHEZZA_PANNELLO.predefinita);
   });
 });
 

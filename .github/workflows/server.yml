@@ -210,6 +210,13 @@ jobs:
           curl -fsS --max-time 5 -b jar -X POST "${json[@]}" -d "[\"Alfa\",\"$ostile\"]" $G/api/upload_logo | grep -q "\"error\":\"Non è un'immagine\""
           curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_loghi | grep -q '"loghi":{}'
           test -z "$(curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config | grep -o logo)"
+          # i calendari da link passano dalla stessa guardia: la rete interna, i metadati del cloud, i nomi dei servizi e uno schema che non è http
+          # si rifiutano prima di collegarsi (nessun traffico in uscita), e nella configurazione non resta niente
+          for url in http://127.0.0.1/c.ics http://localhost/c.ics http://169.254.169.254/latest/meta-data/ 'http://[::1]/c.ics' 'http://[::ffff:0:127.0.0.1]/c.ics' http://10.0.0.5/c.ics http://agent:8180/api/ics http://gateway/c.ics; do
+            curl -fsS --max-time 5 -b jar -X POST "${json[@]}" -d "[\"Prova\",\"$url\"]" $G/api/add_ics_calendar | grep -q '"error":"Il link non risponde: Indirizzo non ammesso"'
+          done
+          curl -fsS --max-time 5 -b jar -X POST "${json[@]}" -d '["Prova","file:///etc/passwd"]' $G/api/add_ics_calendar | grep -q '"error":"Il link deve iniziare con https:// (o webcal://)."'
+          curl -fsS -b jar -X POST "${json[@]}" -d '[]' $G/api/get_config | grep -q '"ics_calendars":\[\]'
           # i metodi della lettura li serve il gateway da sé (qui senza agente: nessuna casella, ma la risposta c'è, in JSON e senza cache)
           curl -fsS -b jar -D intest2 -X POST "${json[@]}" -d '[]' $G/api/get_config | grep -q '"theme"'
           grep -qi '^content-type: application/json' intest2

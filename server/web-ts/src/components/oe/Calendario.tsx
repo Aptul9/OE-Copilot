@@ -225,6 +225,9 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         firstDay={1}
         nowIndicator
         height="100%"
+        // FullCalendar rimisura la griglia solo su un evento resize della finestra, e di norma aspetta 100 ms dall'ultimo: trascinando la colonna dei
+        // calendari (PannelloLaterale) la griglia restava indietro. Il lavoro di una rimisura è circa 2 ms, quindi si fa subito
+        windowResizeDelay={0}
         // altezza naturale con scorrimento: gli slot restano leggibili e una riunione da mezz'ora ha spazio
         expandRows={false}
         slotMinTime="07:00:00"

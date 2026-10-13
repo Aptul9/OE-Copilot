@@ -138,3 +138,6 @@
 .calendario.vista-3g .fc-col-header { touch-action: pan-y; }
 .calendario.vista-3g { overscroll-behavior-x: none; }
 .calendario[data-trascina] { user-select: none; cursor: grabbing; }
+/* mentre si trascina la colonna dei calendari: niente passaggi del mouse e selezioni sul resto della pagina, e il puntatore resta quello del bordo */
+body[data-trascina-pannello] { cursor: col-resize; user-select: none; }
+body[data-trascina-pannello] main { pointer-events: none; }

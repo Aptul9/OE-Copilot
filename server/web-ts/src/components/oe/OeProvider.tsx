@@ -4,6 +4,7 @@ import { useTheme } from "next-themes";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/oe/api";
 import {
+  coloriDinamici,
   dentroLaCache,
   eATreGiorni,
   etichettaSync,
@@ -101,11 +102,11 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   const [pers, setPers] = useState<Personalizzazione>({ interfaccia: {} });
   const [config, setConfig] = useState<Config>({});
   const [vistaIniziale, setVistaIniziale] = useState<string | null>(null);
-  const [calendari, setCalendari] = useState<Calendario[]>([]);
+  const [calendariLetti, setCalendari] = useState<Calendario[]>([]);
   const [statoFonti, setStatoFonti] = useState<Record<string, FonteStato>>({});
   const [pallinoInAttesa, setPallinoInAttesa] = useState(false);
   const [periodo, impostaPeriodo] = useState<Periodo | null>(null);
-  const [eventi, setEventi] = useState<Evento[]>([]);
+  const [eventiLetti, setEventi] = useState<Evento[]>([]);
   const [ricerca, impostaRicerca] = useState("");
   const [avviso, mostraAvviso] = useState<Avviso | null>(null);
   const [datiVecchi, setDatiVecchi] = useState<string | null>(null);
@@ -230,6 +231,17 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     if (pronta) void aggiornaCalendari();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pronta]);
+
+  // ---- colori dinamici (config.colori_dinamici): un colore per azienda scelto sulla pagina che si guarda, al posto di quello fisso ----
+  // Le tinte di prima restano da una lettura all'altra: cambia solo chi finisce accanto a una tinta uguale o vicina.
+  const tintePrima = useRef<Map<string, string>>(new Map());
+  const colori = useMemo(() => {
+    if (!config.colori_dinamici || inPubblico) return null;
+    const aziende = calendariLetti.filter((c) => !c.builtin).map((c) => c.alias || c.account);
+    return (tintePrima.current = coloriDinamici(eventiLetti, aziende, tintePrima.current, periodo ?? undefined));
+  }, [config.colori_dinamici, inPubblico, calendariLetti, eventiLetti, periodo]);
+  const calendari = useMemo(() => (colori ? calendariLetti.map((c) => ({ ...c, color: colori.get(c.alias || c.account) ?? c.color })) : calendariLetti), [calendariLetti, colori]);
+  const eventi = useMemo(() => (colori ? eventiLetti.map((e) => ({ ...e, color: colori.get(e.alias || e.account) ?? e.color })) : eventiLetti), [eventiLetti, colori]);
 
   const gruppi = useMemo(() => raggruppaAziende(calendari), [calendari]);
 

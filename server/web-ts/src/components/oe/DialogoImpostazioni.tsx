@@ -3,6 +3,7 @@
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import type { Modo2fa } from "@/lib/config";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ const INTERVALLI = [
 
 /** Impostazioni: aspetto e ogni quanto si rilegge il calendario. */
 export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Props) {
-  const { tema, impostaTema, intervalloSync, impostaIntervallo } = useOe();
+  const { tema, impostaTema, intervalloSync, impostaIntervallo, config, salvaConfig } = useOe();
 
   return (
     <Dialog open={aperto} onOpenChange={(o) => !o && onChiudi()}>
@@ -52,6 +53,12 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
               ))}
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">&quot;Automatico&quot; segue il tema del dispositivo.</p>
+            <label className="mt-3 flex items-center gap-2">
+              <Switch id="cfg-colori-dinamici" checked={!!config.colori_dinamici} onCheckedChange={(v) => void salvaConfig({ colori_dinamici: v })} /> Colori dinamici
+            </label>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Due riunioni vicine di aziende diverse non hanno mai lo stesso colore. I colori si scelgono sulla pagina che guardi e possono cambiare da una pagina all&apos;altra.
+            </p>
           </section>
 
           <section>

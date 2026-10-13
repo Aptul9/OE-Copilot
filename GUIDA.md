@@ -538,6 +538,8 @@ dominio della casella e i colori dalla tavolozza. Si parte da `personalizzazione
 in `ui-dati/` come `personalizzazione.json`. Il gateway rilegge il file quando cambia: dopo una
 modifica non si riavvia niente. I colori assegnati stanno nella configurazione (`account_colors`).
 
+Con *Impostazioni → Aspetto → Colori dinamici* il colore non è più quello fisso dell'azienda: la pagina lo sceglie sulle riunioni che si stanno guardando, tra otto tinte e il grigio, in modo che due riunioni vicine (sovrapposte, o una in fila all'altra entro un quarto d'ora) di aziende diverse non abbiano la stessa tinta. La legenda segue. I colori possono cambiare da una pagina all'altra, ma una rilettura della stessa pagina non li cambia. Con più di nove aziende a contatto fra loro una tinta si ripete, sulla coppia che si incontra meno. `account_colors` non viene toccato: spento l'interruttore tornano i colori fissi. La scelta sta nella configurazione (`colori_dinamici`).
+
 ### 4.8 Lo schermo del telefono nel browser (facoltativo)
 Il servizio **`schermo`** (`server/schermo-web/`, copia potata e aggiornata di ws-scrcpy, provenienza e modifiche in `UPSTREAM.md`) mostra il telefono virtuale in una pagina e lo comanda con mouse e tastiera: serve per il PIN dopo un riavvio, un accesso, un codice MFA, al posto di scrcpy sul PC con un tunnel SSH (4.4).
 - Container in sola lettura, utente 10001, senza capacità, `cpus: 1`, 256 MB. Parla con il telefono con adb su `telefono:5555` (rete di compose); un solo telefono, nessuna shell, nessun elenco o caricamento di file, il tunnel porta solo al server scrcpy del telefono (`tcp:8886`, in ascolto solo su localhost nel telefono).

@@ -70,6 +70,8 @@ export type GruppiCalendari = Record<string, string[]>;
 export type Config = {
   theme?: TemaConfig;
   zoom_calendario?: number;
+  /** Colori scelti sulla pagina che si guarda (coloriDinamici in logic.ts) al posto di quello fisso dell'azienda. */
+  colori_dinamici?: boolean;
   vista?: string;
   gruppi_calendari?: GruppiCalendari;
   /** Calendari secondari scelti dalla finestra Calendari: nome -> true (secondario) o false (principale, anche se il file dice il contrario). */

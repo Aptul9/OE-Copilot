@@ -3,6 +3,7 @@ import { ApiError, creaApi } from "@/lib/oe/api";
 import {
   azioniEvento,
   chiaveGiorno,
+  coloriDinamici,
   corrisponde,
   dentroLaCache,
   eATreGiorni,
@@ -27,6 +28,7 @@ import {
   spostaGiorni,
   testoDatiVecchi,
   tintaOpaca,
+  TINTE_DINAMICHE,
   vicinoAlBordo,
   vistaPerSchermo,
 } from "@/lib/oe/logic";
@@ -306,4 +308,101 @@ describe("secondariEffettivi", () => {
     expect([...secondariEffettivi(["Festività", "Eventi personali"], { Festività: false, Personale: true })].sort()).toEqual(["Eventi personali", "Personale"]);
   });
   it("niente file e niente scelte: nessuno", () => expect(secondariEffettivi(undefined, undefined).size).toBe(0));
+});
+
+describe("coloriDinamici", () => {
+  let n = 0;
+  const r = (alias: string, da: string, a: string, extra: Partial<Evento> = {}) =>
+    ev({ id: `e${++n}`, alias, account: `${alias.toLowerCase()}@x.it`, start: `2026-10-13T${da}:00`, end: `2026-10-13T${a}:00`, ...extra });
+  // otto tinte sulla ruota e, per ultimo, il grigio
+  const [T0, T1, T2, , OPPOSTA, , T6, , GRIGIO] = TINTE_DINAMICHE;
+  // la giornata del 13 ottobre 2026: nove aziende, cinque a contatto fra loro intorno alle 14:30
+  const giornata = () => [
+    r("Tesco", "10:40", "11:00"), r("Zurich", "10:45", "11:15"), r("Tesco", "11:00", "11:30"), r("ITV", "11:00", "11:15"), r("ITV", "11:15", "11:30"),
+    r("BIP", "12:00", "13:00"), r("EVER", "12:00", "12:30"), r("ROAR", "12:00", "12:15"),
+    r("Personale", "13:00", "14:00"), r("Zurich", "13:00", "13:30"),
+    r("ITV", "14:00", "15:00"), r("EVER", "14:00", "14:30"), r("Personale", "14:30", "15:30"), r("MSC", "14:30", "15:30"), r("Tesco", "14:30", "15:00"),
+    r("Tesco", "15:30", "16:00"), r("Notarify", "16:00", "16:30"),
+  ];
+
+  it("due aziende con riunioni sovrapposte prendono tinte opposte", () => {
+    expect(coloriDinamici([r("Tesco", "09:00", "10:00"), r("ITV", "09:30", "10:30")], [])).toEqual(new Map([["ITV", T0], ["Tesco", OPPOSTA]]));
+  });
+
+  it("una riunione in fila all'altra conta, anche con cinque minuti di pausa", () => {
+    const opposte = new Map([["ITV", T0], ["Tesco", OPPOSTA]]);
+    expect(coloriDinamici([r("Tesco", "09:00", "10:00"), r("ITV", "10:00", "11:00")], [])).toEqual(opposte);
+    expect(coloriDinamici([r("Tesco", "09:00", "09:55"), r("ITV", "10:00", "11:00")], [])).toEqual(opposte);
+  });
+
+  it("in cinque tutte a contatto: quattro tinte a un quarto di giro l'una dall'altra e il grigio", () => {
+    const m = coloriDinamici(["A", "B", "C", "D", "E"].map((x) => r(x, "09:00", "10:00")), []);
+    expect(new Set(m.values())).toEqual(new Set([T0, T2, OPPOSTA, T6, GRIGIO]));
+  });
+
+  it("nella giornata piena nessuna coppia di aziende vicine ha la stessa tinta", () => {
+    const eventi = giornata();
+    const m = coloriDinamici(eventi, []);
+    const quarto = 15 * 60000;
+    for (const a of eventi)
+      for (const b of eventi) {
+        if (a.alias === b.alias) continue;
+        const vicine = Date.parse(a.start) <= Date.parse(b.end) + quarto && Date.parse(b.start) <= Date.parse(a.end) + quarto;
+        if (vicine) expect(m.get(a.alias!), `${a.alias} e ${b.alias}`).not.toBe(m.get(b.alias!));
+      }
+  });
+
+  it("riletta la stessa pagina i colori restano quelli, in qualunque ordine arrivino gli eventi", () => {
+    const m = coloriDinamici(giornata(), []);
+    expect(coloriDinamici(giornata(), [], m)).toEqual(m);
+    expect(coloriDinamici(giornata().reverse(), [])).toEqual(m);
+  });
+
+  it("chi ha già una tinta la tiene finché quella accanto non è uguale o vicina", () => {
+    const eventi = [r("Tesco", "09:00", "10:00"), r("ITV", "09:30", "10:30")];
+    expect(coloriDinamici(eventi, [], new Map([["Tesco", T0], ["ITV", T2]]))).toEqual(new Map([["Tesco", T0], ["ITV", T2]]));
+    expect(coloriDinamici(eventi, [], new Map([["Tesco", T0], ["ITV", T1]]))).toEqual(new Map([["ITV", T1], ["Tesco", TINTE_DINAMICHE[5]]]));
+    expect(coloriDinamici(eventi, [], new Map([["Tesco", T0], ["ITV", T0]]))).toEqual(new Map([["ITV", T0], ["Tesco", OPPOSTA]]));
+  });
+
+  it("due aziende lontane un'ora possono avere la stessa tinta", () => {
+    const stesse = new Map([["Tesco", T0], ["ITV", T0]]);
+    expect(coloriDinamici([r("Tesco", "09:00", "10:00"), r("ITV", "11:00", "12:00")], [], stesse)).toEqual(stesse);
+  });
+
+  it("le aziende dell'elenco hanno una tinta anche senza riunioni; festività e calendari spenti non contano", () => {
+    const stesse = new Map([["Tesco", T0], ["ITV", T0]]);
+    const m = coloriDinamici(
+      [r("Tesco", "09:00", "10:00"), r("ITV", "09:30", "10:30", { nascosto: true }), r("Festività", "00:00", "23:59", { account: "Festività", allDay: true })],
+      ["Serco", "ITV", "Tesco"],
+      stesse,
+    );
+    expect([...m.keys()].sort()).toEqual(["ITV", "Serco", "Tesco"]);
+    expect(TINTE_DINAMICHE).toContain(m.get("Serco"));
+    expect(m.get("ITV")).toBe(T0);
+    expect(m.get("Tesco")).toBe(T0);
+  });
+
+  it("contano solo le riunioni della pagina che si guarda", () => {
+    const stesse = new Map([["Tesco", T0], ["ITV", T0]]);
+    const eventi = [r("Tesco", "09:00", "10:00"), r("ITV", "09:30", "10:30")];
+    const domani = { start: new Date(2026, 9, 14), end: new Date(2026, 9, 15) };
+    expect(coloriDinamici(eventi, ["Tesco", "ITV"], stesse, domani)).toEqual(stesse);
+    expect(coloriDinamici(eventi, ["Tesco", "ITV"], stesse, { start: new Date(2026, 9, 13), end: new Date(2026, 9, 14) })).not.toEqual(stesse);
+  });
+
+  it("con più aziende a contatto che tinte, la ripetizione tocca alla coppia che si incontra meno", () => {
+    const tutte = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "Z"];
+    expect(tutte.length).toBe(TINTE_DINAMICHE.length + 1);
+    const m = coloriDinamici(
+      [
+        ...tutte.map((x) => r(x, "09:00", "10:00")),
+        ...tutte.filter((x) => x !== "A").map((x) => r(x, "11:00", "12:00")),
+        ...tutte.filter((x) => x !== "Z").map((x) => r(x, "13:00", "14:00")),
+      ],
+      [],
+    );
+    expect(new Set(m.values()).size).toBe(TINTE_DINAMICHE.length);
+    expect(m.get("Z")).toBe(m.get("A"));
+  });
 });

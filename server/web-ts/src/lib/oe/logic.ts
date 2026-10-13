@@ -283,6 +283,67 @@ export function eventiPerGriglia(eventi: Evento[], { secondari, ricerca }: Opzio
   return eventi.filter((e) => eventoVisibile(e) && corrisponde(e, ricerca)).map((e) => eventoPerGriglia(e, secondari));
 }
 
+// ---- Colori dinamici ------------------------------------------------------------
+/** Le tinte dei colori dinamici: otto a passi uguali sulla ruota (oklch), con la stessa luminosità e la stessa saturazione, e per ultimo il grigio. */
+const RUOTA = 8;
+export const TINTE_DINAMICHE = [...Array.from({ length: RUOTA }, (_, i) => `oklch(0.62 0.17 ${20 + (i * 360) / RUOTA})`), "oklch(0.62 0 0)"];
+const QUARTO_DORA = 15 * 60000;
+/** I passi sulla ruota fra due tinte. Il grigio sta al centro: da ogni tinta dista più di un passo e meno di due. */
+const distanzaTinte = (a: number, b: number) => (a === b ? 0 : Math.max(a, b) === RUOTA ? 1.5 : Math.min(Math.abs(a - b), RUOTA - Math.abs(a - b)));
+const aziendaDi = (e: Evento) => e.alias || e.account;
+
+/**
+ * Un colore per azienda scelto sulla pagina che si guarda (config.colori_dinamici): due aziende con riunioni sovrapposte, o una in fila
+ * all'altra (fino a un quarto d'ora di pausa), prendono tinte lontane sulla ruota. Chi aveva già una tinta (`precedenti`) la tiene finché
+ * non finisce accanto a una uguale o vicina: così a ogni rilettura i colori restano quelli. Con più aziende a contatto che tinte la
+ * ripetizione tocca alla coppia che si incontra meno.
+ */
+export function coloriDinamici(
+  eventi: Evento[],
+  aziende: string[],
+  precedenti: ReadonlyMap<string, string> = new Map(),
+  pagina?: { start: Date; end: Date },
+): Map<string, string> {
+  const visti = eventi.filter(
+    (e) => eventoVisibile(e) && (!pagina || (Date.parse(e.start) < pagina.end.getTime() && Date.parse(e.end || e.start) >= pagina.start.getTime())),
+  );
+  // quante volte due aziende si toccano
+  const contatti = new Map<string, Map<string, number>>();
+  for (const az of [...aziende, ...visti.map(aziendaDi)]) if (!contatti.has(az)) contatti.set(az, new Map());
+  const orari = visti
+    .filter((e) => !e.allDay)
+    .map((e) => ({ az: aziendaDi(e), da: Date.parse(e.start), a: Date.parse(e.end) }))
+    .sort((x, y) => x.da - y.da);
+  for (let i = 0; i < orari.length; i++) {
+    for (let j = i + 1; j < orari.length && orari[j].da <= orari[i].a + QUARTO_DORA; j++) {
+      const [x, y] = [orari[i].az, orari[j].az];
+      if (x === y) continue;
+      contatti.get(x)!.set(y, (contatti.get(x)!.get(y) ?? 0) + 1);
+      contatti.get(y)!.set(x, (contatti.get(y)!.get(x) ?? 0) + 1);
+    }
+  }
+  const peso = (az: string) => [...contatti.get(az)!.values()].reduce((s, n) => s + n, 0);
+  // prima chi ha più contatti: è quella con meno scelta
+  const ordine = [...contatti.keys()].sort((a, b) => peso(b) - peso(a) || (a < b ? -1 : 1));
+  const tinta = new Map<string, number>();
+  const usi = TINTE_DINAMICHE.map(() => 0);
+  for (const az of ordine) {
+    const accanto = [...contatti.get(az)!].filter(([v]) => tinta.has(v)).map(([v, n]) => ({ t: tinta.get(v)!, n }));
+    // di una tinta: quanto dista dalla più vicina fra quelle accanto, e quante riunioni si toccano a quella distanza
+    const voto = (t: number) => {
+      const d = Math.min(...accanto.map((v) => distanzaTinte(t, v.t)));
+      return { t, d, n: accanto.filter((v) => distanzaTinte(t, v.t) === d).reduce((s, v) => s + v.n, 0) };
+    };
+    // la più lontana; a pari distanza quella che tocca meno riunioni, poi la meno usata
+    const migliore = usi.map((_, t) => voto(t)).sort((a, b) => b.d - a.d || a.n - b.n || usi[a.t] - usi[b.t] || a.t - b.t)[0];
+    const prima = TINTE_DINAMICHE.indexOf(precedenti.get(az) ?? "");
+    const scelta = prima >= 0 && voto(prima).d >= Math.min(2, migliore.d) ? prima : migliore.t;
+    tinta.set(az, scelta);
+    usi[scelta]++;
+  }
+  return new Map([...tinta].map(([az, t]) => [az, TINTE_DINAMICHE[t]]));
+}
+
 // ---- Scheda dell'evento ---------------------------------------------------------
 export type AzioniEvento = { partecipa: string | null; apriInTeams: { account: string; url: string } | null; elimina: string | null };
 

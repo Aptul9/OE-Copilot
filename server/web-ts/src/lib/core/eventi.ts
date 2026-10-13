@@ -1,5 +1,5 @@
 import { calendariDiInoltro, elencoCalendari, tuttiGliEventi, type Meta } from "./agente";
-import type { Ev } from "./caselle";
+import { ANNULLATO_RE, type Ev } from "./caselle";
 import { ErroreData, iso, mezzanotte, oraHHMM, parseBound, piuGiorni } from "./fuso";
 import { elencoFeed, eventiFeed } from "./ics";
 import { elencoLocali, eventiLocali } from "./locali";
@@ -137,7 +137,8 @@ export async function raccogli(cfg: Config, startIso: string, endIso: string, al
     console.error("raccogli: eventi locali falliti", e);
     errori.push(`Eventi personali: ${messaggio(e)}`);
   }
-  eventi = senzaDoppioni(eventi);
+  // Una riunione annullata resta nel calendario con "Canceled:" nel titolo: qui, che è la strada di pagina, disponibilità, condivisione e promemoria, non esce
+  eventi = senzaDoppioni(eventi.filter((e) => !ANNULLATO_RE.test(String(e.title || ""))));
   eventi = soloAziendeAccese(cfg, eventi, (meta.aziende || {}) as Record<string, boolean>);
   eventi.sort((a, b) => ((a.start || "") < (b.start || "") ? -1 : (a.start || "") > (b.start || "") ? 1 : 0));
   meta.fonti = statoFonti(cfg, meta, errori);

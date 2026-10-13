@@ -46,6 +46,9 @@ export function scriviCacheEventi(chiave: string, eventi: Ev[]): void {
 // Prefisso che il programma di posta mette davanti al titolo di un invito inoltrato (FW/Fwd, I, WG, TR, RV), anche ripetuto.
 export const INOLTRO_RE = /^\s*(?:(?:fwd?|i|wg|tr|rv)\s*:\s*)+/i;
 
+// Titolo che Outlook dà a una riunione annullata dall'organizzatore, che resta nel calendario: "Canceled: ...", "Cancelled: ...", in italiano "Annullato: ...".
+export const ANNULLATO_RE = /^\s*(?:canceled|cancelled|annullat[oaie]|cancellat[oaie])\s*:/i;
+
 /** (azienda, titolo senza prefisso) per le copie dei flussi, se no (null, titolo). */
 export function aziendaDaTitolo(titolo: string): [string | null, string] {
   for (const [azienda, d] of personalizzazione().aziendeInoltrate) {

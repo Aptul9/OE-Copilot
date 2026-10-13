@@ -509,7 +509,7 @@ Nella finestra *Calendari da mostrare* (*Gestisci calendari*) la sezione *Unisci
 
 Il pulsante *Secondario* accanto al nome di ogni voce la mette sotto *Altri calendari*, un gruppo chiuso in fondo alla barra (si apre da solo con una ricerca), e rende più tenui i suoi eventi nella griglia. È la voce `secondari_scelti` della configurazione (nome -> vero o falso); sopra c'è `interfaccia.calendari_secondari` di `personalizzazione.json`, che vale finché la finestra non dice altro per quel nome (falso la toglie anche se il file la nomina). Un cambio di nome porta con sé la scelta, come i gruppi e il logo.
 
-La colonna di sinistra (minicalendario e calendari) si allarga e si stringe trascinando il suo bordo, da 220 a 480 px; le frecce sinistra e destra la muovono di 16 px e un doppio clic la riporta a 256. La larghezza resta in questo browser (`localStorage`, chiave `oe.larghezza-pannello`) e non sul server, quindi ogni PC o telefono ha la sua. Una voce con più account uniti ha sotto il nome "N account uniti".
+La colonna di sinistra (minicalendario e calendari) si allarga e si stringe trascinando il suo bordo, da 220 a 480 px; le frecce sinistra e destra la muovono di 16 px e un doppio clic la riporta a 256. Mentre si trascina si muove solo la maniglia, con la larghezza che avrà; la colonna cambia al rilascio, e lì la griglia si ridisegna una volta (a ogni passo sarebbe lento: FullCalendar rimisura tutti gli eventi, e lo fa solo quando la finestra cambia, perciò la colonna gli manda un evento `resize`). La larghezza resta in questo browser (`localStorage`, chiave `oe.larghezza-pannello`) e non sul server, quindi ogni PC o telefono ha la sua. Una voce con più account uniti ha sotto il nome "N account uniti".
 
 #### Disponibilità pubblica
 

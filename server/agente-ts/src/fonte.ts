@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { espandiRigheAndroid, type OccorrenzaAndroid, type RigaAndroid } from "./android.ts";
+import { annullata, espandiRigheAndroid, type OccorrenzaAndroid, type RigaAndroid } from "./android.ts";
 import { pulisciLink } from "./html.ts";
 import { MEETING_URL } from "./ics.ts";
 import { confrontaPy, pyBool, pyStrip, pyTipo } from "./pyfmt.ts";
@@ -13,7 +13,6 @@ import { ErroreAltro } from "./tempo.ts";
 
 export const DB = "calendar.db";
 const TIPI_ACCOUNT = ["com.microsoft.office.outlook", "com.google"];
-const ANNULLATO = 2; // Events.STATUS_CANCELED
 const ORGANIZZATORE = 2; // Attendees.RELATIONSHIP_ORGANIZER
 const GRAVITA = new Map<unknown, number>([
   ["ok", 0],
@@ -119,7 +118,7 @@ function copiaEApri(cartella: string): { tmp: string; db: DatabaseSync } {
 const SQL_CALENDARI = "select _id, account_name, account_type, calendar_displayName, isPrimary, deleted, sync_events from Calendars";
 const SQL_EVENTI =
   "select _id, _sync_id, calendar_id, title, eventLocation, description, eventStatus, dtstart, dtend, eventTimezone, eventEndTimezone, duration, allDay, rrule, rdate, " +
-  "exrule, exdate, original_id, original_sync_id, originalInstanceTime, originalAllDay, organizer from Events where deleted = 0 and calendar_id in (%s)";
+  "exrule, exdate, original_id, original_sync_id, originalInstanceTime, originalAllDay, organizer, isOrganizer, hasAttendeeData from Events where deleted = 0 and calendar_id in (%s)";
 const SQL_INVITATI =
   "select event_id, attendeeName, attendeeEmail, attendeeRelationship from Attendees where event_id in (select _id from Events where calendar_id in (%s))";
 
@@ -168,8 +167,8 @@ function dettagliDi(lettura: Lettura): Map<string, Dettagli> {
   for (const r of eventi) if (r._sync_id) perSync.set(r._sync_id, r._id);
   for (const r of eventi) {
     const serie = r.original_id || (r.original_sync_id ? perSync.get(r.original_sync_id) : undefined);
-    if (serie && r.eventStatus === ANNULLATO && r.originalInstanceTime !== null) continue;
-    if (r.eventStatus === ANNULLATO || r.dtstart === null) continue;
+    if (serie && annullata(r, true) && r.originalInstanceTime !== null) continue;
+    if (annullata(r, Boolean(serie)) || r.dtstart === null) continue;
     const uid = `a${serie || r._id}`;
     const p = persone.get(r._id);
     if (!dettagli.has(uid))

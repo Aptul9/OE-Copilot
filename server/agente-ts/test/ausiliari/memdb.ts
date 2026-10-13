@@ -25,7 +25,8 @@ const SCHEMA = `
                        description TEXT, eventStatus INTEGER, dtstart INTEGER, dtend INTEGER, eventTimezone TEXT,
                        eventEndTimezone TEXT, duration TEXT, allDay INTEGER DEFAULT 0, rrule TEXT, rdate TEXT,
                        exrule TEXT, exdate TEXT, original_id INTEGER, original_sync_id TEXT,
-                       originalInstanceTime INTEGER, originalAllDay INTEGER, organizer TEXT, deleted INTEGER DEFAULT 0);
+                       originalInstanceTime INTEGER, originalAllDay INTEGER, organizer TEXT, deleted INTEGER DEFAULT 0,
+                       isOrganizer INTEGER, hasAttendeeData INTEGER);
   CREATE TABLE Attendees (_id INTEGER PRIMARY KEY, event_id INTEGER, attendeeName TEXT, attendeeEmail TEXT,
                           attendeeRelationship INTEGER);
 `;

@@ -28,6 +28,9 @@ export interface RigaAndroid {
   original_sync_id: string | null;
   originalInstanceTime: number | null;
   originalAllDay: number | null;
+  /** Come li scrive il telefono (1 e 0); le prove e i database vecchi possono non averli. */
+  isOrganizer?: number | null;
+  hasAttendeeData?: number | null;
 }
 
 export interface OccorrenzaAndroid {
@@ -45,6 +48,17 @@ export interface OpzioniAndroid {
 }
 
 const ANNULLATO = 2; // Events.STATUS_CANCELED
+
+/**
+ * La riga è annullata. Outlook scrive STATUS_CANCELED anche per le occorrenze delle serie che sono copie fatte da un flusso nel calendario di chi
+ * le legge (`isOrganizer` 1 e nessun invitato, `hasAttendeeData` 0): per tutte le occorrenze future di quelle serie, e Outlook intanto le mostra e
+ * non le dà per annullate (nel suo log manca `outlook_isCancelled`, c'è solo `isCanceled` della riga). Per un'eccezione di quel tipo lo stato non
+ * conta: un annullamento vero ha un invitato (`isOrganizer` 0, `hasAttendeeData` 1) oppure il titolo "Canceled:", che il gateway toglie.
+ * `eccezione` è vero per una riga che sostituisce un'occorrenza di una serie; una riga sola con lo stesso stato resta annullata.
+ */
+export function annullata(r: Pick<RigaAndroid, "eventStatus" | "isOrganizer" | "hasAttendeeData">, eccezione: boolean): boolean {
+  return r.eventStatus === ANNULLATO && !(eccezione && r.isOrganizer === 1 && r.hasAttendeeData === 0);
+}
 
 /** Istante di Android (millisecondi UTC + nome del fuso) -> data/ora: i giorni interi a mezzanotte UTC sono date, un fuso che non c'è è UTC. */
 function quando(ms: number, fuso: string | null, tuttoIlGiorno: boolean): Tempo {
@@ -83,13 +97,13 @@ function daRighe(righe: RigaAndroid[]): Componente[] {
   const componenti: Componente[] = [];
   for (const r of righe) {
     const serie = r.original_id || (r.original_sync_id ? perSync.get(r.original_sync_id) : undefined);
-    if (serie && r.eventStatus === ANNULLATO && r.originalInstanceTime !== null) {
+    if (serie && annullata(r, true) && r.originalInstanceTime !== null) {
       const lista = annullate.get(serie);
       if (lista) lista.push([r.originalInstanceTime, r.originalAllDay]);
       else annullate.set(serie, [[r.originalInstanceTime, r.originalAllDay]]);
       continue;
     }
-    if (r.eventStatus === ANNULLATO || r.dtstart === null) continue;
+    if (annullata(r, Boolean(serie)) || r.dtstart === null) continue;
     const giorno = Boolean(r.allDay);
     const fuso = r.eventTimezone;
     let rdate: Rdate[] = [];

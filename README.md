@@ -53,7 +53,7 @@ Se un account si apre solo dal browser, un flusso (per esempio Power Automate) p
 
 ### Caselle lette dal server
 
-Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede attraverso il gateway. Il codice dell'agente e di tutto il server è nella cartella `server/`. Per l'installazione completa passo per passo e il perché delle scelte, vedi **[GUIDA.md](GUIDA.md)**.
+Le caselle le legge un **agente** su un server Linux, e il browser gliele chiede attraverso il gateway. Il codice dell'agente e di tutto il server è nella cartella `server/`. Per l'installazione completa passo per passo e il perché delle scelte, vedi **[GUIDA.md](GUIDA.md)**; per un server nuovo c'è in cima alla sezione 4 la lista *Messa in servizio per un altro server*.
 
 Come funziona: sul server gira un telefono Android virtuale ([redroid](https://github.com/remote-android/redroid-doc), in Docker) con le app ufficiali, **Outlook** per le caselle Microsoft e i **servizi Google** per i calendari Google, in cui si fanno gli accessi una volta. Le app copiano gli appuntamenti nel calendario del telefono; l'agente legge quel calendario e lo espone con una piccola API, in ascolto **solo sul localhost del server** e sulla rete di Docker. Il browser passa da HTTPS e dalla pagina di accesso (servizi `gateway` e `caddy-ui`, GUIDA.md, 4.7); il telefono si vede e si comanda dalla pagina `/telefono/` (GUIDA.md, 4.8), dietro lo stesso accesso. Dal PC l'agente si interroga con un tunnel SSH (GUIDA.md, sezione 5).
 
@@ -95,7 +95,7 @@ riscritta a ogni modifica).
 
 ## Se qualcosa non va
 
-I log dei servizi: `docker logs oe-copilot-<servizio>` sul server (GUIDA.md, sezione 7).
+I log dei servizi: `docker logs oe-copilot-<servizio>` sul server (GUIDA.md, sezione 7). Per il telefono bloccato, il Caddy dopo un aggiornamento, il 503 di un link di condivisione, un logo rifiutato e un passo rosso dell'aggiornamento c'è la tabella *Diagnosi rapida* (GUIDA.md, sezione 7).
 
 - **La pagina resta vuota o chiede di nuovo l'accesso**: il cookie di sessione dura 30 giorni; dopo un cambio di `ADMIN_PASSWORD` e un riavvio del gateway le sessioni si chiudono.
 - **Non riesco più a entrare con il secondo fattore** (telefono perso, codici persi): sul server, in `.env`, `AUTH_2FA=off`, poi un nuovo aggiornamento (`gh workflow run Server --repo danfortu/OE-Copilot --ref main`, o *Run workflow* dalla pagina della Action) ricrea il gateway: basta la password. Senza la Action il gateway si ricrea a mano, con i secret in `.env` o nell'ambiente. I passaggi, e come ripartire da zero col codice: GUIDA.md, sezione 4.7.

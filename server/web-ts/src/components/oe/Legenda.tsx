@@ -53,6 +53,8 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
             {logo ? <ImgLogo key={logo} src={logo} className="size-full object-contain p-[2px]" alternativa={sigla} /> : sigla}
           </span>
           <span className="acct-name truncate">{g.azienda}</span>
+          {/* più account sotto un nome solo (Gestisci calendari, Unisci account) */}
+          {g.caselle.length > 1 && <span className="acct-uniti flex-none text-[11px] text-muted-foreground">({g.caselle.length} account)</span>}
         </button>
         <button
           className="acct-only mr-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover/acct:opacity-100 max-md:opacity-100"

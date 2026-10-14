@@ -119,7 +119,7 @@ export type Esito = { ok: boolean; error?: string };
 
 export type ContenutoPromemoria = "completo" | "minimo";
 /** I promemoria che il server manda (lib/core/promemoria.ts). */
-export type ImpostazioniPromemoria = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: ContenutoPromemoria };
+export type ImpostazioniPromemoria = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: ContenutoPromemoria; suono: string };
 export type PromemoriaRisposta = {
   promemoria: ImpostazioniPromemoria;
   /**

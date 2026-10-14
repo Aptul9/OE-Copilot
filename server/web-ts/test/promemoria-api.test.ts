@@ -11,6 +11,7 @@ import { avviaTelegramFinto, CHAT_DI_PROVA, soloRetiLocali, TOKEN_DI_PROVA } fro
 // I tre metodi dei promemoria attraverso il gateway vero (handle, con i metodi veri di lib/core): le regole di sempre (401, 403, 405, 413, 415)
 // e il comportamento, con un Telegram finto in locale.
 
+const MINUTI_NO = "I minuti sono da 1 a 8 numeri interi diversi, ciascuno da 0 (all'inizio) a 1440.";
 const METODI = ["get_promemoria", "set_promemoria", "prova_promemoria"];
 
 let dati: string;
@@ -131,7 +132,7 @@ describe("get_promemoria", () => {
     expect(await api("get_promemoria")).toEqual({
       stato: 200,
       corpo: {
-        promemoria: { attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo" },
+        promemoria: { attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" },
         canali: [
           { nome: "telegram", configurato: false },
           { nome: "push", configurato: false, chiavi: false, chiave_pubblica: null, iscrizioni: 0 },
@@ -157,7 +158,7 @@ describe("get_promemoria", () => {
 
   it("una voce scritta male con save_config non rompe la lettura: valgono i valori predefiniti", async () => {
     await api("save_config", [{ promemoria: { attivo: "sì", minuti: "dieci", canali: 7, contenuto: [] } }]);
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo" });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" });
   });
 });
 
@@ -171,21 +172,40 @@ describe("set_promemoria", () => {
   it("con il canale configurato si accende, si cambiano minuti e contenuto, e get_promemoria e get_config lo mostrano", async () => {
     configuraTelegram();
     const r = await api("set_promemoria", [{ attivo: true, minuti: [15, 5, 15], contenuto: "minimo" }]);
-    expect(r).toEqual({ stato: 200, corpo: { ok: true, promemoria: { attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo" } } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo" });
+    expect(r).toEqual({ stato: 200, corpo: { ok: true, promemoria: { attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" } } });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
     // è una voce della configurazione come le altre, e non porta niente del canale
     const config = (await api("get_config")).corpo;
-    expect(config.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo" });
+    expect(config.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
     expect(JSON.stringify(config)).not.toContain("SEGRETO");
     expect(JSON.stringify(config)).not.toContain(CHAT_DI_PROVA);
+  });
+
+  it("si salvano l'orario all'inizio (0), fino a otto orari e un suono; i valori stanno in ordine e la voce sopravvive a una nuova lettura", async () => {
+    const r = await api("set_promemoria", [{ minuti: [30, 0, 15, 60, 10, 5, 20, 45], suono: "Reminder" }]);
+    expect(r.corpo).toEqual({ ok: true, promemoria: { attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["telegram"], contenuto: "completo", suono: "Reminder" } });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["telegram"], contenuto: "completo", suono: "Reminder" });
+    expect((await api("set_promemoria", [{ minuti: [0] }])).corpo.promemoria.minuti).toEqual([0]);
+  });
+
+  it("tutti i suoni elencati dal server sono accettati (Alarm e Call da 1 a 10), un nome scritto male no", async () => {
+    for (const suono of ["Default", "Reminder", "Mail", "IM", "SMS", "Alarm", "Alarm10", "Call", "Call7"]) {
+      expect((await api("set_promemoria", [{ suono }])).corpo, suono).toMatchObject({ ok: true, promemoria: { suono } });
+    }
+    expect((await api("set_promemoria", [{ suono: "alarm" }])).corpo).toEqual({ ok: false, error: "Suono sconosciuto." });
+    expect((await api("get_promemoria")).corpo.promemoria.suono).toBe("Call7");
   });
 
   it("i valori che non vanno sono rifiutati con una frase, senza eccezioni", async () => {
     configuraTelegram();
     const rifiuti: [unknown, string][] = [
-      [{ minuti: [0] }, "I minuti sono da 1 a 5 numeri interi diversi, ciascuno da 1 a 1440."],
-      [{ minuti: [1, 2, 3, 4, 5, 6] }, "I minuti sono da 1 a 5 numeri interi diversi, ciascuno da 1 a 1440."],
-      [{ minuti: [1441] }, "I minuti sono da 1 a 5 numeri interi diversi, ciascuno da 1 a 1440."],
+      [{ minuti: [-1] }, MINUTI_NO],
+      [{ minuti: [] }, MINUTI_NO],
+      [{ minuti: [1, 2, 3, 4, 5, 6, 7, 8, 9] }, MINUTI_NO],
+      [{ minuti: [1441] }, MINUTI_NO],
+      [{ minuti: [1.5] }, MINUTI_NO],
+      [{ suono: "Fischio" }, "Suono sconosciuto."],
+      [{ suono: 3 }, "Suono sconosciuto."],
       [{ canali: ["whatsapp"] }, "Canale sconosciuto."],
       [{ contenuto: "tutto" }, "Il contenuto è «completo» o «minimo»."],
       [{ attivo: "sì" }, "«attivo» deve essere vero o falso."],
@@ -195,7 +215,7 @@ describe("set_promemoria", () => {
     ];
     for (const [corpo, frase] of rifiuti) expect(await api("set_promemoria", [corpo]), JSON.stringify(corpo)).toEqual({ stato: 200, corpo: { ok: false, error: frase } });
     expect(await api("set_promemoria", [])).toEqual({ stato: 200, corpo: { ok: false, error: "Le impostazioni dei promemoria non sono valide." } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo" });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" });
   });
 });
 

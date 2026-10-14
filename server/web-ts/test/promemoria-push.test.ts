@@ -407,7 +407,7 @@ describe("con il motore", () => {
     const m = creaMotore({
       adesso,
       leggiEventi: async () => ({ eventi: [evento()], problemi: 0 }),
-      impostazioni: () => ({ attivo: true, minuti: [10], canali: ["push"], contenuto: "completo" }),
+      impostazioni: () => ({ attivo: true, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" }),
       canali: () => [canalePush({ locali: true })],
       store: creaStore(),
     });

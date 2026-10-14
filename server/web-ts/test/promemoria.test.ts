@@ -82,7 +82,7 @@ function prepara(parziali: Partial<Impostazioni> = {}, canali: CanaleFinto[] = [
     problemi: 0,
     rotta: null as Error | null,
     letture: [] as [string, string][],
-    imp: { attivo: true, minuti: [10], canali: canali.map((c) => c.nome), contenuto: "completo", ...parziali } as Impostazioni,
+    imp: { attivo: true, minuti: [10], canali: canali.map((c) => c.nome), contenuto: "completo", suono: "Default", ...parziali } as Impostazioni,
     canali,
     motore: undefined as unknown as Motore,
     nuovo: undefined as unknown as () => Motore,
@@ -135,6 +135,30 @@ describe("quali eventi hanno un promemoria", () => {
     await p.motore.giro();
     expect(p.canali[0].inviati).toHaveLength(1);
     expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 1 minuto, alle 15:30");
+  });
+
+  it("all'inizio (0 minuti): parte nell'ultimo minuto prima dell'evento, una volta sola, e non prima", async () => {
+    const p = prepara({ minuti: [0] });
+    mancano(1, 1);
+    await p.motore.giro();
+    expect(p.canali[0].inviati).toEqual([]);
+    mancano(0, 40);
+    expect(await p.motore.giro()).toMatchObject({ inviati: 1 });
+    mancano(0, 10);
+    await p.motore.giro();
+    expect(p.canali[0].inviati).toHaveLength(1);
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 1 minuto, alle 15:30");
+    expect(righe()).toMatchObject([{ minuti: 0, esito: "inviato" }]);
+  });
+
+  it("all'inizio e 10 minuti prima: due avvisi, ognuno quando scade", async () => {
+    const p = prepara({ minuti: [0, 10] });
+    mancano(10);
+    await p.motore.giro();
+    mancano(0, 30);
+    await p.motore.giro();
+    expect(p.canali[0].inviati).toHaveLength(2);
+    expect(righe().map((r) => r.minuti)).toEqual([0, 10]);
   });
 
   it("un evento di tutto il giorno non ha mai un promemoria, nemmeno a cinque minuti dalla mezzanotte", async () => {
@@ -648,7 +672,7 @@ describe("spento, senza canali, con la lettura rotta", () => {
         await attesa;
         return { eventi: [evento()], problemi: 0 };
       },
-      impostazioni: () => ({ attivo: true, minuti: [10], canali: ["finto"], contenuto: "completo" }),
+      impostazioni: () => ({ attivo: true, minuti: [10], canali: ["finto"], contenuto: "completo", suono: "Default" }),
       canali: () => [c],
       store: creaStore(),
     });
@@ -669,7 +693,7 @@ describe("spento, senza canali, con la lettura rotta", () => {
       leggiEventi: async () => ({ eventi: [evento()], problemi: 0 }),
       impostazioni: () => {
         if (rotto) throw new Error("database in manutenzione con Riunione di prova");
-        return { attivo: true, minuti: [10], canali: ["finto"], contenuto: "completo" };
+        return { attivo: true, minuti: [10], canali: ["finto"], contenuto: "completo", suono: "Default" };
       },
       canali: () => [c],
       store: creaStore(),
@@ -744,7 +768,7 @@ describe("le impostazioni", () => {
   const nessuno = () => [canaleFinto("telegram", false)];
 
   it("di norma: spento, un avviso dieci minuti prima, Telegram, testo completo; la configurazione dell'app non cambia", () => {
-    expect(leggiImpostazioni(loadConfig())).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo" });
+    expect(leggiImpostazioni(loadConfig())).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" });
     expect(PREDEFINITE.attivo).toBe(false);
     expect(loadConfig()).toEqual(DEFAULT_CONFIG);
     expect(loadConfig()).not.toHaveProperty("promemoria");
@@ -757,20 +781,22 @@ describe("le impostazioni", () => {
       minuti: [10],
       canali: ["telegram"],
       contenuto: "completo",
+      suono: "Default",
     });
     expect(leggi({ attivo: 1 }).attivo).toBe(false);
-    expect(leggi({ attivo: true, minuti: [30, 5, 30], contenuto: "minimo" })).toEqual({ attivo: true, minuti: [5, 30], canali: ["telegram"], contenuto: "minimo" });
+    expect(leggi({ attivo: true, minuti: [30, 5, 30], contenuto: "minimo" })).toEqual({ attivo: true, minuti: [5, 30], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
     expect(leggi("testo")).toEqual(leggiImpostazioni({}));
-    expect(leggi({ minuti: [1, 2, 3, 4, 5, 6] }).minuti).toEqual([10]);
+    expect(leggi({ minuti: [1, 2, 3, 4, 5, 6, 7, 8, 9] }).minuti).toEqual([10]);
   });
 
-  it("i minuti: interi da 1 a 1440, al più 5 diversi, almeno uno; i doppioni si fondono e l'elenco si ordina", () => {
+  it("i minuti: interi da 0 a 1440, al più 8 diversi, almeno uno; i doppioni si fondono e l'elenco si ordina", () => {
     const prova = (minuti: unknown) => validaImpostazioni({ minuti }, PREDEFINITE, telegram());
     expect(prova([1])).toMatchObject({ ok: true, valore: { minuti: [1] } });
     expect(prova([1440])).toMatchObject({ ok: true });
     expect(prova([15, 5, 10, 5, 15])).toMatchObject({ ok: true, valore: { minuti: [5, 10, 15] } });
-    expect(prova([1, 2, 3, 4, 5])).toMatchObject({ ok: true });
-    for (const male of [[0], [1441], [-5], [1.5], ["10"], [null], [NaN], [Infinity], [], "10", 10, null, { 0: 10 }, [1, 2, 3, 4, 5, 6], [[10]]]) {
+    expect(prova([0])).toMatchObject({ ok: true, valore: { minuti: [0] } });
+    expect(prova([1, 2, 3, 4, 5, 6, 7, 8])).toMatchObject({ ok: true });
+    for (const male of [[1441], [-5], [1.5], ["10"], [null], [NaN], [Infinity], [], "10", 10, null, { 0: 10 }, [1, 2, 3, 4, 5, 6, 7, 8, 9], [[10]]]) {
       expect(prova(male), JSON.stringify(male)).toMatchObject({ ok: false });
     }
   });
@@ -790,9 +816,9 @@ describe("le impostazioni", () => {
       expect(prova(male), JSON.stringify(male)).toMatchObject({ ok: false });
     }
     // un campo che manca resta com'è
-    expect(validaImpostazioni({}, { attivo: false, minuti: [7], canali: ["telegram"], contenuto: "minimo" }, telegram())).toEqual({
+    expect(validaImpostazioni({}, { attivo: false, minuti: [7], canali: ["telegram"], contenuto: "minimo", suono: "Default" }, telegram())).toEqual({
       ok: true,
-      valore: { attivo: false, minuti: [7], canali: ["telegram"], contenuto: "minimo" },
+      valore: { attivo: false, minuti: [7], canali: ["telegram"], contenuto: "minimo", suono: "Default" },
     });
   });
 
@@ -812,13 +838,13 @@ describe("le impostazioni", () => {
     const canali = telegram();
     expect(salvaPromemoria({ attivo: true, minuti: [15, 5], contenuto: "minimo" }, canali)).toEqual({
       ok: true,
-      promemoria: { attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo" },
+      promemoria: { attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" },
     });
-    expect(leggiImpostazioni(loadConfig())).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo" });
+    expect(leggiImpostazioni(loadConfig())).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
     const riga = archivio().prepare("SELECT valore FROM stato_config WHERE chiave = 'promemoria'").get() as { valore: string };
-    expect(JSON.parse(riga.valore)).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo" });
+    expect(JSON.parse(riga.valore)).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
     expect(JSON.parse(fs.readFileSync(path.join(dati, "config.json"), "utf-8")).promemoria.minuti).toEqual([5, 15]);
-    expect(salvaPromemoria({ minuti: [0] }, canali)).toMatchObject({ ok: false });
+    expect(salvaPromemoria({ minuti: [-1] }, canali)).toMatchObject({ ok: false });
     expect(leggiImpostazioni(loadConfig()).minuti).toEqual([5, 15]);
     // un campo che manca resta com'è
     expect(salvaPromemoria({ attivo: false }, canali)).toMatchObject({ ok: true, promemoria: { minuti: [5, 15], contenuto: "minimo", attivo: false } });
@@ -843,10 +869,10 @@ describe("le impostazioni", () => {
     mancano(10);
     await m.giro();
     expect(c.inviati).toEqual([]);
-    modificaConfig((cfg) => void (cfg.promemoria = { attivo: true, minuti: [10], canali: ["telegram"], contenuto: "completo" }));
+    modificaConfig((cfg) => void (cfg.promemoria = { attivo: true, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" }));
     await m.giro();
     expect(c.inviati).toHaveLength(1);
-    modificaConfig((cfg) => void (cfg.promemoria = { attivo: false, minuti: [10, 5], canali: ["telegram"], contenuto: "completo" }));
+    modificaConfig((cfg) => void (cfg.promemoria = { attivo: false, minuti: [10, 5], canali: ["telegram"], contenuto: "completo", suono: "Default" }));
     mancano(5);
     await m.giro();
     expect(c.inviati).toHaveLength(1);
@@ -948,7 +974,7 @@ describe("il giro dentro il gateway", () => {
     vi.useFakeTimers({ now: ORA });
     fissaOra(null);
     // acceso, con un canale scelto che il server non ha: il giro si ferma subito ma lascia l'ora
-    modificaConfig((cfg) => void (cfg.promemoria = { attivo: true, minuti: [10], canali: ["telegram"], contenuto: "completo" }));
+    modificaConfig((cfg) => void (cfg.promemoria = { attivo: true, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" }));
     avviaPromemoria();
     expect(statoGlobale().ultimoGiro).toBeNull();
     await vi.advanceTimersByTimeAsync(9_999);

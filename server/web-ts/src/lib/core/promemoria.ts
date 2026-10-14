@@ -15,7 +15,10 @@ import { isDict } from "./py";
 export const TENTATIVI_MAX = 5;
 export const CONSERVA_GIORNI = 14;
 export const MINUTI_MAX = 1440;
-export const MINUTI_VOCI = 5;
+export const MINUTI_VOCI = 8;
+// i suoni di sistema che l'app per Windows può chiedere alla notifica (tauri-winrt-notification): sul server si sceglie, ma li usa solo l'app
+const dieci = (nome: string) => [nome, ...[2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => nome + n)];
+export const SUONI = ["Default", "Reminder", "Mail", "IM", "SMS", ...dieci("Alarm"), ...dieci("Call")];
 export const TESTO_PROVA = "Prova dei promemoria";
 // si legge un po' oltre il minuto più lontano: un evento a cavallo del limite non sfugge fra due giri
 const MARGINE_MIN = 2;
@@ -27,16 +30,19 @@ const PRIMO_GIRO_MS = 10_000;
 
 // ---- Le impostazioni -----------------------------------------------------------------------------------------------------
 export type Contenuto = "completo" | "minimo";
-export type Impostazioni = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: Contenuto };
+export type Impostazioni = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: Contenuto; suono: string };
 
 /**
  * Quello che vale finché nessuno ha salvato niente: spento, un avviso dieci minuti prima (come l'app per Windows). Non stanno in
  * DEFAULT_CONFIG: la chiave `promemoria` si scrive nello stato alla prima modifica, come `gruppi_calendari`.
  */
-export const PREDEFINITE: Impostazioni = { attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo" };
+export const PREDEFINITE: Impostazioni = { attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" };
+
+// 0 vuol dire "all'inizio": l'avviso parte nell'ultimo minuto prima dell'inizio (un giro dura fino a 30 secondi, quindi uno ci cade sempre)
+export const sogliaMs = (minuti: number) => Math.max(minuti, 1) * 60_000;
 
 function minutiValidi(v: unknown): number[] | null {
-  if (!Array.isArray(v) || !v.every((m) => Number.isInteger(m) && m >= 1 && m <= MINUTI_MAX)) return null;
+  if (!Array.isArray(v) || !v.every((m) => Number.isInteger(m) && m >= 0 && m <= MINUTI_MAX)) return null;
   const distinti = [...new Set(v as number[])].sort((a, b) => a - b);
   return distinti.length >= 1 && distinti.length <= MINUTI_VOCI ? distinti : null;
 }
@@ -49,6 +55,7 @@ export function leggiImpostazioni(cfg: Config): Impostazioni {
     minuti: minutiValidi(g.minuti) ?? [...PREDEFINITE.minuti],
     canali: Array.isArray(g.canali) ? [...new Set(g.canali.filter((c): c is string => typeof c === "string"))] : [...PREDEFINITE.canali],
     contenuto: g.contenuto === "minimo" ? "minimo" : "completo",
+    suono: typeof g.suono === "string" && SUONI.includes(g.suono) ? g.suono : PREDEFINITE.suono,
   };
 }
 
@@ -64,7 +71,7 @@ export function validaImpostazioni(dati: unknown, attuali: Impostazioni, canali:
       nuove.attivo = v;
     } else if (campo === "minuti") {
       const minuti = minutiValidi(v);
-      if (!minuti) return { ok: false, error: `I minuti sono da 1 a ${MINUTI_VOCI} numeri interi diversi, ciascuno da 1 a ${MINUTI_MAX}.` };
+      if (!minuti) return { ok: false, error: `I minuti sono da 1 a ${MINUTI_VOCI} numeri interi diversi, ciascuno da 0 (all'inizio) a ${MINUTI_MAX}.` };
       nuove.minuti = minuti;
     } else if (campo === "canali") {
       if (!Array.isArray(v) || !v.every((n) => typeof n === "string" && canali.some((c) => c.nome === n))) return { ok: false, error: "Canale sconosciuto." };
@@ -72,6 +79,9 @@ export function validaImpostazioni(dati: unknown, attuali: Impostazioni, canali:
     } else if (campo === "contenuto") {
       if (v !== "completo" && v !== "minimo") return { ok: false, error: "Il contenuto è «completo» o «minimo»." };
       nuove.contenuto = v;
+    } else if (campo === "suono") {
+      if (typeof v !== "string" || !SUONI.includes(v)) return { ok: false, error: "Suono sconosciuto." };
+      nuove.suono = v;
     } else return { ok: false, error: "Impostazione sconosciuta." };
   }
   if (nuove.attivo && !canali.some((c) => nuove.canali.includes(c.nome) && c.configurato())) {
@@ -295,7 +305,7 @@ export function creaMotore(dip: Dipendenze): Motore {
         const restanti = c.istante - t;
         if (restanti <= 0) continue;
         const aperti = imp.minuti
-          .filter((n) => restanti <= n * 60_000)
+          .filter((n) => restanti <= sogliaMs(n))
           .map((n) => {
             const chiave = chiaveDi(c.id, c.inizio, n, canale.nome);
             return { n, chiave, riga: dip.store.leggi(chiave) };

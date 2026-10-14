@@ -14,6 +14,26 @@ const CONTENUTI: { valore: ContenutoPromemoria; testo: string }[] = [
   { valore: "minimo", testo: "Minimo: solo ora e azienda" },
 ];
 
+// Gli orari più usati, a caselle. 0 è "all'inizio" (nell'ultimo minuto prima). Gli altri valori si scrivono nel campo sotto.
+const ORARI: { minuti: number; testo: string }[] = [
+  { minuti: 60, testo: "1 ora prima" },
+  { minuti: 30, testo: "30 minuti prima" },
+  { minuti: 15, testo: "15 minuti prima" },
+  { minuti: 10, testo: "10 minuti prima" },
+  { minuti: 5, testo: "5 minuti prima" },
+  { minuti: 0, testo: "All'inizio" },
+];
+// I nomi che il server accetta (SUONI in lib/core/promemoria.ts): li usa solo l'app per Windows, come suono della notifica
+const SUONI: [string, string][] = [
+  ["Default", "Predefinito di Windows"],
+  ["Reminder", "Promemoria"],
+  ["Mail", "Posta"],
+  ["IM", "Messaggio"],
+  ["SMS", "SMS"],
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n): [string, string] => [n === 1 ? "Alarm" : `Alarm${n}`, `Allarme ${n}`]),
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n): [string, string] => [n === 1 ? "Call" : `Call${n}`, `Chiamata ${n}`]),
+];
+
 const messaggio = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /** AAAA-MM-GGTHH:MM:SS (ora di Roma) come "12/10 15:20:00". */
 const quando = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 19)}`;
@@ -26,7 +46,7 @@ const nelBrowser = () => typeof window !== "undefined" && "serviceWorker" in nav
 export function ImpostazioniPromemoria() {
   const [dati, setDati] = useState<PromemoriaRisposta | null>(null);
   const [errore, setErrore] = useState("");
-  const [minuti, setMinuti] = useState("");
+  const [altri, setAltri] = useState("");
   const [occupato, setOccupato] = useState(false);
   const [prove, setProve] = useState<Record<string, string>>({});
   // questo browser è iscritto alle notifiche? null se non si sa o se il browser non le ha
@@ -36,7 +56,7 @@ export function ImpostazioniPromemoria() {
     try {
       const r = await api("get_promemoria");
       setDati(r);
-      setMinuti(r.promemoria.minuti.join(", "));
+      setAltri(r.promemoria.minuti.filter((m) => !ORARI.some((o) => o.minuti === m)).join(", "));
       setErrore("");
     } catch (e) {
       setErrore(messaggio(e));
@@ -70,10 +90,21 @@ export function ImpostazioniPromemoria() {
     }
   };
 
-  const salvaMinuti = () => {
-    const valori = minuti.split(/[\s,;]+/).filter(Boolean).map(Number);
-    if (valori.some((v) => !Number.isInteger(v))) return setErrore("Scrivi numeri interi separati da virgola, per esempio 10, 5.");
-    if (valori.join(",") !== dati?.promemoria.minuti.join(",")) void salva({ minuti: valori });
+  // le caselle e il campo sono la stessa lista: ognuno cambia la sua parte e il resto resta com'è
+  const salvaMinuti = (lista: number[]) => {
+    if (lista.join(",") !== dati?.promemoria.minuti.join(",")) void salva({ minuti: lista });
+  };
+  const cambiaOrario = (minuti: number, acceso: boolean) => {
+    const scelti = new Set(dati?.promemoria.minuti);
+    if (acceso) scelti.add(minuti);
+    else scelti.delete(minuti);
+    salvaMinuti([...scelti].sort((a, b) => a - b));
+  };
+  const salvaAltri = () => {
+    const valori = altri.split(/[\s,;]+/).filter(Boolean).map(Number);
+    if (valori.some((v) => !Number.isInteger(v))) return setErrore("Scrivi numeri interi separati da virgola, per esempio 20, 45.");
+    const aCaselle = (dati?.promemoria.minuti ?? []).filter((m) => ORARI.some((o) => o.minuti === m));
+    salvaMinuti([...new Set([...aCaselle, ...valori])].sort((a, b) => a - b));
   };
 
   const dichiara = (nome: string, testo: string) => setProve((x) => ({ ...x, [nome]: testo }));
@@ -151,19 +182,52 @@ export function ImpostazioniPromemoria() {
         </label>
         <p className="-mt-1.5 text-xs text-muted-foreground">Li manda il server, anche a pagina chiusa. Di norma è spento: si accende con un canale configurato sul server.</p>
 
+        <fieldset className="flex flex-col gap-1.5" id="cfg-promemoria-orari">
+          <legend className="mb-1 text-xs font-medium">Quando avvisare</legend>
+          {ORARI.map((o) => (
+            <label key={o.minuti} className="flex items-center gap-2">
+              <input
+                id={`cfg-promemoria-orario-${o.minuti}`}
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={p.minuti.includes(o.minuti)}
+                disabled={occupato}
+                onChange={(e) => cambiaOrario(o.minuti, e.target.checked)}
+              />
+              {o.testo}
+            </label>
+          ))}
+          <label className="mt-1 flex flex-col gap-1 text-xs font-medium">
+            Altri minuti prima (separati da virgola, per esempio 20, 45)
+            <Input
+              id="cfg-promemoria-minuti"
+              className="w-48"
+              inputMode="numeric"
+              value={altri}
+              disabled={occupato}
+              onChange={(e) => setAltri(e.target.value)}
+              onBlur={salvaAltri}
+              onKeyDown={(e) => e.key === "Enter" && salvaAltri()}
+            />
+          </label>
+        </fieldset>
+
         <label className="flex flex-col gap-1 text-xs font-medium">
-          Minuti prima dell&apos;inizio (da uno a cinque valori, per esempio 10, 5)
-          <Input
-            id="cfg-promemoria-minuti"
-            className="w-48"
-            inputMode="numeric"
-            value={minuti}
-            disabled={occupato}
-            onChange={(e) => setMinuti(e.target.value)}
-            onBlur={salvaMinuti}
-            onKeyDown={(e) => e.key === "Enter" && salvaMinuti()}
-          />
+          Suono della notifica di Windows (solo l&apos;app per Windows)
+          <Select value={p.suono} disabled={occupato} onValueChange={(v) => void salva({ suono: v })}>
+            <SelectTrigger id="cfg-promemoria-suono" className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SUONI.map(([valore, testo]) => (
+                <SelectItem key={valore} value={valore}>
+                  {testo}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
+        <p className="-mt-1.5 text-xs text-muted-foreground">L&apos;app rilegge orari e suono ogni 30 minuti, o quando si riavvia. Gli stessi orari valgono per i canali sotto.</p>
 
         <div className="flex flex-col gap-2">
           <span className="text-xs font-medium">Dove</span>

@@ -63,7 +63,9 @@ Uno script incluso nell'app (`src-tauri/src/inizializzazione.js`) gira nella fin
 - ogni avviso parte una volta sola per riunione e anticipo (l'elenco sta in `localStorage` e si ripulisce da solo); le giornate intere non avvisano mai; con i dati in cache perché l'agente non risponde non parte niente;
 - senza sessione (risposta 401 o pagina di accesso) lo script smette di chiedere e riprova ogni 5 minuti; dopo un errore di rete allunga l'attesa fino a 5 minuti;
 - l'interruttore *Notifiche* del menu li ferma subito e la scelta resta salvata;
-- se il server espone `get_promemoria`, gli anticipi vengono da `minuti` (ogni 30 minuti si rilegge); `attivo: false` riguarda solo i promemoria del server, l'app avvisa comunque; senza quel metodo l'anticipo è la costante `MINUTI_PREAVVISO` (10) in testa allo script;
+- se il server espone `get_promemoria`, gli anticipi vengono da `minuti` (ogni 30 minuti si rilegge; si scelgono in *Impostazioni*, *Promemoria*, a caselle: 1 ora, 30, 15, 10, 5 minuti, *All'inizio*, più un campo per gli altri valori); `attivo: false` riguarda solo i promemoria del server, l'app avvisa comunque; senza quel metodo l'anticipo è la costante `MINUTI_PREAVVISO` (10) in testa allo script;
+- `0` è *All'inizio*: l'avviso parte nell'ultimo minuto e mezzo prima dell'inizio (`FINESTRA_INIZIO_MS`, più lunga del giro da 60 secondi, così non ne salta nessuno) e il titolo dice `Adesso` se mancano meno di 30 secondi;
+- il suono viene da `suono` di `get_promemoria` (stessa scelta, stesso rilievo ogni 30 minuti): un nome di suono di sistema di Windows (`Reminder`, `Mail`, `IM`, `SMS`, `Alarm` e `Call` da 1 a 10) che l'app passa alla notifica; `Default`, un valore assente o strano lasciano il suono predefinito. Un file audio proprio non è possibile con una notifica di Windows;
 - nei log non finisce niente che riguardi gli eventi.
 
 ## Sicurezza

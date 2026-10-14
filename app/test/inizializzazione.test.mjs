@@ -203,6 +203,42 @@ test("get_promemoria: anticipi del server, una notifica per riunione e anticipo,
   assert.equal(a.notifiche[1].title, "Tra 9 min · Riunione F");
 });
 
+test("all'inizio (0 minuti): nulla a due minuti, un avviso nell'ultimo minuto e mezzo, e dice Adesso a meno di mezzo minuto", async () => {
+  const inizio = Date.UTC(2026, 9, 12, 8, 0);
+  const api = { get_events: json([evento("e1", "Riunione H", "2026-10-12T10:00:00")]), get_promemoria: risposta(200, { promemoria: { minuti: [0] } }) };
+  const a = ambiente({ adesso: inizio - 2 * MIN, api });
+  await a.giro();
+  assert.equal(a.notifiche.length, 0);
+  a.imposta(inizio - 20_000);
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  assert.equal(a.notifiche[0].title, "Adesso · Riunione H");
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  const presto = ambiente({ adesso: inizio - 85_000, api });
+  await presto.giro();
+  assert.equal(presto.notifiche[0].title, "Tra 1 min · Riunione H");
+});
+
+test("il suono scelto sul server va nella notifica; Default, un nome strano o un server senza get_promemoria non ne chiedono nessuno", async () => {
+  const inizio = Date.UTC(2026, 9, 12, 8, 0);
+  const prova = async (promemoria) => {
+    const api = { get_events: json([evento("e1", "Riunione S", "2026-10-12T10:00:00")]) };
+    if (promemoria !== undefined) api.get_promemoria = risposta(200, { promemoria });
+    const a = ambiente({ adesso: inizio - 5 * MIN, api });
+    await a.giro();
+    assert.equal(a.notifiche.length, 1);
+    return a.notifiche[0];
+  };
+  assert.equal((await prova({ minuti: [10], suono: "Reminder" })).sound, "Reminder");
+  assert.equal((await prova({ minuti: [10], suono: "Alarm3" })).sound, "Alarm3");
+  for (const suono of ["Default", "", "../x", "troppo-lungo-e-con-trattini", 5, null]) {
+    assert.equal("sound" in (await prova({ minuti: [10], suono })), false, String(suono));
+  }
+  assert.equal("sound" in (await prova({ minuti: [10] })), false);
+  assert.equal("sound" in (await prova(undefined)), false);
+});
+
 test("app appena avviata con più anticipi già passati: un avviso solo", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
   const api = { get_events: json([evento("e1", "Riunione G", "2026-10-12T10:00:00")]), get_promemoria: risposta(200, { minuti: [30, 10, 5] }) };

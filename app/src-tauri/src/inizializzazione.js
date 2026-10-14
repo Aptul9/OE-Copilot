@@ -17,8 +17,10 @@
     if (location.protocol === "chrome-error:" && window.__OE_AVVIO__) location.replace(window.__OE_AVVIO__);
   }, 1500);
 
-  // Anticipi in minuti, finché il server non ne indica altri (get_promemoria, se il metodo esiste)
+  // Anticipi in minuti, finché il server non ne indica altri (get_promemoria, se il metodo esiste). 0 è "all'inizio": l'avviso parte
+  // nell'ultimo minuto e mezzo prima dell'inizio (un giro dura 60 secondi più la risposta, e una finestra più corta ne salterebbe qualcuno)
   const MINUTI_PREAVVISO = [10];
+  const FINESTRA_INIZIO_MS = 90_000;
   const PERIODO_MS = 60_000;
   const FINESTRA_MS = 24 * 3_600_000;
   const NON_ACCESSO_MS = 300_000;
@@ -109,6 +111,9 @@
 
   let preavviso = MINUTI_PREAVVISO;
   let preavvisoAl = 0;
+  // il suono della notifica di Windows scelto sul server (Reminder, Mail, Alarm3...); null lascia quello predefinito
+  let suono = null;
+  const sogliaMs = (m) => (m === 0 ? FINESTRA_INIZIO_MS : m * 60_000);
 
   // "attivo" di get_promemoria riguarda solo i promemoria del server: l'app notifica comunque
   async function aggiornaPreavviso() {
@@ -118,12 +123,14 @@
       const r = await chiama("get_promemoria", []);
       if (r.status === 404) {
         preavviso = MINUTI_PREAVVISO;
+        suono = null;
       } else if (r.ok && !sessioneFinita(r)) {
         const dati = await r.json();
         // le impostazioni stanno dentro "promemoria" nella risposta del server; una risposta piatta si legge lo stesso
         const impostazioni = dati && typeof dati.promemoria === "object" && dati.promemoria ? dati.promemoria : dati;
-        const minuti = (Array.isArray(impostazioni && impostazioni.minuti) ? impostazioni.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n > 0 && n <= 1440);
+        const minuti = (Array.isArray(impostazioni && impostazioni.minuti) ? impostazioni.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 1440);
         preavviso = minuti.length ? [...new Set(minuti)].sort((a, b) => a - b) : MINUTI_PREAVVISO;
+        suono = typeof impostazioni.suono === "string" && /^[A-Za-z0-9]{1,16}$/.test(impostazioni.suono) && impostazioni.suono !== "Default" ? impostazioni.suono : null;
       }
     } catch {
       // si tiene l'elenco che c'è
@@ -152,12 +159,13 @@
   }
 
   function testo(ev, inizio, ora) {
-    const minuti = Math.max(1, Math.round((inizio - ora) / 60_000));
+    const minuti = Math.round((inizio - ora) / 60_000);
     const righe = [`Alle ${formatoOra.format(new Date(inizio))}`];
     const luogo = String(ev.location || "").trim();
     // il link per entrare non va nell'avviso
     if (luogo && !/https?:\/\//i.test(luogo)) righe.push(luogo.slice(0, 120));
-    return { title: `Tra ${minuti} min · ${String(ev.title || "(senza titolo)").slice(0, 120)}`, body: righe.join("\n") };
+    const quando = minuti < 1 ? "Adesso" : `Tra ${minuti} min`;
+    return { title: `${quando} · ${String(ev.title || "(senza titolo)").slice(0, 120)}`, body: righe.join("\n"), ...(suono ? { sound: suono } : {}) };
   }
 
   async function controlla() {
@@ -178,7 +186,7 @@
       if (!ev || ev.allDay || ev.nascosto || !ev.start) continue;
       const inizio = istante(ev.start);
       if (!(inizio > ora)) continue;
-      const raggiunti = preavviso.filter((m) => inizio - m * 60_000 <= ora);
+      const raggiunti = preavviso.filter((m) => inizio - sogliaMs(m) <= ora);
       const chiavi = raggiunti.map((m) => `${ev.id}|${ev.start}|${m}`);
       if (!chiavi.length || chiavi.every((c) => c in inviate)) continue;
       // una notifica sola per riunione, anche se più anticipi sono già passati (app appena avviata)

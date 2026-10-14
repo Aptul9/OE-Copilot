@@ -72,6 +72,29 @@ fn registra_errore(identificativo: &str, testo: &str) {
     }
 }
 
+/// Windows mostra il banner di una notifica solo se conosce l'identificativo dell'app. L'installer lo registra nel
+/// collegamento del menu Start; l'eseguibile singolo non ha collegamenti, e senza questa chiave dell'utente l'avviso
+/// finisce nel centro notifiche senza banner. Costa una scrittura per avvio.
+#[cfg(windows)]
+fn registra_identificativo_notifiche(identificativo: &str) {
+    use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+
+    let esito = (|| -> std::io::Result<()> {
+        let (chiave, _) = RegKey::predef(HKEY_CURRENT_USER).create_subkey(format!(r"Software\Classes\AppUserModelId\{identificativo}"))?;
+        chiave.set_value("DisplayName", &"OE Copilot")?;
+        if let Some(cartella) = std::env::var_os("LOCALAPPDATA").map(|d| std::path::PathBuf::from(d).join(identificativo)) {
+            let icona = cartella.join("icona.png");
+            std::fs::create_dir_all(&cartella)?;
+            std::fs::write(&icona, include_bytes!("../icons/128x128.png"))?;
+            chiave.set_value("IconUri", &icona.display().to_string())?;
+        }
+        Ok(())
+    })();
+    if let Err(errore) = esito {
+        registra_errore(identificativo, &format!("identificativo delle notifiche non registrato: {errore}"));
+    }
+}
+
 /// WebView2 rifiuta la creazione con "risorsa in uso" (0x800700AA) se l'istanza precedente sullo stesso profilo non ha
 /// ancora finito di chiudersi, per esempio dopo un riavvio subito dopo una chiusura forzata: si riprova per mezzo minuto
 #[cfg(desktop)]
@@ -130,6 +153,8 @@ pub fn run() {
             });
             #[cfg(desktop)]
             {
+                #[cfg(windows)]
+                registra_identificativo_notifiche(&app.config().identifier);
                 let nascosta = std::env::args().any(|a| a == "--nascosto");
                 crea_finestra_con_tentativi(app.handle(), nascosta)?;
                 tray::crea(app.handle())?;

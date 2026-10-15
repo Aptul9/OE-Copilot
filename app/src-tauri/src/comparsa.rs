@@ -10,9 +10,9 @@ use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Theme, WebviewUrl,
 
 use crate::{Stato, finestra};
 
-// L'avviso a comparsa delle riunioni: una finestra piccola dell'app al centro del lato destro dello schermo principale, lontano dagli
-// avvisi di Windows e di Teams in basso a destra, sempre in primo piano e senza prendere il fuoco, con una riga per riunione sotto una
-// testata con la X. È una finestra e non una notifica, quindi si vede anche con Non disturbare. La pagina (avviso.html) non ha comandi
+// L'avviso a comparsa delle riunioni: una finestra piccola dell'app in basso a sinistra sopra la barra delle applicazioni dello schermo
+// principale, lontano dagli avvisi di Windows e di Teams in basso a destra, sempre in primo piano e senza prendere il fuoco, con una
+// riga per riunione sotto una testata con la X; con più righe cresce verso l'alto. È una finestra e non una notifica, quindi si vede anche con Non disturbare. La pagina (avviso.html) non ha comandi
 // nativi: chiede con una navigazione, che qui si intercetta, e l'app la ridisegna con eval.
 
 /// Misure in pixel logici, come in avviso.css: la testata e una riga per riunione; senza titoli (avviso anonimo) la finestra è più stretta
@@ -24,7 +24,7 @@ const MARGINE: f64 = 12.0;
 /// Gli sfondi di avviso.css, scuro e chiaro: la finestra parte già del colore della pagina invece di lampeggiare bianca
 const SFONDO_SCURO: Color = Color(0x1c, 0x1c, 0x22, 0xff);
 const SFONDO_CHIARO: Color = Color(0xf6, 0xf6, 0xf9, 0xff);
-/// La cornice invisibile che Windows mette attorno a una finestra senza bordi con l'ombra: senza toglierla l'avviso tocca il bordo destro
+/// La cornice invisibile che Windows mette ai lati di una finestra senza bordi con l'ombra: senza toglierla il margine a sinistra raddoppia
 const OMBRA: f64 = 8.0;
 /// ponytail: al massimo 6 righe, la settima riunione non compare (la notifica di Windows c'è lo stesso)
 const RIGHE_MAX: usize = 6;
@@ -109,7 +109,7 @@ fn scadenza(app: &AppHandle, voce: &Value) {
     });
 }
 
-/// Porta la finestra alle righe: la chiude se non ce ne sono più, se no la crea, oppure la ridimensiona, la rimette al centro e la ridisegna
+/// Porta la finestra alle righe: la chiude se non ce ne sono più, se no la crea, oppure la ridimensiona, la rimette al suo posto e la ridisegna
 fn disegna(app: &AppHandle, aperti: &mut Aperti) {
     let aperta = aperti.finestra.as_ref().and_then(|e| app.get_webview_window(e));
     if aperti.voci.is_empty() {
@@ -123,8 +123,8 @@ fn disegna(app: &AppHandle, aperti: &mut Aperti) {
     let (scala, area) = (schermo.scale_factor(), schermo.work_area());
     let larghezza = if aperti.voci.iter().any(|v| v["titolo"] != "") { LARGHEZZA } else { LARGHEZZA_ANONIMO };
     let altezza = TESTATA + RIGA * aperti.voci.len() as f64;
-    let x = (area.position.x as f64 + area.size.width as f64) / scala - larghezza - MARGINE - OMBRA;
-    let y = (area.position.y as f64 + area.size.height as f64 / 2.0) / scala - altezza / 2.0;
+    let x = area.position.x as f64 / scala + MARGINE - OMBRA;
+    let y = (area.position.y as f64 + area.size.height as f64) / scala - altezza - MARGINE;
     let righe = Value::Array(aperti.voci.clone());
     if let Some(f) = aperta {
         let _ = f.set_size(LogicalSize::new(larghezza, altezza));

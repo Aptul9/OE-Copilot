@@ -1,12 +1,10 @@
 #[cfg(desktop)]
 mod comparsa;
 mod finestra;
-mod impostazioni;
 mod navigazione;
 #[cfg(desktop)]
 mod tray;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(desktop)]
 use std::sync::atomic::AtomicU32;
 
@@ -18,14 +16,9 @@ use tauri_plugin_notification::NotificationExt;
 #[cfg(desktop)]
 use tauri_plugin_window_state::StateFlags;
 
-/// Quello che l'app sa di sé: l'indirizzo del sito e gli interruttori del menu dell'icona
+/// Quello che l'app sa di sé: l'indirizzo del sito e, sul PC, quante finestre in più ha aperto
 pub struct Stato {
     pub origine: Url,
-    pub notifiche: AtomicBool,
-    #[cfg(desktop)]
-    pub comparsa: AtomicBool,
-    #[cfg(desktop)]
-    pub anonimo: AtomicBool,
     #[cfg(desktop)]
     pub secondarie: AtomicU32,
 }
@@ -44,16 +37,6 @@ fn origine_da_config(config: &tauri::Config) -> Result<Url, String> {
         return Err(format!("indirizzo del sito non ammesso: {testo}"));
     }
     Ok(url)
-}
-
-/// La pagina chiede quali avvisi mandare: le notifiche (su Android sempre accese) e, solo sul PC, l'avviso a comparsa (menu dell'icona)
-#[tauri::command]
-fn interruttori(stato: tauri::State<'_, Stato>) -> serde_json::Value {
-    #[cfg(desktop)]
-    let comparsa = stato.comparsa.load(Ordering::Relaxed);
-    #[cfg(mobile)]
-    let comparsa = false;
-    serde_json::json!({ "notifiche": stato.notifiche.load(Ordering::Relaxed), "comparsa": comparsa })
 }
 
 /// L'avviso a comparsa delle riunioni di un giro (comparsa.rs). Asincrono: una finestra creata da un comando sincrono blocca Windows (wry#583)
@@ -157,20 +140,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
 
     #[cfg(all(feature = "prova", desktop))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![interruttori, mostra_avviso, prova_menu]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, prova_menu]);
     #[cfg(not(all(feature = "prova", desktop)))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![interruttori, mostra_avviso]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso]);
 
     costruttore
         .setup(|app| {
             let origine = origine_da_config(app.config())?;
             app.manage(Stato {
                 origine,
-                notifiche: AtomicBool::new(impostazioni::interruttore(app.handle(), "notifiche", true)),
-                #[cfg(desktop)]
-                comparsa: AtomicBool::new(impostazioni::interruttore(app.handle(), "comparsa", true)),
-                #[cfg(desktop)]
-                anonimo: AtomicBool::new(impostazioni::interruttore(app.handle(), "anonimo", false)),
                 #[cfg(desktop)]
                 secondarie: AtomicU32::new(0),
             });

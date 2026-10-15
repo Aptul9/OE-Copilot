@@ -1,7 +1,8 @@
 // Script di inizializzazione della finestra principale. Gira in ogni pagina che la finestra carica, ma lavora solo
-// sull'origine del sito (window.__OE_ORIGINE__ la mette l'app). Ogni minuto chiede get_events con la stessa API della
-// pagina (stesso sito, cookie di sessione) e per le riunioni che iniziano entro il preavviso manda una notifica nativa
-// con il plugin notification e, sul PC, l'avviso a comparsa dell'app. Nei log non finisce niente che riguardi gli eventi.
+// sull'origine del sito (window.__OE_ORIGINE__ la mette l'app). Ogni minuto legge le impostazioni dei promemoria
+// (get_promemoria) e get_events con la stessa API della pagina (stesso sito, cookie di sessione), e per le riunioni che
+// iniziano entro il preavviso manda una notifica nativa con il plugin notification e, sul PC, l'avviso a comparsa
+// dell'app. Nei log non finisce niente che riguardi gli eventi.
 (function () {
   "use strict";
 
@@ -17,17 +18,18 @@
     if (location.protocol === "chrome-error:" && window.__OE_AVVIO__) location.replace(window.__OE_AVVIO__);
   }, 1500);
 
-  // Anticipi in minuti, finché il server non ne indica altri (get_promemoria, se il metodo esiste). 0 è "all'inizio": l'avviso parte
-  // nell'ultimo minuto e mezzo prima dell'inizio (un giro dura 60 secondi più la risposta, e una finestra più corta ne salterebbe qualcuno)
-  const MINUTI_PREAVVISO = [10];
+  // 0 minuti è "all'inizio": l'avviso parte nell'ultimo minuto e mezzo prima dell'inizio (un giro dura 60 secondi più la
+  // risposta, e una finestra più corta ne salterebbe qualcuno)
   const FINESTRA_INIZIO_MS = 90_000;
   const PERIODO_MS = 60_000;
   const FINESTRA_MS = 24 * 3_600_000;
   const NON_ACCESSO_MS = 300_000;
   const ERRORE_MAX_MS = 300_000;
-  const PREAVVISO_AGGIORNATO_OGNI_MS = 1_800_000;
+  const INTERFACCIA_OGNI_MS = 1_800_000;
   const CHIAVE_INVIATE = "oe-app:notifiche-inviate";
   const FUSO = "Europe/Rome";
+  // su Android le notifiche ci sono sempre e l'avviso a comparsa no: gli interruttori dei promemoria sono dell'app per Windows
+  const SU_ANDROID = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
 
   const origine = window.__OE_ORIGINE__;
   if (!origine || location.origin !== origine) return;
@@ -109,32 +111,27 @@
     return permesso === true;
   }
 
-  let preavviso = MINUTI_PREAVVISO;
-  let preavvisoAl = 0;
-  // il suono della notifica di Windows scelto sul server (Reminder, Mail, Alarm3...); null lascia quello predefinito
-  let suono = null;
   const sogliaMs = (m) => (m === 0 ? FINESTRA_INIZIO_MS : m * 60_000);
+  const PREDEFINITE = { minuti: [10], suono: null, minimo: false, notifiche: true, comparsa: !SU_ANDROID };
 
-  // "attivo" di get_promemoria riguarda solo i promemoria del server: l'app notifica comunque
-  async function aggiornaPreavviso() {
-    if (Date.now() - preavvisoAl < PREAVVISO_AGGIORNATO_OGNI_MS) return;
-    preavvisoAl = Date.now();
-    try {
-      const r = await chiama("get_promemoria", []);
-      if (r.status === 404) {
-        preavviso = MINUTI_PREAVVISO;
-        suono = null;
-      } else if (r.ok && !sessioneFinita(r)) {
-        const dati = await r.json();
-        // le impostazioni stanno dentro "promemoria" nella risposta del server; una risposta piatta si legge lo stesso
-        const impostazioni = dati && typeof dati.promemoria === "object" && dati.promemoria ? dati.promemoria : dati;
-        const minuti = (Array.isArray(impostazioni && impostazioni.minuti) ? impostazioni.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 1440);
-        preavviso = minuti.length ? [...new Set(minuti)].sort((a, b) => a - b) : MINUTI_PREAVVISO;
-        suono = typeof impostazioni.suono === "string" && /^[A-Za-z0-9]{1,16}$/.test(impostazioni.suono) && impostazioni.suono !== "Default" ? impostazioni.suono : null;
-      }
-    } catch {
-      // si tiene l'elenco che c'è
-    }
+  // Le impostazioni dei promemoria (Impostazioni, Promemoria) stanno sul server e si rileggono a ogni giro: un cambio vale dal giro dopo.
+  // Un server senza il metodo (404) vale come i valori di partenza; null se la sessione non c'è più. Il suono (Reminder, Mail, Alarm3...)
+  // è null per quello predefinito di Windows
+  async function leggiImpostazioni() {
+    const r = await chiama("get_promemoria", []);
+    if (r.status === 404) return PREDEFINITE;
+    if (sessioneFinita(r)) return null;
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const dati = await r.json();
+    const p = dati && typeof dati.promemoria === "object" && dati.promemoria ? dati.promemoria : {};
+    const minuti = (Array.isArray(p.minuti) ? p.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 1440);
+    return {
+      minuti: minuti.length ? [...new Set(minuti)].sort((a, b) => a - b) : PREDEFINITE.minuti,
+      suono: typeof p.suono === "string" && /^[A-Za-z0-9]{1,16}$/.test(p.suono) && p.suono !== "Default" ? p.suono : null,
+      minimo: p.contenuto === "minimo",
+      notifiche: SU_ANDROID || p.notifica_windows !== false,
+      comparsa: !SU_ANDROID && p.comparsa !== false,
+    };
   }
 
   function leggiInviate(ora) {
@@ -158,12 +155,12 @@
     }
   }
 
-  // Le sigle e i loghi delle aziende (get_personalizzazione), riletti ogni 30 minuti come gli anticipi
+  // Le sigle e i loghi delle aziende (get_personalizzazione), riletti ogni 30 minuti
   let interfaccia = null;
   let interfacciaAl = 0;
 
   async function leggiInterfaccia() {
-    if (!interfaccia || Date.now() - interfacciaAl >= PREAVVISO_AGGIORNATO_OGNI_MS) {
+    if (!interfaccia || Date.now() - interfacciaAl >= INTERFACCIA_OGNI_MS) {
       interfacciaAl = Date.now();
       try {
         const r = await chiama("get_personalizzazione", []);
@@ -218,8 +215,8 @@
   }
 
   // L'avviso a comparsa del PC: ora, titolo e logo dell'azienda (come mappaLoghi in lib/oe/logic.ts, gli Eventi personali hanno quello
-  // del gateway), o la sua sigla nel suo colore come nel calendario. Se l'avviso è anonimo il titolo lo toglie l'app
-  async function avviso(ev, inizio) {
+  // del gateway), o la sua sigla nel suo colore come nel calendario. Con "Solo ora e azienda" il titolo non parte
+  async function avviso(ev, inizio, minimo) {
     const azienda = String(ev.alias || ev.account || "");
     const i = await leggiInterfaccia();
     const loghi = i.loghi || {};
@@ -229,24 +226,32 @@
       chiave: `${ev.id}|${ev.start}`,
       inizio,
       ora: formatoOra.format(new Date(inizio)),
-      titolo: String(ev.title || "(senza titolo)"),
+      titolo: minimo ? "" : String(ev.title || "(senza titolo)"),
       logo: indirizzo ? await leggiLogo(indirizzo) : null,
       sigla: String(sigle[azienda] || iniziali(azienda)),
       colore: String(ev.color || ""),
     };
   }
 
-  function testo(ev, inizio, ora) {
+  // Titolo "Tra 5 min · Riunione" e corpo "Alle 10:00" più il luogo; con "Solo ora e azienda" al posto del titolo c'è l'azienda e il luogo no
+  function testo(ev, inizio, ora, imp) {
     const minuti = Math.round((inizio - ora) / 60_000);
-    const righe = [`Alle ${formatoOra.format(new Date(inizio))}`];
-    const luogo = String(ev.location || "").trim();
-    // il link per entrare non va nell'avviso
-    if (luogo && !/https?:\/\//i.test(luogo)) righe.push(luogo.slice(0, 120));
     const quando = minuti < 1 ? "Adesso" : `Tra ${minuti} min`;
-    return { title: `${quando} · ${String(ev.title || "(senza titolo)").slice(0, 120)}`, body: righe.join("\n"), ...(suono ? { sound: suono } : {}) };
+    const righe = [`Alle ${formatoOra.format(new Date(inizio))}`];
+    let chi = String(ev.alias || "").slice(0, 120);
+    if (!imp.minimo) {
+      chi = String(ev.title || "(senza titolo)").slice(0, 120);
+      const luogo = String(ev.location || "").trim();
+      // il link per entrare non va nell'avviso
+      if (luogo && !/https?:\/\//i.test(luogo)) righe.push(luogo.slice(0, 120));
+    }
+    return { title: chi ? `${quando} · ${chi}` : quando, body: righe.join("\n"), ...(imp.suono ? { sound: imp.suono } : {}) };
   }
 
-  async function controlla(notifiche, comparsa) {
+  async function controlla() {
+    const imp = await leggiImpostazioni();
+    if (!imp) return "non-autenticato";
+    if (!imp.notifiche && !imp.comparsa) return "spente";
     let ora = Date.now();
     const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS))]);
     if (sessioneFinita(r)) return "non-autenticato";
@@ -258,22 +263,21 @@
     if (!concesso) return "senza-permesso";
     // la richiesta del permesso può aver aspettato la risposta di chi usa il telefono
     ora = Date.now();
-    await aggiornaPreavviso();
     const inviate = leggiInviate(ora);
     const avvisi = [];
     for (const ev of Array.isArray(dati && dati.events) ? dati.events : []) {
       if (!ev || ev.allDay || ev.nascosto || !ev.start) continue;
       const inizio = istante(ev.start);
       if (!(inizio > ora)) continue;
-      const raggiunti = preavviso.filter((m) => inizio - sogliaMs(m) <= ora);
+      const raggiunti = imp.minuti.filter((m) => inizio - sogliaMs(m) <= ora);
       const chiavi = raggiunti.map((m) => `${ev.id}|${ev.start}|${m}`);
       if (!chiavi.length || chiavi.every((c) => c in inviate)) continue;
       // una notifica sola per riunione, anche se più anticipi sono già passati (app appena avviata)
-      if (notifiche) await invoca("plugin:notification|notify", { options: testo(ev, inizio, ora) });
+      if (imp.notifiche) await invoca("plugin:notification|notify", { options: testo(ev, inizio, ora, imp) });
       for (const c of chiavi) inviate[c] = inizio;
       salvaInviate(inviate);
       stato.inviate += 1;
-      if (comparsa) avvisi.push(await avviso(ev, inizio));
+      if (imp.comparsa) avvisi.push(await avviso(ev, inizio, imp.minimo));
     }
     // le riunioni del giro vanno insieme nello stesso avviso; dopo averle segnate, così un avviso che non riesce non fa ripetere le notifiche
     if (avvisi.length) await invoca("mostra_avviso", { avvisi }).catch(() => {});
@@ -284,13 +288,8 @@
     let prossimo = PERIODO_MS;
     stato.giri += 1;
     try {
-      const { notifiche, comparsa } = await invoca("interruttori");
-      if (notifiche || comparsa) {
-        stato.esito = await controlla(notifiche, comparsa);
-        if (stato.esito === "non-autenticato") prossimo = NON_ACCESSO_MS;
-      } else {
-        stato.esito = "spente";
-      }
+      stato.esito = await controlla();
+      if (stato.esito === "non-autenticato") prossimo = NON_ACCESSO_MS;
       stato.errori = 0;
     } catch {
       stato.errori += 1;

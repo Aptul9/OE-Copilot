@@ -2,7 +2,7 @@
 // preso da OE_URL al posto del segnaposto. L'indirizzo non sta in nessun file del repository.
 //   node scripts/configura.mjs            prepara il file, anche con il segnaposto (per cargo check e simili)
 //   node scripts/configura.mjs --release  come sopra, ma con il segnaposto è un errore
-//   node scripts/configura.mjs --prova    aggiunge il comando di prova degli interruttori del menu (solo per le prove)
+//   node scripts/configura.mjs --prova    aggiunge il comando di prova del menu dell'icona (solo per le prove)
 //   node scripts/configura.mjs --android  applica anche tauri.android.conf.json (identificativo e simili dell'app Android)
 //   node scripts/configura.mjs --emulatore  OE_URL può essere http://10.0.2.2:<porta> (il PC visto dall'emulatore, solo per le prove)
 import { existsSync, readFileSync, writeFileSync } from "node:fs";

@@ -31,7 +31,7 @@ tauri-plugin-window-state = "=2.5.0"
 winreg = "=0.56.0"
 
 [features]
-# Solo per le prove sul PC: aggiunge il comando che fa leggere e girare gli interruttori del menu dell'icona
+# Solo per le prove sul PC: aggiunge il comando che fa leggere e cliccare le voci del menu dell'icona
 prova = []
 
 [profile.release]

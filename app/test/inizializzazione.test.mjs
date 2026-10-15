@@ -8,6 +8,8 @@ import vm from "node:vm";
 const SCRIPT = readFileSync(new URL("../src-tauri/src/inizializzazione.js", import.meta.url), "utf8");
 const ORIGINE = "https://oe.prova.test";
 const MIN = 60_000;
+const UA_PC = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0";
+const UA_ANDROID = "Mozilla/5.0 (Linux; Android 13; sdk_gphone64_x86_64 Build/TE1A.220922.034; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36";
 
 function risposta(stato, corpo, { json = true, redirected = false } = {}) {
   return {
@@ -19,17 +21,23 @@ function risposta(stato, corpo, { json = true, redirected = false } = {}) {
   };
 }
 
+/** La risposta di get_promemoria del server con queste impostazioni (quelle che mancano le completa il server). */
+const promemoria = (p) =>
+  risposta(200, { promemoria: { minuti: [10], contenuto: "completo", suono: "Default", notifica_windows: true, comparsa: true, ...p }, canali: [], ultimo_errore: null, ultimo_errore_il: null });
+
 /**
- * Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, gli interruttori delle notifiche e dell'avviso a
- * comparsa, i file dei loghi (indirizzo -> contenuto)
+ * Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, i file dei loghi (indirizzo -> contenuto), il
+ * browser (PC o Android)
  */
-function ambiente({ adesso, api = {}, notificheAttive = true, comparsa = false, avvisoRotto = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted" } = {}) {
+function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted", ua = UA_PC } = {}) {
   const timer = [];
   const notifiche = [];
   // le righe dell'avviso a comparsa, e quante ne porta ogni chiamata
   const avvisi = [];
   const chiamateAvviso = [];
   const chiamate = [];
+  // tutto quello che lo script passa all'app, per cercarci dentro un testo
+  const passati = [];
   const sistema = { permesso, esitoRichiesta, richieste: 0, controlli: 0 };
   let ora = adesso;
   const DataFinta = class extends Date {
@@ -42,6 +50,7 @@ function ambiente({ adesso, api = {}, notificheAttive = true, comparsa = false, 
   };
   const sandbox = {
     Date: DataFinta,
+    navigator: { userAgent: ua },
     location: { origin: origine, protocol: protocollo, replace: (u) => chiamate.push(["replace", u]) },
     localStorage: {
       getItem: (k) => (k in memoria ? memoria[k] : null),
@@ -76,7 +85,7 @@ function ambiente({ adesso, api = {}, notificheAttive = true, comparsa = false, 
   sandbox.__OE_AVVIO__ = "http://tauri.localhost/index.html";
   sandbox.__TAURI_INTERNALS__ = {
     invoke: async (comando, argomenti) => {
-      if (comando === "interruttori") return { notifiche: notificheAttive, comparsa };
+      passati.push(JSON.stringify([comando, argomenti ?? null]));
       if (comando === "mostra_avviso") {
         if (avvisoRotto) throw new Error("finestra non creata");
         avvisi.push(...JSON.parse(JSON.stringify(argomenti.avvisi)));
@@ -108,6 +117,7 @@ function ambiente({ adesso, api = {}, notificheAttive = true, comparsa = false, 
     avvisi,
     chiamateAvviso,
     chiamate,
+    passati,
     memoria,
     sistema,
     imposta: (ms) => (ora = ms),
@@ -126,6 +136,8 @@ function ambiente({ adesso, api = {}, notificheAttive = true, comparsa = false, 
 
 const evento = (id, titolo, start, extra = {}) => ({ id, title: titolo, start, end: start, allDay: false, location: "", ...extra });
 const json = (eventi, extra = {}) => risposta(200, { events: eventi, errors: [], ...extra });
+// la sola notifica, senza l'avviso a comparsa (acceso di norma sul PC)
+const soloNotifica = promemoria({ comparsa: false });
 
 test("fuori dall'origine del sito lo script non fa niente", () => {
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 8, 0), origine: "http://tauri.localhost", protocollo: "http:" });
@@ -146,7 +158,7 @@ test("nella pagina di errore del browser torna alla pagina di avvio", () => {
 test("un evento fra 5 minuti avvisa una volta sola, con ora e luogo (ora di Roma, estate)", async () => {
   // 09:55 a Roma (UTC+2) = 07:55 UTC, evento alle 10:00 senza scarto
   const adesso = Date.UTC(2026, 9, 12, 7, 55);
-  const a = ambiente({ adesso, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00", { location: "Sala 1" })]) } });
+  const a = ambiente({ adesso, api: { get_promemoria: soloNotifica, get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00", { location: "Sala 1" })]) } });
   assert.deepEqual(a.timer.map((t) => t.ms), [1500, 3000]);
   a.timer[0].f();
   assert.deepEqual(a.chiamate, []);
@@ -190,6 +202,7 @@ test("non avvisano: giornata intera, nascosti, già iniziati, troppo lontani, se
   });
   await a.giro();
   assert.equal(a.notifiche.length, 0);
+  assert.equal(a.avvisi.length, 0);
   assert.equal(a.stato().esito, "ok");
 });
 
@@ -211,12 +224,9 @@ test("la memoria degli avvisi già dati sopravvive al ricaricamento e si ripulis
   assert.deepEqual(Object.keys(JSON.parse(memoria["oe-app:notifiche-inviate"])), ["e1|2026-10-12T10:00:00|10"]);
 });
 
-test("get_promemoria: anticipi del server, una notifica per riunione e anticipo, attivo=false non spegne l'app", async () => {
+test("get_promemoria: anticipi del server, valori strani scartati, una notifica per riunione e anticipo", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0); // 10:00 a Roma
-  const api = {
-    get_events: json([evento("e1", "Riunione F", "2026-10-12T10:00:00")]),
-    get_promemoria: risposta(200, { promemoria: { attivo: false, minuti: [30, 10, 10, "x", -5, 0], canali: ["telegram"], contenuto: "minimo" }, canali: [], ultimo_giro: null }),
-  };
+  const api = { get_events: json([evento("e1", "Riunione F", "2026-10-12T10:00:00")]), get_promemoria: promemoria({ minuti: [30, 10, 10, "x", -5, 0] }) };
   const a = ambiente({ adesso: inizio - 20 * MIN, api });
   await a.giro();
   assert.equal(a.notifiche.length, 1);
@@ -229,9 +239,24 @@ test("get_promemoria: anticipi del server, una notifica per riunione e anticipo,
   assert.equal(a.notifiche[1].title, "Tra 9 min · Riunione F");
 });
 
+test("le impostazioni si rileggono a ogni giro: un cambio sul sito vale dal giro dopo", async () => {
+  const inizio = Date.UTC(2026, 9, 12, 8, 0);
+  let impostazioni = { minuti: [5], notifica_windows: false, comparsa: false };
+  const api = { get_events: json([evento("e1", "Riunione R", "2026-10-12T10:00:00")]), get_promemoria: () => promemoria(impostazioni) };
+  const a = ambiente({ adesso: inizio - 10 * MIN, api });
+  await a.giro();
+  assert.equal(a.stato().esito, "spente");
+  assert.equal(a.chiamate.filter(([m]) => m === "get_events").length, 0);
+  impostazioni = { minuti: [10], notifica_windows: true, comparsa: false };
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  assert.equal(a.chiamate.filter(([m]) => m === "get_promemoria").length, 2);
+  assert.equal(a.avvisi.length, 0);
+});
+
 test("all'inizio (0 minuti): nulla a due minuti, un avviso nell'ultimo minuto e mezzo, e dice Adesso a meno di mezzo minuto", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
-  const api = { get_events: json([evento("e1", "Riunione H", "2026-10-12T10:00:00")]), get_promemoria: risposta(200, { promemoria: { minuti: [0] } }) };
+  const api = { get_events: json([evento("e1", "Riunione H", "2026-10-12T10:00:00")]), get_promemoria: promemoria({ minuti: [0] }) };
   const a = ambiente({ adesso: inizio - 2 * MIN, api });
   await a.giro();
   assert.equal(a.notifiche.length, 0);
@@ -248,26 +273,26 @@ test("all'inizio (0 minuti): nulla a due minuti, un avviso nell'ultimo minuto e 
 
 test("il suono scelto sul server va nella notifica; Default, un nome strano o un server senza get_promemoria non ne chiedono nessuno", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
-  const prova = async (promemoria) => {
+  const prova = async (impostazioni) => {
     const api = { get_events: json([evento("e1", "Riunione S", "2026-10-12T10:00:00")]) };
-    if (promemoria !== undefined) api.get_promemoria = risposta(200, { promemoria });
+    if (impostazioni !== undefined) api.get_promemoria = promemoria(impostazioni);
     const a = ambiente({ adesso: inizio - 5 * MIN, api });
     await a.giro();
     assert.equal(a.notifiche.length, 1);
     return a.notifiche[0];
   };
-  assert.equal((await prova({ minuti: [10], suono: "Reminder" })).sound, "Reminder");
-  assert.equal((await prova({ minuti: [10], suono: "Alarm3" })).sound, "Alarm3");
+  assert.equal((await prova({ suono: "Reminder" })).sound, "Reminder");
+  assert.equal((await prova({ suono: "Alarm3" })).sound, "Alarm3");
   for (const suono of ["Default", "", "../x", "troppo-lungo-e-con-trattini", 5, null]) {
-    assert.equal("sound" in (await prova({ minuti: [10], suono })), false, String(suono));
+    assert.equal("sound" in (await prova({ suono })), false, String(suono));
   }
-  assert.equal("sound" in (await prova({ minuti: [10] })), false);
+  assert.equal("sound" in (await prova({})), false);
   assert.equal("sound" in (await prova(undefined)), false);
 });
 
 test("app appena avviata con più anticipi già passati: un avviso solo", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
-  const api = { get_events: json([evento("e1", "Riunione G", "2026-10-12T10:00:00")]), get_promemoria: risposta(200, { minuti: [30, 10, 5] }) };
+  const api = { get_events: json([evento("e1", "Riunione G", "2026-10-12T10:00:00")]), get_promemoria: promemoria({ minuti: [30, 10, 5] }) };
   const a = ambiente({ adesso: inizio - 3 * MIN, api });
   await a.giro();
   assert.equal(a.notifiche.length, 1);
@@ -275,7 +300,7 @@ test("app appena avviata con più anticipi già passati: un avviso solo", async 
   assert.equal(a.notifiche.length, 1);
 });
 
-test("senza get_promemoria (404) l'anticipo è la costante di 10 minuti", async () => {
+test("senza get_promemoria (404) valgono i valori di partenza: 10 minuti, notifica e avviso a comparsa", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
   const api = { get_events: json([evento("e1", "Riunione H", "2026-10-12T10:00:00")]) };
   const lontano = ambiente({ adesso: inizio - 11 * MIN, api });
@@ -284,16 +309,22 @@ test("senza get_promemoria (404) l'anticipo è la costante di 10 minuti", async 
   const vicino = ambiente({ adesso: inizio - 10 * MIN, api });
   await vicino.giro();
   assert.equal(vicino.notifiche.length, 1);
+  assert.equal(vicino.avvisi.length, 1);
 });
 
 test("sessione finita (401, pagina di accesso, reindirizzamento): si smette e si riprova dopo 5 minuti", async () => {
   const adesso = Date.UTC(2026, 9, 12, 7, 55);
   for (const r of [risposta(401, { error: "non autenticato" }), risposta(200, null, { json: false }), risposta(200, {}, { redirected: true })]) {
-    const a = ambiente({ adesso, api: { get_events: r } });
+    // già alla lettura delle impostazioni: gli eventi non si chiedono
+    const a = ambiente({ adesso, api: { get_promemoria: r, get_events: r } });
     assert.equal(await a.giro(), 300_000);
     assert.equal(a.stato().esito, "non-autenticato");
     assert.equal(a.notifiche.length, 0);
-    assert.equal(a.chiamate.filter(([m]) => m === "get_promemoria").length, 0);
+    assert.equal(a.chiamate.filter(([m]) => m === "get_events").length, 0);
+    // o alla lettura degli eventi
+    const b = ambiente({ adesso, api: { get_promemoria: soloNotifica, get_events: r } });
+    assert.equal(await b.giro(), 300_000);
+    assert.equal(b.stato().esito, "non-autenticato");
   }
 });
 
@@ -311,17 +342,22 @@ test("5xx: errore con attesa crescente, niente avvisi", async () => {
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { get_events: risposta(502, { error: "agente" }) } });
   assert.equal(await a.giro(), 120_000);
   assert.equal(a.stato().esito, "errore");
+  const b = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { get_promemoria: risposta(502, { error: "gateway" }), get_events: json([evento("e1", "Riunione Z", "2026-10-12T10:00:00")]) } });
+  assert.equal(await b.giro(), 120_000);
+  assert.equal(b.stato().esito, "errore");
+  assert.equal(b.notifiche.length, 0);
 });
 
 test("dati in cache (stale): nessun avviso", async () => {
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { get_events: json([evento("e1", "Riunione I", "2026-10-12T10:00:00")], { stale: true }) } });
   await a.giro();
   assert.equal(a.notifiche.length, 0);
+  assert.equal(a.avvisi.length, 0);
   assert.equal(a.stato().esito, "dati-non-freschi");
 });
 
 test("lanciato due volte nella stessa pagina (WebView di Android) lavora una volta sola", async () => {
-  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), permesso: null, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), permesso: null, ua: UA_ANDROID, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
   const timerPrima = a.timer.length;
   const contatori = a.sandbox.__oeNotifiche;
   vm.runInContext(SCRIPT, a.sandbox);
@@ -333,19 +369,29 @@ test("lanciato due volte nella stessa pagina (WebView di Android) lavora una vol
   assert.equal(a.notifiche.length, 1);
 });
 
-test("interruttori Notifiche e Avviso a comparsa spenti: nessuna richiesta al sito", async () => {
-  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), notificheAttive: false, api: { get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) } });
+test("notifica e avviso a comparsa spenti sul sito: si leggono solo le impostazioni", async () => {
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { get_promemoria: promemoria({ notifica_windows: false, comparsa: false }), get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) } });
   assert.equal(await a.giro(), 60_000);
-  assert.equal(a.chiamate.length, 0);
+  assert.deepEqual(a.chiamate.map(([m]) => m), ["get_promemoria"]);
   assert.equal(a.stato().esito, "spente");
+});
+
+test("su Android le notifiche ci sono sempre e l'avviso a comparsa mai, qualunque cosa dica il sito", async () => {
+  const api = { get_promemoria: promemoria({ notifica_windows: false, comparsa: true }), get_events: json([evento("e1", "Riunione M", "2026-10-12T10:00:00")]) };
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, ua: UA_ANDROID });
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  assert.deepEqual(a.chiamateAvviso, []);
+  assert.equal(a.chiamate.filter(([m]) => m === "get_personalizzazione").length, 0);
 });
 
 test("avviso a comparsa: ora, titolo, logo dell'azienda come data: e sigla, una volta sola, accanto alla notifica", async () => {
   const api = {
     get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00", { alias: "ROAR", account: "a@roarinc.com", color: "#2563eb" })]),
     get_personalizzazione: risposta(200, { interfaccia: { loghi: { ROAR: "logos/roar.png?v=7" } } }),
+    get_promemoria: promemoria({}),
   };
-  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, comparsa: true, loghi: { "/logos/roar.png?v=7": "PNG" } });
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, loghi: { "/logos/roar.png?v=7": "PNG" } });
   await a.giro();
   assert.equal(a.notifiche.length, 1);
   assert.deepEqual(a.avvisi, [
@@ -365,41 +411,70 @@ test("avviso a comparsa senza logo: la sigla scelta o le iniziali; un logo fuori
     ]),
     get_personalizzazione: risposta(200, { interfaccia: { loghi: { Gamma: "https://altro.example/x.png" }, sigle: { Gamma: "GM" } } }),
   };
-  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, comparsa: true, loghi: { "/logos/personale.png": "IO" } });
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, loghi: { "/logos/personale.png": "IO" } });
   await a.giro();
   assert.deepEqual(a.avvisi.map((v) => [v.sigla, v.logo]), [["BS", null], ["GM", null], ["EP", "data:image/png;base64,SU8="]]);
   assert.deepEqual(a.chiamate.filter(([m]) => m === "logo").map(([, u]) => u), ["/logos/personale.png"]);
   assert.deepEqual(a.chiamateAvviso, [3]);
 });
 
-test("solo l'avviso a comparsa (Notifiche spento): nessuna notifica; un avviso che non riesce non fa ripetere la notifica", async () => {
-  const api = { get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) };
-  const solo = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, notificheAttive: false, comparsa: true });
+test("solo l'avviso a comparsa (notifica spenta): nessuna notifica; un avviso che non riesce non fa ripetere la notifica", async () => {
+  const api = { get_promemoria: promemoria({ notifica_windows: false }), get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) };
+  const solo = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
   await solo.giro();
   assert.equal(solo.notifiche.length, 0);
   assert.equal(solo.avvisi.length, 1);
   assert.equal(solo.stato().esito, "ok");
-  const rotto = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, comparsa: true, avvisoRotto: true });
+  const rotto = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { get_events: api.get_events }, avvisoRotto: true });
   await rotto.giro();
   await rotto.giro();
   assert.equal(rotto.notifiche.length, 1);
   assert.equal(rotto.stato().esito, "ok");
 });
 
+test("avviso a comparsa spento: solo la notifica, e niente letture dei loghi", async () => {
+  const api = { get_promemoria: promemoria({ comparsa: false }), get_events: json([evento("e1", "Riunione N", "2026-10-12T10:00:00", { alias: "ROAR" })]) };
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  assert.deepEqual(a.chiamateAvviso, []);
+  assert.equal(a.chiamate.filter(([m]) => m === "get_personalizzazione" || m === "logo").length, 0);
+});
+
+test("Solo ora e azienda: la notifica ha l'azienda al posto del titolo e niente luogo, l'avviso a comparsa niente titolo; il titolo non arriva mai all'app", async () => {
+  const api = {
+    get_promemoria: promemoria({ contenuto: "minimo" }),
+    get_events: json([
+      evento("e1", "Colloquio riservato", "2026-10-12T10:00:00", { alias: "ROAR", location: "Sala del consiglio" }),
+      evento("e2", "Visita privata", "2026-10-12T10:00:00", { alias: "" }),
+    ]),
+  };
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
+  await a.giro();
+  assert.deepEqual(a.notifiche, [
+    { title: "Tra 5 min · ROAR", body: "Alle 10:00" },
+    { title: "Tra 5 min", body: "Alle 10:00" },
+  ]);
+  assert.deepEqual(a.avvisi.map((v) => [v.titolo, v.ora, v.sigla]), [["", "10:00", "RO"], ["", "10:00", ""]]);
+  const tutto = a.passati.join("\n");
+  for (const segreto of ["Colloquio", "riservato", "Visita privata", "Sala del consiglio"]) assert.equal(tutto.includes(segreto), false, segreto);
+});
+
 test("la richiesta è la stessa della pagina: POST get_events con inizio e fine ISO a 24 ore", async () => {
   const adesso = Date.UTC(2026, 9, 12, 7, 55, 30);
   const a = ambiente({ adesso, api: { get_events: json([]) } });
   await a.giro();
-  const [metodo, argomenti] = a.chiamate[0];
+  const [metodo, argomenti] = a.chiamate.find(([m]) => m === "get_events");
   assert.equal(metodo, "get_events");
   assert.equal(argomenti.length, 2);
   assert.match(argomenti[0], /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
   assert.equal(new Date(argomenti[1]).getTime() - new Date(argomenti[0]).getTime(), 24 * 3_600_000);
+  assert.deepEqual(a.chiamate.find(([m]) => m === "get_promemoria"), ["get_promemoria", []]);
 });
 
 test("permesso di notifica da chiedere (Android 13+): si chiede una volta, poi l'avviso parte", async () => {
   const adesso = Date.UTC(2026, 9, 12, 7, 55);
-  const a = ambiente({ adesso, permesso: null, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  const a = ambiente({ adesso, permesso: null, ua: UA_ANDROID, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
   await a.giro();
   assert.equal(a.sistema.richieste, 1);
   assert.equal(a.notifiche.length, 1);
@@ -410,7 +485,7 @@ test("permesso di notifica da chiedere (Android 13+): si chiede una volta, poi l
 
 test("permesso rifiutato: niente avviso, niente nuova richiesta, l'avviso parte quando il permesso arriva", async () => {
   const adesso = Date.UTC(2026, 9, 12, 7, 55);
-  const a = ambiente({ adesso, permesso: null, esitoRichiesta: "denied", api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  const a = ambiente({ adesso, permesso: null, esitoRichiesta: "denied", ua: UA_ANDROID, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
   await a.giro();
   assert.equal(a.sistema.richieste, 1);
   assert.equal(a.notifiche.length, 0);
@@ -426,7 +501,7 @@ test("permesso rifiutato: niente avviso, niente nuova richiesta, l'avviso parte 
 
 test("permesso già negato per sempre (false): nessuna richiesta", async () => {
   const adesso = Date.UTC(2026, 9, 12, 7, 55);
-  const a = ambiente({ adesso, permesso: false, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
+  const a = ambiente({ adesso, permesso: false, ua: UA_ANDROID, api: { get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00")]) } });
   await a.giro();
   assert.equal(a.sistema.richieste, 0);
   assert.equal(a.notifiche.length, 0);
@@ -445,7 +520,7 @@ test("permesso già concesso (PC): nessuna richiesta, il controllo non si ripete
 
 test("senza sessione il permesso non si chiede", async () => {
   const adesso = Date.UTC(2026, 9, 12, 7, 55);
-  const a = ambiente({ adesso, permesso: null, api: { get_events: risposta(401, { error: "non autenticato" }) } });
+  const a = ambiente({ adesso, permesso: null, ua: UA_ANDROID, api: { get_events: risposta(401, { error: "non autenticato" }) } });
   await a.giro();
   assert.equal(a.sistema.richieste, 0);
   assert.equal(a.sistema.controlli, 0);

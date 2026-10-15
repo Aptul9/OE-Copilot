@@ -21,7 +21,6 @@
             "urls": ["https://oe.example.com/*"]
           },
           "permissions": [
-            "allow-interruttori",
             "allow-mostra-avviso",
             "notification:allow-notify",
             "notification:allow-is-permission-granted",

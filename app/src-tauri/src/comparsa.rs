@@ -1,6 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Mutex;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -8,14 +7,14 @@ use tauri::webview::NewWindowResponse;
 use tauri::window::Color;
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Theme, WebviewUrl, WebviewWindowBuilder};
 
-use crate::{Stato, finestra};
+use crate::finestra;
 
 // L'avviso a comparsa delle riunioni: una finestra piccola dell'app in basso a sinistra sopra la barra delle applicazioni dello schermo
 // principale, lontano dagli avvisi di Windows e di Teams in basso a destra, sempre in primo piano e senza prendere il fuoco, con una
 // riga per riunione sotto una testata con la X; con più righe cresce verso l'alto. È una finestra e non una notifica, quindi si vede anche con Non disturbare. La pagina (avviso.html) non ha comandi
 // nativi: chiede con una navigazione, che qui si intercetta, e l'app la ridisegna con eval.
 
-/// Misure in pixel logici, come in avviso.css: la testata e una riga per riunione; senza titoli (avviso anonimo) la finestra è più stretta
+/// Misure in pixel logici, come in avviso.css: la testata e una riga per riunione; senza titoli ("Solo ora e azienda") la finestra è più stretta
 const LARGHEZZA: f64 = 340.0;
 const LARGHEZZA_ANONIMO: f64 = 148.0;
 const TESTATA: f64 = 30.0;
@@ -40,8 +39,8 @@ struct Aperti {
 
 static APERTI: Mutex<Aperti> = Mutex::new(Aperti { finestra: None, voci: Vec::new(), numero: 0 });
 
-/// Una riga come arriva alla pagina: testi accorciati, il logo solo come immagine data:, senza titolo se l'avviso è anonimo
-fn contenuto(dati: &Value, anonimo: bool) -> Value {
+/// Una riga come arriva alla pagina: testi accorciati, il logo solo come immagine data:. Il titolo manca se la pagina non lo manda ("Solo ora e azienda")
+fn contenuto(dati: &Value) -> Value {
     let testo = |campo: &str, massimo: usize| -> String { dati.get(campo).and_then(Value::as_str).unwrap_or_default().chars().take(massimo).collect() };
     let mut h = DefaultHasher::new();
     testo("chiave", 400).hash(&mut h);
@@ -49,7 +48,7 @@ fn contenuto(dati: &Value, anonimo: bool) -> Value {
     json!({
         "id": format!("{:x}", h.finish()),
         "ora": testo("ora", 5),
-        "titolo": if anonimo { String::new() } else { testo("titolo", 200) },
+        "titolo": testo("titolo", 200),
         "logo": logo,
         "sigla": testo("sigla", 4),
         "colore": testo("colore", 32),
@@ -72,13 +71,8 @@ fn unisci(voci: &mut Vec<Value>, nuove: impl IntoIterator<Item = Value>) -> Vec<
 }
 
 pub fn mostra(app: &AppHandle, avvisi: &[Value]) {
-    let stato = app.state::<Stato>();
-    if !stato.comparsa.load(Ordering::Relaxed) {
-        return;
-    }
-    let anonimo = stato.anonimo.load(Ordering::Relaxed);
     let mut aperti = APERTI.lock().unwrap_or_else(|e| e.into_inner());
-    let aggiunte = unisci(&mut aperti.voci, avvisi.iter().map(|a| contenuto(a, anonimo)));
+    let aggiunte = unisci(&mut aperti.voci, avvisi.iter().map(contenuto));
     if aggiunte.is_empty() {
         return;
     }
@@ -182,25 +176,24 @@ mod prove {
     use super::*;
 
     #[test]
-    fn l_avviso_anonimo_non_porta_il_titolo() {
-        let dati = json!({ "chiave": "e1|x", "ora": "10:00", "titolo": "Riunione segreta", "logo": "data:image/png;base64,AAAA", "sigla": "RO", "colore": "#2563eb", "inizio": 1000.0 });
-        let pieno = contenuto(&dati, false);
-        assert_eq!(pieno["titolo"], "Riunione segreta");
+    fn senza_titolo_la_riga_ha_ora_logo_e_sigla() {
+        let dati = json!({ "chiave": "e1|x", "ora": "10:00", "titolo": "Riunione", "logo": "data:image/png;base64,AAAA", "sigla": "RO", "colore": "#2563eb", "inizio": 1000.0 });
+        let pieno = contenuto(&dati);
+        assert_eq!(pieno["titolo"], "Riunione");
         assert_eq!(pieno["scadenza"], 301_000.0);
-        let anonimo = contenuto(&dati, true);
-        assert_eq!(anonimo["titolo"], "");
-        assert!(!anonimo.to_string().contains("segreta"));
-        assert_eq!((anonimo["ora"].as_str(), anonimo["logo"].as_str(), anonimo["sigla"].as_str()), (Some("10:00"), Some("data:image/png;base64,AAAA"), Some("RO")));
-        assert_eq!(anonimo["id"], pieno["id"]);
-        assert_ne!(contenuto(&json!({ "chiave": "e2|x" }), false)["id"], pieno["id"]);
+        let minimo = contenuto(&json!({ "chiave": "e1|x", "ora": "10:00", "titolo": "", "logo": "data:image/png;base64,AAAA", "sigla": "RO", "inizio": 1000.0 }));
+        assert_eq!(minimo["titolo"], "");
+        assert_eq!((minimo["ora"].as_str(), minimo["logo"].as_str(), minimo["sigla"].as_str()), (Some("10:00"), Some("data:image/png;base64,AAAA"), Some("RO")));
+        assert_eq!(minimo["id"], pieno["id"]);
+        assert_ne!(contenuto(&json!({ "chiave": "e2|x" }))["id"], pieno["id"]);
     }
 
     #[test]
     fn solo_immagini_data_e_testi_accorciati() {
         for logo in ["https://example.org/x.png", "data:text/html;base64,PGI+", "javascript:alert(1)"] {
-            assert!(contenuto(&json!({ "logo": logo }), false)["logo"].is_null(), "{logo}");
+            assert!(contenuto(&json!({ "logo": logo }))["logo"].is_null(), "{logo}");
         }
-        let lungo = contenuto(&json!({ "titolo": "x".repeat(500), "ora": "10:00:00", "sigla": "ABCDEF" }), false);
+        let lungo = contenuto(&json!({ "titolo": "x".repeat(500), "ora": "10:00:00", "sigla": "ABCDEF" }));
         assert_eq!(lungo["titolo"].as_str().map(str::len), Some(200));
         assert_eq!((lungo["ora"].as_str(), lungo["sigla"].as_str()), (Some("10:00"), Some("ABCD")));
         assert!(lungo["scadenza"].is_null());
@@ -208,7 +201,7 @@ mod prove {
 
     #[test]
     fn una_riga_per_riunione_dalla_piu_vicina() {
-        let riga = |chiave: &str, inizio: f64| contenuto(&json!({ "chiave": chiave, "inizio": inizio }), false);
+        let riga = |chiave: &str, inizio: f64| contenuto(&json!({ "chiave": chiave, "inizio": inizio }));
         let mut voci = Vec::new();
         assert_eq!(unisci(&mut voci, [riga("b", 2.0), riga("a", 1.0)]).len(), 2);
         assert_eq!(voci.iter().map(|v| v["scadenza"].as_f64()).collect::<Vec<_>>(), [Some(300_001.0), Some(300_002.0)]);

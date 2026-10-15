@@ -6,16 +6,16 @@ import { chiama, METODI_TS, type NomeMetodoTs } from "@/lib/core/api";
 import { chiudiArchivio } from "@/lib/core/archivio";
 import { fissaOra } from "@/lib/core/orologio";
 import { handle, MAX_BODY, type Deps } from "@/lib/gateway";
-import { avviaTelegramFinto, CHAT_DI_PROVA, soloRetiLocali, TOKEN_DI_PROVA } from "./telegram-finto";
+import { browserFinto, chiaviVapidDiProva, soloRetiLocali } from "./push-finto";
 
 // I tre metodi dei promemoria attraverso il gateway vero (handle, con i metodi veri di lib/core): le regole di sempre (401, 403, 405, 413, 415)
-// e il comportamento, con un Telegram finto in locale.
+// e il comportamento. Le notifiche del browser sono configurate con chiavi di prova e un browser iscritto, mai un servizio vero.
 
 const MINUTI_NO = "I minuti sono da 1 a 8 numeri interi diversi, ciascuno da 0 (all'inizio) a 1440.";
 const METODI = ["get_promemoria", "set_promemoria", "prova_promemoria"];
+const NOMI_VAPID = ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"];
 
 let dati: string;
-let finto: Awaited<ReturnType<typeof avviaTelegramFinto>>;
 let vietate: string[];
 let chiamate: string[];
 
@@ -40,30 +40,30 @@ const api = async (nome: string, args: unknown[] = []) => {
   const r = await handle(post(`/api/${nome}`, args), deps(SESSIONE));
   return { stato: r.status, corpo: await r.json() };
 };
-const configuraTelegram = () => {
-  process.env.TELEGRAM_BOT_TOKEN = TOKEN_DI_PROVA;
-  process.env.TELEGRAM_CHAT_ID = CHAT_DI_PROVA;
-  process.env.TELEGRAM_API_URL = finto.url;
+/** Le chiavi VAPID nell'ambiente e un browser iscritto: il canale è configurato. */
+const configuraPush = async () => {
+  const k = chiaviVapidDiProva();
+  Object.assign(process.env, k);
+  expect((await api("iscrivi_push", [browserFinto("https://push.example.test/send/1").iscrizione])).corpo).toEqual({ ok: true });
+  return k;
 };
 
-beforeEach(async () => {
+beforeEach(() => {
   dati = fs.mkdtempSync(path.join(os.tmpdir(), "oe-promemoria-api-"));
   process.env.OE_DATI = dati;
   delete process.env.GATEWAY_DB;
-  for (const nome of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_API_URL"]) delete process.env[nome];
+  for (const nome of NOMI_VAPID) delete process.env[nome];
   for (const m of ["log", "info", "warn", "error"] as const) vi.spyOn(console, m).mockImplementation(() => {});
-  finto = await avviaTelegramFinto();
   vietate = soloRetiLocali().vietate;
   chiamate = [];
   fissaOra(Date.UTC(2026, 9, 12, 13, 20, 0));
 });
 
-afterEach(async () => {
-  await finto.chiudi();
+afterEach(() => {
   fissaOra(null);
   chiudiArchivio();
   fs.rmSync(dati, { recursive: true, force: true });
-  for (const nome of ["OE_DATI", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TELEGRAM_API_URL"]) delete process.env[nome];
+  for (const nome of ["OE_DATI", ...NOMI_VAPID]) delete process.env[nome];
   vi.restoreAllMocks();
   expect(vietate).toEqual([]);
 });
@@ -79,24 +79,20 @@ describe("i metodi", () => {
 });
 
 describe("le regole del gateway valgono anche per loro", () => {
-  it("senza sessione: 401 in JSON, il metodo non gira e Telegram non è toccato", async () => {
-    configuraTelegram();
+  it("senza sessione: 401 in JSON e il metodo non gira", async () => {
     for (const m of METODI) {
-      const r = await handle(post(`/api/${m}`, m === "set_promemoria" ? [{ attivo: true }] : ["telegram"]), deps(null));
+      const r = await handle(post(`/api/${m}`, m === "set_promemoria" ? [{ attivo: true }] : ["push"]), deps(null));
       expect(r.status, m).toBe(401);
       expect(await r.json()).toEqual({ error: "non autenticato" });
     }
     expect(chiamate).toEqual([]);
-    expect(finto.richieste).toEqual([]);
   });
 
   it("un POST che parte da un altro sito: 403", async () => {
-    configuraTelegram();
     for (const m of METODI) {
-      for (const sito of ["cross-site", "same-site"]) expect((await handle(post(`/api/${m}`, ["telegram"], { "sec-fetch-site": sito }), deps(SESSIONE))).status, `${m} ${sito}`).toBe(403);
+      for (const sito of ["cross-site", "same-site"]) expect((await handle(post(`/api/${m}`, ["push"], { "sec-fetch-site": sito }), deps(SESSIONE))).status, `${m} ${sito}`).toBe(403);
     }
     expect(chiamate).toEqual([]);
-    expect(finto.richieste).toEqual([]);
   });
 
   it("gli altri metodi HTTP: 405; un POST che non è JSON: 415; un corpo troppo grande: 413; un corpo che non è una lista: 400", async () => {
@@ -128,15 +124,12 @@ describe("le regole del gateway valgono anche per loro", () => {
 });
 
 describe("get_promemoria", () => {
-  it("di norma: spento, dieci minuti, Telegram, completo; nessun canale configurato; nessun giro, nessun errore", async () => {
+  it("di norma: spento, dieci minuti, notifiche del browser, completo; nessun canale configurato; nessun giro, nessun errore", async () => {
     expect(await api("get_promemoria")).toEqual({
       stato: 200,
       corpo: {
-        promemoria: { attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" },
-        canali: [
-          { nome: "telegram", configurato: false },
-          { nome: "push", configurato: false, chiavi: false, chiave_pubblica: null, iscrizioni: 0 },
-        ],
+        promemoria: { attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" },
+        canali: [{ nome: "push", configurato: false, chiavi: false, chiave_pubblica: null, iscrizioni: 0 }],
         ultimo_giro: null,
         ultimo_errore: null,
         ultimo_errore_il: null,
@@ -144,21 +137,9 @@ describe("get_promemoria", () => {
     });
   });
 
-  it("con TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID il canale è configurato, e la risposta non contiene né il token né la chat", async () => {
-    configuraTelegram();
-    const r = await api("get_promemoria");
-    expect(r.corpo.canali[0]).toEqual({ nome: "telegram", configurato: true });
-    expect(JSON.stringify(r)).not.toContain(TOKEN_DI_PROVA);
-    expect(JSON.stringify(r)).not.toContain("SEGRETO");
-    expect(JSON.stringify(r)).not.toContain(CHAT_DI_PROVA);
-    expect(JSON.stringify(r)).not.toContain(finto.url);
-    process.env.TELEGRAM_CHAT_ID = "";
-    expect((await api("get_promemoria")).corpo.canali[0]).toEqual({ nome: "telegram", configurato: false });
-  });
-
   it("una voce scritta male con save_config non rompe la lettura: valgono i valori predefiniti", async () => {
     await api("save_config", [{ promemoria: { attivo: "sì", minuti: "dieci", canali: 7, contenuto: [] } }]);
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" });
   });
 });
 
@@ -170,21 +151,21 @@ describe("set_promemoria", () => {
   });
 
   it("con il canale configurato si accende, si cambiano minuti e contenuto, e get_promemoria e get_config lo mostrano", async () => {
-    configuraTelegram();
+    const k = await configuraPush();
     const r = await api("set_promemoria", [{ attivo: true, minuti: [15, 5, 15], contenuto: "minimo" }]);
-    expect(r).toEqual({ stato: 200, corpo: { ok: true, promemoria: { attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" } } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
+    expect(r).toEqual({ stato: 200, corpo: { ok: true, promemoria: { attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" } } });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" });
     // è una voce della configurazione come le altre, e non porta niente del canale
     const config = (await api("get_config")).corpo;
-    expect(config.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["telegram"], contenuto: "minimo", suono: "Default" });
-    expect(JSON.stringify(config)).not.toContain("SEGRETO");
-    expect(JSON.stringify(config)).not.toContain(CHAT_DI_PROVA);
+    expect(config.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" });
+    expect(JSON.stringify(config)).not.toContain(k.VAPID_PRIVATE_KEY);
+    expect(JSON.stringify(config)).not.toContain("push.example.test");
   });
 
   it("si salvano l'orario all'inizio (0), fino a otto orari e un suono; i valori stanno in ordine e la voce sopravvive a una nuova lettura", async () => {
     const r = await api("set_promemoria", [{ minuti: [30, 0, 15, 60, 10, 5, 20, 45], suono: "Reminder" }]);
-    expect(r.corpo).toEqual({ ok: true, promemoria: { attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["telegram"], contenuto: "completo", suono: "Reminder" } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["telegram"], contenuto: "completo", suono: "Reminder" });
+    expect(r.corpo).toEqual({ ok: true, promemoria: { attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["push"], contenuto: "completo", suono: "Reminder" } });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["push"], contenuto: "completo", suono: "Reminder" });
     expect((await api("set_promemoria", [{ minuti: [0] }])).corpo.promemoria.minuti).toEqual([0]);
   });
 
@@ -197,7 +178,6 @@ describe("set_promemoria", () => {
   });
 
   it("i valori che non vanno sono rifiutati con una frase, senza eccezioni", async () => {
-    configuraTelegram();
     const rifiuti: [unknown, string][] = [
       [{ minuti: [-1] }, MINUTI_NO],
       [{ minuti: [] }, MINUTI_NO],
@@ -215,41 +195,15 @@ describe("set_promemoria", () => {
     ];
     for (const [corpo, frase] of rifiuti) expect(await api("set_promemoria", [corpo]), JSON.stringify(corpo)).toEqual({ stato: 200, corpo: { ok: false, error: frase } });
     expect(await api("set_promemoria", [])).toEqual({ stato: 200, corpo: { ok: false, error: "Le impostazioni dei promemoria non sono valide." } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" });
   });
 });
 
 describe("prova_promemoria", () => {
-  it("manda su Telegram il testo fisso e nient'altro: nessun dato di un evento, nessuna lettura di eventi", async () => {
-    configuraTelegram();
-    expect(await api("prova_promemoria", ["telegram"])).toEqual({ stato: 200, corpo: { ok: true } });
-    expect(finto.richieste).toHaveLength(1);
-    expect(finto.richieste[0].percorso).toBe(`/bot${TOKEN_DI_PROVA}/sendMessage`);
-    expect(finto.richieste[0].corpo).toEqual({ chat_id: CHAT_DI_PROVA, text: "Prova dei promemoria", link_preview_options: { is_disabled: true } });
-  });
-
-  it("funziona anche a promemoria spenti (si prova prima di accendere), e una prova non accende niente", async () => {
-    configuraTelegram();
-    await api("prova_promemoria", ["telegram"]);
-    expect((await api("get_promemoria")).corpo.promemoria.attivo).toBe(false);
-  });
-
   it("canale sconosciuto o non configurato: una frase, e niente parte", async () => {
-    expect(await api("prova_promemoria", ["telegram"])).toEqual({ stato: 200, corpo: { ok: false, error: "Canale non configurato sul server." } });
-    configuraTelegram();
-    for (const args of [["whatsapp"], [], [5], [null], [{ nome: "telegram" }], [["telegram"]]]) {
+    expect(await api("prova_promemoria", ["push"])).toEqual({ stato: 200, corpo: { ok: false, error: "Canale non configurato sul server." } });
+    for (const args of [["whatsapp"], [], [5], [null], [{ nome: "push" }], [["push"]]]) {
       expect(await api("prova_promemoria", args), JSON.stringify(args)).toEqual({ stato: 200, corpo: { ok: false, error: "Canale sconosciuto." } });
     }
-    expect(finto.richieste).toEqual([]);
-  });
-
-  it("se Telegram rifiuta, la risposta dice perché con una frase fissa: né il token né quello che ha risposto Telegram", async () => {
-    configuraTelegram();
-    finto.risposte.push({ stato: 401, corpo: { ok: false, error_code: 401, description: `Unauthorized: bot${TOKEN_DI_PROVA}` } });
-    const r = await api("prova_promemoria", ["telegram"]);
-    expect(r.corpo).toEqual({ ok: false, error: "Telegram non riconosce il bot (401): controlla TELEGRAM_BOT_TOKEN" });
-    expect(JSON.stringify(r)).not.toContain("SEGRETO");
-    finto.risposte.push({ stato: 429, corpo: { ok: false, parameters: { retry_after: 3 } } });
-    expect((await api("prova_promemoria", ["telegram"])).corpo).toEqual({ ok: false, error: "Telegram limita gli invii (429)" });
   });
 });

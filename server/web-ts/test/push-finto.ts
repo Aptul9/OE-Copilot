@@ -1,9 +1,28 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import { vi } from "vitest";
 
 // Un servizio di notifiche finto (un server HTTP locale) e un "browser" finto che sa decifrare: le prove delle notifiche del browser non
 // toccano mai un servizio vero (FCM, Mozilla, Apple).
+
+/**
+ * Fa fallire ogni fetch verso un indirizzo che non è locale: una prova che per sbaglio chiamasse un servizio vero non esce dal computer.
+ * `vietate` elenca i nomi dei server che si è provato a raggiungere (le prove controllano che sia vuoto).
+ */
+export function soloRetiLocali() {
+  const reale = globalThis.fetch;
+  const vietate: string[] = [];
+  const spia = vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+    if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
+      vietate.push(url.hostname);
+      return Promise.reject(new Error("rete vietata nelle prove"));
+    }
+    return reale(input, init);
+  });
+  return { spia, vietate };
+}
 
 export type RichiestaPush = { percorso: string; intestazioni: http.IncomingHttpHeaders; corpo: Buffer };
 export type RispostaPush = { stato: number; intestazioni?: Record<string, string>; ritardoMs?: number };

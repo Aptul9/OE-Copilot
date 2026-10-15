@@ -36,7 +36,7 @@ export type Impostazioni = { attivo: boolean; minuti: number[]; canali: string[]
  * Quello che vale finché nessuno ha salvato niente: spento, un avviso dieci minuti prima (come l'app per Windows). Non stanno in
  * DEFAULT_CONFIG: la chiave `promemoria` si scrive nello stato alla prima modifica, come `gruppi_calendari`.
  */
-export const PREDEFINITE: Impostazioni = { attivo: false, minuti: [10], canali: ["telegram"], contenuto: "completo", suono: "Default" };
+export const PREDEFINITE: Impostazioni = { attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" };
 
 // 0 vuol dire "all'inizio": l'avviso parte nell'ultimo minuto prima dell'inizio (un giro dura fino a 30 secondi, quindi uno ci cade sempre)
 export const sogliaMs = (minuti: number) => Math.max(minuti, 1) * 60_000;
@@ -260,7 +260,7 @@ function candidati(eventi: Ev[], ora: number): Candidato[] {
  * Un giro: legge le impostazioni, e se sono accese e c'è un canale pronto legge gli eventi dei prossimi minuti e manda quello che serve.
  * Per ogni evento e canale parte al più un messaggio a giro: se più valori dei minuti sono scaduti insieme (primo giro dopo un riavvio, evento
  * creato all'ultimo) il testo è lo stesso, e li chiude tutti. Un invio che fallisce non segna niente come inviato e ferma quel canale fino
- * al giro dopo (con il limite di Telegram, per il tempo che dice): ai tentativi si arriva un giro alla volta, dall'evento più vicino.
+ * al giro dopo (con il limite del servizio, per il tempo che dice): ai tentativi si arriva un giro alla volta, dall'evento più vicino.
  */
 export function creaMotore(dip: Dipendenze): Motore {
   const stato: StatoMotore = dip.stato ?? { ultimoGiro: null, ultimoErrore: null };

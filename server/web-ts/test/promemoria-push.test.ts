@@ -12,8 +12,7 @@ import { adesso, fissaOra } from "@/lib/core/orologio";
 import { creaMotore, creaStore, provaPromemoria } from "@/lib/core/promemoria";
 import { autorizzazioneVapid, canalePush, chiaviVapid, cifra, disiscrivi, ISCRIZIONI_MAX, iscrivi, iscrizioni } from "@/lib/core/promemoria-push";
 import { handle, type Deps } from "@/lib/gateway";
-import { avviaPushFinto, browserFinto, chiaviVapidDiProva, decifra } from "./push-finto";
-import { soloRetiLocali } from "./telegram-finto";
+import { avviaPushFinto, browserFinto, chiaviVapidDiProva, decifra, soloRetiLocali } from "./push-finto";
 
 // Le notifiche del browser: la cifratura contro l'esempio dell'RFC 8291, le chiavi VAPID, le iscrizioni, il canale contro un servizio di
 // notifiche finto in locale, il motore, i metodi dell'API e il service worker. Mai un servizio di notifiche vero.
@@ -445,7 +444,7 @@ describe("attraverso il gateway", () => {
     const k = impostaChiavi();
     const b = browserFinto(ENDPOINT);
     expect(await api("get_promemoria")).toMatchObject({
-      corpo: { canali: [{ nome: "telegram", configurato: false }, { nome: "push", configurato: false, chiavi: true, chiave_pubblica: k.VAPID_PUBLIC_KEY, iscrizioni: 0 }] },
+      corpo: { canali: [{ nome: "push", configurato: false, chiavi: true, chiave_pubblica: k.VAPID_PUBLIC_KEY, iscrizioni: 0 }] },
     });
     expect(await api("iscrivi_push", [b.iscrizione])).toEqual({ stato: 200, corpo: { ok: true } });
     expect(await api("iscrivi_push", [{ endpoint: "http://127.0.0.1/x", keys: b.iscrizione.keys }])).toEqual({ stato: 200, corpo: { ok: false, error: "L'iscrizione del browser non è valida." } });

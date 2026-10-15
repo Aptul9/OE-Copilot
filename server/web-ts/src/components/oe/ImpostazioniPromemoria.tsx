@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/oe/api";
 import type { ContenutoPromemoria, ImpostazioniPromemoria as Impostazioni, PromemoriaRisposta } from "@/lib/oe/types";
 
-const NOMI_CANALI: Record<string, string> = { telegram: "Telegram", push: "Notifiche del browser" };
+const NOMI_CANALI: Record<string, string> = { push: "Notifiche del browser" };
 const CONTENUTI: { valore: ContenutoPromemoria; testo: string }[] = [
   { valore: "completo", testo: "Completo: titolo, luogo e link" },
   { valore: "minimo", testo: "Minimo: solo ora e azienda" },
@@ -40,7 +40,7 @@ const quando = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.sl
 const nelBrowser = () => typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
 /**
- * "Promemoria": il server avvisa prima delle riunioni su un canale (Telegram, notifiche del browser), anche a pagina chiusa. Le chiavi dei
+ * "Promemoria": il server avvisa prima delle riunioni su un canale (notifiche del browser), anche a pagina chiusa. Le chiavi dei
  * canali stanno nell'ambiente del server, qui si vede solo se ci sono. Ogni modifica si salva subito e il server la rilegge al giro dopo.
  */
 export function ImpostazioniPromemoria() {

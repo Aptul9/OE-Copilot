@@ -118,8 +118,8 @@ export type NuovoEvento = {
 export type Esito = { ok: boolean; error?: string };
 
 export type ContenutoPromemoria = "completo" | "minimo";
-/** I promemoria che il server manda (lib/core/promemoria.ts). */
-export type ImpostazioniPromemoria = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: ContenutoPromemoria; suono: string };
+/** Le impostazioni dei promemoria, una sola per sito, app e server (lib/core/promemoria.ts). */
+export type ImpostazioniPromemoria = { minuti: number[]; contenuto: ContenutoPromemoria; suono: string; notifica_windows: boolean; comparsa: boolean };
 export type PromemoriaRisposta = {
   promemoria: ImpostazioniPromemoria;
   /**
@@ -127,7 +127,6 @@ export type PromemoriaRisposta = {
    * se le chiavi VAPID ci sono, la chiave pubblica (serve alla pagina per iscriversi) e quanti browser sono iscritti.
    */
   canali: { nome: string; configurato: boolean; chiavi?: boolean; chiave_pubblica?: string | null; iscrizioni?: number }[];
-  ultimo_giro: string | null;
   ultimo_errore: string | null;
   ultimo_errore_il: string | null;
 };

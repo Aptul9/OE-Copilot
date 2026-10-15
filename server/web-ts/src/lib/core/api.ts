@@ -312,7 +312,7 @@ export const apiTs = {
   },
 
   // ---- Promemoria dal server (promemoria.ts) ------------------------------------------------------------------------------
-  /** Le impostazioni, i canali configurati sul server, l'ultimo giro e l'ultimo problema. */
+  /** Le impostazioni, i canali configurati sul server e l'ultimo problema. */
   async get_promemoria() {
     return leggiPromemoria();
   },

@@ -8,10 +8,9 @@ import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/oe/api";
 import type { ContenutoPromemoria, ImpostazioniPromemoria as Impostazioni, PromemoriaRisposta } from "@/lib/oe/types";
 
-const NOMI_CANALI: Record<string, string> = { push: "Notifiche del browser" };
 const CONTENUTI: { valore: ContenutoPromemoria; testo: string }[] = [
-  { valore: "completo", testo: "Completo: titolo, luogo e link" },
-  { valore: "minimo", testo: "Minimo: solo ora e azienda" },
+  { valore: "completo", testo: "Completo" },
+  { valore: "minimo", testo: "Solo ora e azienda" },
 ];
 
 // Gli orari più usati, a caselle. 0 è "all'inizio" (nell'ultimo minuto prima). Gli altri valori si scrivono nel campo sotto.
@@ -23,9 +22,9 @@ const ORARI: { minuti: number; testo: string }[] = [
   { minuti: 5, testo: "5 minuti prima" },
   { minuti: 0, testo: "All'inizio" },
 ];
-// I nomi che il server accetta (SUONI in lib/core/promemoria.ts): li usa solo l'app per Windows, come suono della notifica
+// I nomi che il server accetta (SUONI in lib/core/promemoria.ts): il suono della notifica dell'app per Windows
 const SUONI: [string, string][] = [
-  ["Default", "Predefinito di Windows"],
+  ["Default", "Predefinito"],
   ["Reminder", "Promemoria"],
   ["Mail", "Posta"],
   ["IM", "Messaggio"],
@@ -35,22 +34,28 @@ const SUONI: [string, string][] = [
 ];
 
 const messaggio = (e: unknown) => (e instanceof Error ? e.message : String(e));
-/** AAAA-MM-GGTHH:MM:SS (ora di Roma) come "12/10 15:20:00". */
-const quando = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 19)}`;
-const nelBrowser = () => typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+/** AAAA-MM-GGTHH:MM:SS (ora di Roma) come "12/10 15:20". */
+const quando = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}`;
+const conNotifiche = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+
+// Dove si apre la pagina: le app (Windows e Android) hanno window.__TAURI_INTERNALS__, un browser no
+type Dove = "windows" | "android" | "browser";
+const dove = (): Dove => (!("__TAURI_INTERNALS__" in window) ? "browser" : /Android/i.test(navigator.userAgent) ? "android" : "windows");
 
 /**
- * "Promemoria": il server avvisa prima delle riunioni su un canale (notifiche del browser), anche a pagina chiusa. Le chiavi dei
- * canali stanno nell'ambiente del server, qui si vede solo se ci sono. Ogni modifica si salva subito e il server la rilegge al giro dopo.
+ * "Promemoria": quando avvisare, dove, cosa scrivere e il suono, in un posto solo. Si salva tutto sul server: l'app per Windows rilegge
+ * le impostazioni a ogni giro (un minuto), il server a ogni suo giro. Nell'app per Windows si vedono notifica, avviso a comparsa e suono;
+ * in un browser le sue notifiche (WebView2 non le ha); nell'app per Android le notifiche ci sono sempre.
  */
 export function ImpostazioniPromemoria() {
   const [dati, setDati] = useState<PromemoriaRisposta | null>(null);
+  const [qui, setQui] = useState<Dove | null>(null);
   const [errore, setErrore] = useState("");
   const [altri, setAltri] = useState("");
   const [occupato, setOccupato] = useState(false);
-  const [prove, setProve] = useState<Record<string, string>>({});
   // questo browser è iscritto alle notifiche? null se non si sa o se il browser non le ha
   const [questo, setQuesto] = useState<boolean | null>(null);
+  const [esitoPush, setEsitoPush] = useState("");
 
   const carica = useCallback(async () => {
     try {
@@ -64,17 +69,18 @@ export function ImpostazioniPromemoria() {
   }, []);
 
   useEffect(() => {
+    setQui(dove());
     void carica();
   }, [carica]);
 
   useEffect(() => {
-    if (!nelBrowser()) return;
+    if (qui !== "browser" || !conNotifiche()) return;
     navigator.serviceWorker
       .getRegistration()
       .then((reg) => reg?.pushManager.getSubscription())
       .then((sub) => setQuesto(!!sub))
       .catch(() => setQuesto(null));
-  }, []);
+  }, [qui]);
 
   const salva = async (parziale: Partial<Impostazioni>) => {
     setOccupato(true);
@@ -102,30 +108,18 @@ export function ImpostazioniPromemoria() {
   };
   const salvaAltri = () => {
     const valori = altri.split(/[\s,;]+/).filter(Boolean).map(Number);
-    if (valori.some((v) => !Number.isInteger(v))) return setErrore("Scrivi numeri interi separati da virgola, per esempio 20, 45.");
+    if (valori.some((v) => !Number.isInteger(v))) return setErrore("Solo numeri interi, separati da virgola.");
     const aCaselle = (dati?.promemoria.minuti ?? []).filter((m) => ORARI.some((o) => o.minuti === m));
     salvaMinuti([...new Set([...aCaselle, ...valori])].sort((a, b) => a - b));
-  };
-
-  const dichiara = (nome: string, testo: string) => setProve((x) => ({ ...x, [nome]: testo }));
-
-  const prova = async (nome: string) => {
-    dichiara(nome, "Invio…");
-    try {
-      const r = await api("prova_promemoria", nome);
-      dichiara(nome, r.ok ? "Prova inviata." : `Non riuscita: ${r.error}`);
-    } catch (e) {
-      dichiara(nome, `Non riuscita: ${messaggio(e)}`);
-    }
   };
 
   // Iscrive questo browser: il permesso, il service worker (/sw.js), l'iscrizione al servizio di notifiche con la chiave pubblica del server,
   // e l'iscrizione si manda al server, che la tiene in gateway.db
   const attivaQuesto = async (chiave: string) => {
-    dichiara("push", "Attivo…");
+    setEsitoPush("");
+    setOccupato(true);
     try {
-      if (!nelBrowser()) throw new Error("questo browser non ha le notifiche");
-      if ((await Notification.requestPermission()) !== "granted") throw new Error("il browser non ha dato il permesso (si cambia dalle impostazioni del sito)");
+      if ((await Notification.requestPermission()) !== "granted") throw new Error("permesso negato dal browser");
       await navigator.serviceWorker.register("/sw.js");
       const reg = await navigator.serviceWorker.ready;
       // un'iscrizione fatta con un'altra chiave del server (le chiavi VAPID cambiate) farebbe fallire subscribe(): si rifà da capo
@@ -134,15 +128,17 @@ export function ImpostazioniPromemoria() {
       const r = await api("iscrivi_push", sub.toJSON());
       if (!r.ok) throw new Error(r.error);
       setQuesto(true);
-      dichiara("push", "Notifiche attive su questo browser.");
       await carica();
     } catch (e) {
-      dichiara("push", `Non riuscito: ${messaggio(e)}`);
+      setEsitoPush(`Non riuscito: ${messaggio(e)}`);
+    } finally {
+      setOccupato(false);
     }
   };
 
   const disattivaQuesto = async () => {
-    dichiara("push", "Disattivo…");
+    setEsitoPush("");
+    setOccupato(true);
     try {
       const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
       if (sub) {
@@ -150,14 +146,25 @@ export function ImpostazioniPromemoria() {
         await sub.unsubscribe();
       }
       setQuesto(false);
-      dichiara("push", "Notifiche tolte da questo browser.");
       await carica();
     } catch (e) {
-      dichiara("push", `Non riuscito: ${messaggio(e)}`);
+      setEsitoPush(`Non riuscito: ${messaggio(e)}`);
+    } finally {
+      setOccupato(false);
     }
   };
 
-  if (!dati) {
+  const prova = async () => {
+    setEsitoPush("Invio…");
+    try {
+      const r = await api("prova_promemoria", "push");
+      setEsitoPush(r.ok ? "Inviata." : `Non riuscita: ${r.error}`);
+    } catch (e) {
+      setEsitoPush(`Non riuscita: ${messaggio(e)}`);
+    }
+  };
+
+  if (!dati || !qui) {
     return (
       <section id="cfg-promemoria">
         <h3 className="mb-2 font-semibold">Promemoria</h3>
@@ -166,24 +173,15 @@ export function ImpostazioniPromemoria() {
     );
   }
   const p = dati.promemoria;
-  const cambiaCanale = (nome: string, acceso: boolean) => {
-    const scelti = new Set(p.canali);
-    if (acceso) scelti.add(nome);
-    else scelti.delete(nome);
-    void salva({ canali: [...scelti] });
-  };
+  const push = dati.canali.find((c) => c.nome === "push");
+  const chiave = push?.chiavi ? push.chiave_pubblica : null;
 
   return (
     <section id="cfg-promemoria">
       <h3 className="mb-2 font-semibold">Promemoria</h3>
       <div className="flex flex-col gap-3">
-        <label className="flex items-center gap-2">
-          <Switch id="cfg-promemoria-attivo" checked={p.attivo} disabled={occupato} onCheckedChange={(v) => void salva({ attivo: v })} /> Avvisami prima delle riunioni
-        </label>
-        <p className="-mt-1.5 text-xs text-muted-foreground">Li manda il server, anche a pagina chiusa. Di norma è spento: si accende con un canale configurato sul server.</p>
-
         <fieldset className="flex flex-col gap-1.5" id="cfg-promemoria-orari">
-          <legend className="mb-1 text-xs font-medium">Quando avvisare</legend>
+          <legend className="mb-1 text-xs font-medium">Quando</legend>
           {ORARI.map((o) => (
             <label key={o.minuti} className="flex items-center gap-2">
               <input
@@ -198,11 +196,12 @@ export function ImpostazioniPromemoria() {
             </label>
           ))}
           <label className="mt-1 flex flex-col gap-1 text-xs font-medium">
-            Altri minuti prima (separati da virgola, per esempio 20, 45)
+            Altri minuti prima
             <Input
               id="cfg-promemoria-minuti"
               className="w-48"
               inputMode="numeric"
+              placeholder="20, 45"
               value={altri}
               disabled={occupato}
               onChange={(e) => setAltri(e.target.value)}
@@ -212,71 +211,50 @@ export function ImpostazioniPromemoria() {
           </label>
         </fieldset>
 
-        <label className="flex flex-col gap-1 text-xs font-medium">
-          Suono della notifica di Windows (solo l&apos;app per Windows)
-          <Select value={p.suono} disabled={occupato} onValueChange={(v) => void salva({ suono: v })}>
-            <SelectTrigger id="cfg-promemoria-suono" className="w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SUONI.map(([valore, testo]) => (
-                <SelectItem key={valore} value={valore}>
-                  {testo}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <p className="-mt-1.5 text-xs text-muted-foreground">L&apos;app rilegge orari e suono ogni 30 minuti, o quando si riavvia. Gli stessi orari valgono per i canali sotto.</p>
-
-        <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium">Dove</span>
-          {dati.canali.map((c) => {
-            const scelto = p.canali.includes(c.nome);
-            // per le notifiche del browser "configurato" vuol dire pronte: chiavi sul server e almeno un browser iscritto
-            const senzaChiavi = c.nome === "push" ? c.chiavi === false : !c.configurato;
-            return (
-              <div key={c.nome} className="flex flex-col gap-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <label className="flex items-center gap-2">
-                    <Switch
-                      id={`cfg-promemoria-canale-${c.nome}`}
-                      checked={scelto}
-                      disabled={occupato || (!c.configurato && !scelto)}
-                      onCheckedChange={(v) => cambiaCanale(c.nome, v)}
-                    />
-                    {NOMI_CANALI[c.nome] ?? c.nome}
-                  </label>
-                  {senzaChiavi && <span className="text-xs text-muted-foreground">non configurato sul server</span>}
-                  {c.nome === "push" && !senzaChiavi && (
-                    <span className="text-xs text-muted-foreground">{c.iscrizioni ? `${c.iscrizioni} browser iscritti` : "nessun browser iscritto"}</span>
-                  )}
-                  <Button id={`btn-promemoria-prova-${c.nome}`} type="button" size="xs" variant="outline" disabled={!c.configurato} onClick={() => void prova(c.nome)}>
-                    Invia una prova
+        {qui === "windows" && (
+          <div className="flex flex-col gap-2" id="cfg-promemoria-dove">
+            <span className="text-xs font-medium">Dove</span>
+            <label className="flex items-center gap-2">
+              <Switch id="cfg-promemoria-notifica-windows" checked={p.notifica_windows} disabled={occupato} onCheckedChange={(v) => void salva({ notifica_windows: v })} />
+              Notifica di Windows
+            </label>
+            <label className="flex items-center gap-2">
+              <Switch id="cfg-promemoria-comparsa" checked={p.comparsa} disabled={occupato} onCheckedChange={(v) => void salva({ comparsa: v })} />
+              Avviso a comparsa
+            </label>
+          </div>
+        )}
+        {qui === "browser" && (
+          <div className="flex flex-col gap-1" id="cfg-promemoria-dove">
+            <span className="text-xs font-medium">Dove</span>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label className="flex items-center gap-2">
+                <Switch
+                  id="cfg-promemoria-push"
+                  checked={!!questo}
+                  disabled={occupato || !chiave || !conNotifiche()}
+                  onCheckedChange={(v) => void (v && chiave ? attivaQuesto(chiave) : disattivaQuesto())}
+                />
+                Notifiche del browser
+              </label>
+              {!chiave ? (
+                <span className="text-xs text-muted-foreground">non configurate sul server</span>
+              ) : !conNotifiche() ? (
+                <span className="text-xs text-muted-foreground">non disponibili in questo browser</span>
+              ) : (
+                questo && (
+                  <Button id="btn-promemoria-prova" type="button" size="xs" variant="outline" onClick={() => void prova()}>
+                    Prova
                   </Button>
-                </div>
-                {c.nome === "push" && !senzaChiavi && c.chiave_pubblica && (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {questo ? (
-                      <Button id="btn-promemoria-push-disattiva" type="button" size="xs" variant="outline" onClick={() => void disattivaQuesto()}>
-                        Togli da questo browser
-                      </Button>
-                    ) : (
-                      <Button id="btn-promemoria-push-attiva" type="button" size="xs" variant="outline" disabled={!nelBrowser()} onClick={() => void attivaQuesto(c.chiave_pubblica as string)}>
-                        Attiva su questo browser
-                      </Button>
-                    )}
-                    {!nelBrowser() && <span className="text-xs text-muted-foreground">questo browser non ha le notifiche</span>}
-                  </div>
-                )}
-                {prove[c.nome] && <span className="text-xs text-muted-foreground">{prove[c.nome]}</span>}
-              </div>
-            );
-          })}
-        </div>
+                )
+              )}
+            </div>
+            {esitoPush && <span className="text-xs text-muted-foreground">{esitoPush}</span>}
+          </div>
+        )}
 
         <label className="flex flex-col gap-1 text-xs font-medium">
-          Cosa c&apos;è nel messaggio
+          Contenuto
           <Select value={p.contenuto} disabled={occupato} onValueChange={(v) => void salva({ contenuto: v as ContenutoPromemoria })}>
             <SelectTrigger id="cfg-promemoria-contenuto" className="w-64">
               <SelectValue />
@@ -290,12 +268,31 @@ export function ImpostazioniPromemoria() {
             </SelectContent>
           </Select>
         </label>
-        {p.contenuto === "completo" && <p className="-mt-1.5 text-xs text-muted-foreground">Con il messaggio completo il titolo delle riunioni passa dai server del canale scelto (cifrato da un capo all&apos;altro solo nelle notifiche del browser).</p>}
 
-        <p id="promemoria-stato" className="text-xs text-muted-foreground">
-          {dati.ultimo_giro ? `Ultimo controllo: ${quando(dati.ultimo_giro)}.` : "Nessun controllo da quando il server è partito."}
-          {dati.ultimo_errore && ` Ultimo problema: ${dati.ultimo_errore}${dati.ultimo_errore_il ? ` (${quando(dati.ultimo_errore_il)})` : ""}.`}
-        </p>
+        {qui === "windows" && (
+          <label className="flex flex-col gap-1 text-xs font-medium">
+            Suono
+            <Select value={p.suono} disabled={occupato} onValueChange={(v) => void salva({ suono: v })}>
+              <SelectTrigger id="cfg-promemoria-suono" className="w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUONI.map(([valore, testo]) => (
+                  <SelectItem key={valore} value={valore}>
+                    {testo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        )}
+
+        {qui === "browser" && dati.ultimo_errore && (
+          <p id="promemoria-stato" className="text-xs text-muted-foreground">
+            Ultimo errore: {dati.ultimo_errore}
+            {dati.ultimo_errore_il && ` (${quando(dati.ultimo_errore_il)})`}
+          </p>
+        )}
         {errore && (
           <p id="promemoria-errore" role="alert" className="text-xs text-destructive">
             {errore}

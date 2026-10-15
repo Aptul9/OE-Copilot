@@ -7,10 +7,11 @@ import { adesso } from "./orologio";
 import { type Canale, canaliDelServer, type Esito } from "./promemoria-canali";
 import { isDict } from "./py";
 
-// I promemoria delle riunioni mandati dal server (li dava l'app per Windows, reminders.py fino al commit 360c5c7, solo ad app aperta):
-// a ogni giro si leggono gli eventi che stanno per iniziare dalla stessa strada di get_events, si decide quali hanno bisogno di un
-// avviso e lo si manda sui canali scelti (promemoria-canali.ts). Quello che è già partito sta nella tabella promemoria_inviati di
-// gateway.db, così un riavvio del gateway non rimanda niente. Spento finché chi usa l'app non lo accende.
+// I promemoria delle riunioni. Le impostazioni (voce `promemoria` della configurazione) sono una sola per tutti: quando avvisare, cosa
+// scrivere, il suono e i due avvisi dell'app per Windows, che le rilegge a ogni giro e fa da sé notifica e avviso a comparsa. Il server
+// manda i promemoria dei canali configurati (promemoria-canali.ts, le notifiche dei browser iscritti): a ogni giro legge gli eventi che
+// stanno per iniziare dalla stessa strada di get_events e manda quello che serve. Quello che è già partito sta nella tabella
+// promemoria_inviati di gateway.db, così un riavvio del gateway non rimanda niente.
 
 export const TENTATIVI_MAX = 5;
 export const CONSERVA_GIORNI = 14;
@@ -29,14 +30,16 @@ const INTERVALLO_PREDEFINITO_S = 30;
 const PRIMO_GIRO_MS = 10_000;
 
 // ---- Le impostazioni -----------------------------------------------------------------------------------------------------
+/** "minimo": solo l'ora e l'azienda, in ogni canale (notifica e avviso a comparsa dell'app, notifiche del browser). */
 export type Contenuto = "completo" | "minimo";
-export type Impostazioni = { attivo: boolean; minuti: number[]; canali: string[]; contenuto: Contenuto; suono: string };
+export type Impostazioni = { minuti: number[]; contenuto: Contenuto; suono: string; notifica_windows: boolean; comparsa: boolean };
 
 /**
- * Quello che vale finché nessuno ha salvato niente: spento, un avviso dieci minuti prima (come l'app per Windows). Non stanno in
- * DEFAULT_CONFIG: la chiave `promemoria` si scrive nello stato alla prima modifica, come `gruppi_calendari`.
+ * Quello che vale finché nessuno ha salvato niente: un avviso dieci minuti prima, testo completo, notifica e avviso a comparsa accesi
+ * nell'app per Windows. Non stanno in DEFAULT_CONFIG: la chiave `promemoria` si scrive nello stato alla prima modifica, come `gruppi_calendari`.
  */
-export const PREDEFINITE: Impostazioni = { attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" };
+export const PREDEFINITE: Impostazioni = { minuti: [10], contenuto: "completo", suono: "Default", notifica_windows: true, comparsa: true };
+const INTERRUTTORI = ["notifica_windows", "comparsa"] as const;
 
 // 0 vuol dire "all'inizio": l'avviso parte nell'ultimo minuto prima dell'inizio (un giro dura fino a 30 secondi, quindi uno ci cade sempre)
 export const sogliaMs = (minuti: number) => Math.max(minuti, 1) * 60_000;
@@ -47,45 +50,42 @@ function minutiValidi(v: unknown): number[] | null {
   return distinti.length >= 1 && distinti.length <= MINUTI_VOCI ? distinti : null;
 }
 
-/** Le impostazioni dallo stato, sempre usabili: un valore che non va (la voce si può scrivere anche con save_config) cede il posto al predefinito. */
+/**
+ * Le impostazioni dallo stato, sempre usabili: un valore che non va (la voce si può scrivere anche con save_config) cede il posto al
+ * predefinito. Le voci di prima (`attivo`, `canali`) non contano più e spariscono al primo salvataggio.
+ */
 export function leggiImpostazioni(cfg: Config): Impostazioni {
   const g = isDict(cfg.promemoria) ? cfg.promemoria : {};
   return {
-    attivo: g.attivo === true,
     minuti: minutiValidi(g.minuti) ?? [...PREDEFINITE.minuti],
-    canali: Array.isArray(g.canali) ? [...new Set(g.canali.filter((c): c is string => typeof c === "string"))] : [...PREDEFINITE.canali],
     contenuto: g.contenuto === "minimo" ? "minimo" : "completo",
     suono: typeof g.suono === "string" && SUONI.includes(g.suono) ? g.suono : PREDEFINITE.suono,
+    notifica_windows: g.notifica_windows !== false,
+    comparsa: g.comparsa !== false,
   };
 }
 
 export type Rifiuto = { ok: false; error: string };
 
-/** Le nuove impostazioni sopra le attuali (un campo che manca resta com'è). Non si accende senza un canale scelto e configurato. */
-export function validaImpostazioni(dati: unknown, attuali: Impostazioni, canali: Canale[]): { ok: true; valore: Impostazioni } | Rifiuto {
+/** Le nuove impostazioni sopra le attuali: un campo che manca resta com'è. */
+export function validaImpostazioni(dati: unknown, attuali: Impostazioni): { ok: true; valore: Impostazioni } | Rifiuto {
   if (!isDict(dati)) return { ok: false, error: "Le impostazioni dei promemoria non sono valide." };
   const nuove: Impostazioni = { ...attuali };
   for (const [campo, v] of Object.entries(dati)) {
-    if (campo === "attivo") {
-      if (typeof v !== "boolean") return { ok: false, error: "«attivo» deve essere vero o falso." };
-      nuove.attivo = v;
-    } else if (campo === "minuti") {
+    if (campo === "minuti") {
       const minuti = minutiValidi(v);
-      if (!minuti) return { ok: false, error: `I minuti sono da 1 a ${MINUTI_VOCI} numeri interi diversi, ciascuno da 0 (all'inizio) a ${MINUTI_MAX}.` };
+      if (!minuti) return { ok: false, error: `Minuti: da 1 a ${MINUTI_VOCI} numeri interi diversi, da 0 a ${MINUTI_MAX}.` };
       nuove.minuti = minuti;
-    } else if (campo === "canali") {
-      if (!Array.isArray(v) || !v.every((n) => typeof n === "string" && canali.some((c) => c.nome === n))) return { ok: false, error: "Canale sconosciuto." };
-      nuove.canali = [...new Set(v as string[])];
     } else if (campo === "contenuto") {
       if (v !== "completo" && v !== "minimo") return { ok: false, error: "Il contenuto è «completo» o «minimo»." };
       nuove.contenuto = v;
     } else if (campo === "suono") {
       if (typeof v !== "string" || !SUONI.includes(v)) return { ok: false, error: "Suono sconosciuto." };
       nuove.suono = v;
+    } else if ((INTERRUTTORI as readonly string[]).includes(campo)) {
+      if (typeof v !== "boolean") return { ok: false, error: `«${campo}» deve essere vero o falso.` };
+      nuove[campo as (typeof INTERRUTTORI)[number]] = v;
     } else return { ok: false, error: "Impostazione sconosciuta." };
-  }
-  if (nuove.attivo && !canali.some((c) => nuove.canali.includes(c.nome) && c.configurato())) {
-    return { ok: false, error: "Nessuno dei canali scelti è configurato sul server." };
   }
   return { ok: true, valore: nuove };
 }
@@ -106,9 +106,9 @@ export function istanteDaRoma(n: Naive): number {
 
 // ---- Il testo ------------------------------------------------------------------------------------------------------------
 const durata = (min: number) => {
-  if (min < 120) return `${min} ${min === 1 ? "minuto" : "minuti"}`;
+  if (min < 120) return `${min} min`;
   const resto = min % 60;
-  return `${Math.floor(min / 60)} ore` + (resto ? ` e ${resto} ${resto === 1 ? "minuto" : "minuti"}` : "");
+  return `${Math.floor(min / 60)} ore` + (resto ? ` e ${resto} min` : "");
 };
 
 function quando(inizio: Naive, adessoMs: number): string {
@@ -122,22 +122,19 @@ function quando(inizio: Naive, adessoMs: number): string {
 const pulito = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "");
 
 /**
- * Il testo del promemoria. I minuti sono quelli che mancano davvero, arrotondati per eccesso: un avviso in ritardo (dopo un riavvio, o
- * per un evento creato all'ultimo) dice "tra 4 minuti" e non il valore configurato. Completo: titolo, luogo e link per entrare;
- * minimo: solo l'ora e l'etichetta dell'azienda.
+ * Il testo del promemoria; la prima riga è il titolo della notifica. I minuti sono quelli che mancano davvero, arrotondati per eccesso:
+ * un avviso in ritardo (dopo un riavvio, o per un evento creato all'ultimo) dice "Tra 4 min" e non il valore configurato. Completo: titolo
+ * e luogo; minimo: solo l'etichetta dell'azienda. Il link per entrare non c'è, come nella notifica dell'app.
  */
 export function testoPromemoria(ev: Ev, inizio: Naive, restantiMs: number, contenuto: Contenuto, adessoMs: number): string {
-  const righe = [`Promemoria: tra ${durata(Math.max(1, Math.ceil(restantiMs / 60_000)))}, ${quando(inizio, adessoMs)}`];
+  const righe = [`Tra ${durata(Math.max(1, Math.ceil(restantiMs / 60_000)))}, ${quando(inizio, adessoMs)}`];
   if (contenuto === "minimo") {
     const azienda = pulito(ev.alias);
     if (azienda) righe.push(azienda);
   } else {
     righe.push(pulito(ev.title) || "(senza titolo)");
-    const link = pulito(ev.online_url);
     const luogo = pulito(ev.location);
-    // il luogo di una riunione online è spesso il link stesso: una volta sola
-    if (luogo && !(link && luogo.includes(link))) righe.push(`Luogo: ${luogo}`);
-    if (link) righe.push(`Partecipa: ${link}`);
+    if (luogo && !/https?:\/\//i.test(luogo)) righe.push(luogo);
   }
   return righe.join("\n");
 }
@@ -257,7 +254,7 @@ function candidati(eventi: Ev[], ora: number): Candidato[] {
 }
 
 /**
- * Un giro: legge le impostazioni, e se sono accese e c'è un canale pronto legge gli eventi dei prossimi minuti e manda quello che serve.
+ * Un giro: se c'è un canale pronto legge le impostazioni e gli eventi dei prossimi minuti e manda quello che serve.
  * Per ogni evento e canale parte al più un messaggio a giro: se più valori dei minuti sono scaduti insieme (primo giro dopo un riavvio, evento
  * creato all'ultimo) il testo è lo stesso, e li chiude tutti. Un invio che fallisce non segna niente come inviato e ferma quel canale fino
  * al giro dopo (con il limite del servizio, per il tempo che dice): ai tentativi si arriva un giro alla volta, dall'evento più vicino.
@@ -278,12 +275,12 @@ export function creaMotore(dip: Dipendenze): Motore {
   };
 
   async function giroInterno(r: Riepilogo): Promise<void> {
-    const imp = dip.impostazioni();
-    if (!imp.attivo) return;
     const inizioGiro = dip.adesso();
     stato.ultimoGiro = inizioGiro;
-    const canali = dip.canali().filter((c) => imp.canali.includes(c.nome) && c.configurato());
-    if (!canali.length) return void segnala("canali", "nessuno dei canali scelti è configurato sul server");
+    // nessun canale pronto (di norma: nessun browser iscritto) non è un problema: il giro non fa altro
+    const canali = dip.canali().filter((c) => c.configurato());
+    if (!canali.length) return;
+    const imp = dip.impostazioni();
     dip.store.pulisci(inizioGiro - CONSERVA_GIORNI * 86_400_000);
 
     const fine = inizioGiro + (Math.max(...imp.minuti) + MARGINE_MIN) * 60_000;
@@ -435,20 +432,19 @@ export function fermaPromemoria(): void {
 }
 
 // ---- I metodi dell'API ---------------------------------------------------------------------------------------------------
-/** Le impostazioni, quali canali il server ha configurato, quando è stato l'ultimo giro e l'ultimo problema: mai dati di un evento. */
+/** Le impostazioni, quali canali il server ha configurato e l'ultimo problema: mai dati di un evento. */
 export function leggiPromemoria() {
   const s = statoGlobale();
   return {
     promemoria: leggiImpostazioni(loadConfig()),
     canali: canaliDelServer().map((c) => ({ nome: c.nome, configurato: c.configurato(), ...c.dettagli?.() })),
-    ultimo_giro: s.ultimoGiro === null ? null : daSecondi(s.ultimoGiro / 1000),
     ultimo_errore: s.ultimoErrore?.testo ?? null,
     ultimo_errore_il: s.ultimoErrore ? daSecondi(s.ultimoErrore.alle / 1000) : null,
   };
 }
 
-export function salvaPromemoria(dati: unknown, canali: Canale[] = canaliDelServer()): { ok: true; promemoria: Impostazioni } | Rifiuto {
-  const r = validaImpostazioni(dati, leggiImpostazioni(loadConfig()), canali);
+export function salvaPromemoria(dati: unknown): { ok: true; promemoria: Impostazioni } | Rifiuto {
+  const r = validaImpostazioni(dati, leggiImpostazioni(loadConfig()));
   if (!r.ok) return r;
   modificaConfig((cfg) => void (cfg.promemoria = r.valore));
   return { ok: true, promemoria: r.valore };

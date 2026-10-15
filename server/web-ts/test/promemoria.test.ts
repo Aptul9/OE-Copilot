@@ -82,7 +82,7 @@ function prepara(parziali: Partial<Impostazioni> = {}, canali: CanaleFinto[] = [
     problemi: 0,
     rotta: null as Error | null,
     letture: [] as [string, string][],
-    imp: { attivo: true, minuti: [10], canali: canali.map((c) => c.nome), contenuto: "completo", suono: "Default", ...parziali } as Impostazioni,
+    imp: { ...PREDEFINITE, ...parziali } as Impostazioni,
     canali,
     motore: undefined as unknown as Motore,
     nuovo: undefined as unknown as () => Motore,
@@ -111,7 +111,7 @@ describe("quali eventi hanno un promemoria", () => {
     mancano(10);
     expect(await p.motore.giro()).toMatchObject({ letti: 1, inviati: 1 });
     expect(p.canali[0].inviati).toHaveLength(1);
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 10 minuti, alle 15:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 10 min, alle 15:30");
   });
 
   it("N più un secondo no, N più un minuto no", async () => {
@@ -134,7 +134,7 @@ describe("quali eventi hanno un promemoria", () => {
     mancano(0, 1);
     await p.motore.giro();
     expect(p.canali[0].inviati).toHaveLength(1);
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 1 minuto, alle 15:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 1 min, alle 15:30");
   });
 
   it("all'inizio (0 minuti): parte nell'ultimo minuto prima dell'evento, una volta sola, e non prima", async () => {
@@ -147,7 +147,7 @@ describe("quali eventi hanno un promemoria", () => {
     mancano(0, 10);
     await p.motore.giro();
     expect(p.canali[0].inviati).toHaveLength(1);
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 1 minuto, alle 15:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 1 min, alle 15:30");
     expect(righe()).toMatchObject([{ minuti: 0, esito: "inviato" }]);
   });
 
@@ -190,7 +190,7 @@ describe("quali eventi hanno un promemoria", () => {
     p.eventi = [evento({ start: "2026-10-12T13:30:00Z" })];
     mancano(10);
     await p.motore.giro();
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 10 minuti, alle 15:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 10 min, alle 15:30");
   });
 
   it("si leggono gli eventi dei prossimi minuti: da adesso al valore più grande più due minuti", async () => {
@@ -235,66 +235,59 @@ describe("l'ora legale", () => {
     // 02:30 la seconda volta (ora solare): ne manca una
     fissaOra(Date.UTC(2026, 9, 25, 1, 30));
     await p.motore.giro();
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 60 minuti, alle 03:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 60 min, alle 03:30");
   });
 });
 
 describe("il testo", () => {
   const dettagli = { location: "Sala Rossa", online_url: "https://teams.example.test/l/riunione-di-prova", organizer: "Chi Organizza" };
 
-  it("completo: minuti che mancano, ora, titolo, luogo e link per entrare", () => {
+  it("completo: minuti che mancano e ora, poi titolo e luogo; il link per entrare non c'è", () => {
     const ev = evento(dettagli);
     const t = testoPromemoria(ev, naiveLocale(ev.start), 10 * 60_000, "completo", START - 600_000);
-    expect(t).toBe("Promemoria: tra 10 minuti, alle 15:30\nRiunione di prova\nLuogo: Sala Rossa\nPartecipa: https://teams.example.test/l/riunione-di-prova");
+    expect(t).toBe("Tra 10 min, alle 15:30\nRiunione di prova\nSala Rossa");
   });
 
-  it("completo: senza luogo e senza link restano l'ora e il titolo; il luogo che è il link non si ripete", () => {
+  it("completo: senza luogo restano l'ora e il titolo; un luogo che è un link non c'è", () => {
     const a = evento();
-    expect(testoPromemoria(a, naiveLocale(a.start), 600_000, "completo", ORA)).toBe("Promemoria: tra 10 minuti, alle 15:30\nRiunione di prova");
+    expect(testoPromemoria(a, naiveLocale(a.start), 600_000, "completo", ORA)).toBe("Tra 10 min, alle 15:30\nRiunione di prova");
     const b = evento({ location: "https://teams.example.test/l/x", online_url: "https://teams.example.test/l/x" });
-    expect(testoPromemoria(b, naiveLocale(b.start), 600_000, "completo", ORA).split("\n")).toEqual([
-      "Promemoria: tra 10 minuti, alle 15:30",
-      "Riunione di prova",
-      "Partecipa: https://teams.example.test/l/x",
-    ]);
+    expect(testoPromemoria(b, naiveLocale(b.start), 600_000, "completo", ORA)).toBe("Tra 10 min, alle 15:30\nRiunione di prova");
   });
 
   it("minimo: solo i minuti, l'ora e l'etichetta dell'azienda; niente titolo, luogo, link, indirizzi", () => {
     const ev = evento({ ...dettagli, organizer_email: "organizzatore@example.test" });
     const t = testoPromemoria(ev, naiveLocale(ev.start), 600_000, "minimo", ORA);
-    expect(t).toBe("Promemoria: tra 10 minuti, alle 15:30\nAzienda di prova");
+    expect(t).toBe("Tra 10 min, alle 15:30\nAzienda di prova");
     for (const nascosto of ["Riunione", "Sala Rossa", "teams.example", "organizzatore", "prova@example.test"]) expect(t).not.toContain(nascosto);
+    expect(testoPromemoria(evento({ alias: "" }), naiveLocale(ev.start), 600_000, "minimo", ORA)).toBe("Tra 10 min, alle 15:30");
   });
 
-  it("i minuti sono quelli veri, arrotondati per eccesso, con il singolare", () => {
+  it("i minuti sono quelli veri, arrotondati per eccesso; dalle due ore in su ore e minuti", () => {
     const ev = evento();
     const n = naiveLocale(ev.start);
     const prima = (ms: number) => testoPromemoria(ev, n, ms, "minimo", ORA).split("\n")[0];
-    expect(prima(4 * 60_000 + 20_000)).toBe("Promemoria: tra 5 minuti, alle 15:30");
-    expect(prima(60_000)).toBe("Promemoria: tra 1 minuto, alle 15:30");
-    expect(prima(1)).toBe("Promemoria: tra 1 minuto, alle 15:30");
-    expect(prima(119 * 60_000)).toBe("Promemoria: tra 119 minuti, alle 15:30");
-    expect(prima(120 * 60_000)).toBe("Promemoria: tra 2 ore, alle 15:30");
-    expect(prima(150 * 60_000)).toBe("Promemoria: tra 2 ore e 30 minuti, alle 15:30");
-    expect(prima(61 * 60_000 + 1)).toBe("Promemoria: tra 62 minuti, alle 15:30");
-    expect(prima(181 * 60_000)).toBe("Promemoria: tra 3 ore e 1 minuto, alle 15:30");
+    expect(prima(4 * 60_000 + 20_000)).toBe("Tra 5 min, alle 15:30");
+    expect(prima(60_000)).toBe("Tra 1 min, alle 15:30");
+    expect(prima(1)).toBe("Tra 1 min, alle 15:30");
+    expect(prima(119 * 60_000)).toBe("Tra 119 min, alle 15:30");
+    expect(prima(120 * 60_000)).toBe("Tra 2 ore, alle 15:30");
+    expect(prima(150 * 60_000)).toBe("Tra 2 ore e 30 min, alle 15:30");
+    expect(prima(61 * 60_000 + 1)).toBe("Tra 62 min, alle 15:30");
+    expect(prima(181 * 60_000)).toBe("Tra 3 ore e 1 min, alle 15:30");
   });
 
   it("l'evento di domani o di un altro giorno lo dice", () => {
     const ev = evento({ start: "2026-10-13T09:00:00" });
     const n = naiveLocale(ev.start);
-    expect(testoPromemoria(ev, n, 1440 * 60_000, "minimo", ORA).split("\n")[0]).toBe("Promemoria: tra 24 ore, domani alle 09:00");
+    expect(testoPromemoria(ev, n, 1440 * 60_000, "minimo", ORA).split("\n")[0]).toBe("Tra 24 ore, domani alle 09:00");
     const dopo = evento({ start: "2026-10-20T09:00:00" });
-    expect(testoPromemoria(dopo, naiveLocale(dopo.start), 600_000, "minimo", ORA).split("\n")[0]).toBe("Promemoria: tra 10 minuti, il 20/10 alle 09:00");
+    expect(testoPromemoria(dopo, naiveLocale(dopo.start), 600_000, "minimo", ORA).split("\n")[0]).toBe("Tra 10 min, il 20/10 alle 09:00");
   });
 
   it("spazi e a capo dentro il titolo o il luogo diventano uno spazio solo; senza titolo c'è la dicitura di sempre", () => {
     const ev = evento({ title: "  Riunione \n  di\tprova  ", location: "Sala\r\nRossa" });
-    expect(testoPromemoria(ev, naiveLocale(ev.start), 600_000, "completo", ORA).split("\n")).toEqual([
-      "Promemoria: tra 10 minuti, alle 15:30",
-      "Riunione di prova",
-      "Luogo: Sala Rossa",
-    ]);
+    expect(testoPromemoria(ev, naiveLocale(ev.start), 600_000, "completo", ORA).split("\n")).toEqual(["Tra 10 min, alle 15:30", "Riunione di prova", "Sala Rossa"]);
     expect(testoPromemoria(evento({ title: "" }), naiveLocale("2026-10-12T15:30:00"), 600_000, "completo", ORA)).toContain("(senza titolo)");
   });
 });
@@ -344,7 +337,7 @@ describe("una volta sola", () => {
     await p.motore.giro();
     mancano(4);
     await p.motore.giro();
-    expect(p.canali[0].inviati.map((t) => t.split("\n")[0])).toEqual(["Promemoria: tra 10 minuti, alle 15:30", "Promemoria: tra 5 minuti, alle 15:30"]);
+    expect(p.canali[0].inviati.map((t) => t.split("\n")[0])).toEqual(["Tra 10 min, alle 15:30", "Tra 5 min, alle 15:30"]);
     expect(righe().map((r) => [r.minuti, r.esito])).toEqual([[5, "inviato"], [10, "inviato"]]);
   });
 
@@ -353,7 +346,7 @@ describe("una volta sola", () => {
     mancano(4, 20);
     await p.motore.giro();
     expect(p.canali[0].inviati).toHaveLength(1);
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 5 minuti, alle 15:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 5 min, alle 15:30");
     expect(righe().map((r) => [r.minuti, r.esito, r.tentativi])).toEqual([[5, "inviato", 1], [10, "inviato", 1]]);
     mancano(3);
     await p.motore.giro();
@@ -371,9 +364,9 @@ describe("una volta sola", () => {
     fissaOra(START + 30 * 60_000); // 16:00
     await p.motore.giro();
     expect(p.canali[0].inviati.map((t) => t.split("\n")[0])).toEqual([
-      "Promemoria: tra 10 minuti, alle 15:30",
-      "Promemoria: tra 10 minuti, alle 15:50",
-      "Promemoria: tra 10 minuti, alle 16:10",
+      "Tra 10 min, alle 15:30",
+      "Tra 10 min, alle 15:50",
+      "Tra 10 min, alle 16:10",
     ]);
     expect(righe()).toHaveLength(3);
   });
@@ -402,7 +395,7 @@ describe("una volta sola", () => {
     mancano(10);
     await p.motore.giro();
     await p.motore.giro();
-    expect(p.canali[0].inviati.map((t) => t.split("\n")[0])).toEqual(["Promemoria: tra 10 minuti, alle 15:30", "Promemoria: tra 70 minuti, alle 16:30"]);
+    expect(p.canali[0].inviati.map((t) => t.split("\n")[0])).toEqual(["Tra 10 min, alle 15:30", "Tra 70 min, alle 16:30"]);
     mancano(-50); // 16:20, la prima è finita: la seconda ha già avuto il suo
     await p.motore.giro();
     expect(p.canali[0].inviati).toHaveLength(2);
@@ -436,7 +429,7 @@ describe("una volta sola", () => {
     mancano(4);
     await p.motore.giro();
     expect(p.canali[0].inviati).toHaveLength(1);
-    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Promemoria: tra 4 minuti, alle 15:30");
+    expect(p.canali[0].inviati[0].split("\n")[0]).toBe("Tra 4 min, alle 15:30");
   });
 
   it("due canali: ognuno riceve il suo, e un evento già avvisato su uno non si rimanda su quello", async () => {
@@ -446,7 +439,6 @@ describe("una volta sola", () => {
     mancano(10);
     await p.motore.giro();
     p.canali = [a, b];
-    p.imp.canali = ["uno", "due"];
     await p.motore.giro();
     expect(a.inviati).toHaveLength(1);
     expect(b.inviati).toHaveLength(1);
@@ -483,7 +475,7 @@ describe("un canale che fallisce", () => {
       ["rotto", "inviato", 3, null],
     ]);
     // il testo dei tentativi in ritardo ha i minuti di quel momento
-    expect(rotto.inviati[0].split("\n")[0]).toBe("Promemoria: tra 9 minuti, alle 15:30");
+    expect(rotto.inviati[0].split("\n")[0]).toBe("Tra 9 min, alle 15:30");
   });
 
   it("dopo cinque tentativi falliti la riga è fallita e non si riprova più; gli altri canali non ne risentono", async () => {
@@ -540,7 +532,7 @@ describe("un canale che fallisce", () => {
     await p.motore.giro();
     expect(c.tentativi).toBe(2);
     expect(c.inviati).toHaveLength(1);
-    expect(c.inviati[0].split("\n")[0]).toBe("Promemoria: tra 10 minuti, alle 15:30");
+    expect(c.inviati[0].split("\n")[0]).toBe("Tra 10 min, alle 15:30");
   });
 
   it("il limite di attesa è 15 minuti, qualunque cosa chieda il servizio", async () => {
@@ -599,30 +591,28 @@ describe("un canale che fallisce", () => {
   });
 });
 
-describe("spento, senza canali, con la lettura rotta", () => {
-  it("spento (di norma): non legge gli eventi, non invia, non scrive niente", async () => {
-    const p = prepara({ attivo: false });
-    mancano(5);
-    await p.motore.giro();
-    expect(p.letture).toEqual([]);
-    expect(p.canali[0].tentativi).toBe(0);
-    expect(p.motore.stato).toEqual({ ultimoGiro: null, ultimoErrore: null });
-    expect(archivio().prepare("SELECT name FROM sqlite_master WHERE name = 'promemoria_inviati'").all()).toEqual([]);
-    expect(log.filter((l) => l.startsWith("promemoria:"))).toEqual([]);
-  });
-
-  it("acceso ma senza un canale scelto e configurato: non legge, e lo dice con una frase fissa", async () => {
+describe("senza canali pronti, con la lettura rotta", () => {
+  it("senza un canale pronto (di norma, nessun browser iscritto): non legge, non invia, non scrive niente e non è un errore", async () => {
     const c = canaleFinto("push", false);
     const p = prepara({}, [c]);
     mancano(5);
     await p.motore.giro();
     expect(p.letture).toEqual([]);
     expect(c.tentativi).toBe(0);
-    expect(p.motore.stato.ultimoErrore?.testo).toBe("nessuno dei canali scelti è configurato sul server");
-    p.imp.canali = ["altro"];
-    c.configuratoOra = true;
+    expect(p.motore.stato).toEqual({ ultimoGiro: START - 300_000, ultimoErrore: null });
+    expect(archivio().prepare("SELECT name FROM sqlite_master WHERE name = 'promemoria_inviati'").all()).toEqual([]);
+    expect(log.filter((l) => l.startsWith("promemoria:"))).toEqual([]);
+  });
+
+  it("un canale che diventa pronto (un browser che si iscrive) riceve dal giro dopo", async () => {
+    const c = canaleFinto("push", false);
+    const p = prepara({}, [c]);
+    mancano(5);
     await p.motore.giro();
-    expect(p.letture).toEqual([]);
+    c.configuratoOra = true;
+    mancano(4, 30);
+    await p.motore.giro();
+    expect(c.inviati).toHaveLength(1);
   });
 
   it("lettura fallita: niente inviato, l'errore si ricorda senza il testo dell'errore, e al giro dopo riprende", async () => {
@@ -650,7 +640,7 @@ describe("spento, senza canali, con la lettura rotta", () => {
     expect(log.join("\n")).toContain("(2 sorgenti)");
   });
 
-  it("l'ultimo giro è l'ora dell'ultimo giro acceso", async () => {
+  it("l'ultimo giro è l'ora dell'ultimo giro", async () => {
     const p = prepara();
     mancano(10);
     await p.motore.giro();
@@ -672,7 +662,7 @@ describe("spento, senza canali, con la lettura rotta", () => {
         await attesa;
         return { eventi: [evento()], problemi: 0 };
       },
-      impostazioni: () => ({ attivo: true, minuti: [10], canali: ["finto"], contenuto: "completo", suono: "Default" }),
+      impostazioni: () => ({ ...PREDEFINITE }),
       canali: () => [c],
       store: creaStore(),
     });
@@ -693,7 +683,7 @@ describe("spento, senza canali, con la lettura rotta", () => {
       leggiEventi: async () => ({ eventi: [evento()], problemi: 0 }),
       impostazioni: () => {
         if (rotto) throw new Error("database in manutenzione con Riunione di prova");
-        return { attivo: true, minuti: [10], canali: ["finto"], contenuto: "completo", suono: "Default" };
+        return { ...PREDEFINITE };
       },
       canali: () => [c],
       store: creaStore(),
@@ -755,42 +745,38 @@ describe("la tabella e la pulizia", () => {
     expect(righe()).toEqual([]);
   });
 
-  it("spento non si pulisce niente", async () => {
+  it("senza un canale pronto non si pulisce niente", async () => {
     creaStore().scrivi([riga({ inviatoIl: ORA - 30 * 86_400_000 })]);
-    const p = prepara({ attivo: false });
+    const p = prepara({}, [canaleFinto("push", false)]);
     await p.motore.giro();
     expect(righe()).toHaveLength(1);
   });
 });
 
 describe("le impostazioni", () => {
-  const pronto = () => [canaleFinto("push", true)];
-  const nessuno = () => [canaleFinto("push", false)];
-
-  it("di norma: spento, un avviso dieci minuti prima, notifiche del browser, testo completo; la configurazione dell'app non cambia", () => {
-    expect(leggiImpostazioni(loadConfig())).toEqual({ attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" });
-    expect(PREDEFINITE.attivo).toBe(false);
+  it("di norma: un avviso dieci minuti prima, testo completo, suono predefinito, notifica e avviso a comparsa accesi; la configurazione dell'app non cambia", () => {
+    expect(leggiImpostazioni(loadConfig())).toEqual({ minuti: [10], contenuto: "completo", suono: "Default", notifica_windows: true, comparsa: true });
+    expect(leggiImpostazioni(loadConfig())).toEqual(PREDEFINITE);
     expect(loadConfig()).toEqual(DEFAULT_CONFIG);
     expect(loadConfig()).not.toHaveProperty("promemoria");
   });
 
-  it("un valore che non va (la voce si scrive anche con save_config) cede il posto al predefinito, e attivo vale solo true", () => {
+  it("un valore che non va cede il posto al predefinito, un interruttore si spegne solo con false, le voci di prima non contano", () => {
     const leggi = (promemoria: unknown) => leggiImpostazioni({ promemoria });
-    expect(leggi({ attivo: "true", minuti: [0, 99999], canali: [5, "push", "push", null], contenuto: "boh" })).toEqual({
-      attivo: false,
-      minuti: [10],
-      canali: ["push"],
-      contenuto: "completo",
+    expect(leggi({ minuti: [0, 99999], contenuto: "boh", suono: "Fischio", notifica_windows: "false", comparsa: 0, attivo: true, canali: ["push"] })).toEqual(PREDEFINITE);
+    expect(leggi({ notifica_windows: false, comparsa: false, minuti: [30, 5, 30], contenuto: "minimo" })).toEqual({
+      minuti: [5, 30],
+      contenuto: "minimo",
       suono: "Default",
+      notifica_windows: false,
+      comparsa: false,
     });
-    expect(leggi({ attivo: 1 }).attivo).toBe(false);
-    expect(leggi({ attivo: true, minuti: [30, 5, 30], contenuto: "minimo" })).toEqual({ attivo: true, minuti: [5, 30], canali: ["push"], contenuto: "minimo", suono: "Default" });
     expect(leggi("testo")).toEqual(leggiImpostazioni({}));
     expect(leggi({ minuti: [1, 2, 3, 4, 5, 6, 7, 8, 9] }).minuti).toEqual([10]);
   });
 
   it("i minuti: interi da 0 a 1440, al più 8 diversi, almeno uno; i doppioni si fondono e l'elenco si ordina", () => {
-    const prova = (minuti: unknown) => validaImpostazioni({ minuti }, PREDEFINITE, pronto());
+    const prova = (minuti: unknown) => validaImpostazioni({ minuti }, PREDEFINITE);
     expect(prova([1])).toMatchObject({ ok: true, valore: { minuti: [1] } });
     expect(prova([1440])).toMatchObject({ ok: true });
     expect(prova([15, 5, 10, 5, 15])).toMatchObject({ ok: true, valore: { minuti: [5, 10, 15] } });
@@ -801,81 +787,53 @@ describe("le impostazioni", () => {
     }
   });
 
-  it("i canali: solo quelli che il server conosce", () => {
-    const prova = (canali: unknown) => validaImpostazioni({ canali }, PREDEFINITE, pronto());
-    expect(prova(["push"])).toMatchObject({ ok: true, valore: { canali: ["push"] } });
-    expect(prova([])).toMatchObject({ ok: true, valore: { canali: [] } });
-    expect(prova(["push", "push"])).toMatchObject({ valore: { canali: ["push"] } });
-    for (const male of [["whatsapp"], ["push", "email"], "push", [1], null, ["Push"]]) expect(prova(male), JSON.stringify(male)).toEqual({ ok: false, error: "Canale sconosciuto." });
-  });
-
-  it("il contenuto, attivo e i campi sconosciuti", () => {
-    const prova = (d: unknown) => validaImpostazioni(d, PREDEFINITE, pronto());
+  it("il contenuto, gli interruttori dell'app e i campi sconosciuti", () => {
+    const prova = (d: unknown) => validaImpostazioni(d, PREDEFINITE);
     expect(prova({ contenuto: "minimo" })).toMatchObject({ ok: true, valore: { contenuto: "minimo" } });
-    for (const male of [{ contenuto: "Completo" }, { contenuto: "" }, { contenuto: null }, { attivo: "true" }, { attivo: 1 }, { attivo: null }, { altro: 1 }, [], "x", null, 5]) {
+    expect(prova({ notifica_windows: false, comparsa: false })).toMatchObject({ ok: true, valore: { notifica_windows: false, comparsa: false } });
+    for (const male of [{ contenuto: "Completo" }, { contenuto: "" }, { contenuto: null }, { notifica_windows: "true" }, { comparsa: 1 }, { comparsa: null }, { attivo: true }, { canali: [] }, { altro: 1 }, [], "x", null, 5]) {
       expect(prova(male), JSON.stringify(male)).toMatchObject({ ok: false });
     }
     // un campo che manca resta com'è
-    expect(validaImpostazioni({}, { attivo: false, minuti: [7], canali: ["push"], contenuto: "minimo", suono: "Default" }, pronto())).toEqual({
-      ok: true,
-      valore: { attivo: false, minuti: [7], canali: ["push"], contenuto: "minimo", suono: "Default" },
-    });
-  });
-
-  it("non si accende senza un canale scelto e configurato", () => {
-    expect(validaImpostazioni({ attivo: true }, PREDEFINITE, nessuno())).toEqual({ ok: false, error: "Nessuno dei canali scelti è configurato sul server." });
-    expect(validaImpostazioni({ attivo: true, canali: [] }, PREDEFINITE, pronto())).toMatchObject({ ok: false });
-    expect(validaImpostazioni({ attivo: true }, PREDEFINITE, pronto())).toMatchObject({ ok: true, valore: { attivo: true } });
-    // acceso, non si può togliere l'ultimo canale che funziona; spento sì
-    const acceso = { ...PREDEFINITE, attivo: true };
-    expect(validaImpostazioni({ canali: [] }, acceso, pronto())).toMatchObject({ ok: false });
-    expect(validaImpostazioni({ attivo: false, canali: [] }, acceso, pronto())).toMatchObject({ ok: true });
-    // spento, i canali scelti possono non essere configurati
-    expect(validaImpostazioni({ minuti: [5] }, PREDEFINITE, nessuno())).toMatchObject({ ok: true });
+    const prima = { minuti: [7], contenuto: "minimo" as const, suono: "Mail", notifica_windows: false, comparsa: true };
+    expect(validaImpostazioni({}, prima)).toEqual({ ok: true, valore: prima });
   });
 
   it("salvaPromemoria scrive nello stato (stato_config) e nella copia config.json, e una richiesta rifiutata non cambia niente", () => {
-    const canali = pronto();
-    expect(salvaPromemoria({ attivo: true, minuti: [15, 5], contenuto: "minimo" }, canali)).toEqual({
-      ok: true,
-      promemoria: { attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" },
-    });
-    expect(leggiImpostazioni(loadConfig())).toEqual({ attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" });
+    const atteso = { minuti: [5, 15], contenuto: "minimo", suono: "Default", notifica_windows: true, comparsa: false };
+    expect(salvaPromemoria({ comparsa: false, minuti: [15, 5], contenuto: "minimo" })).toEqual({ ok: true, promemoria: atteso });
+    expect(leggiImpostazioni(loadConfig())).toEqual(atteso);
     const riga = archivio().prepare("SELECT valore FROM stato_config WHERE chiave = 'promemoria'").get() as { valore: string };
-    expect(JSON.parse(riga.valore)).toEqual({ attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" });
+    expect(JSON.parse(riga.valore)).toEqual(atteso);
     expect(JSON.parse(fs.readFileSync(path.join(dati, "config.json"), "utf-8")).promemoria.minuti).toEqual([5, 15]);
-    expect(salvaPromemoria({ minuti: [-1] }, canali)).toMatchObject({ ok: false });
+    expect(salvaPromemoria({ minuti: [-1] })).toMatchObject({ ok: false });
     expect(leggiImpostazioni(loadConfig()).minuti).toEqual([5, 15]);
     // un campo che manca resta com'è
-    expect(salvaPromemoria({ attivo: false }, canali)).toMatchObject({ ok: true, promemoria: { minuti: [5, 15], contenuto: "minimo", attivo: false } });
+    expect(salvaPromemoria({ comparsa: true })).toMatchObject({ ok: true, promemoria: { minuti: [5, 15], contenuto: "minimo", comparsa: true } });
   });
 
   it("un rifiuto non scrive niente, nemmeno la copia config.json", () => {
-    expect(salvaPromemoria({ attivo: true }, nessuno())).toMatchObject({ ok: false });
+    expect(salvaPromemoria({ minuti: [-1] })).toMatchObject({ ok: false });
     expect(fs.existsSync(path.join(dati, "config.json"))).toBe(false);
     expect(archivio().prepare("SELECT 1 FROM stato_config WHERE chiave = 'promemoria'").all()).toEqual([]);
   });
 
-  it("le impostazioni si leggono a ogni giro: un interruttore girato dalla pagina vale subito", async () => {
+  it("le impostazioni si leggono a ogni giro: minuti e contenuto cambiati dalla pagina valgono subito", async () => {
     const c = canaleFinto("push");
-    const dip = {
+    const m = creaMotore({
       adesso,
       leggiEventi: async () => ({ eventi: [evento()], problemi: 0 }),
       impostazioni: () => leggiImpostazioni(loadConfig()),
       canali: () => [c],
       store: creaStore(),
-    };
-    const m = creaMotore(dip);
+    });
     mancano(10);
+    modificaConfig((cfg) => void (cfg.promemoria = { minuti: [5] }));
     await m.giro();
     expect(c.inviati).toEqual([]);
-    modificaConfig((cfg) => void (cfg.promemoria = { attivo: true, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" }));
+    modificaConfig((cfg) => void (cfg.promemoria = { minuti: [10, 5], contenuto: "minimo" }));
     await m.giro();
-    expect(c.inviati).toHaveLength(1);
-    modificaConfig((cfg) => void (cfg.promemoria = { attivo: false, minuti: [10, 5], canali: ["push"], contenuto: "completo", suono: "Default" }));
-    mancano(5);
-    await m.giro();
-    expect(c.inviati).toHaveLength(1);
+    expect(c.inviati).toEqual(["Tra 10 min, alle 15:30\nAzienda di prova"]);
   });
 });
 
@@ -973,8 +931,7 @@ describe("il giro dentro il gateway", () => {
   it("il primo giro dopo 10 secondi, poi uno ogni PROMEMORIA_INTERVALLO_S (30 di norma), a giro finito", async () => {
     vi.useFakeTimers({ now: ORA });
     fissaOra(null);
-    // acceso, con un canale scelto che il server non ha: il giro si ferma subito ma lascia l'ora
-    modificaConfig((cfg) => void (cfg.promemoria = { attivo: true, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" }));
+    // senza browser iscritti il giro si ferma subito ma lascia l'ora
     avviaPromemoria();
     expect(statoGlobale().ultimoGiro).toBeNull();
     await vi.advanceTimersByTimeAsync(9_999);
@@ -985,7 +942,7 @@ describe("il giro dentro il gateway", () => {
     expect(statoGlobale().ultimoGiro).toBe(ORA + 10_000);
     await vi.advanceTimersByTimeAsync(1);
     expect(statoGlobale().ultimoGiro).toBe(ORA + 40_000);
-    expect(statoGlobale().ultimoErrore?.testo).toBe("nessuno dei canali scelti è configurato sul server");
+    expect(statoGlobale().ultimoErrore).toBeNull();
   });
 
   it("PROMEMORIA_INTERVALLO_S cambia l'intervallo; un valore che non va vale 30", () => {
@@ -1004,14 +961,14 @@ describe("il giro dentro il gateway", () => {
     for (const male of [undefined, "", "abc", "0", "4", "3601", "-30", "1.5"]) expect(intervallo(male), String(male)).toBe("promemoria: pronto, un giro ogni 30 s");
   });
 
-  it("spento (di norma) il giro gira ma non legge gli eventi e non apre nessuna connessione", async () => {
+  it("senza browser iscritti (di norma) il giro gira ma non legge gli eventi e non apre nessuna connessione", async () => {
     vi.useFakeTimers({ now: ORA });
     fissaOra(null);
     const rete = vi.spyOn(globalThis, "fetch");
     avviaPromemoria();
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(rete).not.toHaveBeenCalled();
-    expect(statoGlobale()).toEqual({ ultimoGiro: null, ultimoErrore: null });
+    expect(statoGlobale().ultimoErrore).toBeNull();
     expect(archivio().prepare("SELECT name FROM sqlite_master WHERE name = 'promemoria_inviati'").all()).toEqual([]);
   });
 });

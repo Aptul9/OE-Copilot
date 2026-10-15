@@ -96,7 +96,7 @@ describe("la cifratura (RFC 8291)", () => {
 
   it("con chiavi vere: si decifra, anche con accenti e emoji; due cifrature dello stesso testo sono diverse", () => {
     const b = browserFinto(ENDPOINT);
-    const testo = "Promemoria: tra 10 minuti, alle 15:30\nRiunione di è ù 😀";
+    const testo = "Tra 10 min, alle 15:30\nRiunione di è ù 😀";
     const a = cifra(testo, b.ecdh.getPublicKey(), b.auth);
     const c = cifra(testo, b.ecdh.getPublicKey(), b.auth);
     expect(decifra(a, b)).toBe(testo);
@@ -286,7 +286,7 @@ describe("il canale", () => {
   it("POST all'indirizzo dell'iscrizione: intestazioni di RFC 8030, 8188 e 8292, e il corpo che il browser decifra", async () => {
     const k = impostaChiavi();
     const b = iscrittoQui("/push/uno");
-    const testo = "Promemoria: tra 10 minuti, alle 15:30\nRiunione di prova\nLuogo: Sala Rossa";
+    const testo = "Tra 10 min, alle 15:30\nRiunione di prova\nSala Rossa";
     expect(await canale().invia(testo)).toEqual({ ok: true });
     expect(finto.richieste).toHaveLength(1);
     const [r] = finto.richieste;
@@ -406,14 +406,14 @@ describe("con il motore", () => {
     const m = creaMotore({
       adesso,
       leggiEventi: async () => ({ eventi: [evento()], problemi: 0 }),
-      impostazioni: () => ({ attivo: true, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" }),
+      impostazioni: () => ({ minuti: [10], contenuto: "completo", suono: "Default", notifica_windows: true, comparsa: true }),
       canali: () => [canalePush({ locali: true })],
       store: creaStore(),
     });
     await m.giro();
     await m.giro();
     expect(finto.richieste).toHaveLength(1);
-    expect(decifra(finto.richieste[0].corpo, b)).toBe("Promemoria: tra 10 minuti, alle 15:30\nRiunione di prova\nLuogo: Sala Rossa");
+    expect(decifra(finto.richieste[0].corpo, b)).toBe("Tra 10 min, alle 15:30\nRiunione di prova\nSala Rossa");
     expect(archivio().prepare("SELECT canale, esito FROM promemoria_inviati").all()).toEqual([{ canale: "push", esito: "inviato" }]);
     // niente nei log: né il titolo, né il luogo, né l'indirizzo dell'iscrizione
     const tutto = log.join("\n");
@@ -457,11 +457,14 @@ describe("attraverso il gateway", () => {
     expect(iscrizioni()).toEqual([]);
   });
 
-  it("push si può scegliere come canale solo quando ci sono le chiavi e un browser iscritto", async () => {
+  it("un browser che si iscrive accende il canale, l'ultimo che si toglie lo spegne: non c'è un interruttore del server", async () => {
     impostaChiavi();
-    expect(await api("set_promemoria", [{ attivo: true, canali: ["push"] }])).toEqual({ stato: 200, corpo: { ok: false, error: "Nessuno dei canali scelti è configurato sul server." } });
+    const pronto = async () => (await api("get_promemoria")).corpo.canali[0].configurato;
+    expect(await pronto()).toBe(false);
     await api("iscrivi_push", [browserFinto(ENDPOINT).iscrizione]);
-    expect(await api("set_promemoria", [{ attivo: true, canali: ["push"] }])).toMatchObject({ corpo: { ok: true, promemoria: { attivo: true, canali: ["push"] } } });
+    expect(await pronto()).toBe(true);
+    await api("disiscrivi_push", [ENDPOINT]);
+    expect(await pronto()).toBe(false);
   });
 });
 
@@ -486,8 +489,8 @@ describe("il service worker (public/sw.js)", () => {
 
   it("un push diventa una notifica: la prima riga è il titolo, il resto il corpo", () => {
     const sw = carica();
-    sw.ascoltatori.push(sw.evento({ data: { text: () => "Promemoria: tra 10 minuti, alle 15:30\nRiunione di prova\nLuogo: Sala Rossa" } }));
-    expect(sw.mostrate).toEqual([["Promemoria: tra 10 minuti, alle 15:30", { body: "Riunione di prova\nLuogo: Sala Rossa", icon: "/icon.png" }]]);
+    sw.ascoltatori.push(sw.evento({ data: { text: () => "Tra 10 min, alle 15:30\nRiunione di prova\nSala Rossa" } }));
+    expect(sw.mostrate).toEqual([["Tra 10 min, alle 15:30", { body: "Riunione di prova\nSala Rossa", icon: "/icon.png" }]]);
   });
 
   it("senza testo c'è comunque una notifica (Chrome la chiede a ogni push)", () => {

@@ -11,9 +11,10 @@ import { browserFinto, chiaviVapidDiProva, soloRetiLocali } from "./push-finto";
 // I tre metodi dei promemoria attraverso il gateway vero (handle, con i metodi veri di lib/core): le regole di sempre (401, 403, 405, 413, 415)
 // e il comportamento. Le notifiche del browser sono configurate con chiavi di prova e un browser iscritto, mai un servizio vero.
 
-const MINUTI_NO = "I minuti sono da 1 a 8 numeri interi diversi, ciascuno da 0 (all'inizio) a 1440.";
+const MINUTI_NO = "Minuti: da 1 a 8 numeri interi diversi, da 0 a 1440.";
 const METODI = ["get_promemoria", "set_promemoria", "prova_promemoria"];
 const NOMI_VAPID = ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT"];
+const PREDEFINITE = { minuti: [10], contenuto: "completo", suono: "Default", notifica_windows: true, comparsa: true };
 
 let dati: string;
 let vietate: string[];
@@ -39,13 +40,6 @@ const SESSIONE = { id: "u" };
 const api = async (nome: string, args: unknown[] = []) => {
   const r = await handle(post(`/api/${nome}`, args), deps(SESSIONE));
   return { stato: r.status, corpo: await r.json() };
-};
-/** Le chiavi VAPID nell'ambiente e un browser iscritto: il canale è configurato. */
-const configuraPush = async () => {
-  const k = chiaviVapidDiProva();
-  Object.assign(process.env, k);
-  expect((await api("iscrivi_push", [browserFinto("https://push.example.test/send/1").iscrizione])).corpo).toEqual({ ok: true });
-  return k;
 };
 
 beforeEach(() => {
@@ -81,7 +75,7 @@ describe("i metodi", () => {
 describe("le regole del gateway valgono anche per loro", () => {
   it("senza sessione: 401 in JSON e il metodo non gira", async () => {
     for (const m of METODI) {
-      const r = await handle(post(`/api/${m}`, m === "set_promemoria" ? [{ attivo: true }] : ["push"]), deps(null));
+      const r = await handle(post(`/api/${m}`, m === "set_promemoria" ? [{ comparsa: false }] : ["push"]), deps(null));
       expect(r.status, m).toBe(401);
       expect(await r.json()).toEqual({ error: "non autenticato" });
     }
@@ -100,7 +94,7 @@ describe("le regole del gateway valgono anche per loro", () => {
       for (const metodo of ["DELETE", "PUT", "PATCH", "OPTIONS"]) expect((await handle(req(`/api/${m}`, { method: metodo }), deps(SESSIONE))).status, `${m} ${metodo}`).toBe(405);
       expect((await handle(req(`/api/${m}`, { method: "POST", body: "[]", headers: { "content-type": "text/plain" } }), deps(SESSIONE))).status).toBe(415);
       expect((await handle(post(`/api/${m}`, "x".repeat(MAX_BODY + 1)), deps(SESSIONE))).status).toBe(413);
-      for (const corpo of ['{"attivo": true}', "5", "non json"]) expect((await handle(post(`/api/${m}`, corpo), deps(SESSIONE))).status, `${m} ${corpo}`).toBe(400);
+      for (const corpo of ['{"comparsa": false}', "5", "non json"]) expect((await handle(post(`/api/${m}`, corpo), deps(SESSIONE))).status, `${m} ${corpo}`).toBe(400);
     }
     expect(chiamate).toEqual([]);
   });
@@ -124,48 +118,55 @@ describe("le regole del gateway valgono anche per loro", () => {
 });
 
 describe("get_promemoria", () => {
-  it("di norma: spento, dieci minuti, notifiche del browser, completo; nessun canale configurato; nessun giro, nessun errore", async () => {
+  it("di norma: dieci minuti, completo, suono predefinito, notifica e avviso a comparsa accesi; notifiche del browser non configurate; nessun errore", async () => {
     expect(await api("get_promemoria")).toEqual({
       stato: 200,
       corpo: {
-        promemoria: { attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" },
+        promemoria: PREDEFINITE,
         canali: [{ nome: "push", configurato: false, chiavi: false, chiave_pubblica: null, iscrizioni: 0 }],
-        ultimo_giro: null,
         ultimo_errore: null,
         ultimo_errore_il: null,
       },
     });
   });
 
+  it("con le chiavi e un browser iscritto le notifiche del browser sono configurate, e la risposta non porta né la chiave privata né l'iscrizione", async () => {
+    const k = chiaviVapidDiProva();
+    Object.assign(process.env, k);
+    expect((await api("iscrivi_push", [browserFinto("https://push.example.test/send/1").iscrizione])).corpo).toEqual({ ok: true });
+    const r = await api("get_promemoria");
+    expect(r.corpo.canali).toEqual([{ nome: "push", configurato: true, chiavi: true, chiave_pubblica: k.VAPID_PUBLIC_KEY, iscrizioni: 1 }]);
+    expect(JSON.stringify(r)).not.toContain(k.VAPID_PRIVATE_KEY);
+    expect(JSON.stringify(r)).not.toContain("push.example.test");
+  });
+
   it("una voce scritta male con save_config non rompe la lettura: valgono i valori predefiniti", async () => {
-    await api("save_config", [{ promemoria: { attivo: "sì", minuti: "dieci", canali: 7, contenuto: [] } }]);
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" });
+    await api("save_config", [{ promemoria: { minuti: "dieci", contenuto: [], suono: 3, notifica_windows: "no", comparsa: 0 } }]);
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual(PREDEFINITE);
+  });
+
+  it("le voci di prima (attivo, canali) non contano e spariscono al primo salvataggio", async () => {
+    await api("save_config", [{ promemoria: { attivo: true, canali: ["telegram"], minuti: [5], contenuto: "minimo" } }]);
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ ...PREDEFINITE, minuti: [5], contenuto: "minimo" });
+    expect((await api("set_promemoria", [{ suono: "Mail" }])).corpo.ok).toBe(true);
+    expect((await api("get_config")).corpo.promemoria).toEqual({ ...PREDEFINITE, minuti: [5], contenuto: "minimo", suono: "Mail" });
   });
 });
 
 describe("set_promemoria", () => {
-  it("non si accende senza un canale configurato: risposta di rifiuto, lo stato non cambia", async () => {
-    const r = await api("set_promemoria", [{ attivo: true }]);
-    expect(r).toEqual({ stato: 200, corpo: { ok: false, error: "Nessuno dei canali scelti è configurato sul server." } });
-    expect((await api("get_promemoria")).corpo.promemoria.attivo).toBe(false);
-  });
-
-  it("con il canale configurato si accende, si cambiano minuti e contenuto, e get_promemoria e get_config lo mostrano", async () => {
-    const k = await configuraPush();
-    const r = await api("set_promemoria", [{ attivo: true, minuti: [15, 5, 15], contenuto: "minimo" }]);
-    expect(r).toEqual({ stato: 200, corpo: { ok: true, promemoria: { attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" } } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" });
-    // è una voce della configurazione come le altre, e non porta niente del canale
-    const config = (await api("get_config")).corpo;
-    expect(config.promemoria).toEqual({ attivo: true, minuti: [5, 15], canali: ["push"], contenuto: "minimo", suono: "Default" });
-    expect(JSON.stringify(config)).not.toContain(k.VAPID_PRIVATE_KEY);
-    expect(JSON.stringify(config)).not.toContain("push.example.test");
+  it("gli interruttori dell'app per Windows, minuti e contenuto si salvano, e get_promemoria e get_config lo mostrano", async () => {
+    const r = await api("set_promemoria", [{ notifica_windows: false, comparsa: true, minuti: [15, 5, 15], contenuto: "minimo" }]);
+    const atteso = { minuti: [5, 15], contenuto: "minimo", suono: "Default", notifica_windows: false, comparsa: true };
+    expect(r).toEqual({ stato: 200, corpo: { ok: true, promemoria: atteso } });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual(atteso);
+    expect((await api("get_config")).corpo.promemoria).toEqual(atteso);
+    expect((await api("set_promemoria", [{ comparsa: false }])).corpo.promemoria).toEqual({ ...atteso, comparsa: false });
   });
 
   it("si salvano l'orario all'inizio (0), fino a otto orari e un suono; i valori stanno in ordine e la voce sopravvive a una nuova lettura", async () => {
     const r = await api("set_promemoria", [{ minuti: [30, 0, 15, 60, 10, 5, 20, 45], suono: "Reminder" }]);
-    expect(r.corpo).toEqual({ ok: true, promemoria: { attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["push"], contenuto: "completo", suono: "Reminder" } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [0, 5, 10, 15, 20, 30, 45, 60], canali: ["push"], contenuto: "completo", suono: "Reminder" });
+    expect(r.corpo).toEqual({ ok: true, promemoria: { ...PREDEFINITE, minuti: [0, 5, 10, 15, 20, 30, 45, 60], suono: "Reminder" } });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ ...PREDEFINITE, minuti: [0, 5, 10, 15, 20, 30, 45, 60], suono: "Reminder" });
     expect((await api("set_promemoria", [{ minuti: [0] }])).corpo.promemoria.minuti).toEqual([0]);
   });
 
@@ -177,7 +178,7 @@ describe("set_promemoria", () => {
     expect((await api("get_promemoria")).corpo.promemoria.suono).toBe("Call7");
   });
 
-  it("i valori che non vanno sono rifiutati con una frase, senza eccezioni", async () => {
+  it("i valori che non vanno sono rifiutati con una frase, senza eccezioni, e niente cambia", async () => {
     const rifiuti: [unknown, string][] = [
       [{ minuti: [-1] }, MINUTI_NO],
       [{ minuti: [] }, MINUTI_NO],
@@ -186,16 +187,18 @@ describe("set_promemoria", () => {
       [{ minuti: [1.5] }, MINUTI_NO],
       [{ suono: "Fischio" }, "Suono sconosciuto."],
       [{ suono: 3 }, "Suono sconosciuto."],
-      [{ canali: ["whatsapp"] }, "Canale sconosciuto."],
       [{ contenuto: "tutto" }, "Il contenuto è «completo» o «minimo»."],
-      [{ attivo: "sì" }, "«attivo» deve essere vero o falso."],
+      [{ notifica_windows: "sì" }, "«notifica_windows» deve essere vero o falso."],
+      [{ comparsa: 1 }, "«comparsa» deve essere vero o falso."],
+      [{ attivo: true }, "Impostazione sconosciuta."],
+      [{ canali: ["push"] }, "Impostazione sconosciuta."],
       [{ altro: 1 }, "Impostazione sconosciuta."],
       ["testo", "Le impostazioni dei promemoria non sono valide."],
       [null, "Le impostazioni dei promemoria non sono valide."],
     ];
     for (const [corpo, frase] of rifiuti) expect(await api("set_promemoria", [corpo]), JSON.stringify(corpo)).toEqual({ stato: 200, corpo: { ok: false, error: frase } });
     expect(await api("set_promemoria", [])).toEqual({ stato: 200, corpo: { ok: false, error: "Le impostazioni dei promemoria non sono valide." } });
-    expect((await api("get_promemoria")).corpo.promemoria).toEqual({ attivo: false, minuti: [10], canali: ["push"], contenuto: "completo", suono: "Default" });
+    expect((await api("get_promemoria")).corpo.promemoria).toEqual(PREDEFINITE);
   });
 });
 

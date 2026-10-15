@@ -52,13 +52,10 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
                 </button>
               ))}
             </div>
-            <p className="mt-1.5 text-xs text-muted-foreground">&quot;Automatico&quot; segue il tema del dispositivo.</p>
             <label className="mt-3 flex items-center gap-2">
               <Switch id="cfg-colori-dinamici" checked={!!config.colori_dinamici} onCheckedChange={(v) => void salvaConfig({ colori_dinamici: v })} /> Colori dinamici
             </label>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              Due riunioni vicine di aziende diverse non hanno mai lo stesso colore. I colori si scelgono sulla pagina che guardi e possono cambiare da una pagina all&apos;altra.
-            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">Riunioni vicine di aziende diverse mai dello stesso colore.</p>
           </section>
 
           <section>
@@ -84,9 +81,7 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
           {accesso2fa !== "off" && (
             <section>
               <h3 className="mb-2 font-semibold">Sicurezza</h3>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Secondo fattore dell&apos;accesso: il codice di un&apos;app di autenticazione{accesso2fa === "passkey" ? " e le passkey" : ""}.
-              </p>
+              <p className="mb-2 text-xs text-muted-foreground">Codice dell&apos;app di autenticazione{accesso2fa === "passkey" ? " e passkey" : ""}.</p>
               <a id="cfg-sicurezza" href="/sicurezza" className={buttonVariants({ variant: "outline", size: "sm" })}>
                 Gestisci l&apos;accesso
               </a>
@@ -94,11 +89,6 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
           )}
           <ImpostazioniPromemoria />
           <ImpostazioniCondivisione />
-
-          <section>
-            <h3 className="mb-1 font-semibold">Info</h3>
-            <p className="text-xs text-muted-foreground">OE Copilot, la vista unica su calendari e timesheet di più aziende. I dati restano sul server.</p>
-          </section>
         </div>
         <DialogFooter>
           <Button onClick={onChiudi}>Fine</Button>

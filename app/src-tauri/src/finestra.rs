@@ -83,9 +83,10 @@ pub fn crea_principale(app: &AppHandle, nascosta: bool) -> tauri::Result<()> {
     let costruttore = WebviewWindowBuilder::new(app, PRINCIPALE, WebviewUrl::App("index.html".into()))
         .title("OE Copilot")
         .initialization_script(script);
-    // la finestra nasce nascosta e si mostra dopo il ripristino di posizione e dimensioni: così non compare prima al centro
+    // la finestra nasce nascosta e si mostra dopo il ripristino di posizione e dimensioni: così non compare prima al centro. Con
+    // --nascosto non prende il fuoco: wry lo darebbe alla vista invisibile e la tastiera smetterebbe di arrivare alla finestra davanti
     #[cfg(desktop)]
-    let costruttore = costruttore.inner_size(1280.0, 800.0).min_inner_size(900.0, 600.0).center().visible(false);
+    let costruttore = costruttore.inner_size(1280.0, 800.0).min_inner_size(900.0, 600.0).center().visible(false).focused(!nascosta);
     let finestra = con_guardia(app, costruttore).build()?;
     #[cfg(desktop)]
     if !nascosta {

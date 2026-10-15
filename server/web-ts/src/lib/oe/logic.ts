@@ -200,7 +200,7 @@ export type EsitoGruppi = { gruppi: GruppiCalendari } | { errore: string };
 function nomeGruppo(gruppi: GruppiCalendari, nome: string, escludi?: string): { nome: string } | { errore: string } {
   const pulito = nome.trim().replace(/\s+/g, " ");
   if (!pulito) return { errore: "Scrivi un nome per il gruppo." };
-  if (pulito.length > GRUPPO_NOME_MAX) return { errore: `Il nome può avere al massimo ${GRUPPO_NOME_MAX} caratteri.` };
+  if (pulito.length > GRUPPO_NOME_MAX) return { errore: `Massimo ${GRUPPO_NOME_MAX} caratteri.` };
   const minuscolo = pulito.toLowerCase();
   if (Object.keys(gruppi).some((n) => n !== escludi && n.toLowerCase() === minuscolo)) return { errore: "Esiste già un gruppo con questo nome." };
   return { nome: pulito };
@@ -380,7 +380,7 @@ export function etichettaSync(ultimaSync: number | null, adesso: number, inCorso
 export function testoDatiVecchi(quando: string | null | undefined, motivo: string | null | undefined): string {
   const ora = quando ? quando.slice(11, 16) : null;
   const cosa = motivo || "Il server dei calendari non risponde";
-  return ora ? `${cosa} — questi sono i dati salvati delle ${ora}. Aggiorno da solo…` : `${cosa} — aggiorno da solo appena è pronto…`;
+  return ora ? `${cosa}. Dati aggiornati alle ${ora}.` : `${cosa}.`;
 }
 
 // ---- Vista a 3 giorni: lettura larga + memoria ------------------------------------

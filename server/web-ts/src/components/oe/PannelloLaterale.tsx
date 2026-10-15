@@ -95,12 +95,12 @@ export function PannelloLaterale({ children }: { children: ReactNode }) {
         id="sidepane-resize"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Larghezza della colonna dei calendari"
+        aria-label="Larghezza del pannello"
         aria-valuemin={LARGHEZZA_PANNELLO.min}
         aria-valuemax={LARGHEZZA_PANNELLO.max}
         aria-valuenow={larghezza}
         tabIndex={0}
-        title="Trascina per cambiare la larghezza, doppio clic per ripristinarla"
+        title="Trascina per ridimensionare, doppio clic per ripristinare"
         className="group relative z-10 -mx-[3px] hidden w-1.5 flex-none cursor-col-resize touch-none select-none lg:block"
         onPointerDown={trascina}
         onKeyDown={tasto}

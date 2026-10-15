@@ -48,10 +48,10 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
         await aggiornaCalendari();
         ricarica();
       } else {
-        setEsito("⚠ " + r.error);
+        setEsito(r.error ?? "Non riuscito.");
       }
     } catch (e) {
-      setEsito("⚠ " + (e instanceof Error ? e.message : String(e)));
+      setEsito(e instanceof Error ? e.message : String(e));
     } finally {
       setOccupato(false);
     }
@@ -63,7 +63,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
         <DialogHeader>
           <DialogTitle>Nuovo evento</DialogTitle>
           <DialogDescription>
-            Viene salvato nel calendario <b>Altro</b>, solo sul server.
+            Va nel calendario <b>Altro</b>.
           </DialogDescription>
         </DialogHeader>
         <form

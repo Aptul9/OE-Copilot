@@ -100,7 +100,7 @@ export function PannelloLogo({ nome, colore, voce, onCambiato }: { nome: string;
       setEsito("Verifico l'indirizzo…");
       const r = await api("preview_logo", testo);
       setEsito("");
-      if (!r.ok || !r.anteprima) throw new Error(r.error || "Non riesco a leggere l'immagine.");
+      if (!r.ok || !r.anteprima) throw new Error(r.error || "Immagine non leggibile.");
       setAnteprima({ src: r.anteprima, testo: `${r.tipo} · ${Math.max(1, Math.round((r.byte ?? 0) / 1024))} KB` });
     });
 
@@ -110,23 +110,23 @@ export function PannelloLogo({ nome, colore, voce, onCambiato }: { nome: string;
       if (!testo) throw new Error("Scrivi l'indirizzo dell'immagine.");
       setEsito("Scarico l'immagine…");
       const r = await api("set_logo", nome, testo);
-      if (!r.ok) throw new Error(r.error || "Non riesco a salvare il logo.");
+      if (!r.ok) throw new Error(r.error || "Logo non salvato.");
       await dopoModifica("Logo salvato.");
     });
 
   const rimuovi = () =>
     fai("rimuovi", async () => {
       const r = await api("remove_logo", nome);
-      if (!r.ok) throw new Error(r.error || "Non riesco a togliere il logo.");
+      if (!r.ok) throw new Error(r.error || "Logo non rimosso.");
       setUrl("");
-      await dopoModifica("Logo tolto.");
+      await dopoModifica("Logo rimosso.");
     });
 
   const aggiorna = () =>
     fai("aggiorna", async () => {
       setEsito("Scarico l'immagine…");
       const r = await api("refresh_logo", nome);
-      if (!r.ok) throw new Error(r.error || "Non riesco a rileggere l'indirizzo.");
+      if (!r.ok) throw new Error(r.error || "Logo non aggiornato.");
       await dopoModifica("Logo aggiornato.");
     });
 
@@ -137,23 +137,23 @@ export function PannelloLogo({ nome, colore, voce, onCambiato }: { nome: string;
       const base64 = await new Promise<string>((ok, no) => {
         const lettore = new FileReader();
         lettore.onload = () => ok(String(lettore.result).split(",")[1] ?? "");
-        lettore.onerror = () => no(new Error("Non riesco a leggere il file."));
+        lettore.onerror = () => no(new Error("File non leggibile."));
         lettore.readAsDataURL(f);
       });
       const r = await api("upload_logo", nome, base64);
-      if (!r.ok) throw new Error(r.error || "Non riesco a salvare il logo.");
+      if (!r.ok) throw new Error(r.error || "Logo non salvato.");
       await dopoModifica("Logo caricato.");
     });
 
   const origine = voce
     ? voce.tipo === "file"
-      ? "Scelto da qui: un file caricato."
-      : `Scelto da qui, letto il ${new Date(voce.aggiornato).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" })}.`
+      ? "File caricato."
+      : `Scaricato il ${new Date(voce.aggiornato).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" })}.`
     : attuale
       ? nome === "Eventi personali" && attuale === "/logos/personale.png"
-        ? "Logo predefinito dell'app."
-        : "Logo di personalizzazione.json."
-      : "Nessun logo: si vedono le iniziali.";
+        ? "Logo predefinito."
+        : "Da personalizzazione.json."
+      : "Nessun logo.";
 
   return (
     <div className="mb-2 ml-5 rounded-lg border bg-muted/30 p-3 text-sm" data-logo-pannello={nome}>
@@ -226,7 +226,7 @@ export function PannelloLogo({ nome, colore, voce, onCambiato }: { nome: string;
           </Button>
         )}
         {voce?.tipo === "url" && (
-          <Button data-logo="aggiorna" variant="outline" size="sm" disabled={occupato !== null} onClick={() => void aggiorna()} title="Scarica di nuovo l'immagine dall'indirizzo">
+          <Button data-logo="aggiorna" variant="outline" size="sm" disabled={occupato !== null} onClick={() => void aggiorna()} title="Scarica di nuovo l'immagine">
             <RotateCwIcon /> Aggiorna
           </Button>
         )}
@@ -252,9 +252,7 @@ export function PannelloLogo({ nome, colore, voce, onCambiato }: { nome: string;
           {errore || esito}
         </p>
       )}
-      <p className="mt-2 text-xs text-muted-foreground">
-        Il server scarica l&apos;immagine una volta sola e la tiene lui: il browser non contatta mai l&apos;indirizzo. PNG, JPEG, GIF, WebP, ICO o SVG, al massimo {MAX_KB} KB. Con solo un dominio (esempio.org) si prende l&apos;icona del sito.
-      </p>
+      <p className="mt-2 text-xs text-muted-foreground">PNG, JPEG, GIF, WebP, ICO o SVG, massimo {MAX_KB} KB. Con solo il dominio (esempio.org) prende l&apos;icona del sito.</p>
     </div>
   );
 }

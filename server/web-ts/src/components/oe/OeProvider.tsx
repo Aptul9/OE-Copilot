@@ -220,7 +220,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
         }
         setCalendari(res.calendars);
       } catch (e) {
-        mostraAvviso({ testo: `⚠ get_calendars: ${e instanceof Error ? e.message : String(e)}`, tipo: "errore" });
+        mostraAvviso({ testo: `Calendari non caricati: ${e instanceof Error ? e.message : String(e)}`, tipo: "errore" });
       }
     },
     [pianificaRitentativo, inPubblico],
@@ -325,7 +325,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
         } else {
           tentativi.current = 0;
           setDatiVecchi(null);
-          if (res.errors?.length) mostraAvviso({ testo: "⚠ " + res.errors.join("  ·  "), tipo: "errore" });
+          if (res.errors?.length) mostraAvviso({ testo: res.errors.join("  ·  "), tipo: "errore" });
           syncFine(true);
           // le caselle sono tornate dopo un periodo di dati salvati: va riletto anche l'elenco
           if (eraFerma.current) {
@@ -341,7 +341,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
       .catch((err) => {
         syncFine(false);
         if (mia !== richiesta.current) return;
-        mostraAvviso({ testo: "Errore nel caricamento: " + (err instanceof Error ? err.message : String(err)), tipo: "errore" });
+        mostraAvviso({ testo: "Eventi non caricati: " + (err instanceof Error ? err.message : String(err)), tipo: "errore" });
         // lettura fallita: i pallini non possono restare a pulsare all'infinito
         setStatoFonti({});
         setPallinoInAttesa(false);

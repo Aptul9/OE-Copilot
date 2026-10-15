@@ -159,12 +159,12 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
         </VoceRail>
       )}
       {!pub && (
-        <VoceRail id="nav-phone" etichetta="Telefono" titolo="Schermo del telefono virtuale (PIN, accessi, codici): si apre in una scheda nuova" larga={railLarga || stretto} onClick={() => { setMenu(false); window.open(SCHERMO_TELEFONO, "_blank", "noopener"); }}>
+        <VoceRail id="nav-phone" etichetta="Telefono" titolo="Schermo del telefono" larga={railLarga || stretto} onClick={() => { setMenu(false); window.open(SCHERMO_TELEFONO, "_blank", "noopener"); }}>
           <SmartphoneIcon />
         </VoceRail>
       )}
       <div className="flex-1" />
-      <VoceRail id="nav-theme" etichetta="Tema" larga={railLarga || stretto} onClick={() => oe.impostaTema(oe.temaScuro ? "light" : "dark")} titolo="Cambia tema chiaro/scuro">
+      <VoceRail id="nav-theme" etichetta="Tema" larga={railLarga || stretto} onClick={() => oe.impostaTema(oe.temaScuro ? "light" : "dark")} titolo="Cambia tema">
         {/* le due icone, scelte dalla classe del tema: il tema salvato si conosce solo nel browser, e un'icona scelta in JavaScript non coinciderebbe con quella del server */}
         <SunIcon className="hidden dark:block" />
         <MoonIcon className="dark:hidden" />
@@ -214,7 +214,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
               className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
             />
             {campoRicerca && (
-              <button id="search-clear" className="search-clear rounded p-1 hover:bg-accent" aria-label="Pulisci ricerca" onClick={() => { setCampoRicerca(""); oe.impostaRicerca(""); }}>
+              <button id="search-clear" className="search-clear rounded p-1 hover:bg-accent" aria-label="Cancella ricerca" onClick={() => { setCampoRicerca(""); oe.impostaRicerca(""); }}>
                 <XIcon className="size-3.5" />
               </button>
             )}
@@ -267,7 +267,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
               id="banner"
               className={cn("banner flex-none rounded-md border-l-[3px] px-3 py-2 text-[13px]", oe.avviso?.tipo === "errore" ? "banner-errore border-red-600 bg-red-600/10 font-semibold" : "border-primary bg-accent")}
             >
-              {oe.avviso ? oe.avviso.testo : `Nessuna riunione trovata per “${oe.ricerca.trim()}”.`}
+              {oe.avviso ? oe.avviso.testo : `Nessun risultato per “${oe.ricerca.trim()}”.`}
             </div>
           )}
 

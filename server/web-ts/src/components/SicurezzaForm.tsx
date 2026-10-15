@@ -18,13 +18,13 @@ type Errore = { status?: number; code?: string } | null | undefined;
 function testoErrore(e: NonNullable<Errore>): string {
   if (e.code === "INVALID_PASSWORD") return "Password errata";
   if (e.code === "INVALID_CODE") return "Codice errato";
-  if (e.code === "TOTP_ALREADY_ENABLED") return "Il codice a due fattori è già attivo";
-  if (e.code === "SESSION_NOT_FRESH") return "La sessione non è recente: esci, rientra con la password e riprova";
-  if (e.code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") return "Questo dispositivo ha già una passkey per il sito";
+  if (e.code === "TOTP_ALREADY_ENABLED") return "Codice a due fattori già attivo";
+  if (e.code === "SESSION_NOT_FRESH") return "Esci, rientra e riprova";
+  if (e.code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") return "Questo dispositivo ha già una passkey";
   if (e.code === "ERROR_CEREMONY_ABORTED" || e.code === "AUTH_CANCELLED") return "Operazione annullata";
-  if (e.code === "ACCOUNT_TEMPORARILY_LOCKED") return "Troppi tentativi falliti: riprova tra 15 minuti";
-  if (e.status === 429) return "Troppe richieste ravvicinate: riprova tra qualche secondo";
-  if (e.status === 401) return "La sessione non c'è più: rientra con la password";
+  if (e.code === "ACCOUNT_TEMPORARILY_LOCKED") return "Troppi tentativi, riprova tra 15 minuti";
+  if (e.status === 429) return "Troppe richieste, riprova tra poco";
+  if (e.status === 401) return "Sessione scaduta, rientra con la password";
   return "Operazione non riuscita";
 }
 
@@ -124,7 +124,7 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
       await navigator.clipboard.writeText(codici.join("\n"));
       setCopiato(true);
     } catch {
-      setErrore("Non riesco a copiare: seleziona i codici e copiali a mano");
+      setErrore("Copia non riuscita: copiali a mano");
     }
   }
 
@@ -138,9 +138,7 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
             {attivo ? "Attivo" : "Non attivo"}
           </span>
         </CardTitle>
-        <CardDescription>
-          Dopo la password l&apos;accesso chiede il codice di 6 cifre di un&apos;app di autenticazione (Google Authenticator, Microsoft Authenticator, Aegis, 1Password e simili). Se perdi il telefono valgono i codici di recupero.
-        </CardDescription>
+        <CardDescription>Dopo la password, un codice da un&apos;app di autenticazione.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {errore && (
@@ -174,7 +172,7 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="sicurezza-password">
-                  {fase.azione === "disattiva" ? "Per disattivarlo, scrivi la password" : fase.azione === "nuoviCodici" ? "Per avere nuovi codici, scrivi la password" : "Per attivarlo, scrivi la password"}
+                  {fase.azione === "disattiva" ? "Password per disattivare" : fase.azione === "nuoviCodici" ? "Password per i nuovi codici" : "Password per attivare"}
                 </FieldLabel>
                 <Input id="sicurezza-password" name="password" type="password" autoComplete="current-password" className="h-10" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
               </Field>
@@ -195,14 +193,14 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
           <form onSubmit={confermaCodice}>
             <FieldGroup>
               <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                <CodiceQr testo={fase.uri} titolo="Codice QR da inquadrare con l'app di autenticazione" />
+                <CodiceQr testo={fase.uri} titolo="Codice QR" />
                 <div className="flex min-w-0 flex-col gap-2 text-sm">
-                  <p>1. Inquadra il codice con l&apos;app di autenticazione.</p>
-                  <p className="text-muted-foreground">Non puoi inquadrarlo? Scrivi nell&apos;app questa chiave (tipo: basato sul tempo):</p>
+                  <p>1. Inquadra il codice con l&apos;app.</p>
+                  <p className="text-muted-foreground">Oppure scrivi questa chiave (basata sul tempo):</p>
                   <code id="sicurezza-segreto" className="select-all break-all rounded-md bg-muted px-2 py-1.5 font-mono text-xs">
                     {spazia(segretoDaUri(fase.uri))}
                   </code>
-                  <p>2. Scrivi qui il codice che l&apos;app mostra ora.</p>
+                  <p>2. Scrivi il codice dell&apos;app.</p>
                 </div>
               </div>
               <Field>
@@ -218,7 +216,6 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
                   Annulla
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">Finché non confermi, l&apos;accesso resta quello di prima.</p>
             </FieldGroup>
           </form>
         )}
@@ -228,7 +225,7 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
             <p className="text-sm font-medium">{fase.titolo}</p>
             <Alert>
               <TriangleAlertIcon />
-              <AlertTitle>Salvali ora: non si rivedono. Ognuno vale una volta sola, al posto del codice dell&apos;app.</AlertTitle>
+              <AlertTitle>Salvali ora: non si vedranno più.</AlertTitle>
             </Alert>
             <ul id="sicurezza-codici-recupero" className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-md bg-muted p-3 font-mono text-sm">
               {fase.codici.map((c) => (
@@ -240,7 +237,7 @@ function SezioneCodici({ attivoIniziale }: { attivoIniziale: boolean }) {
             <div className="flex gap-2">
               <Button id="sicurezza-copia" type="button" variant="outline" onClick={() => copia(fase.codici)}>
                 {copiato ? <CheckIcon /> : <CopyIcon />}
-                {copiato ? "Copiati" : "Copia i codici"}
+                {copiato ? "Copiati" : "Copia"}
               </Button>
               <Button id="sicurezza-codici-ok" type="button" onClick={riposo}>
                 Li ho salvati
@@ -288,9 +285,7 @@ function SezionePasskey() {
           <KeyRoundIcon className="size-5" />
           Passkey
         </CardTitle>
-        <CardDescription>
-          Con una passkey si entra dalla pagina di accesso senza password: basta il dito, il volto o il PIN del dispositivo. La password resta come alternativa. Una passkey vale solo per questo indirizzo del sito.
-        </CardDescription>
+        <CardDescription>Accesso senza password, con impronta, volto o PIN del dispositivo.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {errore && (
@@ -299,17 +294,17 @@ function SezionePasskey() {
             <AlertTitle>{errore}</AlertTitle>
           </Alert>
         )}
-        {erroreLista && <p className="text-sm text-muted-foreground">Non riesco a leggere l&apos;elenco delle passkey.</p>}
+        {erroreLista && <p className="text-sm text-muted-foreground">Elenco delle passkey non disponibile.</p>}
         <ul id="sicurezza-passkey-elenco" className="flex flex-col divide-y rounded-md border">
-          {isPending && <li className="p-3 text-sm text-muted-foreground">Carico l&apos;elenco…</li>}
-          {!isPending && lista.length === 0 && <li className="p-3 text-sm text-muted-foreground">Nessuna passkey registrata.</li>}
+          {isPending && <li className="p-3 text-sm text-muted-foreground">Carico…</li>}
+          {!isPending && lista.length === 0 && <li className="p-3 text-sm text-muted-foreground">Nessuna passkey.</li>}
           {lista.map((p) => (
             <li key={p.id} className="flex items-center justify-between gap-3 p-3 text-sm" data-passkey={p.id}>
               <div className="min-w-0">
                 <p className="truncate font-medium">{p.name || "Passkey senza nome"}</p>
                 <p className="text-xs text-muted-foreground">
                   {p.createdAt ? `Aggiunta il ${new Date(p.createdAt).toLocaleDateString("it-IT")}` : ""}
-                  {p.deviceType === "multiDevice" ? " · sincronizzata tra i tuoi dispositivi" : p.deviceType === "singleDevice" ? " · solo su questo dispositivo" : ""}
+                  {p.deviceType === "multiDevice" ? " · sincronizzata" : p.deviceType === "singleDevice" ? " · solo su questo dispositivo" : ""}
                 </p>
               </div>
               <Button variant="ghost" size="icon" aria-label={`Elimina la passkey ${p.name ?? ""}`} className="elimina-passkey" onClick={() => togli(p.id)}>
@@ -322,8 +317,8 @@ function SezionePasskey() {
           <form onSubmit={aggiungi}>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="sicurezza-passkey-nome">Nome della nuova passkey</FieldLabel>
-                <Input id="sicurezza-passkey-nome" name="nome" placeholder="Per esempio: Portatile" className="h-10" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={60} />
+                <FieldLabel htmlFor="sicurezza-passkey-nome">Nome (facoltativo)</FieldLabel>
+                <Input id="sicurezza-passkey-nome" name="nome" placeholder="es. Portatile" className="h-10" value={nome} onChange={(e) => setNome(e.target.value)} maxLength={60} />
               </Field>
               <div>
                 <Button id="sicurezza-passkey-aggiungi" type="submit" disabled={occupato}>
@@ -334,7 +329,7 @@ function SezionePasskey() {
             </FieldGroup>
           </form>
         ) : (
-          <p className="text-sm text-muted-foreground">Questo browser non supporta le passkey, o la pagina non è aperta su HTTPS.</p>
+          <p className="text-sm text-muted-foreground">Passkey non disponibili: serve un browser compatibile e HTTPS.</p>
         )}
       </CardContent>
     </Card>

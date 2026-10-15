@@ -15,7 +15,7 @@ const COLORE_PALLINO: Record<string, string> = {
   attesa: "bg-muted-foreground/50 animate-pulse",
 };
 
-/** "I miei calendari": una voce per azienda, con interruttore, "only" e il pallino di salute. */
+/** "I miei calendari": una voce per azienda, con interruttore, "solo" e il pallino di salute. */
 export function Legenda({ onGestisci }: { onGestisci: () => void }) {
   const { gruppi, statoFonti, pallinoInAttesa, accendiAzienda, soloAzienda, gruppiCalendari, gruppiAccesi, soloGruppo, pers, secondari } = useOe();
   const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
@@ -63,7 +63,7 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
           title={`Mostra solo ${g.azienda}`}
           onClick={() => void soloAzienda(g.azienda)}
         >
-          only
+          solo
         </button>
         <span className={cn("acct-health mr-2.5 size-2.5 flex-none rounded-full", s.classe, COLORE_PALLINO[s.classe])} title={s.titolo} />
       </div>
@@ -89,7 +89,7 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
                 data-gruppo={nome}
                 aria-pressed={acceso}
                 disabled={vuoto}
-                title={vuoto ? "Nessun calendario in questo gruppo: assegnali da Gestisci calendari" : acceso ? "Torna a tutti i calendari" : `Mostra solo i calendari del gruppo ${nome}`}
+                title={vuoto ? "Gruppo vuoto" : acceso ? "Mostra tutti" : `Mostra solo ${nome}`}
                 className={cn(
                   "max-w-full truncate rounded-full border px-2.5 py-0.5 text-[12px] font-medium",
                   acceso ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -111,7 +111,7 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
             type="search"
             value={ricerca}
             placeholder="Cerca calendari"
-            aria-label="Cerca tra i miei calendari"
+            aria-label="Cerca calendari"
             autoComplete="off"
             className="h-7 pl-7 text-[13px] md:text-[13px]"
             onChange={(e) => setRicerca(e.target.value)}
@@ -122,8 +122,8 @@ export function Legenda({ onGestisci }: { onGestisci: () => void }) {
         </div>
       )}
       <div id="legend" className="flex flex-col">
-        {gruppi.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun calendario. Apri “Gestisci calendari”.</span>}
-        {gruppi.length > 0 && visibili.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun calendario per “{ricerca.trim()}”.</span>}
+        {gruppi.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun calendario.</span>}
+        {gruppi.length > 0 && visibili.length === 0 && <span className="empty px-2 py-1.5 text-xs text-muted-foreground">Nessun risultato per “{ricerca.trim()}”.</span>}
         {principali.map(riga)}
         {altri.length > 0 && (
           <details id="legend-altri" open={ricerca.trim() ? true : undefined} className="mt-1">

@@ -68,7 +68,7 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
 
   const aggiungi = async () => {
     if (!url.trim()) {
-      setEsito("Incolla prima il link.");
+      setEsito("Manca il link.");
       return;
     }
     setEsito("Verifico il link…");
@@ -76,16 +76,16 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
     try {
       const r = await api("add_ics_calendar", nome.trim(), url.trim());
       if (r.ok) {
-        setEsito("✅ Aggiunto: " + r.feed?.name);
+        setEsito("Aggiunto: " + r.feed?.name);
         setNome("");
         setUrl("");
         await carica(false);
         await dopo();
       } else {
-        setEsito("⚠ " + r.error);
+        setEsito(r.error ?? "Non riuscito.");
       }
     } catch (e) {
-      setEsito("⚠ " + (e instanceof Error ? e.message : String(e)));
+      setEsito(e instanceof Error ? e.message : String(e));
     } finally {
       setOccupato(false);
     }
@@ -113,9 +113,7 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
       <DialogContent id="modal-calendars" className="max-h-[86dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Calendari da mostrare</DialogTitle>
-          <DialogDescription>
-            Sono le caselle lette dal server dei calendari: gli accessi si fanno lì.
-          </DialogDescription>
+          <DialogDescription>Accendi o spegni i calendari.</DialogDescription>
         </DialogHeader>
 
         <GestioneGruppi />
@@ -123,12 +121,12 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
 
         <div id="cal-list" className="flex flex-col gap-0.5 text-sm">
           {!dati && !errore && (
-            <p className="text-muted-foreground">Lettura dal server dei calendari…</p>
+            <p className="text-muted-foreground">Carico…</p>
           )}
           {errore && <p className="text-destructive">{errore}</p>}
           {dati?.error && <p className="text-destructive">{dati.error}</p>}
           {dati && !dati.error && dati.calendars.length === 0 && (
-            <p className="text-muted-foreground">Il server dei calendari non ha caselle da mostrare.</p>
+            <p className="text-muted-foreground">Nessuna casella.</p>
           )}
           {blocchi.map(({ alias, conti }) => (
             <div key={alias} className="mb-2">
@@ -139,11 +137,10 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
 
         <details className="add-ics rounded-lg border p-3 text-sm">
           <summary className="flex cursor-pointer items-center gap-2 font-medium">
-            <PlusIcon className="size-4" /> Aggiungi un calendario da link (Google, iCal…)
+            <PlusIcon className="size-4" /> Aggiungi un calendario da link
           </summary>
           <p className="mt-2 text-xs text-muted-foreground">
-            In Google Calendar: <b>Impostazioni</b> → scegli il calendario → <b>Indirizzo segreto in formato iCal</b> → copia il link e incollalo qui. Il link vale come una chiave: chi ce l&apos;ha legge il
-            calendario, quindi resta solo sul server.
+            In Google Calendar: <b>Impostazioni</b> → il calendario → <b>Indirizzo segreto in formato iCal</b>.
           </p>
           <label className="mt-2 flex flex-col gap-1 text-xs font-medium">
             Nome da mostrare
@@ -165,7 +162,7 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
 
         <DialogFooter className="sm:justify-between">
           <Button id="btn-rescan" variant="outline" onClick={() => void carica(true)}>
-            <RotateCwIcon /> Ricerca calendari nuovi
+            <RotateCwIcon /> Cerca calendari nuovi
           </Button>
           <Button onClick={onChiudi}>Fine</Button>
         </DialogFooter>
@@ -218,7 +215,7 @@ function BloccoAzienda({ alias, conti, onModificato, onRicarica, onRinominato, l
             className="alias-input h-8 max-w-[220px] font-semibold"
             value={valore}
             data-account={conti[0].account}
-            title={unito ? "Come vuoi chiamare questi account" : "Come vuoi chiamare questo account"}
+            title="Nome da mostrare"
             spellCheck={false}
             onChange={(e) => setValore(e.target.value)}
             onBlur={() => void salva()}
@@ -230,7 +227,7 @@ function BloccoAzienda({ alias, conti, onModificato, onRicarica, onRinominato, l
           type="button"
           data-secondario={alias}
           aria-pressed={secondario}
-          title={secondario ? `${alias} sta sotto "Altri calendari": clic per riportarlo fra i principali` : `Metti ${alias} sotto "Altri calendari", con gli eventi più tenui`}
+          title={secondario ? "Riporta tra i principali" : "Sposta in Altri calendari"}
           className={cn(
             "rounded-full border px-2 py-0.5 text-[11px] font-medium",
             secondario ? "border-primary bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-background hover:text-foreground",
@@ -345,7 +342,7 @@ function UnisciAccount({ account, onFatto }: { account: { account: string; alias
   const [scelti, setScelti] = useState<string[]>([]);
   const [errore, setErrore] = useState("");
   const unisci = async () => {
-    if (!nome.trim()) return setErrore("Scrivi il nome con cui compaiono.");
+    if (!nome.trim()) return setErrore("Scrivi un nome.");
     if (!scelti.length) return setErrore("Scegli almeno un account.");
     setErrore("");
     for (const a of scelti) await api("set_account_alias", a, nome.trim());
@@ -356,9 +353,7 @@ function UnisciAccount({ account, onFatto }: { account: { account: string; alias
   return (
     <details id="unisci-account" className="rounded-lg border p-3 text-sm">
       <summary className="cursor-pointer font-medium">Unisci account sotto un nome</summary>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Gli account uniti compaiono come un calendario solo nella barra laterale: un nome, un logo, un interruttore. Per aggiungerne uno a un nome che c&apos;è già, scrivi quel nome.
-      </p>
+      <p className="mt-1 text-xs text-muted-foreground">Per aggiungere a un nome esistente, scrivi quel nome.</p>
       <ul className="mt-2 flex flex-col gap-0.5">
         {account.map((a) => (
           <li key={a.account}>
@@ -402,9 +397,7 @@ function GestioneGruppi() {
   return (
     <section id="gruppi-gestione" className="rounded-lg border p-3 text-sm">
       <h3 className="font-medium">Gruppi</h3>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Un calendario può stare in più gruppi: si sceglie con i pulsanti accanto al suo nome. Nella barra laterale un gruppo mostra solo i suoi calendari.
-      </p>
+      <p className="mt-1 text-xs text-muted-foreground">Assegna i calendari con i pulsanti accanto al loro nome.</p>
       <ul className="mt-2 flex flex-col gap-1.5">
         {Object.keys(gruppiCalendari).map((nome) => (
           <RigaGruppo key={nome} nome={nome} />

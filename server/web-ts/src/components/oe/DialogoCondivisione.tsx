@@ -10,14 +10,12 @@ import {
   AVANTI,
   AVVISO_LIVELLO,
   type CondivisionePubblica,
-  EVENTI_MAX,
   INDIETRO,
   type Livello,
   NOME_CALENDARIO_MAX,
   NOME_CALENDARIO_PREDEFINITO,
   NOME_MAX,
   quandoLetto,
-  RILETTURA_MINUTI,
 } from "@/lib/condivisione-comune";
 import { api } from "@/lib/oe/api";
 import { cn } from "@/lib/utils";
@@ -117,7 +115,7 @@ export function DialogoCondivisione({ aperto, onChiudi }: Props) {
       const r = await api("add_condivisione", perIlServer(nuovo));
       if (r.ok) {
         setEvidenziato(r.condivisione?.id ?? "");
-        setEsitoNuovo({ testo: `Creato il link per ${r.condivisione?.nome}: copialo qui sotto e mandaglielo.`, errore: false });
+        setEsitoNuovo({ testo: `Link creato per ${r.condivisione?.nome}.`, errore: false });
         setNuovo(VUOTO);
         await carica();
       } else setEsitoNuovo({ testo: r.error, errore: true });
@@ -132,10 +130,8 @@ export function DialogoCondivisione({ aperto, onChiudi }: Props) {
     <Dialog open={aperto} onOpenChange={(o) => !o && onChiudi()}>
       <DialogContent id="modal-condivisione" className="max-h-[88dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Condivisione del calendario</DialogTitle>
-          <DialogDescription>
-            Chi ha un link legge il tuo calendario e lo rilegge ogni {RILETTURA_MINUTI} minuti. Il link vale come una chiave: mandalo solo a chi deve vederlo. I calendari che ricevi da altri (link ICS, festività) non si condividono mai.
-          </DialogDescription>
+          <DialogTitle>Link di condivisione</DialogTitle>
+          <DialogDescription>Chi ha il link vede il tuo calendario.</DialogDescription>
         </DialogHeader>
 
         <section id="cond-elenco" className="flex flex-col gap-2 text-sm">
@@ -146,7 +142,7 @@ export function DialogoCondivisione({ aperto, onChiudi }: Props) {
               {errore}
             </p>
           )}
-          {elenco?.length === 0 && <p className="text-xs text-muted-foreground">Non c&apos;è ancora nessun link: se ne crea uno qui sotto.</p>}
+          {elenco?.length === 0 && <p className="text-xs text-muted-foreground">Nessun link.</p>}
           {elenco?.map((c) => (
             <RigaLink key={c.id} c={c} ora={ora} gruppi={gruppi} evidenziato={evidenziato === c.id} onCambiato={carica} />
           ))}
@@ -169,48 +165,15 @@ export function DialogoCondivisione({ aperto, onChiudi }: Props) {
         </section>
 
         <details id="cond-istruzioni" className="rounded-lg border p-3 text-sm">
-          <summary className="cursor-pointer font-medium">Come lo importa l&apos;altro OE Copilot</summary>
+          <summary className="cursor-pointer font-medium">Come si importa</summary>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
             <li>
-              Nel suo OE Copilot apre <b>Gestisci calendari</b> e, in fondo, <b>Aggiungi un calendario da link</b>.
+              Nell&apos;altro OE Copilot: <b>Gestisci calendari</b> → <b>Aggiungi un calendario da link</b>.
             </li>
             <li>
-              Incolla il link. Il nome può restare vuoto: prende quello che hai scelto qui (se non ne hai scelto uno, &quot;{NOME_CALENDARIO_PREDEFINITO}&quot;).
-            </li>
-            <li>
-              Preme <b>Aggiungi e verifica</b>. Da lì il calendario si aggiorna da solo: il suo OE Copilot rilegge il link al più ogni {RILETTURA_MINUTI} minuti.
-            </li>
-            <li>
-              Per smettere: <b>Revoca</b> il link qui, e smette di valere subito. Un OE Copilot aggiornato, alla prossima lettura (al più dopo {RILETTURA_MINUTI} minuti), vede 404 o 410, toglie la copia che aveva, non mostra più gli
-              eventi finché il link non risponde di nuovo e segna il calendario in rosso; uno più vecchio tiene gli ultimi dati finché il calendario non si toglie da Gestisci calendari. Se il link è finito a chi non doveva averlo,
-              revocalo o cambia l&apos;indirizzo.
+              Incolla il link e premi <b>Aggiungi e verifica</b>.
             </li>
           </ol>
-        </details>
-
-        <details id="cond-da-sapere" className="rounded-lg border p-3 text-sm">
-          <summary className="cursor-pointer font-medium">Da sapere</summary>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-            <li>
-              Con un gruppo escono le aziende del gruppo e basta: gli interruttori della barra laterale non contano, come nella pagina <b>Disponibilità</b> con un gruppo. Con tutti i calendari valgono gli interruttori.
-            </li>
-            <li>
-              Un cambio agli interruttori, ai gruppi o ai nomi delle aziende arriva nel link entro un minuto (il gateway tiene il testo di ogni link un minuto); chi ha il link lo rilegge al più ogni {RILETTURA_MINUTI} minuti, quindi per
-              lui il cambio può arrivare dopo. Revocare o cambiare indirizzo vale subito.
-            </li>
-            <li>
-              Se una casella o un&apos;azienda che il link pubblica non si legge (pallino rosso nella barra laterale), o gli eventi sono più di {EVENTI_MAX}, il link risponde &quot;non disponibile&quot; al posto di un calendario incompleto: chi lo ha
-              tiene l&apos;ultima copia. Il motivo è nel log del gateway.
-            </li>
-            <li>
-              Il testo segreto di ogni link sta in chiaro nel database del gateway (serve al pulsante <b>Copia</b>): chi legge quel file, o una copia di sicurezza della sua cartella, ha tutti i link attivi. Un link revocato perde il suo
-              testo.
-            </li>
-            <li>
-              Nella notte del cambio d&apos;ora di ottobre l&apos;ora fra le 2 e le 3 c&apos;è due volte e le caselle la danno senza dire quale: gli eventi in quell&apos;ora escono con la prima, e uno della seconda può uscire un&apos;ora prima. È lo stesso
-              limite della pagina Disponibilità.
-            </li>
-          </ul>
         </details>
 
         <DialogFooter>
@@ -266,17 +229,13 @@ function ModuloLink({ campi, onCampi, gruppi, prefisso }: { campi: Campi; onCamp
             {voci.map((g) => (
               <SelectItem key={g} value={g}>
                 Gruppo: {g}
-                {gruppi.includes(g) ? "" : " (non c'è più)"}
+                {gruppi.includes(g) ? "" : " (eliminato)"}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <span className="text-[11px] font-normal text-muted-foreground">
-          {campi.gruppo
-            ? "Escono le aziende del gruppo, anche se nella barra laterale sono spente."
-            : gruppi.length === 0
-              ? "Con tutti valgono gli interruttori della barra laterale: un'azienda spenta non esce. I gruppi si creano in Gestisci calendari."
-              : "Valgono gli interruttori della barra laterale: un'azienda spenta non esce."}
+          {campi.gruppo ? "Include anche i calendari spenti." : gruppi.length === 0 ? "I gruppi si creano in Gestisci calendari." : ""}
         </span>
       </label>
 
@@ -290,12 +249,9 @@ function ModuloLink({ campi, onCampi, gruppi, prefisso }: { campi: Campi; onCamp
           <Input id={`${prefisso}-avanti`} type="number" inputMode="numeric" min={AVANTI.min} max={AVANTI.max} value={campi.giorni_avanti} onChange={(e) => cambia({ giorni_avanti: e.target.value })} />
         </label>
       </div>
-      <p className="-mt-1.5 text-[11px] text-muted-foreground">
-        Da {INDIETRO.min} a {INDIETRO.max} giorni indietro e da {AVANTI.min} a {AVANTI.max} avanti, da oggi.
-      </p>
 
       <label className="flex flex-col gap-1 text-xs font-medium">
-        Nome del calendario per chi lo importa (facoltativo)
+        Nome del calendario (facoltativo)
         <Input id={`${prefisso}-nome-calendario`} value={campi.nome_calendario} maxLength={NOME_CALENDARIO_MAX} placeholder={NOME_CALENDARIO_PREDEFINITO} onChange={(e) => cambia({ nome_calendario: e.target.value })} />
       </label>
     </div>
@@ -334,7 +290,7 @@ function RigaLink({ c, ora, gruppi, evidenziato, onCambiato }: { c: Condivisione
     if (!c.url) return;
     const fatto = await copia(c.url);
     setCopiato(fatto);
-    setEsito(fatto ? null : { testo: "Non si è potuto copiare: selezionalo e copialo a mano.", errore: true });
+    setEsito(fatto ? null : { testo: "Copia non riuscita: copialo a mano.", errore: true });
     if (fatto) setTimeout(() => setCopiato(false), 2500);
   };
 
@@ -347,7 +303,7 @@ function RigaLink({ c, ora, gruppi, evidenziato, onCambiato }: { c: Condivisione
         </span>
         <span className="rounded-full border px-2 py-0.5 text-[11px]">{c.ambito === "gruppo" ? `Gruppo: ${c.gruppo}` : "Tutti i calendari"}</span>
         {revocato && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">Revocato il {giorno(c.revocato as number)}</span>}
-        {c.gruppo_mancante && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">Il gruppo non c&apos;è più: il link non risponde</span>}
+        {c.gruppo_mancante && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">Gruppo eliminato: link non attivo</span>}
       </div>
       <p className="mt-1 text-xs">
         Ultima lettura: <b data-ultima-lettura>{quandoLetto(c.ultimo_accesso, ora)}</b>
@@ -380,7 +336,7 @@ function RigaLink({ c, ora, gruppi, evidenziato, onCambiato }: { c: Condivisione
       {revocato && (
         <div className="mt-2">
           <Button type="button" size="xs" variant="outline" data-azione="elimina" disabled={occupato} onClick={() => void esegui(() => api("delete_condivisione", c.id), "")}>
-            <Trash2Icon /> Togli dall&apos;elenco
+            <Trash2Icon /> Elimina
           </Button>
         </div>
       )}
@@ -389,11 +345,11 @@ function RigaLink({ c, ora, gruppi, evidenziato, onCambiato }: { c: Condivisione
         <div role="alertdialog" aria-label="Conferma" data-conferma={azione} className="mt-2 rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-foreground">
           {azione === "revoca" ? (
             <p>
-              Revocare il link di <b>{c.nome}</b>? Smette di valere subito: chi lo ha non riceve più il calendario.
+              Revocare il link di <b>{c.nome}</b>? Smette di funzionare subito.
             </p>
           ) : (
             <p>
-              Cambiare l&apos;indirizzo del link di <b>{c.nome}</b>? Il vecchio smette di valere subito, e a <b>{c.nome}</b> va mandato il nuovo.
+              Cambiare l&apos;indirizzo del link di <b>{c.nome}</b>? Il vecchio smette di funzionare subito.
             </p>
           )}
           <div className="mt-2 flex gap-2">
@@ -406,7 +362,7 @@ function RigaLink({ c, ora, gruppi, evidenziato, onCambiato }: { c: Condivisione
               onClick={() =>
                 void (azione === "revoca"
                   ? esegui(() => api("revoke_condivisione", c.id), "")
-                  : esegui(() => api("rotate_condivisione", c.id), "Indirizzo cambiato: manda il nuovo link a " + c.nome + "."))
+                  : esegui(() => api("rotate_condivisione", c.id), "Indirizzo cambiato."))
               }
             >
               {azione === "revoca" ? "Revoca" : "Cambia indirizzo"}

@@ -182,8 +182,8 @@ describe("sincronizzazione", () => {
     expect(etichettaSync(t, t + 3 * 3600_000, 0)).toBe("Sincronizzato 3 h fa");
   });
   it("i dati vecchi", () => {
-    expect(testoDatiVecchi("2026-10-11T07:23:02", "Il server non risponde")).toBe("Il server non risponde — questi sono i dati salvati delle 07:23. Aggiorno da solo…");
-    expect(testoDatiVecchi(null, null)).toBe("Il server dei calendari non risponde — aggiorno da solo appena è pronto…");
+    expect(testoDatiVecchi("2026-10-11T07:23:02", "Il server non risponde")).toBe("Il server non risponde. Dati aggiornati alle 07:23.");
+    expect(testoDatiVecchi(null, null)).toBe("Il server dei calendari non risponde.");
   });
 });
 

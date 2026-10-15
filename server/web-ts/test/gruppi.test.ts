@@ -20,7 +20,7 @@ describe("aggiungiGruppo", () => {
     ["", "Scrivi un nome per il gruppo."],
     ["   ", "Scrivi un nome per il gruppo."],
     ["ANTONIO", "Esiste già un gruppo con questo nome."],
-    ["x".repeat(41), "Il nome può avere al massimo 40 caratteri."],
+    ["x".repeat(41), "Massimo 40 caratteri."],
   ])("rifiuta %j", (nome, errore) => expect(aggiungiGruppo({ antonio: [] }, nome)).toEqual({ errore }));
 });
 

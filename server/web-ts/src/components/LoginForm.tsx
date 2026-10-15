@@ -16,9 +16,9 @@ type Passo = "password" | "codice" | "recupero";
 
 /** Il testo per un codice rifiutato. `ricomincia`: la sfida è chiusa (scaduta o troppi tentativi), si rientra dalla password. */
 function erroreCodice(e: { status?: number; code?: string }, recupero: boolean): { testo: string; ricomincia: boolean } {
-  if (e.code === "ACCOUNT_TEMPORARILY_LOCKED") return { testo: "Troppi tentativi falliti. Riprova tra 15 minuti.", ricomincia: false };
-  if (e.status === 429) return { testo: "Troppe richieste ravvicinate, riprova tra qualche secondo", ricomincia: false };
-  if (e.code === "INVALID_TWO_FACTOR_COOKIE" || e.code === "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE") return { testo: "Accesso scaduto: rientra con la password", ricomincia: true };
+  if (e.code === "ACCOUNT_TEMPORARILY_LOCKED") return { testo: "Troppi tentativi, riprova tra 15 minuti", ricomincia: false };
+  if (e.status === 429) return { testo: "Troppe richieste, riprova tra poco", ricomincia: false };
+  if (e.code === "INVALID_TWO_FACTOR_COOKIE" || e.code === "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE") return { testo: "Accesso scaduto, rientra con la password", ricomincia: true };
   return { testo: recupero ? "Codice di recupero errato" : "Codice errato", ricomincia: false };
 }
 
@@ -41,7 +41,7 @@ export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa
     const { data, error } = await authClient.signIn.email({ email: email.trim(), password, rememberMe: true });
     setBusy(false);
     if (error) {
-      setError(error.status === 429 ? error.message || "Troppi tentativi, riprova fra qualche minuto" : "Email o password errate");
+      setError(error.status === 429 ? error.message || "Troppi tentativi, riprova tra qualche minuto" : "Email o password errate");
       return;
     }
     // password giusta ma manca il codice: il server non ha dato nessuna sessione
@@ -83,7 +83,7 @@ export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa
     const { error } = await authClient.signIn.passkey();
     setBusy(false);
     if (error) {
-      setError(error.status === 401 ? "Passkey non riconosciuta: usa email e password" : "Accesso con passkey annullato o non riuscito: puoi usare email e password");
+      setError(error.status === 401 ? "Passkey non riconosciuta" : "Accesso con passkey non riuscito");
       return;
     }
     window.location.href = next;
@@ -98,9 +98,7 @@ export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa
         <CardHeader className="justify-items-center gap-2 text-center">
           <img src="/icon.png" alt="" width={64} height={64} className="mb-2 size-16" />
           <CardTitle className="text-xl">Accedi a OE Copilot</CardTitle>
-          <CardDescription>
-            {passo === "codice" ? "Scrivi il codice dell'app di autenticazione." : passo === "recupero" ? "Scrivi uno dei codici di recupero." : "Il calendario unico delle tue caselle."}
-          </CardDescription>
+          {inCodice && <CardDescription>{passo === "codice" ? "Scrivi il codice dell'app di autenticazione." : "Scrivi uno dei codici di recupero."}</CardDescription>}
         </CardHeader>
         <CardContent>
           <form onSubmit={inCodice ? verificaCodice : submit}>

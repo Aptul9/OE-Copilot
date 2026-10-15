@@ -25,7 +25,7 @@ export function creaApi(fetchImpl: Fetch = (...a) => fetch(...a), aSessioneFinit
     const dati = await r.json().catch(() => ({}));
     if (r.status === 401) {
       aSessioneFinita();
-      throw new ApiError("sessione scaduta", 401);
+      throw new ApiError("Sessione scaduta", 401);
     }
     if (!r.ok) throw new ApiError((dati && dati.error) || `HTTP ${r.status}`, r.status);
     return dati as Metodi[M][1];

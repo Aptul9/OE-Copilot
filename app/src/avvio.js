@@ -35,16 +35,12 @@
     inCorso = true;
     clearTimeout(timer);
     const host = new URL(origine).host;
-    mostra("Connessione a OE Copilot…", host, false);
+    mostra("Connessione…", host, false);
     try {
       // risposta opaca (no-cors): basta sapere che il server risponde, la pagina vera la carica poi la finestra
       await fetch(origine + "/login", { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(ATTESA_MS) });
     } catch {
-      mostra(
-        "OE Copilot non è raggiungibile.",
-        `Controlla la connessione di rete o la VPN. Nuovo tentativo tra ${NUOVO_TENTATIVO_MS / 1000} secondi. (${host})`,
-        true,
-      );
+      mostra("Server non raggiungibile.", `${host}. Riprovo tra ${NUOVO_TENTATIVO_MS / 1000} secondi.`, true);
       timer = setTimeout(prova, NUOVO_TENTATIVO_MS);
       inCorso = false;
       return;
@@ -53,7 +49,7 @@
   }
 
   if (nonConfigurato()) {
-    mostra("L'indirizzo di OE Copilot non è impostato.", "Ricostruire l'app con la variabile OE_URL (vedi app/README.md).", true);
+    mostra("Indirizzo del server mancante.", "Ricostruisci l'app con OE_URL.", true);
     riprova.hidden = true;
     rotella.hidden = true;
     return;

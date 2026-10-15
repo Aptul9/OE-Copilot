@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "configura": "node scripts/configura.mjs",
-    "build": "node scripts/configura.mjs --release && tauri build --config src-tauri/tauri.conf.local.json",
+    "build": "node scripts/configura.mjs --release && tauri build --no-bundle --config src-tauri/tauri.conf.local.json",
     "android:build": "node scripts/configura.mjs --release --android && tauri android build --ci --apk --split-per-abi --target aarch64 --target x86_64 --config src-tauri/tauri.conf.local.json",
     "android:prova": "node scripts/configura.mjs --android --emulatore && tauri android build --ci --debug --apk --split-per-abi --target x86_64 --config src-tauri/tauri.conf.local.json",
     "test": "node --test \"test/*.test.mjs\"",

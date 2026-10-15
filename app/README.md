@@ -3,10 +3,10 @@
 Client dell'interfaccia di OE Copilot: una finestra (Tauri v2, WebView2 su Windows) che mostra il sito vero, con la stessa sessione e gli stessi cookie del browser. Esiste per Windows e per Android (sezione *Android*, più sotto). Non contiene l'interfaccia: gli aggiornamenti del sito arrivano con il deploy del server, l'app cambia solo quando serve una funzione nativa.
 
 Cosa aggiunge a una scheda del browser:
-- **Icona nell'area di notifica** con il menu *Apri*, *Notifiche*, *Avvia con Windows*, *Esci*. Chiudere la finestra la nasconde, l'app resta attiva; *Esci* la chiude davvero.
+- **Icona nell'area di notifica** con il menu *Apri*, *Notifiche*, *Avviso a comparsa*, *Avviso anonimo*, *Avvia con Windows*, *Esci*. Chiudere la finestra la nasconde, l'app resta attiva; *Esci* la chiude davvero.
 - **Un solo processo.** Un secondo avvio riporta davanti la finestra già aperta.
 - **Avvio con Windows**, spento di partenza, si accende dal menu. Parte nell'area di notifica (argomento `--nascosto`).
-- **Notifiche di Windows per le riunioni in arrivo** (sotto).
+- **Notifiche di Windows per le riunioni in arrivo** e **avviso a comparsa**, una finestra dell'app come quella di Teams che si vede anche con *Non disturbare* (sotto).
 - **Lista degli indirizzi ammessi**: nella finestra si carica solo il sito. Ogni altro link http o https si apre nel browser predefinito, gli altri schemi (`file:`, `javascript:`, `data:`...) sono rifiutati. Le pagine del sito aperte con `window.open` (il pulsante *Telefono*) si aprono in una finestra dell'app senza comandi né notifiche.
 - **I link di Teams** (`teams.microsoft.com/l/meetup-join/...`, `teams.microsoft.com/meet/...`, `teams.live.com`) si aprono con lo schema `msteams:` (`msteams://teams.microsoft.com/l/...`, la forma indicata dalla documentazione di Teams), quindi nell'app Teams; se lo schema non è registrato si ripiega sul browser.
 - **Pagina di avvio**: prima di caricare il sito l'app controlla che risponda. Se non risponde mostra un messaggio in italiano e riprova ogni 5 secondi, poi porta la finestra sul sito da sola. Se il sito cade mentre si usa l'app e una navigazione fallisce, la finestra torna a questa pagina invece di restare sulla pagina di errore del browser.
@@ -62,15 +62,26 @@ Uno script incluso nell'app (`src-tauri/src/inizializzazione.js`) gira nella fin
 - per ogni riunione con orario che inizia entro 10 minuti manda una notifica di Windows con titolo, ora (di Roma) e luogo, senza il link per entrare; il click sulla notifica porta davanti la finestra;
 - ogni avviso parte una volta sola per riunione e anticipo (l'elenco sta in `localStorage` e si ripulisce da solo); le giornate intere non avvisano mai; con i dati in cache perché l'agente non risponde non parte niente;
 - senza sessione (risposta 401 o pagina di accesso) lo script smette di chiedere e riprova ogni 5 minuti; dopo un errore di rete allunga l'attesa fino a 5 minuti;
-- l'interruttore *Notifiche* del menu li ferma subito e la scelta resta salvata;
+- l'interruttore *Notifiche* del menu le ferma subito e la scelta resta salvata (in `impostazioni.json`, come gli altri due interruttori qui sotto); con *Notifiche* e *Avviso a comparsa* spenti lo script non chiede niente al sito;
 - se il server espone `get_promemoria`, gli anticipi vengono da `minuti` (ogni 30 minuti si rilegge; si scelgono in *Impostazioni*, *Promemoria*, a caselle: 1 ora, 30, 15, 10, 5 minuti, *All'inizio*, più un campo per gli altri valori); `attivo: false` riguarda solo i promemoria del server, l'app avvisa comunque; senza quel metodo l'anticipo è la costante `MINUTI_PREAVVISO` (10) in testa allo script;
 - `0` è *All'inizio*: l'avviso parte nell'ultimo minuto e mezzo prima dell'inizio (`FINESTRA_INIZIO_MS`, più lunga del giro da 60 secondi, così non ne salta nessuno) e il titolo dice `Adesso` se mancano meno di 30 secondi;
 - il suono viene da `suono` di `get_promemoria` (stessa scelta, stesso rilievo ogni 30 minuti): un nome di suono di sistema di Windows (`Reminder`, `Mail`, `IM`, `SMS`, `Alarm` e `Call` da 1 a 10) che l'app passa alla notifica; `Default`, un valore assente o strano lasciano il suono predefinito. Un file audio proprio non è possibile con una notifica di Windows;
 - nei log non finisce niente che riguardi gli eventi.
 
+### Avviso a comparsa (solo sul PC)
+
+Con *Non disturbare* (acceso a mano o dalle regole automatiche di Windows, per esempio con un'app a schermo intero) le notifiche restano nel centro notifiche senza banner. L'avviso a comparsa è invece una finestra dell'app (`src-tauri/src/comparsa.rs`, pagina `src/avviso.html`), quindi si vede comunque:
+- parte con la stessa regola della notifica (stessi anticipi, una volta sola per riunione); i due interruttori del menu sono indipendenti, *Avviso a comparsa* acceso e *Notifiche* spento dà solo l'avviso. Di partenza è acceso;
+- una finestra sola, chiara o scura come il tema di Windows, con la testata *In arrivo* e una riga piccola per riunione: la barretta nel colore dell'azienda, il logo, l'ora d'inizio e il titolo su una riga (intero passandoci sopra col mouse). Le riunioni dello stesso giro arrivano insieme, quelle dei giri dopo si aggiungono, dalla più vicina in alto (al massimo 6 righe, la settima non compare); una riunione già sullo schermo non aggiunge una seconda riga;
+- il logo è quello di `interfaccia.loghi` di `get_personalizzazione`, letto dallo script con il cookie della pagina e passato come `data:`, perché la finestra dell'avviso non ha la sessione del sito; senza logo la sigla (`interfaccia.sigle`) o le iniziali nel colore dell'azienda, come nel calendario;
+- *Avviso anonimo* (spento di partenza) mostra solo logo e ora, in una finestra più stretta: il titolo lo toglie l'app prima di passarlo alla pagina dell'avviso, che non lo riceve mai. Vale solo per l'avviso, la notifica di Windows resta com'è;
+- sta al centro del lato destro dello schermo principale, lontano dagli avvisi di Windows e di Teams in basso a destra; sempre in primo piano, senza prendere il fuoco e senza pulsante nella barra delle applicazioni;
+- un clic sull'avviso porta davanti la finestra principale e lo chiude, la X della testata lo chiude con tutte le righe; una riga che nessuno ha chiuso se ne va da sola 5 minuti dopo l'inizio della sua riunione (`DOPO_INIZIO_MS`), e senza righe la finestra si chiude;
+- niente suono: il suono resta quello della notifica di Windows.
+
 ## Sicurezza
 
-- I comandi nativi (IPC) sono concessi solo alla pagina del sito (`remote.urls` e `"local": false`, finestra `main`) con un elenco esplicito: `notifiche_attive` e tre permessi del plugin notifiche. Niente `core:default`. La pagina di avvio e le finestre in più non hanno nessun comando.
+- I comandi nativi (IPC) sono concessi solo alla pagina del sito (`remote.urls` e `"local": false`, finestra `main`) con un elenco esplicito: `interruttori`, `mostra_avviso` e tre permessi del plugin notifiche. Niente `core:default`. La pagina di avvio, le finestre in più e quelle dell'avviso a comparsa non hanno nessun comando: la pagina dell'avviso chiede con una navigazione a `/apri` o `/chiudi`, che l'app intercetta e annulla, e l'app la ridisegna con `eval`. I testi dell'avviso vanno nella pagina come testo (`textContent`), il logo solo se è un'immagine `data:`.
 - Il plugin di apertura dei link non inietta il suo script (`open_js_links_on_click` spento): i link li gestisce la lista degli indirizzi ammessi.
 - La finestra non ha strumenti per sviluppatori nelle build di rilascio.
 
@@ -132,14 +143,14 @@ Solo la variante di prova espone il socket di DevTools: `adb forward tcp:<porta>
 - **Apri in Outlook** del vecchio client: non si può riprodurre, gli id degli eventi del sito non sono id di Outlook.
 - **Aggiornamento automatico**: serve un indirizzo pubblico per i file, il repository è privato. Si reinstalla a mano.
 - **Firma del codice** dell'installer.
-- **Pulsanti nelle notifiche** (*Partecipa*) e avviso in stile Teams (finestra propria, sempre in primo piano): non ci sono. La notifica è quella normale del sistema, con titolo, ora e luogo.
+- **Pulsanti nelle notifiche e nell'avviso a comparsa** (*Partecipa*): non ci sono. Un clic porta solo davanti la finestra dell'app.
 - **Android**: provata solo su un emulatore, mai su un telefono vero; senza notifiche del web né passkey (sezione sopra).
 - **Uso offline**: se il sito non risponde c'è solo il messaggio della pagina di avvio, nessuna copia del calendario.
 
 ## Prove
 
-- `npm test` (in `app/`, solo Node) prova lo script delle notifiche con una pagina finta: ora di Roma, un avviso solo per riunione, esclusioni, sessione finita, attese dopo gli errori.
-- `cargo test` (in `src-tauri/`) prova la lista degli indirizzi ammessi e il passaggio dei link di Teams a `msteams:`. Gira sul PC: la regola che su Android rifiuta `about:blank` si prova solo sull'emulatore.
+- `npm test` (in `app/`, solo Node) prova lo script delle notifiche con una pagina finta: ora di Roma, un avviso solo per riunione, esclusioni, sessione finita, attese dopo gli errori, i dati dell'avviso a comparsa (logo come `data:`, sigla, interruttori indipendenti).
+- `cargo test` (in `src-tauri/`) prova la lista degli indirizzi ammessi, il passaggio dei link di Teams a `msteams:`, i dati dell'avviso a comparsa (anonimo senza titolo, solo immagini `data:`) e le sue righe (una per riunione, in ordine, al massimo 6). Gira sul PC: la regola che su Android rifiuta `about:blank` si prova solo sull'emulatore.
 - Android: la variante di prova contro un gateway locale (con un agente dei dati inventati) ha provato accesso, calendario, permesso e avviso di notifica (uno solo, senza ripetizioni dopo il ricaricamento e il riavvio), sessione che resta dopo la chiusura forzata, uscita che ferma i giri, link esterni, `file:`, `data:` e `about:blank`, sito non raggiungibile e ritorno da solo, tasto indietro. L'APK di rilascio è provato in installazione, avvio sul sito vero (schermata di accesso, niente digitato), aggiornamento con la stessa chiave e rifiuto con un'altra.
 - Il resto (finestra, accesso, notifiche, icona, istanza unica, link) si prova con una build `--features prova` contro un gateway locale: la feature aggiunge solo un comando che legge e gira gli interruttori del menu e, con la variabile `OE_PROVA_APRI`, fa scrivere su un file gli indirizzi destinati al sistema invece di aprirli. Non fa parte di nessuna build di rilascio. Una build di prova deve avere un altro nome e un altro identificativo, così non tocca dati, istanza unica, avvio con Windows e collegamenti di un'installazione vera: `node scripts/configura.mjs --prova`, poi `npx tauri build --no-bundle --features prova --config src-tauri/tauri.conf.local.json --config prova.json`, con in `prova.json` `{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }` (la seconda `--config` si fonde sopra la prima).
 - Banner e clic sulle notifiche, uso dell'icona e consegna reale dei link al browser si provano con la stessa build senza la feature, installata con l'installer (`/S /D=<cartella>`, nome e identificativo di prova): Windows mostra i banner solo per un'app installata e la feature cambierebbe il percorso dei link. Il banner si guarda con una foto del solo angolo dei toast, il clic sul banner con un clic verificato un attimo prima, l'icona con UI Automation (Invoke sul pulsante; il menu si apre con Maiusc+F10 sul pulsante selezionato e le sue voci si scorrono con le frecce). Il browser predefinito per https è quello di `HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoiceLatest\ProgId`: su Windows 11 recente la vecchia chiave `UserChoice` può indicarne un altro. Il passaggio di un link a Teams con `msteams:` non è provato con un Teams vero (su quel PC era aperto): la traduzione la provano `cargo test` e la build di prova.

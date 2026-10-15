@@ -1,7 +1,7 @@
 // Script di inizializzazione della finestra principale. Gira in ogni pagina che la finestra carica, ma lavora solo
 // sull'origine del sito (window.__OE_ORIGINE__ la mette l'app). Ogni minuto chiede get_events con la stessa API della
 // pagina (stesso sito, cookie di sessione) e per le riunioni che iniziano entro il preavviso manda una notifica nativa
-// con il plugin notification. Nei log non finisce niente che riguardi gli eventi.
+// con il plugin notification e, sul PC, l'avviso a comparsa dell'app. Nei log non finisce niente che riguardi gli eventi.
 (function () {
   "use strict";
 
@@ -158,6 +158,84 @@
     }
   }
 
+  // Le sigle e i loghi delle aziende (get_personalizzazione), riletti ogni 30 minuti come gli anticipi
+  let interfaccia = null;
+  let interfacciaAl = 0;
+
+  async function leggiInterfaccia() {
+    if (!interfaccia || Date.now() - interfacciaAl >= PREAVVISO_AGGIORNATO_OGNI_MS) {
+      interfacciaAl = Date.now();
+      try {
+        const r = await chiama("get_personalizzazione", []);
+        if (r.ok && !sessioneFinita(r)) interfaccia = ((await r.json()) || {}).interfaccia || {};
+      } catch {
+        // si tiene quella che c'è
+      }
+    }
+    return interfaccia || {};
+  }
+
+  // Un file dei loghi di questo sito ("logos/roar.png?v=..."), mai un indirizzo di fuori
+  function sulSito(valore) {
+    try {
+      const u = new URL(valore, `${origine}/`);
+      return u.origin === origine ? u.pathname + u.search : "";
+    } catch {
+      return "";
+    }
+  }
+
+  // I loghi letti, come data: (la finestra dell'avviso non ha il cookie del sito): uno per indirizzo, che cambia quando cambia il file
+  const loghiLetti = new Map();
+
+  function leggiLogo(indirizzo) {
+    if (!loghiLetti.has(indirizzo)) {
+      const lettura = fetch(indirizzo, { credentials: "same-origin" })
+        .then((r) => (r.ok ? r.blob() : null))
+        .then(
+          (b) =>
+            b &&
+            new Promise((fatto) => {
+              const f = new FileReader();
+              f.onload = () => fatto(f.result);
+              f.onerror = () => fatto(null);
+              f.readAsDataURL(b);
+            }),
+        )
+        .catch(() => null);
+      loghiLetti.set(indirizzo, lettura);
+      // una lettura fallita si ritenta all'avviso dopo
+      lettura.then((logo) => logo || loghiLetti.delete(indirizzo));
+    }
+    return loghiLetti.get(indirizzo);
+  }
+
+  // Come la pagina (iniziali in lib/oe/logic.ts): "Alfa" -> "AL", "Beta Servizi" -> "BS"
+  function iniziali(nome) {
+    const s = nome.split("·")[0].trim().split("@")[0];
+    const parole = s.split(/[\s._\-+]/).filter(Boolean);
+    return (parole.length >= 2 ? parole[0][0] + parole[1][0] : s.slice(0, 2)).toUpperCase();
+  }
+
+  // L'avviso a comparsa del PC: ora, titolo e logo dell'azienda (come mappaLoghi in lib/oe/logic.ts, gli Eventi personali hanno quello
+  // del gateway), o la sua sigla nel suo colore come nel calendario. Se l'avviso è anonimo il titolo lo toglie l'app
+  async function avviso(ev, inizio) {
+    const azienda = String(ev.alias || ev.account || "");
+    const i = await leggiInterfaccia();
+    const loghi = i.loghi || {};
+    const sigle = i.sigle || {};
+    const indirizzo = (typeof loghi[azienda] === "string" && loghi[azienda] && sulSito(loghi[azienda])) || (azienda === "Eventi personali" ? "/logos/personale.png" : "");
+    return {
+      chiave: `${ev.id}|${ev.start}`,
+      inizio,
+      ora: formatoOra.format(new Date(inizio)),
+      titolo: String(ev.title || "(senza titolo)"),
+      logo: indirizzo ? await leggiLogo(indirizzo) : null,
+      sigla: String(sigle[azienda] || iniziali(azienda)),
+      colore: String(ev.color || ""),
+    };
+  }
+
   function testo(ev, inizio, ora) {
     const minuti = Math.round((inizio - ora) / 60_000);
     const righe = [`Alle ${formatoOra.format(new Date(inizio))}`];
@@ -168,7 +246,7 @@
     return { title: `${quando} · ${String(ev.title || "(senza titolo)").slice(0, 120)}`, body: righe.join("\n"), ...(suono ? { sound: suono } : {}) };
   }
 
-  async function controlla() {
+  async function controlla(notifiche, comparsa) {
     let ora = Date.now();
     const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS))]);
     if (sessioneFinita(r)) return "non-autenticato";
@@ -182,6 +260,7 @@
     ora = Date.now();
     await aggiornaPreavviso();
     const inviate = leggiInviate(ora);
+    const avvisi = [];
     for (const ev of Array.isArray(dati && dati.events) ? dati.events : []) {
       if (!ev || ev.allDay || ev.nascosto || !ev.start) continue;
       const inizio = istante(ev.start);
@@ -190,11 +269,14 @@
       const chiavi = raggiunti.map((m) => `${ev.id}|${ev.start}|${m}`);
       if (!chiavi.length || chiavi.every((c) => c in inviate)) continue;
       // una notifica sola per riunione, anche se più anticipi sono già passati (app appena avviata)
-      await invoca("plugin:notification|notify", { options: testo(ev, inizio, ora) });
+      if (notifiche) await invoca("plugin:notification|notify", { options: testo(ev, inizio, ora) });
       for (const c of chiavi) inviate[c] = inizio;
       salvaInviate(inviate);
       stato.inviate += 1;
+      if (comparsa) avvisi.push(await avviso(ev, inizio));
     }
+    // le riunioni del giro vanno insieme nello stesso avviso; dopo averle segnate, così un avviso che non riesce non fa ripetere le notifiche
+    if (avvisi.length) await invoca("mostra_avviso", { avvisi }).catch(() => {});
     return "ok";
   }
 
@@ -202,8 +284,9 @@
     let prossimo = PERIODO_MS;
     stato.giri += 1;
     try {
-      if (await invoca("notifiche_attive")) {
-        stato.esito = await controlla();
+      const { notifiche, comparsa } = await invoca("interruttori");
+      if (notifiche || comparsa) {
+        stato.esito = await controlla(notifiche, comparsa);
         if (stato.esito === "non-autenticato") prossimo = NON_ACCESSO_MS;
       } else {
         stato.esito = "spente";

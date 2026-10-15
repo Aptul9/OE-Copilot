@@ -1,0 +1,197 @@
+/* scuro o chiaro come Windows (l'app dà alla finestra il tema della principale); --sfondo è SFONDO_SCURO e SFONDO_CHIARO in comparsa.rs */
+:root {
+  color-scheme: light dark;
+  --sfondo: #1c1c22;
+  --cima: #24242c;
+  --testo: #f4f4f6;
+  --tenue: #a9a9b6;
+  --spento: #7c7c89;
+  --linea: rgb(255 255 255 / 0.07);
+  --sopra: rgb(255 255 255 / 0.05);
+  --accento: #6d8bff;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --sfondo: #f6f6f9;
+    --cima: #ffffff;
+    --testo: #17171d;
+    --tenue: #5a5a68;
+    --spento: #8b8b97;
+    --linea: rgb(0 0 0 / 0.07);
+    --sopra: rgb(0 0 0 / 0.04);
+    --accento: #4f6bff;
+  }
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: linear-gradient(160deg, var(--cima), var(--sfondo) 60%);
+  color: var(--testo);
+  cursor: pointer;
+  user-select: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* la testata è alta 30 px e ogni riga 46 px, come TESTATA e RIGA in comparsa.rs */
+.testata {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px 0 14px;
+}
+
+.punto {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8aa2ff, #3fd0ff);
+  animation: pulsa 1.8s ease-out infinite;
+}
+
+.etichetta {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--spento);
+}
+
+.chiudi {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--spento);
+  cursor: pointer;
+}
+
+.chiudi:hover {
+  background: var(--linea);
+  color: var(--testo);
+}
+
+.chiudi svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.riga {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 46px;
+  padding: 0 14px;
+  border-top: 1px solid var(--linea);
+}
+
+.riga:hover {
+  background: var(--sopra);
+}
+
+/* la barretta nel colore dell'azienda, come nel calendario */
+.riga::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--colore, var(--accento));
+}
+
+.riga.nuova {
+  animation: entra 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.icona {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* il logo su una tessera bianca, con un filo che la stacca anche dallo sfondo chiaro */
+.logo {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--linea);
+  object-fit: contain;
+}
+
+.sigla {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: var(--colore, #64748b);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ora {
+  flex: none;
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.titolo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--tenue);
+}
+
+@keyframes entra {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+
+@keyframes pulsa {
+  0% {
+    box-shadow: 0 0 0 0 rgb(109 139 255 / 0.55);
+  }
+
+  70%,
+  100% {
+    box-shadow: 0 0 0 6px rgb(109 139 255 / 0);
+  }
+}

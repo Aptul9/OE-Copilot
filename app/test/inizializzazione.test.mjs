@@ -19,10 +19,16 @@ function risposta(stato, corpo, { json = true, redirected = false } = {}) {
   };
 }
 
-/** Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, l'interruttore delle notifiche */
-function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted" } = {}) {
+/**
+ * Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, gli interruttori delle notifiche e dell'avviso a
+ * comparsa, i file dei loghi (indirizzo -> contenuto)
+ */
+function ambiente({ adesso, api = {}, notificheAttive = true, comparsa = false, avvisoRotto = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted" } = {}) {
   const timer = [];
   const notifiche = [];
+  // le righe dell'avviso a comparsa, e quante ne porta ogni chiamata
+  const avvisi = [];
+  const chiamateAvviso = [];
   const chiamate = [];
   const sistema = { permesso, esitoRichiesta, richieste: 0, controlli: 0 };
   let ora = adesso;
@@ -44,7 +50,19 @@ function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE,
       },
     },
     setTimeout: (f, ms) => timer.push({ f, ms }),
+    URL,
+    // come quello del browser, per i finti contenuti dei loghi qui sotto
+    FileReader: class {
+      readAsDataURL(b) {
+        this.result = `data:${b.type};base64,${Buffer.from(b.dati).toString("base64")}`;
+        queueMicrotask(() => this.onload());
+      }
+    },
     fetch: async (url, opzioni) => {
+      if (url.startsWith("/logos/")) {
+        chiamate.push(["logo", url]);
+        return url in loghi ? { ok: true, status: 200, blob: async () => ({ type: "image/png", dati: loghi[url] }) } : risposta(404, { error: "non trovato" });
+      }
       const metodo = url.replace("/api/", "");
       chiamate.push([metodo, JSON.parse(opzioni.body)]);
       const r = api[metodo];
@@ -58,7 +76,13 @@ function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE,
   sandbox.__OE_AVVIO__ = "http://tauri.localhost/index.html";
   sandbox.__TAURI_INTERNALS__ = {
     invoke: async (comando, argomenti) => {
-      if (comando === "notifiche_attive") return notificheAttive;
+      if (comando === "interruttori") return { notifiche: notificheAttive, comparsa };
+      if (comando === "mostra_avviso") {
+        if (avvisoRotto) throw new Error("finestra non creata");
+        avvisi.push(...JSON.parse(JSON.stringify(argomenti.avvisi)));
+        chiamateAvviso.push(argomenti.avvisi.length);
+        return null;
+      }
       if (comando === "plugin:notification|is_permission_granted") {
         sistema.controlli += 1;
         return sistema.permesso;
@@ -81,6 +105,8 @@ function ambiente({ adesso, api = {}, notificheAttive = true, origine = ORIGINE,
     sandbox,
     timer,
     notifiche,
+    avvisi,
+    chiamateAvviso,
     chiamate,
     memoria,
     sistema,
@@ -307,11 +333,57 @@ test("lanciato due volte nella stessa pagina (WebView di Android) lavora una vol
   assert.equal(a.notifiche.length, 1);
 });
 
-test("interruttore Notifiche spento: nessuna richiesta al sito", async () => {
+test("interruttori Notifiche e Avviso a comparsa spenti: nessuna richiesta al sito", async () => {
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), notificheAttive: false, api: { get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) } });
   assert.equal(await a.giro(), 60_000);
   assert.equal(a.chiamate.length, 0);
   assert.equal(a.stato().esito, "spente");
+});
+
+test("avviso a comparsa: ora, titolo, logo dell'azienda come data: e sigla, una volta sola, accanto alla notifica", async () => {
+  const api = {
+    get_events: json([evento("e1", "Riunione A", "2026-10-12T10:00:00", { alias: "ROAR", account: "a@roarinc.com", color: "#2563eb" })]),
+    get_personalizzazione: risposta(200, { interfaccia: { loghi: { ROAR: "logos/roar.png?v=7" } } }),
+  };
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, comparsa: true, loghi: { "/logos/roar.png?v=7": "PNG" } });
+  await a.giro();
+  assert.equal(a.notifiche.length, 1);
+  assert.deepEqual(a.avvisi, [
+    { chiave: "e1|2026-10-12T10:00:00", inizio: Date.UTC(2026, 9, 12, 8, 0), ora: "10:00", titolo: "Riunione A", logo: "data:image/png;base64,UE5H", sigla: "RO", colore: "#2563eb" },
+  ]);
+  await a.giro();
+  assert.equal(a.avvisi.length, 1);
+  assert.deepEqual(a.chiamate.filter(([m]) => m === "logo" || m === "get_personalizzazione").map(([m]) => m), ["get_personalizzazione", "logo"]);
+});
+
+test("avviso a comparsa senza logo: la sigla scelta o le iniziali; un logo fuori dal sito non si legge; gli Eventi personali hanno quello del gateway; le riunioni dello stesso giro vanno insieme", async () => {
+  const api = {
+    get_events: json([
+      evento("e1", "Riunione B", "2026-10-12T10:00:00", { alias: "Beta Servizi" }),
+      evento("e2", "Riunione C", "2026-10-12T10:00:00", { alias: "Gamma" }),
+      evento("e3", "Dentista", "2026-10-12T10:00:00", { alias: "Eventi personali" }),
+    ]),
+    get_personalizzazione: risposta(200, { interfaccia: { loghi: { Gamma: "https://altro.example/x.png" }, sigle: { Gamma: "GM" } } }),
+  };
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, comparsa: true, loghi: { "/logos/personale.png": "IO" } });
+  await a.giro();
+  assert.deepEqual(a.avvisi.map((v) => [v.sigla, v.logo]), [["BS", null], ["GM", null], ["EP", "data:image/png;base64,SU8="]]);
+  assert.deepEqual(a.chiamate.filter(([m]) => m === "logo").map(([, u]) => u), ["/logos/personale.png"]);
+  assert.deepEqual(a.chiamateAvviso, [3]);
+});
+
+test("solo l'avviso a comparsa (Notifiche spento): nessuna notifica; un avviso che non riesce non fa ripetere la notifica", async () => {
+  const api = { get_events: json([evento("e1", "Riunione L", "2026-10-12T10:00:00")]) };
+  const solo = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, notificheAttive: false, comparsa: true });
+  await solo.giro();
+  assert.equal(solo.notifiche.length, 0);
+  assert.equal(solo.avvisi.length, 1);
+  assert.equal(solo.stato().esito, "ok");
+  const rotto = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, comparsa: true, avvisoRotto: true });
+  await rotto.giro();
+  await rotto.giro();
+  assert.equal(rotto.notifiche.length, 1);
+  assert.equal(rotto.stato().esito, "ok");
 });
 
 test("la richiesta è la stessa della pagina: POST get_events con inizio e fine ISO a 24 ore", async () => {

@@ -10,7 +10,7 @@
     "withGlobalTauri": false,
     "windows": [],
     "security": {
-      "csp": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://oe.example.com",
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src https://oe.example.com",
       "capabilities": [
         {
           "identifier": "remoto-oe",
@@ -21,7 +21,8 @@
             "urls": ["https://oe.example.com/*"]
           },
           "permissions": [
-            "allow-notifiche-attive",
+            "allow-interruttori",
+            "allow-mostra-avviso",
             "notification:allow-notify",
             "notification:allow-is-permission-granted",
             "notification:allow-request-permission"

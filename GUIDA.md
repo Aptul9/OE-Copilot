@@ -293,7 +293,7 @@ Le app avvisano dallo script della pagina, finché sono in esecuzione (`app/READ
    ```bash
    node -e "const c=require('crypto');const j=c.generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({format:'jwk'});console.log('VAPID_PUBLIC_KEY='+Buffer.concat([Buffer.from([4]),Buffer.from(j.x,'base64url'),Buffer.from(j.y,'base64url')]).toString('base64url'));console.log('VAPID_PRIVATE_KEY='+j.d)"
    ```
-Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), poi un deploy con la Action `Server`. Senza i tre valori l'interruttore risulta non configurato. La chiave privata e gli indirizzi delle iscrizioni (tabella `push_iscrizioni`, al più 20 browser) sono segreti e non finiscono nei log. Prove: `cd server/web-ts && npx vitest run test/promemoria`.
+Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), poi un deploy con la Action `Server`. Senza i tre valori, o in un browser senza notifiche, l'interruttore non compare. La chiave privata e gli indirizzi delle iscrizioni (tabella `push_iscrizioni`, al più 20 browser) sono segreti e non finiscono nei log. Prove: `cd server/web-ts && npx vitest run test/promemoria`.
 
 ### 4.10 Condividere il calendario con un altro OE Copilot
 

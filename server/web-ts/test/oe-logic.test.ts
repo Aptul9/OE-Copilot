@@ -6,6 +6,7 @@ import {
   coloriDinamici,
   corrisponde,
   dentroLaCache,
+  dovePagina,
   eATreGiorni,
   etichettaSync,
   eventiPerGriglia,
@@ -184,6 +185,25 @@ describe("sincronizzazione", () => {
   it("i dati vecchi", () => {
     expect(testoDatiVecchi("2026-10-11T07:23:02", "Il server non risponde")).toBe("Il server non risponde. Dati aggiornati alle 07:23.");
     expect(testoDatiVecchi(null, null)).toBe("Il server dei calendari non risponde.");
+  });
+});
+
+describe("dove si apre la pagina", () => {
+  const WEBVIEW2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0";
+  const WEBVIEW_ANDROID = "Mozilla/5.0 (Linux; Android 13; Pixel 7 Build/TQ3A.230901.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36";
+  const CHROME_ANDROID = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36";
+  const SAFARI_IPHONE = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1";
+  const tauri = { __TAURI_INTERNALS__: {}, __OE_ORIGINE__: "https://oe.example.com" };
+
+  it("nelle app: Windows e Android, mai browser, anche con uno solo dei due segni dell'app", () => {
+    expect(dovePagina(tauri, WEBVIEW2)).toBe("windows");
+    expect(dovePagina(tauri, WEBVIEW_ANDROID)).toBe("android");
+    expect(dovePagina({ __TAURI_INTERNALS__: {} }, WEBVIEW_ANDROID)).toBe("android");
+    expect(dovePagina({ __OE_ORIGINE__: "https://oe.example.com" }, WEBVIEW2)).toBe("windows");
+  });
+
+  it("in un browser, anche sul telefono", () => {
+    for (const ua of [WEBVIEW2, CHROME_ANDROID, SAFARI_IPHONE, ""]) expect(dovePagina({}, ua), ua).toBe("browser");
   });
 });
 

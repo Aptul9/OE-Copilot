@@ -383,6 +383,16 @@ export function testoDatiVecchi(quando: string | null | undefined, motivo: strin
   return ora ? `${cosa}. Dati aggiornati alle ${ora}.` : `${cosa}.`;
 }
 
+// ---- Dove si apre la pagina -----------------------------------------------------
+/**
+ * Nell'app per Windows, nell'app per Android o in un browser. Le app mettono in window `__TAURI_INTERNALS__` (Tauri) e
+ * `__OE_ORIGINE__` (il loro script); un browser nessuno dei due. Serve a non mostrare mai nelle app le notifiche del browser.
+ */
+export function dovePagina(w: object, userAgent: string): "windows" | "android" | "browser" {
+  if (!("__TAURI_INTERNALS__" in w) && !("__OE_ORIGINE__" in w)) return "browser";
+  return /Android/i.test(userAgent) ? "android" : "windows";
+}
+
 // ---- Vista a 3 giorni: lettura larga + memoria ------------------------------------
 export const PRIMA_GIORNI = 7;
 export const DOPO_GIORNI = 14;

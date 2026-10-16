@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/oe/api";
+import { dovePagina } from "@/lib/oe/logic";
 import type { ContenutoPromemoria, ImpostazioniPromemoria as Impostazioni, PromemoriaRisposta } from "@/lib/oe/types";
 
 const CONTENUTI: { valore: ContenutoPromemoria; testo: string }[] = [
@@ -38,14 +39,13 @@ const messaggio = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const quando = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)} ${iso.slice(11, 16)}`;
 const conNotifiche = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 
-// Dove si apre la pagina: le app (Windows e Android) hanno window.__TAURI_INTERNALS__, un browser no
-type Dove = "windows" | "android" | "browser";
-const dove = (): Dove => (!("__TAURI_INTERNALS__" in window) ? "browser" : /Android/i.test(navigator.userAgent) ? "android" : "windows");
+type Dove = ReturnType<typeof dovePagina>;
 
 /**
  * "Promemoria": quando avvisare, dove, cosa scrivere e il suono, in un posto solo. Si salva tutto sul server: l'app per Windows rilegge
  * le impostazioni a ogni giro (un minuto), il server a ogni suo giro. Nell'app per Windows si vedono notifica, avviso a comparsa e suono;
- * in un browser le sue notifiche (WebView2 non le ha); nell'app per Android le notifiche ci sono sempre.
+ * nell'app per Android niente (le notifiche ci sono sempre). Le notifiche del browser solo in un browser, e solo se funzionano: chiavi
+ * VAPID sul server e un browser che le ha.
  */
 export function ImpostazioniPromemoria() {
   const [dati, setDati] = useState<PromemoriaRisposta | null>(null);
@@ -69,7 +69,7 @@ export function ImpostazioniPromemoria() {
   }, []);
 
   useEffect(() => {
-    setQui(dove());
+    setQui(dovePagina(window, navigator.userAgent));
     void carica();
   }, [carica]);
 
@@ -175,6 +175,8 @@ export function ImpostazioniPromemoria() {
   const p = dati.promemoria;
   const push = dati.canali.find((c) => c.nome === "push");
   const chiave = push?.chiavi ? push.chiave_pubblica : null;
+  // un interruttore che non può funzionare non si mostra
+  const pushQui = qui === "browser" && !!chiave && conNotifiche();
 
   return (
     <section id="cfg-promemoria">
@@ -224,29 +226,18 @@ export function ImpostazioniPromemoria() {
             </label>
           </div>
         )}
-        {qui === "browser" && (
+        {pushQui && chiave && (
           <div className="flex flex-col gap-1" id="cfg-promemoria-dove">
             <span className="text-xs font-medium">Dove</span>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <label className="flex items-center gap-2">
-                <Switch
-                  id="cfg-promemoria-push"
-                  checked={!!questo}
-                  disabled={occupato || !chiave || !conNotifiche()}
-                  onCheckedChange={(v) => void (v && chiave ? attivaQuesto(chiave) : disattivaQuesto())}
-                />
+                <Switch id="cfg-promemoria-push" checked={!!questo} disabled={occupato} onCheckedChange={(v) => void (v ? attivaQuesto(chiave) : disattivaQuesto())} />
                 Notifiche del browser
               </label>
-              {!chiave ? (
-                <span className="text-xs text-muted-foreground">non configurate sul server</span>
-              ) : !conNotifiche() ? (
-                <span className="text-xs text-muted-foreground">non disponibili in questo browser</span>
-              ) : (
-                questo && (
-                  <Button id="btn-promemoria-prova" type="button" size="xs" variant="outline" onClick={() => void prova()}>
-                    Prova
-                  </Button>
-                )
+              {questo && (
+                <Button id="btn-promemoria-prova" type="button" size="xs" variant="outline" onClick={() => void prova()}>
+                  Prova
+                </Button>
               )}
             </div>
             {esitoPush && <span className="text-xs text-muted-foreground">{esitoPush}</span>}
@@ -287,7 +278,7 @@ export function ImpostazioniPromemoria() {
           </label>
         )}
 
-        {qui === "browser" && dati.ultimo_errore && (
+        {pushQui && dati.ultimo_errore && (
           <p id="promemoria-stato" className="text-xs text-muted-foreground">
             Ultimo errore: {dati.ultimo_errore}
             {dati.ultimo_errore_il && ` (${quando(dati.ultimo_errore_il)})`}

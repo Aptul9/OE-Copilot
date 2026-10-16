@@ -27,8 +27,11 @@ tauri-plugin-autostart = "=2.7.0"
 tauri-plugin-window-state = "=2.5.0"
 
 # Solo su Windows: la chiave dell'utente con cui le notifiche dell'eseguibile singolo mostrano il banner (versione già nell'albero di autostart)
+# e le notifiche dei promemoria con tag, scadenza e logo (notifica.rs; versioni già nell'albero del plugin notification e di tauri)
 [target.'cfg(windows)'.dependencies]
 winreg = "=0.56.0"
+windows = { version = "=0.62.2", features = ["Data_Xml_Dom", "Foundation", "UI_Notifications"] }
+base64 = "=0.22.1"
 
 [features]
 # Solo per le prove sul PC: aggiunge il comando che fa leggere e cliccare le voci del menu dell'icona

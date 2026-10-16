@@ -283,7 +283,7 @@ Il servizio `schermo` (`server/schermo-web/`, da ws-scrcpy) mostra e comanda il 
 
 Si scelgono nel sito, *Impostazioni > Promemoria*, e stanno sul server (voce `promemoria`, metodi `get_promemoria` e `set_promemoria`). Le app le rileggono ogni minuto.
 - **Quando**: 1 ora, 30, 15, 10 o 5 minuti prima, *All'inizio*, e altri minuti in un campo. Al più 8 valori da 0 a 1440 (0 è all'inizio); di norma 10.
-- **Dove**: nell'app per Windows *Notifica di Windows* (il toast) e *Avviso a comparsa* (in basso a sinistra, visibile anche con *Non disturbare*). In un browser normale *Notifiche del browser*, che iscrive o toglie quel browser. L'app per Android avvisa sempre.
+- **Dove**: nell'app per Windows *Notifica di Windows* (il toast, una per riunione con il logo dell'azienda, che sparisce all'inizio) e *Avviso a comparsa* (in basso a sinistra, visibile anche con *Non disturbare*). In un browser normale *Notifiche del browser*, che iscrive o toglie quel browser. L'app per Android avvisa sempre.
 - **Contenuto**, per tutti i canali: *Completo* (titolo e luogo) o *Solo ora e azienda* (l'avviso a comparsa mostra logo e ora).
 - **Suono**: solo l'app per Windows, tra i suoni di sistema. Lo fa l'avviso a comparsa; ad avviso spento, la notifica.
 

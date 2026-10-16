@@ -22,6 +22,7 @@
           },
           "permissions": [
             "allow-mostra-avviso",
+            "allow-mostra-notifica",
             "notification:allow-notify",
             "notification:allow-is-permission-granted",
             "notification:allow-request-permission"

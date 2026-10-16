@@ -2,6 +2,8 @@
 mod comparsa;
 mod finestra;
 mod navigazione;
+#[cfg(windows)]
+mod notifica;
 #[cfg(desktop)]
 mod tray;
 
@@ -47,6 +49,19 @@ async fn mostra_avviso(app: tauri::AppHandle, avvisi: Vec<serde_json::Value>, su
     comparsa::mostra(&app, &avvisi, suono.as_deref().unwrap_or("Default"));
     #[cfg(mobile)]
     let _ = (app, avvisi, suono);
+}
+
+/// La notifica di Windows di un promemoria (notifica.rs): una per riunione, che scade all'inizio, con il logo dell'azienda. Su Android le
+/// notifiche le fa il plugin
+#[tauri::command]
+async fn mostra_notifica(app: tauri::AppHandle, dati: serde_json::Value) -> Result<(), String> {
+    #[cfg(windows)]
+    return notifica::mostra(&app, &dati).map_err(|errore| errore.to_string());
+    #[cfg(not(windows))]
+    {
+        let _ = (app, dati);
+        Err("solo su Windows".into())
+    }
 }
 
 /// Solo nelle build di prova: elenco delle voci del menu dell'icona, con l'esito di un clic se richiesto
@@ -141,9 +156,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
 
     #[cfg(all(feature = "prova", desktop))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, prova_menu]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, prova_menu]);
     #[cfg(not(all(feature = "prova", desktop)))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica]);
 
     costruttore
         .setup(|app| {

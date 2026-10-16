@@ -214,23 +214,37 @@
     return (parole.length >= 2 ? parole[0][0] + parole[1][0] : s.slice(0, 2)).toUpperCase();
   }
 
-  // L'avviso a comparsa del PC: ora, titolo e logo dell'azienda (come mappaLoghi in lib/oe/logic.ts, gli Eventi personali hanno quello
-  // del gateway), o la sua sigla nel suo colore come nel calendario. Con "Solo ora e azienda" il titolo non parte
+  // Il logo dell'azienda di una riunione come data:, o null (come mappaLoghi in lib/oe/logic.ts, gli Eventi personali hanno quello del gateway)
+  async function logoDi(ev) {
+    const azienda = String(ev.alias || ev.account || "");
+    const loghi = (await leggiInterfaccia()).loghi || {};
+    const indirizzo = (typeof loghi[azienda] === "string" && loghi[azienda] && sulSito(loghi[azienda])) || (azienda === "Eventi personali" ? "/logos/personale.png" : "");
+    return indirizzo ? await leggiLogo(indirizzo) : null;
+  }
+
+  // L'avviso a comparsa del PC: ora, titolo e logo dell'azienda, o la sua sigla nel suo colore come nel calendario. Con "Solo ora e azienda"
+  // il titolo non parte
   async function avviso(ev, inizio, minimo) {
     const azienda = String(ev.alias || ev.account || "");
-    const i = await leggiInterfaccia();
-    const loghi = i.loghi || {};
-    const sigle = i.sigle || {};
-    const indirizzo = (typeof loghi[azienda] === "string" && loghi[azienda] && sulSito(loghi[azienda])) || (azienda === "Eventi personali" ? "/logos/personale.png" : "");
+    const sigle = (await leggiInterfaccia()).sigle || {};
     return {
       chiave: `${ev.id}|${ev.start}`,
       inizio,
       ora: formatoOra.format(new Date(inizio)),
       titolo: minimo ? "" : String(ev.title || "(senza titolo)"),
-      logo: indirizzo ? await leggiLogo(indirizzo) : null,
+      logo: await logoDi(ev),
       sigla: String(sigle[azienda] || iniziali(azienda)),
       colore: String(ev.color || ""),
     };
+  }
+
+  // Sul PC la notifica la fa l'app (notifica.rs): una per riunione, che esce dal centro notifiche all'inizio, con il logo dell'azienda; se
+  // non riesce, quella del plugin. Su Android la fa il plugin
+  async function notifica(ev, inizio, ora, imp) {
+    const t = testo(ev, inizio, ora, imp);
+    if (SU_ANDROID) return invoca("plugin:notification|notify", { options: t });
+    const dati = { ...t, chiave: `${ev.id}|${ev.start}`, inizio, logo: await logoDi(ev) };
+    return invoca("mostra_notifica", { dati }).catch(() => invoca("plugin:notification|notify", { options: t }));
   }
 
   // Titolo "Tra 5 min · Riunione" e corpo "Alle 10:00" più il luogo; con "Solo ora e azienda" al posto del titolo c'è l'azienda e il luogo no.
@@ -274,7 +288,7 @@
       const chiavi = raggiunti.map((m) => `${ev.id}|${ev.start}|${m}`);
       if (!chiavi.length || chiavi.every((c) => c in inviate)) continue;
       // una notifica sola per riunione, anche se più anticipi sono già passati (app appena avviata)
-      if (imp.notifiche) await invoca("plugin:notification|notify", { options: testo(ev, inizio, ora, imp) });
+      if (imp.notifiche) await notifica(ev, inizio, ora, imp);
       for (const c of chiavi) inviate[c] = inizio;
       salvaInviate(inviate);
       stato.inviate += 1;

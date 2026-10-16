@@ -89,7 +89,7 @@ pub fn mostra(app: &AppHandle, avvisi: &[Value], suono: &str) {
 
 /// L'evento di Windows di un suono dei promemoria (SUONI in server/web-ts/src/lib/core/promemoria.ts), lo stesso che il toast suona con
 /// quel nome: sveglie e squilli stanno fra i Looping; un nome sconosciuto ha quello predefinito
-fn evento_suono(nome: &str) -> String {
+pub(crate) fn evento_suono(nome: &str) -> String {
     let serie = |prefisso: &str| nome.strip_prefix(prefisso).is_some_and(|n| matches!(n, "" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10"));
     match nome {
         "IM" | "Mail" | "Reminder" | "SMS" => format!("Notification.{nome}"),

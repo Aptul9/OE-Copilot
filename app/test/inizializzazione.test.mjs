@@ -29,9 +29,11 @@ const promemoria = (p) =>
  * Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, i file dei loghi (indirizzo -> contenuto), il
  * browser (PC o Android)
  */
-function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted", ua = UA_PC } = {}) {
+function ambiente({ adesso, api = {}, avvisoRotto = false, notificaRotta = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted", ua = UA_PC } = {}) {
   const timer = [];
+  // le notifiche mostrate, e da chi: "app" (notifica.rs, sul PC) o "plugin"
   const notifiche = [];
+  const vie = [];
   // le righe dell'avviso a comparsa, e quante ne porta ogni chiamata
   const avvisi = [];
   const chiamateAvviso = [];
@@ -106,6 +108,13 @@ function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine =
       }
       if (comando === "plugin:notification|notify") {
         notifiche.push(JSON.parse(JSON.stringify(argomenti.options)));
+        vie.push("plugin");
+        return null;
+      }
+      if (comando === "mostra_notifica") {
+        if (notificaRotta) throw new Error("notifica non mostrata");
+        notifiche.push(JSON.parse(JSON.stringify(argomenti.dati)));
+        vie.push("app");
         return null;
       }
       throw new Error("comando non previsto " + comando);
@@ -117,6 +126,7 @@ function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine =
     sandbox,
     timer,
     notifiche,
+    vie,
     avvisi,
     chiamateAvviso,
     suoniAvviso,
@@ -168,7 +178,8 @@ test("un evento fra 5 minuti avvisa una volta sola, con ora e luogo (ora di Roma
   assert.deepEqual(a.chiamate, []);
   assert.equal(await a.giro(), 60_000);
   assert.equal(a.notifiche.length, 1);
-  assert.deepEqual(a.notifiche[0], { title: "Tra 5 min · Riunione A", body: "Alle 10:00\nSala 1", sound: "Default" });
+  assert.deepEqual(a.notifiche[0], { title: "Tra 5 min · Riunione A", body: "Alle 10:00\nSala 1", sound: "Default", chiave: "e1|2026-10-12T10:00:00", inizio: Date.UTC(2026, 9, 12, 8, 0), logo: null });
+  assert.deepEqual(a.vie, ["app"]);
   assert.equal(await a.giro(), 60_000);
   assert.equal(a.notifiche.length, 1);
   assert.deepEqual(a.stato(), { giri: 2, inviate: 1, errori: 0, esito: "ok" });
@@ -442,13 +453,29 @@ test("solo l'avviso a comparsa (notifica spenta): nessuna notifica; un avviso ch
   assert.equal(rotto.stato().esito, "ok");
 });
 
-test("avviso a comparsa spento: solo la notifica, e niente letture dei loghi", async () => {
-  const api = { get_promemoria: promemoria({ comparsa: false }), get_events: json([evento("e1", "Riunione N", "2026-10-12T10:00:00", { alias: "ROAR" })]) };
-  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
+test("avviso a comparsa spento: solo la notifica, con il logo dell'azienda", async () => {
+  const api = {
+    get_promemoria: promemoria({ comparsa: false }),
+    get_events: json([evento("e1", "Riunione N", "2026-10-12T10:00:00", { alias: "ROAR" })]),
+    get_personalizzazione: risposta(200, { interfaccia: { loghi: { ROAR: "logos/roar.png?v=7" } } }),
+  };
+  const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, loghi: { "/logos/roar.png?v=7": [1, 2, 3] } });
   await a.giro();
   assert.equal(a.notifiche.length, 1);
+  assert.equal(a.notifiche[0].logo, "data:image/png;base64,AQID");
   assert.deepEqual(a.chiamateAvviso, []);
-  assert.equal(a.chiamate.filter(([m]) => m === "get_personalizzazione" || m === "logo").length, 0);
+});
+
+test("sul PC la notifica la fa l'app, con la chiave della riunione e l'inizio; se non riesce la fa il plugin; su Android sempre il plugin", async () => {
+  const api = { get_promemoria: soloNotifica, get_events: json([evento("e1", "Riunione P", "2026-10-12T10:00:00")]) };
+  const rotta = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, notificaRotta: true });
+  await rotta.giro();
+  assert.deepEqual(rotta.vie, ["plugin"]);
+  assert.deepEqual(rotta.notifiche, [{ title: "Tra 5 min · Riunione P", body: "Alle 10:00", sound: "Default" }]);
+  const android = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api, ua: UA_ANDROID });
+  await android.giro();
+  assert.deepEqual(android.vie, ["plugin"]);
+  assert.equal(android.chiamate.filter(([m]) => m === "get_personalizzazione").length, 0);
 });
 
 test("Solo ora e azienda: la notifica ha l'azienda al posto del titolo e niente luogo, l'avviso a comparsa niente titolo; il titolo non arriva mai all'app", async () => {
@@ -461,10 +488,13 @@ test("Solo ora e azienda: la notifica ha l'azienda al posto del titolo e niente 
   };
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
   await a.giro();
-  assert.deepEqual(a.notifiche, [
-    { title: "Tra 5 min · ROAR", body: "Alle 10:00" },
-    { title: "Tra 5 min", body: "Alle 10:00" },
-  ]);
+  assert.deepEqual(
+    a.notifiche.map(({ title, body }) => ({ title, body })),
+    [
+      { title: "Tra 5 min · ROAR", body: "Alle 10:00" },
+      { title: "Tra 5 min", body: "Alle 10:00" },
+    ],
+  );
   assert.deepEqual(a.avvisi.map((v) => [v.titolo, v.ora, v.sigla]), [["", "10:00", "RO"], ["", "10:00", ""]]);
   const tutto = a.passati.join("\n");
   for (const segreto of ["Colloquio", "riservato", "Visita privata", "Sala del consiglio"]) assert.equal(tutto.includes(segreto), false, segreto);

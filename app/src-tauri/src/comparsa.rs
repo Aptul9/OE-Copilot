@@ -27,8 +27,8 @@ const SFONDO_CHIARO: Color = Color(0xf6, 0xf6, 0xf9, 0xff);
 const OMBRA: f64 = 8.0;
 /// ponytail: al massimo 6 righe, la settima riunione non compare (la notifica di Windows c'è lo stesso)
 const RIGHE_MAX: usize = 6;
-/// Se nessuno la chiude, una riga se ne va da sola 2 secondi dopo essere comparsa
-const DURATA: Duration = Duration::from_secs(2);
+/// Se nessuno la chiude, una riga se ne va da sola 5 secondi dopo essere comparsa
+const DURATA: Duration = Duration::from_secs(5);
 
 /// La finestra dell'avviso (etichetta, una nuova a ogni apertura) e le righe che mostra, dalla riunione più vicina
 struct Aperti {
@@ -77,7 +77,7 @@ pub fn mostra(app: &AppHandle, avvisi: &[Value], suono: &str) {
     if aggiunte.is_empty() {
         return;
     }
-    // il suono parte per primo (PlaySound ci mette fino a un secondo); i 2 secondi contano da quando la finestra c'è, anche se crearla
+    // il suono parte per primo (PlaySound ci mette fino a un secondo); DURATA conta da quando la finestra c'è, anche se crearla
     // ha richiesto tempo (PC carico, per esempio durante una riunione)
     #[cfg(windows)]
     suona(suono);

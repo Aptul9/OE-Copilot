@@ -1,6 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use tauri::webview::NewWindowResponse;
@@ -27,8 +27,8 @@ const SFONDO_CHIARO: Color = Color(0xf6, 0xf6, 0xf9, 0xff);
 const OMBRA: f64 = 8.0;
 /// ponytail: al massimo 6 righe, la settima riunione non compare (la notifica di Windows c'è lo stesso)
 const RIGHE_MAX: usize = 6;
-/// Se nessuno la chiude, una riga se ne va da sola 5 minuti dopo l'inizio della riunione
-const DOPO_INIZIO_MS: f64 = 300_000.0;
+/// Se nessuno la chiude, una riga se ne va da sola 2 secondi dopo essere comparsa
+const DURATA: Duration = Duration::from_secs(2);
 
 /// La finestra dell'avviso (etichetta, una nuova a ogni apertura) e le righe che mostra, dalla riunione più vicina
 struct Aperti {
@@ -52,7 +52,7 @@ fn contenuto(dati: &Value) -> Value {
         "logo": logo,
         "sigla": testo("sigla", 4),
         "colore": testo("colore", 32),
-        "scadenza": dati.get("inizio").and_then(Value::as_f64).map(|inizio| inizio + DOPO_INIZIO_MS),
+        "inizio": dati.get("inizio").and_then(Value::as_f64),
     })
 }
 
@@ -65,7 +65,7 @@ fn unisci(voci: &mut Vec<Value>, nuove: impl IntoIterator<Item = Value>) -> Vec<
             voci.push(voce);
         }
     }
-    let quando = |v: &Value| v["scadenza"].as_f64().unwrap_or(f64::MAX);
+    let quando = |v: &Value| v["inizio"].as_f64().unwrap_or(f64::MAX);
     voci.sort_by(|a, b| quando(a).total_cmp(&quando(b)));
     aggiunte
 }
@@ -92,13 +92,11 @@ fn rimuovi(app: &AppHandle, id: Option<&str>) {
     }
 }
 
-/// La riga se ne va da sola alla sua scadenza, se nessuno l'ha già chiusa
+/// La riga se ne va da sola dopo DURATA, se nessuno l'ha già chiusa
 fn scadenza(app: &AppHandle, voce: &Value) {
-    let Some(alle) = voce["scadenza"].as_f64() else { return };
-    let ora = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0.0, |d| d.as_millis() as f64);
     let (app, id) = (app.clone(), voce["id"].as_str().unwrap_or_default().to_string());
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis((alle - ora).max(0.0) as u64));
+        std::thread::sleep(DURATA);
         rimuovi(&app, Some(&id));
     });
 }
@@ -180,7 +178,7 @@ mod prove {
         let dati = json!({ "chiave": "e1|x", "ora": "10:00", "titolo": "Riunione", "logo": "data:image/png;base64,AAAA", "sigla": "RO", "colore": "#2563eb", "inizio": 1000.0 });
         let pieno = contenuto(&dati);
         assert_eq!(pieno["titolo"], "Riunione");
-        assert_eq!(pieno["scadenza"], 301_000.0);
+        assert_eq!(pieno["inizio"], 1000.0);
         let minimo = contenuto(&json!({ "chiave": "e1|x", "ora": "10:00", "titolo": "", "logo": "data:image/png;base64,AAAA", "sigla": "RO", "inizio": 1000.0 }));
         assert_eq!(minimo["titolo"], "");
         assert_eq!((minimo["ora"].as_str(), minimo["logo"].as_str(), minimo["sigla"].as_str()), (Some("10:00"), Some("data:image/png;base64,AAAA"), Some("RO")));
@@ -196,7 +194,7 @@ mod prove {
         let lungo = contenuto(&json!({ "titolo": "x".repeat(500), "ora": "10:00:00", "sigla": "ABCDEF" }));
         assert_eq!(lungo["titolo"].as_str().map(str::len), Some(200));
         assert_eq!((lungo["ora"].as_str(), lungo["sigla"].as_str()), (Some("10:00"), Some("ABCD")));
-        assert!(lungo["scadenza"].is_null());
+        assert!(lungo["inizio"].is_null());
     }
 
     #[test]
@@ -204,7 +202,7 @@ mod prove {
         let riga = |chiave: &str, inizio: f64| contenuto(&json!({ "chiave": chiave, "inizio": inizio }));
         let mut voci = Vec::new();
         assert_eq!(unisci(&mut voci, [riga("b", 2.0), riga("a", 1.0)]).len(), 2);
-        assert_eq!(voci.iter().map(|v| v["scadenza"].as_f64()).collect::<Vec<_>>(), [Some(300_001.0), Some(300_002.0)]);
+        assert_eq!(voci.iter().map(|v| v["inizio"].as_f64()).collect::<Vec<_>>(), [Some(1.0), Some(2.0)]);
         // la stessa riunione (secondo anticipo) non aggiunge una riga
         assert!(unisci(&mut voci, [riga("a", 1.0)]).is_empty());
         let aggiunte = unisci(&mut voci, (0..10).map(|n| riga(&format!("n{n}"), 10.0 + n as f64)));

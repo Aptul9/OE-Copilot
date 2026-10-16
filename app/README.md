@@ -37,7 +37,7 @@ Il cookie di sessione dura 30 giorni e resta nel profilo; la password non è sal
 
 Si scelgono nel sito, *Impostazioni > Promemoria* (GUIDA.md, 4.9). Lo script `src-tauri/src/inizializzazione.js`, sulla pagina del sito, rilegge le impostazioni ogni minuto e chiede le riunioni. Un avviso per riunione e anticipo; niente per i giorni interi o con dati in cache. Gli avvisi partono solo ad app in esecuzione; un clic porta davanti la finestra. Le WebView non hanno notifiche web: nell'app manca *Notifiche del browser*.
 
-Su Windows il sito mostra *Notifica di Windows*, con il suono scelto, e *Avviso a comparsa*: una finestra dell'app (`src-tauri/src/comparsa.rs`) in basso a sinistra, visibile anche con *Non disturbare*, con una riga per riunione (al più 6) che sparisce 5 minuti dopo l'inizio. Con *Solo ora e azienda* mostra logo e ora.
+Su Windows il sito mostra *Notifica di Windows*, con il suono scelto, e *Avviso a comparsa*: una finestra dell'app (`src-tauri/src/comparsa.rs`) in basso a sinistra, visibile anche con *Non disturbare*, con una riga per riunione (al più 6) che sparisce dopo 2 secondi. Con *Solo ora e azienda* mostra logo e ora.
 
 **Trappola: il banner.** Windows mostra il banner solo per un identificativo che conosce, quindi a ogni avvio l'app scrive `HKCU\Software\Classes\AppUserModelId\com.oecopilot.desktop`; senza, l'avviso resta nel centro notifiche. Un exe lanciato da `target\debug` o `target\release` notifica come PowerShell (regola del plugin): il banner si prova da un'altra cartella.
 

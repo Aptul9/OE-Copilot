@@ -77,12 +77,14 @@ pub fn mostra(app: &AppHandle, avvisi: &[Value], suono: &str) {
     if aggiunte.is_empty() {
         return;
     }
+    // il suono parte per primo (PlaySound ci mette fino a un secondo); i 2 secondi contano da quando la finestra c'è, anche se crearla
+    // ha richiesto tempo (PC carico, per esempio durante una riunione)
+    #[cfg(windows)]
+    suona(suono);
+    disegna(app, &mut aperti);
     for voce in &aggiunte {
         scadenza(app, voce);
     }
-    disegna(app, &mut aperti);
-    #[cfg(windows)]
-    suona(suono);
 }
 
 /// L'evento di Windows di un suono dei promemoria (SUONI in server/web-ts/src/lib/core/promemoria.ts), lo stesso che il toast suona con

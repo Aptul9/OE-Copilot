@@ -164,7 +164,7 @@ test("un evento fra 5 minuti avvisa una volta sola, con ora e luogo (ora di Roma
   assert.deepEqual(a.chiamate, []);
   assert.equal(await a.giro(), 60_000);
   assert.equal(a.notifiche.length, 1);
-  assert.deepEqual(a.notifiche[0], { title: "Tra 5 min · Riunione A", body: "Alle 10:00\nSala 1" });
+  assert.deepEqual(a.notifiche[0], { title: "Tra 5 min · Riunione A", body: "Alle 10:00\nSala 1", sound: "Default" });
   assert.equal(await a.giro(), 60_000);
   assert.equal(a.notifiche.length, 1);
   assert.deepEqual(a.stato(), { giri: 2, inviate: 1, errori: 0, esito: "ok" });
@@ -271,7 +271,7 @@ test("all'inizio (0 minuti): nulla a due minuti, un avviso nell'ultimo minuto e 
   assert.equal(presto.notifiche[0].title, "Tra 1 min · Riunione H");
 });
 
-test("il suono scelto sul server va nella notifica; Default, un nome strano o un server senza get_promemoria non ne chiedono nessuno", async () => {
+test("il suono scelto sul server va nella notifica; Default, un nome strano o un server senza get_promemoria danno quello predefinito (senza nome è muta)", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
   const prova = async (impostazioni) => {
     const api = { get_events: json([evento("e1", "Riunione S", "2026-10-12T10:00:00")]) };
@@ -284,10 +284,10 @@ test("il suono scelto sul server va nella notifica; Default, un nome strano o un
   assert.equal((await prova({ suono: "Reminder" })).sound, "Reminder");
   assert.equal((await prova({ suono: "Alarm3" })).sound, "Alarm3");
   for (const suono of ["Default", "", "../x", "troppo-lungo-e-con-trattini", 5, null]) {
-    assert.equal("sound" in (await prova({ suono })), false, String(suono));
+    assert.equal((await prova({ suono })).sound, "Default", String(suono));
   }
-  assert.equal("sound" in (await prova({})), false);
-  assert.equal("sound" in (await prova(undefined)), false);
+  assert.equal((await prova({})).sound, "Default");
+  assert.equal((await prova(undefined)).sound, "Default");
 });
 
 test("app appena avviata con più anticipi già passati: un avviso solo", async () => {
@@ -452,8 +452,8 @@ test("Solo ora e azienda: la notifica ha l'azienda al posto del titolo e niente 
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
   await a.giro();
   assert.deepEqual(a.notifiche, [
-    { title: "Tra 5 min · ROAR", body: "Alle 10:00" },
-    { title: "Tra 5 min", body: "Alle 10:00" },
+    { title: "Tra 5 min · ROAR", body: "Alle 10:00", sound: "Default" },
+    { title: "Tra 5 min", body: "Alle 10:00", sound: "Default" },
   ]);
   assert.deepEqual(a.avvisi.map((v) => [v.titolo, v.ora, v.sigla]), [["", "10:00", "RO"], ["", "10:00", ""]]);
   const tutto = a.passati.join("\n");

@@ -112,11 +112,11 @@
   }
 
   const sogliaMs = (m) => (m === 0 ? FINESTRA_INIZIO_MS : m * 60_000);
-  const PREDEFINITE = { minuti: [10], suono: null, minimo: false, notifiche: true, comparsa: !SU_ANDROID };
+  const PREDEFINITE = { minuti: [10], suono: "Default", minimo: false, notifiche: true, comparsa: !SU_ANDROID };
 
   // Le impostazioni dei promemoria (Impostazioni, Promemoria) stanno sul server e si rileggono a ogni giro: un cambio vale dal giro dopo.
-  // Un server senza il metodo (404) vale come i valori di partenza; null se la sessione non c'è più. Il suono (Reminder, Mail, Alarm3...)
-  // è null per quello predefinito di Windows
+  // Un server senza il metodo (404) vale come i valori di partenza; null se la sessione non c'è più. Il suono (Default, Reminder, Alarm3...)
+  // ha sempre un nome: su Windows una notifica senza nome è muta
   async function leggiImpostazioni() {
     const r = await chiama("get_promemoria", []);
     if (r.status === 404) return PREDEFINITE;
@@ -127,7 +127,7 @@
     const minuti = (Array.isArray(p.minuti) ? p.minuti : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 1440);
     return {
       minuti: minuti.length ? [...new Set(minuti)].sort((a, b) => a - b) : PREDEFINITE.minuti,
-      suono: typeof p.suono === "string" && /^[A-Za-z0-9]{1,16}$/.test(p.suono) && p.suono !== "Default" ? p.suono : null,
+      suono: typeof p.suono === "string" && /^[A-Za-z0-9]{1,16}$/.test(p.suono) ? p.suono : "Default",
       minimo: p.contenuto === "minimo",
       notifiche: SU_ANDROID || p.notifica_windows !== false,
       comparsa: !SU_ANDROID && p.comparsa !== false,
@@ -245,7 +245,7 @@
       // il link per entrare non va nell'avviso
       if (luogo && !/https?:\/\//i.test(luogo)) righe.push(luogo.slice(0, 120));
     }
-    return { title: chi ? `${quando} · ${chi}` : quando, body: righe.join("\n"), ...(imp.suono ? { sound: imp.suono } : {}) };
+    return { title: chi ? `${quando} · ${chi}` : quando, body: righe.join("\n"), sound: imp.suono };
   }
 
   async function controlla() {

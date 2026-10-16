@@ -46,6 +46,15 @@ export function scriviCacheEventi(chiave: string, eventi: Ev[]): void {
 // Prefisso che il programma di posta mette davanti al titolo di un invito inoltrato (FW/Fwd, I, WG, TR, RV), anche ripetuto.
 export const INOLTRO_RE = /^\s*(?:(?:fwd?|i|wg|tr|rv)\s*:\s*)+/i;
 
+// Gli stessi più quelli di risposta (RE, R, AW): una riunione creata rispondendo a una mail ("Rispondi con riunione") porta "RE: " davanti ed è la stessa riunione.
+const PREFISSO_RE = /^\s*(?:(?:fwd?|i|wg|tr|rv|re|r|aw)\s*:\s*)+/i;
+
+/** Il titolo senza prefissi di inoltro o risposta: quello che hanno in comune le copie di uno stesso invito. */
+export const titoloBase = (titolo: string): string => titolo.replace(PREFISSO_RE, "") || titolo;
+
+/** Una copia inoltrata ("FW: ...") cede il posto all'altra, che non lo è. Stessa regola in `accoda` (stessa casella) e in `senzaDoppioni` (caselle diverse). */
+export const cedeIlPosto = (copia: Ev, altra: Ev): boolean => INOLTRO_RE.test(copia.title) && !INOLTRO_RE.test(altra.title);
+
 // Titolo che Outlook dà a una riunione annullata dall'organizzatore, che resta nel calendario: "Canceled: ...", "Cancelled: ...", in italiano "Annullato: ...".
 export const ANNULLATO_RE = /^\s*(?:canceled|cancelled|annullat[oaie]|cancellat[oaie])\s*:/i;
 
@@ -91,13 +100,12 @@ export function accoda(events: Ev[], seen: Map<string, number>, ev: Ev, etichett
   }
   // Se né la cartella né l'organizzatore dicono di che azienda è, si guarda a quale casella era indirizzato l'invito
   if (!(inoltrata || aziendaDaCartella(etichettaCalendario) || aziendaDaEmail(ev.organizer_email))) ev.invitato_come = invitato();
-  // Un invito inoltrato ("FW: ...") e la stessa riunione letta dal calendario di chi l'ha organizzata sono una riunione sola
-  const titoloPulito = ev.title.replace(INOLTRO_RE, "") || ev.title;
-  const key = JSON.stringify([ev.account, titoloPulito, ev.start, ev.end]);
+  // Un invito inoltrato ("FW: ...") o creato rispondendo ("RE: ...") e la stessa riunione letta dal calendario di chi l'ha organizzata sono una riunione sola
+  const key = JSON.stringify([ev.account, titoloBase(ev.title), ev.start, ev.end]);
   const posto = seen.get(key);
   if (posto !== undefined && !inoltrata && !events[posto].inoltrata_da) {
     const prima = events[posto];
-    if (INOLTRO_RE.test(prima.title) && titoloPulito === ev.title) {
+    if (cedeIlPosto(prima, ev)) {
       ev.online_url = ev.online_url || prima.online_url;
       events[posto] = ev;
     } else prima.online_url = prima.online_url || ev.online_url;

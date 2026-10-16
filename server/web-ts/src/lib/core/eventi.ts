@@ -1,5 +1,5 @@
 import { calendariDiInoltro, elencoCalendari, tuttiGliEventi, type Meta } from "./agente";
-import { ANNULLATO_RE, type Ev } from "./caselle";
+import { ANNULLATO_RE, cedeIlPosto, titoloBase, type Ev } from "./caselle";
 import { ErroreData, iso, mezzanotte, oraHHMM, parseBound, piuGiorni } from "./fuso";
 import { elencoFeed, eventiFeed } from "./ics";
 import { elencoLocali, eventiLocali } from "./locali";
@@ -24,14 +24,14 @@ export const calendariCaselle = (cfg: Config, force = false) => elencoCalendari(
 export const calendariExtra = (cfg: Config): Ev[] => [...elencoFeed(cfg), ...elencoLocali(cfg), ...calendariDiInoltro(cfg)];
 
 /**
- * Toglie lo stesso appuntamento arrivato da più fonti. Si tiene la copia della casella, ma se la stessa riunione arriva ANCHE dal
- * calendario Google di un'azienda (l'agente marca is_google), si adotta la sua etichetta e il suo colore.
+ * Toglie lo stesso appuntamento arrivato da più fonti, anche con "FW: " o "RE: " davanti a uno dei titoli. Si tiene la copia della casella,
+ * ma se la stessa riunione arriva ANCHE dal calendario Google di un'azienda (l'agente marca is_google), si adotta la sua etichetta e il suo colore.
  */
 export function senzaDoppioni(eventi: Ev[]): Ev[] {
   const indice = new Map<string, number>();
   const out: Ev[] = [];
   for (const e of eventi) {
-    const chiave = JSON.stringify([String(e.title || "").trim().toLowerCase(), e.start ?? null, e.end ?? null]);
+    const chiave = JSON.stringify([titoloBase(String(e.title || "").trim()).toLowerCase(), e.start ?? null, e.end ?? null]);
     const posto = indice.get(chiave);
     if (posto === undefined) {
       indice.set(chiave, out.length);
@@ -39,8 +39,8 @@ export function senzaDoppioni(eventi: Ev[]): Ev[] {
       continue;
     }
     const tenuto = out[posto];
-    if (tenuto.inoltrata_da && !e.inoltrata_da) {
-      // La copia di un flusso cede il posto all'invito vero, che ha il link per partecipare e l'organizzatore reale
+    if ((tenuto.inoltrata_da && !e.inoltrata_da) || cedeIlPosto(tenuto, e)) {
+      // La copia di un flusso cede il posto all'invito vero, che ha il link per partecipare e l'organizzatore reale; un invito inoltrato cede a qualunque altra copia
       out[posto] = e;
       continue;
     }

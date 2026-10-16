@@ -233,7 +233,8 @@
     };
   }
 
-  // Titolo "Tra 5 min · Riunione" e corpo "Alle 10:00" più il luogo; con "Solo ora e azienda" al posto del titolo c'è l'azienda e il luogo no
+  // Titolo "Tra 5 min · Riunione" e corpo "Alle 10:00" più il luogo; con "Solo ora e azienda" al posto del titolo c'è l'azienda e il luogo no.
+  // Il suono è uno solo: con l'avviso a comparsa acceso lo fa l'avviso, e la notifica senza nome di suono resta muta
   function testo(ev, inizio, ora, imp) {
     const minuti = Math.round((inizio - ora) / 60_000);
     const quando = minuti < 1 ? "Adesso" : `Tra ${minuti} min`;
@@ -245,7 +246,7 @@
       // il link per entrare non va nell'avviso
       if (luogo && !/https?:\/\//i.test(luogo)) righe.push(luogo.slice(0, 120));
     }
-    return { title: chi ? `${quando} · ${chi}` : quando, body: righe.join("\n"), sound: imp.suono };
+    return { title: chi ? `${quando} · ${chi}` : quando, body: righe.join("\n"), ...(imp.comparsa ? {} : { sound: imp.suono }) };
   }
 
   async function controlla() {
@@ -280,7 +281,7 @@
       if (imp.comparsa) avvisi.push(await avviso(ev, inizio, imp.minimo));
     }
     // le riunioni del giro vanno insieme nello stesso avviso; dopo averle segnate, così un avviso che non riesce non fa ripetere le notifiche
-    if (avvisi.length) await invoca("mostra_avviso", { avvisi }).catch(() => {});
+    if (avvisi.length) await invoca("mostra_avviso", { avvisi, suono: imp.suono }).catch(() => {});
     return "ok";
   }
 

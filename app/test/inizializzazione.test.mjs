@@ -35,6 +35,8 @@ function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine =
   // le righe dell'avviso a comparsa, e quante ne porta ogni chiamata
   const avvisi = [];
   const chiamateAvviso = [];
+  // il suono che ogni chiamata dell'avviso chiede all'app
+  const suoniAvviso = [];
   const chiamate = [];
   // tutto quello che lo script passa all'app, per cercarci dentro un testo
   const passati = [];
@@ -90,6 +92,7 @@ function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine =
         if (avvisoRotto) throw new Error("finestra non creata");
         avvisi.push(...JSON.parse(JSON.stringify(argomenti.avvisi)));
         chiamateAvviso.push(argomenti.avvisi.length);
+        suoniAvviso.push(argomenti.suono);
         return null;
       }
       if (comando === "plugin:notification|is_permission_granted") {
@@ -116,6 +119,7 @@ function ambiente({ adesso, api = {}, avvisoRotto = false, loghi = {}, origine =
     notifiche,
     avvisi,
     chiamateAvviso,
+    suoniAvviso,
     chiamate,
     passati,
     memoria,
@@ -271,7 +275,7 @@ test("all'inizio (0 minuti): nulla a due minuti, un avviso nell'ultimo minuto e 
   assert.equal(presto.notifiche[0].title, "Tra 1 min · Riunione H");
 });
 
-test("il suono scelto sul server va nella notifica; Default, un nome strano o un server senza get_promemoria danno quello predefinito (senza nome è muta)", async () => {
+test("un suono solo: con l'avviso a comparsa lo fa l'avviso e la notifica è muta, senza avviso la notifica; Default se il nome è strano o manca", async () => {
   const inizio = Date.UTC(2026, 9, 12, 8, 0);
   const prova = async (impostazioni) => {
     const api = { get_events: json([evento("e1", "Riunione S", "2026-10-12T10:00:00")]) };
@@ -279,15 +283,21 @@ test("il suono scelto sul server va nella notifica; Default, un nome strano o un
     const a = ambiente({ adesso: inizio - 5 * MIN, api });
     await a.giro();
     assert.equal(a.notifiche.length, 1);
-    return a.notifiche[0];
+    return { notifica: a.notifiche[0], avviso: a.suoniAvviso };
   };
-  assert.equal((await prova({ suono: "Reminder" })).sound, "Reminder");
-  assert.equal((await prova({ suono: "Alarm3" })).sound, "Alarm3");
+  assert.equal((await prova({ comparsa: false, suono: "Reminder" })).notifica.sound, "Reminder");
+  assert.equal((await prova({ comparsa: false, suono: "Alarm3" })).notifica.sound, "Alarm3");
   for (const suono of ["Default", "", "../x", "troppo-lungo-e-con-trattini", 5, null]) {
-    assert.equal((await prova({ suono })).sound, "Default", String(suono));
+    assert.equal((await prova({ comparsa: false, suono })).notifica.sound, "Default", String(suono));
   }
-  assert.equal((await prova({})).sound, "Default");
-  assert.equal((await prova(undefined)).sound, "Default");
+  const insieme = await prova({ suono: "Reminder" });
+  assert.equal("sound" in insieme.notifica, false);
+  assert.deepEqual(insieme.avviso, ["Reminder"]);
+  assert.deepEqual((await prova({ suono: "../x" })).avviso, ["Default"]);
+  // senza get_promemoria: notifica e avviso accesi, suono predefinito all'avviso
+  const vecchio = await prova(undefined);
+  assert.equal("sound" in vecchio.notifica, false);
+  assert.deepEqual(vecchio.avviso, ["Default"]);
 });
 
 test("app appena avviata con più anticipi già passati: un avviso solo", async () => {
@@ -452,8 +462,8 @@ test("Solo ora e azienda: la notifica ha l'azienda al posto del titolo e niente 
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api });
   await a.giro();
   assert.deepEqual(a.notifiche, [
-    { title: "Tra 5 min · ROAR", body: "Alle 10:00", sound: "Default" },
-    { title: "Tra 5 min", body: "Alle 10:00", sound: "Default" },
+    { title: "Tra 5 min · ROAR", body: "Alle 10:00" },
+    { title: "Tra 5 min", body: "Alle 10:00" },
   ]);
   assert.deepEqual(a.avvisi.map((v) => [v.titolo, v.ora, v.sigla]), [["", "10:00", "RO"], ["", "10:00", ""]]);
   const tutto = a.passati.join("\n");

@@ -70,7 +70,8 @@ fn unisci(voci: &mut Vec<Value>, nuove: impl IntoIterator<Item = Value>) -> Vec<
     aggiunte
 }
 
-pub fn mostra(app: &AppHandle, avvisi: &[Value]) {
+/// Mostra le riunioni nuove e suona una volta: il suono dei promemoria è dell'avviso (la notifica, con l'avviso acceso, è muta)
+pub fn mostra(app: &AppHandle, avvisi: &[Value], suono: &str) {
     let mut aperti = APERTI.lock().unwrap_or_else(|e| e.into_inner());
     let aggiunte = unisci(&mut aperti.voci, avvisi.iter().map(contenuto));
     if aggiunte.is_empty() {
@@ -80,6 +81,35 @@ pub fn mostra(app: &AppHandle, avvisi: &[Value]) {
         scadenza(app, voce);
     }
     disegna(app, &mut aperti);
+    #[cfg(windows)]
+    suona(suono);
+}
+
+/// L'evento di Windows di un suono dei promemoria (SUONI in server/web-ts/src/lib/core/promemoria.ts), lo stesso che il toast suona con
+/// quel nome: sveglie e squilli stanno fra i Looping; un nome sconosciuto ha quello predefinito
+fn evento_suono(nome: &str) -> String {
+    let serie = |prefisso: &str| nome.strip_prefix(prefisso).is_some_and(|n| matches!(n, "" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10"));
+    match nome {
+        "IM" | "Mail" | "Reminder" | "SMS" => format!("Notification.{nome}"),
+        _ if serie("Alarm") || serie("Call") => format!("Notification.Looping.{nome}"),
+        _ => "Notification.Default".into(),
+    }
+}
+
+/// Suona l'evento con PlaySound e ritorna subito: il file scelto in Pannello di controllo, Suoni, al volume dei suoni di sistema
+#[cfg(windows)]
+fn suona(nome: &str) {
+    #[link(name = "winmm")]
+    unsafe extern "system" {
+        fn PlaySoundW(suono: *const u16, modulo: *mut std::ffi::c_void, opzioni: u32) -> i32;
+    }
+    const SND_ASYNC: u32 = 0x0001;
+    const SND_NODEFAULT: u32 = 0x0002;
+    const SND_ALIAS: u32 = 0x0001_0000;
+    const SND_SYSTEM: u32 = 0x0020_0000;
+    let evento: Vec<u16> = evento_suono(nome).encode_utf16().chain([0]).collect();
+    // il nome, terminato da zero, resta vivo per tutta la chiamata
+    unsafe { PlaySoundW(evento.as_ptr(), std::ptr::null_mut(), SND_ALIAS | SND_ASYNC | SND_NODEFAULT | SND_SYSTEM) };
 }
 
 /// Toglie la riga di una riunione, o tutte con None (la X, o un clic sull'avviso)
@@ -195,6 +225,17 @@ mod prove {
         assert_eq!(lungo["titolo"].as_str().map(str::len), Some(200));
         assert_eq!((lungo["ora"].as_str(), lungo["sigla"].as_str()), (Some("10:00"), Some("ABCD")));
         assert!(lungo["inizio"].is_null());
+    }
+
+    #[test]
+    fn il_suono_e_l_evento_di_windows_della_notifica() {
+        assert_eq!(evento_suono("Default"), "Notification.Default");
+        assert_eq!(evento_suono("Reminder"), "Notification.Reminder");
+        assert_eq!(evento_suono("Alarm"), "Notification.Looping.Alarm");
+        assert_eq!(evento_suono("Call10"), "Notification.Looping.Call10");
+        for strano in ["", "Alarm1", "Alarm11", "Call02", "../x", "Notification.Mail"] {
+            assert_eq!(evento_suono(strano), "Notification.Default", "{strano}");
+        }
     }
 
     #[test]

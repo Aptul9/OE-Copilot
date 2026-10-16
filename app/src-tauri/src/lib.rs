@@ -39,13 +39,14 @@ fn origine_da_config(config: &tauri::Config) -> Result<Url, String> {
     Ok(url)
 }
 
-/// L'avviso a comparsa delle riunioni di un giro (comparsa.rs). Asincrono: una finestra creata da un comando sincrono blocca Windows (wry#583)
+/// L'avviso a comparsa delle riunioni di un giro, con il suono scelto (comparsa.rs). Asincrono: una finestra creata da un comando sincrono
+/// blocca Windows (wry#583)
 #[tauri::command]
-async fn mostra_avviso(app: tauri::AppHandle, avvisi: Vec<serde_json::Value>) {
+async fn mostra_avviso(app: tauri::AppHandle, avvisi: Vec<serde_json::Value>, suono: Option<String>) {
     #[cfg(desktop)]
-    comparsa::mostra(&app, &avvisi);
+    comparsa::mostra(&app, &avvisi, suono.as_deref().unwrap_or("Default"));
     #[cfg(mobile)]
-    let _ = (app, avvisi);
+    let _ = (app, avvisi, suono);
 }
 
 /// Solo nelle build di prova: elenco delle voci del menu dell'icona, con l'esito di un clic se richiesto

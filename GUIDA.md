@@ -285,7 +285,7 @@ Si scelgono nel sito, *Impostazioni > Promemoria*, e stanno sul server (voce `pr
 - **Quando**: 1 ora, 30, 15, 10 o 5 minuti prima, *All'inizio*, e altri minuti in un campo. Al più 8 valori da 0 a 1440 (0 è all'inizio); di norma 10.
 - **Dove**: nell'app per Windows *Notifica di Windows* (il toast) e *Avviso a comparsa* (in basso a sinistra, visibile anche con *Non disturbare*). In un browser normale *Notifiche del browser*, che iscrive o toglie quel browser. L'app per Android avvisa sempre.
 - **Contenuto**, per tutti i canali: *Completo* (titolo e luogo) o *Solo ora e azienda* (l'avviso a comparsa mostra logo e ora).
-- **Suono**: solo l'app per Windows, tra i suoni di sistema.
+- **Suono**: solo l'app per Windows, tra i suoni di sistema. Lo fa l'avviso a comparsa; ad avviso spento, la notifica.
 
 Le app avvisano dallo script della pagina, finché sono in esecuzione (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; giorni interi e calendari spenti non avvisano. Una cancellazione fatta in Outlook arriva a telefono sbloccato: prima la riunione può avvisare.
 

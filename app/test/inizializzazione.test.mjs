@@ -191,7 +191,33 @@ test("stesso evento in inverno (UTC+1) e con scarto esplicito", async () => {
   assert.equal(inverno.notifiche[0].title, "Tra 5 min · Riunione B");
   const scarto = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { get_events: json([evento("e2", "Riunione C", "2026-10-12T10:00:00+02:00"), evento("e3", "Riunione D", "2026-10-12T08:00:00Z")]) } });
   await scarto.giro();
-  assert.deepEqual(scarto.notifiche.map((n) => n.title), ["Tra 5 min · Riunione C", "Tra 5 min · Riunione D"]);
+  assert.deepEqual(scarto.notifiche.map((n) => [n.title, n.body]), [["Tra 5 min · 2 riunioni", "10:00 Riunione C\n10:00 Riunione D"]]);
+});
+
+test("più riunioni nello stesso giro: una notifica sola, dalla prima, con il logo solo se è lo stesso per tutte", async () => {
+  const roar = { get_personalizzazione: risposta(200, { interfaccia: { loghi: { ROAR: "logos/roar.png?v=7", Beta: "logos/beta.png" } } }) };
+  const loghi = { "/logos/roar.png?v=7": [1, 2, 3], "/logos/beta.png": [4, 5, 6] };
+  const prova = async (eventi) => {
+    const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 50), api: { get_promemoria: promemoria({ minuti: [10, 30] }), get_events: json(eventi), ...roar }, loghi });
+    await a.giro();
+    return a;
+  };
+  const due = await prova([
+    evento("e2", "Seconda", "2026-10-12T10:15:00", { alias: "ROAR" }),
+    evento("e1", "Prima", "2026-10-12T10:00:00", { alias: "ROAR", location: "Sala 1" }),
+  ]);
+  assert.equal(due.notifiche.length, 1);
+  assert.deepEqual(due.notifiche[0], {
+    title: "Tra 10 min · 2 riunioni",
+    body: "10:00 Prima\n10:15 Seconda",
+    chiave: "e1|2026-10-12T10:00:00+e2|2026-10-12T10:15:00",
+    inizio: Date.UTC(2026, 9, 12, 8, 0),
+    logo: "data:image/png;base64,AQID",
+  });
+  assert.equal(due.stato().inviate, 2);
+  assert.deepEqual(due.chiamateAvviso, [2]);
+  const diverse = await prova([evento("e1", "Prima", "2026-10-12T10:00:00", { alias: "ROAR" }), evento("e3", "Terza", "2026-10-12T10:00:00", { alias: "Beta" })]);
+  assert.equal(diverse.notifiche[0].logo, null);
 });
 
 test("il link per entrare non finisce nell'avviso", async () => {
@@ -490,11 +516,11 @@ test("Solo ora e azienda: la notifica ha l'azienda al posto del titolo e niente 
   await a.giro();
   assert.deepEqual(
     a.notifiche.map(({ title, body }) => ({ title, body })),
-    [
-      { title: "Tra 5 min · ROAR", body: "Alle 10:00" },
-      { title: "Tra 5 min", body: "Alle 10:00" },
-    ],
+    [{ title: "Tra 5 min · 2 riunioni", body: "10:00 ROAR\n10:00" }],
   );
+  const una = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55), api: { ...api, get_events: json([evento("e1", "Colloquio riservato", "2026-10-12T10:00:00", { alias: "ROAR", location: "Sala del consiglio" })]) } });
+  await una.giro();
+  assert.deepEqual([una.notifiche[0].title, una.notifiche[0].body], ["Tra 5 min · ROAR", "Alle 10:00"]);
   assert.deepEqual(a.avvisi.map((v) => [v.titolo, v.ora, v.sigla]), [["", "10:00", "RO"], ["", "10:00", ""]]);
   const tutto = a.passati.join("\n");
   for (const segreto of ["Colloquio", "riservato", "Visita privata", "Sala del consiglio"]) assert.equal(tutto.includes(segreto), false, segreto);

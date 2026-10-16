@@ -238,12 +238,22 @@
     };
   }
 
-  // Sul PC la notifica la fa l'app (notifica.rs): una per riunione, che esce dal centro notifiche all'inizio, con il logo dell'azienda; se
-  // non riesce, quella del plugin. Su Android la fa il plugin
-  async function notifica(ev, inizio, ora, imp) {
-    const t = testo(ev, inizio, ora, imp);
+  // Le riunioni di un giro, dalla prima, vanno in una notifica sola: con una riunione titolo e corpo di testo(); con più riunioni il titolo
+  // dice quante sono e quando comincia la prima, e c'è una riga per riunione ("11:00 Riunione", o l'azienda con "Solo ora e azienda"; il
+  // toast ne mostra due). Sul PC la fa l'app (notifica.rs): esce dal centro notifiche quando comincia la prima riunione e ha il logo
+  // dell'azienda se è lo stesso per tutte; se non riesce, quella del plugin. Su Android la fa il plugin
+  async function notifica(riunioni, ora, imp) {
+    const [prima] = riunioni;
+    let t = testo(prima.ev, prima.inizio, ora, imp);
+    if (riunioni.length > 1) {
+      const chi = ({ ev }) => (imp.minimo ? String(ev.alias || "") : String(ev.title || "(senza titolo)"));
+      const righe = riunioni.map((r) => `${formatoOra.format(new Date(r.inizio))} ${chi(r)}`.trim().slice(0, 120));
+      t = { ...t, title: `${t.title.split(" · ")[0]} · ${riunioni.length} riunioni`, body: righe.join("\n") };
+    }
     if (SU_ANDROID) return invoca("plugin:notification|notify", { options: t });
-    const dati = { ...t, chiave: `${ev.id}|${ev.start}`, inizio, logo: await logoDi(ev) };
+    const loghi = await Promise.all(riunioni.map(({ ev }) => logoDi(ev)));
+    const chiave = riunioni.map(({ ev }) => `${ev.id}|${ev.start}`).join("+");
+    const dati = { ...t, chiave, inizio: prima.inizio, logo: loghi.every((l) => l === loghi[0]) ? loghi[0] : null };
     return invoca("mostra_notifica", { dati }).catch(() => invoca("plugin:notification|notify", { options: t }));
   }
 
@@ -279,7 +289,7 @@
     // la richiesta del permesso può aver aspettato la risposta di chi usa il telefono
     ora = Date.now();
     const inviate = leggiInviate(ora);
-    const avvisi = [];
+    const nuove = [];
     for (const ev of Array.isArray(dati && dati.events) ? dati.events : []) {
       if (!ev || ev.allDay || ev.nascosto || !ev.start) continue;
       const inizio = istante(ev.start);
@@ -287,15 +297,22 @@
       const raggiunti = imp.minuti.filter((m) => inizio - sogliaMs(m) <= ora);
       const chiavi = raggiunti.map((m) => `${ev.id}|${ev.start}|${m}`);
       if (!chiavi.length || chiavi.every((c) => c in inviate)) continue;
-      // una notifica sola per riunione, anche se più anticipi sono già passati (app appena avviata)
-      if (imp.notifiche) await notifica(ev, inizio, ora, imp);
-      for (const c of chiavi) inviate[c] = inizio;
-      salvaInviate(inviate);
-      stato.inviate += 1;
-      if (imp.comparsa) avvisi.push(await avviso(ev, inizio, imp.minimo));
+      nuove.push({ ev, inizio, chiavi });
     }
+    if (!nuove.length) return "ok";
+    nuove.sort((a, b) => a.inizio - b.inizio);
+    // una notifica sola per giro, anche con più riunioni o più anticipi già passati (app appena avviata); le riunioni si segnano dopo,
+    // così una notifica che non riesce si riprova al giro dopo
+    if (imp.notifiche) await notifica(nuove, ora, imp);
+    for (const { inizio, chiavi } of nuove) for (const c of chiavi) inviate[c] = inizio;
+    salvaInviate(inviate);
+    stato.inviate += nuove.length;
     // le riunioni del giro vanno insieme nello stesso avviso; dopo averle segnate, così un avviso che non riesce non fa ripetere le notifiche
-    if (avvisi.length) await invoca("mostra_avviso", { avvisi, suono: imp.suono }).catch(() => {});
+    if (imp.comparsa) {
+      const avvisi = [];
+      for (const { ev, inizio } of nuove) avvisi.push(await avviso(ev, inizio, imp.minimo));
+      await invoca("mostra_avviso", { avvisi, suono: imp.suono }).catch(() => {});
+    }
     return "ok";
   }
 

@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Il nucleo dei promemoria sta nella libreria Rust (Java_com_oecopilot_app_NucleoPromemoria_aggiorna): classe e metodo nativo
+# devono restare con il loro nome
+-keep class com.oecopilot.app.NucleoPromemoria { native <methods>; }

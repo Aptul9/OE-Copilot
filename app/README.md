@@ -35,7 +35,9 @@ Il cookie di sessione dura 30 giorni e resta nel profilo; la password non è sal
 
 ## Promemoria
 
-Si scelgono nel sito, *Impostazioni > Promemoria* (GUIDA.md, 4.9). Lo script `src-tauri/src/inizializzazione.js`, sulla pagina del sito, rilegge le impostazioni ogni minuto e chiede le riunioni. Un avviso per riunione e anticipo; niente per i giorni interi o con dati in cache. Gli avvisi partono solo ad app in esecuzione; un clic porta davanti la finestra. Le WebView non hanno notifiche web: nell'app manca *Notifiche del browser*.
+Si scelgono nel sito, *Impostazioni > Promemoria* (GUIDA.md, 4.9). Quando avvisare e cosa scrivere lo decide il nucleo in Rust `src-tauri/src/promemoria.rs`, uguale per Windows e Android: dalle impostazioni e dagli eventi dell'API una voce per riunione e anticipo, con l'ora di Roma, il titolo e il corpo. Un avviso per riunione e anticipo; niente per i giorni interi o con dati in cache. Le WebView non hanno notifiche web: nell'app manca *Notifiche del browser*.
+
+Su Windows lo script `src-tauri/src/inizializzazione.js`, sulla pagina del sito, ogni minuto rilegge impostazioni ed eventi e passa al nucleo (comando `pianifica_promemoria`); gli avvisi partono solo ad app in esecuzione, e un clic porta davanti la finestra. Su Android vedi sotto.
 
 Su Windows il sito mostra *Notifica di Windows* e *Avviso a comparsa*: una finestra dell'app (`src-tauri/src/comparsa.rs`) in basso a sinistra, visibile anche con *Non disturbare*, con una riga per riunione (al più 6) che sparisce dopo 5 secondi. Con *Solo ora e azienda* mostra logo e ora. Il suono scelto lo fa l'avviso (l'evento di Windows della notifica con quel nome, con `PlaySoundW`), e allora la notifica è muta; ad avviso spento lo fa la notifica. La notifica la fa l'app (`src-tauri/src/notifica.rs`, non il plugin, che su Windows passa solo titolo, testo e suono): una per riunione (quella dei 10 minuti prende il posto di quella dei 30), esce dal centro notifiche all'inizio della riunione e ha il logo dell'azienda, salvato in `%LOCALAPPDATA%\com.oecopilot.desktop\loghi`. Se non riesce, la fa il plugin.
 
@@ -47,7 +49,17 @@ I comandi nativi valgono solo per la pagina del sito (`remote.urls`, `"local": f
 
 ## Android
 
-Pacchetto `com.oecopilot.app`; `file:`, `data:` e `about:blank` sono rifiutati. Le notifiche ci sono sempre; il permesso `POST_NOTIFICATIONS` si chiede una volta, dopo l'accesso. Gli avvisi partono solo col processo vivo. Niente notifiche web, niente passkey.
+Pacchetto `com.oecopilot.app`; `file:`, `data:` e `about:blank` sono rifiutati. Niente notifiche web, niente passkey.
+
+### Promemoria ad app chiusa
+
+Le notifiche ci sono sempre; il permesso `POST_NOTIFICATIONS` lo chiede la pagina una volta, dopo l'accesso. Il resto lo fa l'app, in `gen/android/app/src/main/java/com/oecopilot/app/Promemoria.kt`:
+- un lavoro di WorkManager ogni 15 minuti, e subito quando l'app va in secondo piano (dopo l'accesso, o dopo un cambio delle impostazioni sul sito), legge `get_promemoria` e `get_events` con il cookie della WebView, all'indirizzo di `plugins.oe.url` in `assets/tauri.conf.json`;
+- il nucleo (funzione JNI `NucleoPromemoria.aggiorna`) dice quali allarmi programmare, quali avvisi mostrare subito (anticipo già passato, riunione non ancora iniziata, mai vista) e quali allarmi annullare;
+- gli allarmi sono esatti (`USE_EXACT_ALARM`) e partono anche ad app chiusa e con il telefono in Doze; la notifica è una per riunione (quella dei 10 minuti prende il posto di quella dei 30), sparisce all'inizio e un tocco apre l'app;
+- senza sessione gli allarmi si annullano; con dati in cache restano quelli che ci sono.
+
+Per un lavoro in orario anche a telefono fermo: *Impostazioni > App > OE Copilot > Batteria > Senza restrizioni*. Senza, gli allarmi partono lo stesso, ma una riunione aggiunta o cancellata può arrivare tardi. Dopo un riavvio gli allarmi tornano al primo giro del lavoro.
 
 ### Costruirla
 
@@ -73,6 +85,7 @@ Il rilascio si firma con `%USERPROFILE%\.oe-copilot\android\keystore.properties`
 - `npm run android:prova` fa `com.oecopilot.app.prova`, che convive con l'app firmata e parla in chiaro solo con `10.0.2.2`, il PC visto dall'emulatore. Il suffisso sta in `bundle.android.debugApplicationIdSuffix` di `src-tauri/tauri.android.conf.json`: la CLI riscrive `build.gradle.kts` a ogni build.
 - L'emulatore va avviato con `-dns-server 8.8.8.8,1.1.1.1`, altrimenti la WebView non risolve i nomi.
 - `tauri icon` riscrive `mipmap-anydpi-v26/ic_launcher.xml` e perde il margine di `drawable/ic_launcher_foreground_inset.xml`.
+- *Forza interruzione* (o `adb shell am force-stop`) cancella allarmi e lavoro dei promemoria finché l'app non si riapre. Per provare l'app chiusa: `adb shell am kill <pacchetto>` con l'app in secondo piano.
 
 ## Cosa non c'è
 
@@ -80,5 +93,4 @@ Aggiornamento automatico (il repository è privato), firma del codice, pulsanti 
 
 ## Prove
 
-- `npm test` (in `app/`) prova lo script dei promemoria; `cargo test` (in `src-tauri/`) indirizzi ammessi, link di Teams e righe dell'avviso. La Action non prova `app/`.
-- Una build di prova accanto a quella vera vuole un altro identificativo, con una seconda `--config` (`{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }`): con lo stesso condivide profilo, istanza unica e avvio con Windows.
+- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina, con il nucleo finto. La Action non prova `app/`.- Una build di prova accanto a quella vera vuole un altro identificativo, con una seconda `--config` (`{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }`): con lo stesso condivide profilo, istanza unica e avvio con Windows.

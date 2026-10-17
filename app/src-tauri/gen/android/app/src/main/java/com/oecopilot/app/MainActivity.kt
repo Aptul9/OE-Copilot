@@ -20,6 +20,14 @@ class MainActivity : TauriActivity() {
       vista.setPadding(spazio.left, spazio.top, spazio.right, spazio.bottom)
       WindowInsetsCompat.CONSUMED
     }
+    // i promemoria delle riunioni anche ad app chiusa (Promemoria.kt)
+    Promemoria.avvia(this)
+  }
+
+  override fun onResume() {
+    super.onResume()
+    // all'apertura dell'app, e quando si chiude la richiesta del permesso delle notifiche, gli allarmi si rifanno subito
+    Promemoria.aggiornaOra(this)
   }
 
   override fun onPause() {
@@ -27,5 +35,7 @@ class MainActivity : TauriActivity() {
     // La WebView scrive i cookie su disco ogni 30 secondi circa: se il sistema chiude l'app prima, il login (cookie di
     // sessione) si perde. Si scrivono quando l'app passa in secondo piano.
     CookieManager.getInstance().flush()
+    // dopo l'accesso o un cambio delle impostazioni dei promemoria sul sito, gli allarmi si rifanno subito
+    Promemoria.aggiornaOra(this)
   }
 }

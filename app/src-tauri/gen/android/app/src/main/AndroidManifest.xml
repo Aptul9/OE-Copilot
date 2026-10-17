@@ -3,9 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Il plugin delle notifiche li aggiunge per le notifiche programmate, che l'app non usa: restano solo INTERNET e POST_NOTIFICATIONS -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+    <!-- I promemoria ad app chiusa (Promemoria.kt): allarmi esatti all'ora dell'avviso. WAKE_LOCK e RECEIVE_BOOT_COMPLETED li
+         porta WorkManager, che dopo un riavvio fa ripartire il lavoro che rifà gli allarmi -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -29,6 +30,8 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver android:name=".PromemoriaAllarme" android:exported="false" />
 
         <provider
           android:name="androidx.core.content.FileProvider"

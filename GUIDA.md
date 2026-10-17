@@ -51,7 +51,7 @@ Tutti stanno in `server/docker-compose.yml`, senza profili.
 
 ## 3. Le app per Windows e Android
 
-Il client in `app/` (Tauri v2) è una finestra sul sito, con i promemoria scelti nel sito (4.9) finché è in esecuzione. Su Windows aggiunge icona nell'area di notifica, avvio con Windows e avviso a comparsa. Costruzione, installazione e trappole: [`app/README.md`](app/README.md).
+Il client in `app/` (Tauri v2) è una finestra sul sito, con i promemoria scelti nel sito (4.9): su Windows finché è in esecuzione, su Android anche ad app chiusa. Su Windows aggiunge icona nell'area di notifica, avvio con Windows e avviso a comparsa. Costruzione, installazione e trappole: [`app/README.md`](app/README.md).
 
 ---
 
@@ -281,13 +281,13 @@ Il servizio `schermo` (`server/schermo-web/`, da ws-scrcpy) mostra e comanda il 
 
 ### 4.9 I promemoria
 
-Si scelgono nel sito, *Impostazioni > Promemoria*, e stanno sul server (voce `promemoria`, metodi `get_promemoria` e `set_promemoria`). Le app le rileggono ogni minuto.
+Si scelgono nel sito, *Impostazioni > Promemoria*, e stanno sul server (voce `promemoria`, metodi `get_promemoria` e `set_promemoria`). L'app per Windows le rilegge ogni minuto, quella per Android ogni 15 minuti e quando passa in secondo piano.
 - **Quando**: 1 ora, 30, 15, 10 o 5 minuti prima, *All'inizio*, e altri minuti in un campo. Al più 8 valori da 0 a 1440 (0 è all'inizio); di norma 10.
-- **Dove**: nell'app per Windows *Notifica di Windows* (il toast, una per riunione con il logo dell'azienda, che sparisce all'inizio) e *Avviso a comparsa* (in basso a sinistra, visibile anche con *Non disturbare*). In un browser normale *Notifiche del browser*, che iscrive o toglie quel browser. L'app per Android avvisa sempre.
+- **Dove**: nell'app per Windows *Notifica di Windows* (il toast, una per riunione con il logo dell'azienda, che sparisce all'inizio) e *Avviso a comparsa* (in basso a sinistra, visibile anche con *Non disturbare*). In un browser normale *Notifiche del browser*, che iscrive o toglie quel browser. L'app per Android avvisa sempre, anche chiusa.
 - **Contenuto**, per tutti i canali: *Completo* (titolo e luogo) o *Solo ora e azienda* (l'avviso a comparsa mostra logo e ora).
 - **Suono**: solo l'app per Windows, tra i suoni di sistema. Lo fa l'avviso a comparsa; ad avviso spento, la notifica.
 
-Le app avvisano dallo script della pagina, finché sono in esecuzione (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; giorni interi e calendari spenti non avvisano. Una cancellazione fatta in Outlook arriva a telefono sbloccato: prima la riunione può avvisare.
+Le voci degli avvisi le calcola il nucleo delle app (`app/src-tauri/src/promemoria.rs`): su Windows avvisa lo script della pagina, finché l'app è in esecuzione; su Android un lavoro in background programma un allarme per avviso, che parte anche ad app chiusa (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; giorni interi e calendari spenti non avvisano. Una cancellazione fatta in Outlook arriva a telefono sbloccato: prima la riunione può avvisare.
 
 **Notifiche del browser.** Il testo passa cifrato (RFC 8291) dal servizio di notifiche del browser. Le WebView delle app non hanno notifiche web, quindi nell'app questo interruttore non c'è. Servono le chiavi VAPID:
    ```bash

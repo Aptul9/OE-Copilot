@@ -1791,6 +1791,7 @@ dependencies = [
  "defmt",
  "jiff-core",
  "jiff-static",
+ "jiff-tzdb",
  "jiff-tzdb-platform",
  "log",
  "portable-atomic",
@@ -2431,6 +2432,9 @@ name = "oe-copilot-app"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "jiff",
+ "jni",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-build",

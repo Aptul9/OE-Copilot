@@ -18,6 +18,14 @@ tauri = { version = "=2.12.3", features = [] }
 tauri-plugin-notification = "=2.6.0"
 tauri-plugin-opener = "=2.7.1"
 serde_json = "=1.0.154"
+# Il nucleo dei promemoria (promemoria.rs): le voci verso la pagina e Android, l'ora di Roma con il database dei fusi incluso, così Windows
+# e Android danno lo stesso risultato (versioni già nell'albero di tauri)
+serde = { version = "=1.0.229", features = ["derive"] }
+jiff = { version = "=0.2.38", features = ["tzdb-bundle-always"] }
+
+# Solo su Android: il lavoro in background (Promemoria.kt) chiama il nucleo dei promemoria (versione già nell'albero di wry)
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "=0.21.1"
 
 # Solo sul PC: icona nell'area di notifica, istanza unica, avvio con Windows, posizione della finestra
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

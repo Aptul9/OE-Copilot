@@ -4,6 +4,7 @@ mod finestra;
 mod navigazione;
 #[cfg(windows)]
 mod notifica;
+mod promemoria;
 #[cfg(desktop)]
 mod tray;
 
@@ -62,6 +63,13 @@ async fn mostra_notifica(app: tauri::AppHandle, dati: serde_json::Value) -> Resu
         let _ = (app, dati);
         Err("solo su Windows".into())
     }
+}
+
+/// Le voci dei promemoria (promemoria.rs) dalle impostazioni e dagli eventi che la pagina ha letto: il giro della pagina decide cosa
+/// mostrare. Sul PC lo 0 ("all'inizio") vale nell'ultimo minuto e mezzo
+#[tauri::command]
+fn pianifica_promemoria(impostazioni: Option<serde_json::Value>, eventi: serde_json::Value, ora: f64) -> Vec<promemoria::Voce> {
+    promemoria::pianifica(impostazioni.as_ref(), &eventi, ora as i64, promemoria::FINESTRA_INIZIO_GIRO_MS)
 }
 
 /// Solo nelle build di prova: elenco delle voci del menu dell'icona, con l'esito di un clic se richiesto
@@ -156,9 +164,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
 
     #[cfg(all(feature = "prova", desktop))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, prova_menu]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, prova_menu]);
     #[cfg(not(all(feature = "prova", desktop)))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria]);
 
     costruttore
         .setup(|app| {

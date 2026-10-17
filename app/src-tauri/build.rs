@@ -1,5 +1,5 @@
-const COMANDI: &[&str] = &["mostra_avviso", "mostra_notifica"];
-const COMANDI_PROVA: &[&str] = &["mostra_avviso", "mostra_notifica", "prova_menu"];
+const COMANDI: &[&str] = &["mostra_avviso", "mostra_notifica", "pianifica_promemoria"];
+const COMANDI_PROVA: &[&str] = &["mostra_avviso", "mostra_notifica", "pianifica_promemoria", "prova_menu"];
 
 fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_PROVA");

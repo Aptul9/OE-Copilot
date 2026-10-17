@@ -23,6 +23,7 @@
           "permissions": [
             "allow-mostra-avviso",
             "allow-mostra-notifica",
+            "allow-pianifica-promemoria",
             "notification:allow-notify",
             "notification:allow-is-permission-granted",
             "notification:allow-request-permission"

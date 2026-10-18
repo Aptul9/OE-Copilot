@@ -1,6 +1,7 @@
 // Script di inizializzazione della finestra principale. Gira in ogni pagina che la finestra carica, ma lavora solo
 // sull'origine del sito (window.__OE_ORIGINE__ la mette l'app). Sul PC ogni minuto legge le impostazioni dei promemoria
-// (get_promemoria) e get_events con la stessa API della pagina (stesso sito, cookie di sessione), chiede al nucleo
+// (get_promemoria) e get_events con la stessa API della pagina (stesso sito, cookie di sessione; il terzo argomento vuole anche i
+// calendari spenti nella barra laterale, che filtra solo la vista), chiede al nucleo
 // dell'app (pianifica_promemoria, src-tauri/src/promemoria.rs) le voci di ogni riunione e anticipo, e per quelle arrivate
 // manda la notifica e l'avviso a comparsa. Su Android i promemoria li programma l'app anche ad app chiusa (Promemoria.kt):
 // la pagina chiede solo il permesso delle notifiche. Nei log non finisce niente che riguardi gli eventi.
@@ -226,7 +227,7 @@
     }
     if (!imp.notifiche && !imp.comparsa) return "spente";
     let ora = Date.now();
-    const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS))]);
+    const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS)), true]);
     if (sessioneFinita(r)) return "non-autenticato";
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const dati = await r.json();

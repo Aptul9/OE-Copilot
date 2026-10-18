@@ -510,14 +510,16 @@ test("Solo ora e azienda: il testo è quello del nucleo, l'avviso a comparsa sen
   for (const segreto of ["Colloquio", "riservato", "Visita privata", "Sala del consiglio"]) assert.equal(tutto.includes(segreto), false, segreto);
 });
 
-test("la richiesta è la stessa della pagina: POST get_events con inizio e fine ISO a 24 ore", async () => {
+test("la richiesta è quella della pagina più un terzo argomento: POST get_events con inizio e fine ISO a 24 ore e tutti i calendari", async () => {
   const a = ambiente({ adesso: Date.UTC(2026, 9, 12, 7, 55, 30), api: { get_events: json([]) } });
   await a.giro();
   const [metodo, argomenti] = a.chiamate.find(([m]) => m === "get_events");
   assert.equal(metodo, "get_events");
-  assert.equal(argomenti.length, 2);
+  assert.equal(argomenti.length, 3);
   assert.match(argomenti[0], /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
   assert.equal(new Date(argomenti[1]).getTime() - new Date(argomenti[0]).getTime(), 24 * 3_600_000);
+  // i promemoria contano anche le aziende spente nella barra laterale, che filtra solo la vista
+  assert.equal(argomenti[2], true);
   assert.deepEqual(a.chiamate.find(([m]) => m === "get_promemoria"), ["get_promemoria", []]);
 });
 

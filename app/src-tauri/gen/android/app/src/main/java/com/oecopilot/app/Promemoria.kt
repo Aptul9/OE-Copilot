@@ -90,7 +90,8 @@ object Promemoria {
       if (cookie.isNullOrEmpty()) throw SenzaSessione()
       val impostazioni = chiama(sito, cookie, "get_promemoria", JSONArray())?.optJSONObject("promemoria")
       val adesso = System.currentTimeMillis()
-      val dati = chiama(sito, cookie, "get_events", JSONArray().put(iso(adesso)).put(iso(adesso + GIORNO_MS))) ?: throw IOException("get_events non c'è")
+      // il terzo argomento vuole anche i calendari spenti nella barra laterale: filtra solo la vista, non i promemoria
+      val dati = chiama(sito, cookie, "get_events", JSONArray().put(iso(adesso)).put(iso(adesso + GIORNO_MS)).put(true)) ?: throw IOException("get_events non c'è")
       if (dati.optBoolean("stale")) return
       pianifica(contesto, impostazioni?.toString() ?: "null", (dati.optJSONArray("events") ?: JSONArray()).toString())
     } catch (e: SenzaSessione) {

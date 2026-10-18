@@ -260,13 +260,10 @@ describe("client dell'API", () => {
 });
 
 describe("vista adatta allo schermo", () => {
-  it("settimana e tre giorni si adattano alla larghezza, il resto no", () => {
-    expect(vistaPerSchermo("timeGridWeek", false, false)).toBe("timeGridWeek");
-    expect(vistaPerSchermo("timeGridWeek", true, false)).toBe("timeGridTreGiorni");
-    expect(vistaPerSchermo("timeGridWeek", true, true)).toBe("timeGridDay");
-    expect(vistaPerSchermo("timeGridTreGiorni", true, false)).toBe("timeGridTreGiorni");
-    expect(vistaPerSchermo("timeGridTreGiorni", true, true)).toBe("timeGridDay");
-    for (const v of ["timeGridDay", "dayGridMonth", "listWeek"]) expect(vistaPerSchermo(v, true, true)).toBe(v);
+  it("su uno schermo stretto la settimana del computer si apre a tre giorni, il resto resta", () => {
+    expect(vistaPerSchermo("timeGridWeek", false)).toBe("timeGridWeek");
+    expect(vistaPerSchermo("timeGridWeek", true)).toBe("timeGridTreGiorni");
+    for (const v of ["timeGridDay", "timeGridTreGiorni", "dayGridMonth", "listWeek"]) expect(vistaPerSchermo(v, true)).toBe(v);
   });
 });
 

@@ -111,9 +111,9 @@
 .calendario .fc .fc-daygrid-day.giorno-festivo,
 .calendario .fc .fc-timegrid-col.giorno-festivo { background: rgba(220, 38, 38, 0.055); }
 .calendario .fc .fc-col-header-cell.giorno-festivo .fc-col-header-cell-cushion { color: #c0392b; }
-/* sabato e domenica più stretti, così i giorni feriali hanno più spazio (solo nella settimana) */
+/* sabato e domenica più stretti, così i giorni feriali hanno più spazio (solo nella settimana); su un telefono anche meno di 54 px */
 .calendario.vista-sett .fc .fc-col-header-cell.giorno-weekend,
-.calendario.vista-sett .fc .fc-timegrid-col.giorno-weekend { width: 54px; }
+.calendario.vista-sett .fc .fc-timegrid-col.giorno-weekend { width: min(54px, 7%); }
 
 /* riga sotto la data: la festività come pillola, gli eventi di un giorno intero come chip */
 .fc-day-extra { padding: 2px 4px 4px; display: flex; flex-direction: column; gap: 3px; align-items: center; width: 100%; }

@@ -422,9 +422,7 @@ export const sigleScheda = (nome: string) =>
 // ---- Vista adatta allo schermo -----------------------------------------------------
 export const VISTA_3G = "timeGridTreGiorni";
 
-/** La settimana non sta su un tablet in verticale (3 giorni) né su un telefono (un giorno). */
-export function vistaPerSchermo(vista: string, stretto: boolean, telefono: boolean): string {
-  if (telefono && (vista === "timeGridWeek" || vista === VISTA_3G)) return "timeGridDay";
-  if (stretto && vista === "timeGridWeek") return VISTA_3G;
-  return vista;
+/** La vista con cui si apre uno schermo stretto quando non ne ha scelta una sua: la settimana salvata dal computer diventa 3 giorni. */
+export function vistaPerSchermo(vista: string, stretto: boolean): string {
+  return stretto && vista === "timeGridWeek" ? VISTA_3G : vista;
 }

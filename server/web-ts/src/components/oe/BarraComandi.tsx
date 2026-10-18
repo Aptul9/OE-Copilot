@@ -20,7 +20,6 @@ type Props = {
   titolo: string;
   vista: string;
   stretto: boolean;
-  telefono: boolean;
   onPannello: () => void;
   onOggi: () => void;
   onPrima: () => void;
@@ -29,10 +28,8 @@ type Props = {
 };
 
 /** La barra sopra il calendario: periodo, sincronizzazione, zoom e vista. */
-export function BarraComandi({ titolo, vista, stretto, telefono, onPannello, onOggi, onPrima, onDopo, onVista }: Props) {
+export function BarraComandi({ titolo, vista, stretto, onPannello, onOggi, onPrima, onDopo, onVista }: Props) {
   const { forzaSync, sincronizzando, etichetta, zoom, cambiaZoom } = useOe();
-  // su uno schermo stretto la settimana non sta; su un telefono nemmeno i tre giorni
-  const viste = ETICHETTE_VISTE.filter((v) => !(stretto && v.valore === "timeGridWeek") && !(telefono && v.valore === VISTA_3G));
   return (
     <header className="cmdbar flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
       <div className="flex min-w-0 items-center gap-1.5">
@@ -74,12 +71,12 @@ export function BarraComandi({ titolo, vista, stretto, telefono, onPannello, onO
           </Button>
         </div>
         {stretto ? (
-          <Select value={viste.some((v) => v.valore === vista) ? vista : viste[0].valore} onValueChange={onVista}>
+          <Select value={ETICHETTE_VISTE.some((v) => v.valore === vista) ? vista : ETICHETTE_VISTE[0].valore} onValueChange={onVista}>
             <SelectTrigger id="view-select" className="w-32" aria-label="Vista">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {viste.map((v) => (
+              {ETICHETTE_VISTE.map((v) => (
                 <SelectItem key={v.valore} value={v.valore}>
                   {v.testo}
                 </SelectItem>
@@ -88,7 +85,7 @@ export function BarraComandi({ titolo, vista, stretto, telefono, onPannello, onO
           </Select>
         ) : (
           <div id="view-switch" className="segmented inline-flex rounded-lg border p-0.5">
-            {viste.map((v) => (
+            {ETICHETTE_VISTE.map((v) => (
               <button
                 key={v.valore}
                 data-view={v.valore}

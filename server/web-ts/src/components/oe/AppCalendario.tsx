@@ -21,19 +21,6 @@ import { PannelloLaterale } from "./PannelloLaterale";
 import { SchedaEvento, type Scheda } from "./SchedaEvento";
 import { Timesheet } from "./Timesheet";
 
-/** Vero sotto i 480 px: telefono in verticale. */
-function useStrettissimo(): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      const m = window.matchMedia("(max-width: 479.5px)");
-      m.addEventListener("change", cb);
-      return () => m.removeEventListener("change", cb);
-    },
-    () => window.matchMedia("(max-width: 479.5px)").matches,
-    () => false,
-  );
-}
-
 /** Vero sotto i 768 px: telefono e tablet in verticale. */
 function useStretto(): boolean {
   return useSyncExternalStore(
@@ -45,6 +32,18 @@ function useStretto(): boolean {
     () => window.matchMedia("(max-width: 767.5px)").matches,
     () => false,
   );
+}
+
+const CHIAVE_VISTA = "oe.vista-stretto";
+
+/** La vista scelta su uno schermo stretto, che resta in questo browser: quella salvata sul server è del computer. */
+function vistaLocale(): string | null {
+  try {
+    const v = localStorage.getItem(CHIAVE_VISTA);
+    return v && (VISTE_VALIDE as readonly string[]).includes(v) ? v : null;
+  } catch {
+    return null;
+  }
 }
 
 /** `pubblico`: la pagina senza accesso, gli stessi componenti con gli impegni ridotti a "Occupato" e niente che scriva. */
@@ -62,7 +61,6 @@ export function AppCalendario({ pubblico, accesso2fa = "off" }: { pubblico?: { g
 function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
   const oe = useOe();
   const stretto = useStretto();
-  const telefono = useStrettissimo();
   const comandi = useRef<ComandiCalendario>(null);
   const [sezione, setSezione] = useState<"calendario" | "timesheet">("calendario");
   const [pannello, setPannello] = useState(true);
@@ -82,19 +80,24 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
 
   const vista = oe.periodo?.tipo ?? "";
   const vistaIniziale = (() => {
+    const locale = stretto ? vistaLocale() : null;
+    if (locale) return locale;
     const salvata = oe.vistaIniziale;
     const v = salvata && (VISTE_VALIDE as readonly string[]).includes(salvata) ? salvata : "timeGridWeek";
-    return vistaPerSchermo(v, stretto, telefono);
+    return vistaPerSchermo(v, stretto);
   })();
-  // uno schermo che si restringe a settimana aperta passa a una vista che sta, senza cambiare quella salvata
-  useEffect(() => {
-    if (vista && vistaPerSchermo(vista, stretto, telefono) !== vista) comandi.current?.cambiaVista(vistaPerSchermo(vista, stretto, telefono));
-  }, [stretto, telefono, vista]);
 
   const cambiaVista = (v: string) => {
     comandi.current?.cambiaVista(v);
-    // la vista scelta si ricorda, ma non da uno schermo stretto: quella salvata è anche quella del computer
+    // la vista scelta si ricorda: sul server quella del computer, in questo browser quella di uno schermo stretto
     if (!stretto) void oe.salvaConfig({ vista: v });
+    else {
+      try {
+        localStorage.setItem(CHIAVE_VISTA, v);
+      } catch {
+        // vale in questa pagina e non resta
+      }
+    }
   };
   const onDatesSet = useCallback(
     (i: { start: Date; end: Date; tipo: string; titolo: string }) => {
@@ -244,7 +247,6 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
               titolo={titolo}
               vista={vista || vistaIniziale}
               stretto={stretto}
-              telefono={telefono}
               onPannello={() => (window.matchMedia("(min-width: 1024px)").matches ? setPannello(!pannello) : setMenu(true))}
               onOggi={() => comandi.current?.oggi()}
               onPrima={() => comandi.current?.prima()}

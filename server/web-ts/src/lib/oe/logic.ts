@@ -400,7 +400,8 @@ export const SOGLIA_RABBOCCO = 3;
 
 export type CacheLarga = { da: Date; a: Date };
 
-export const eATreGiorni = (inizio: Date, fine: Date) => giorniTra(inizio, fine) === 3;
+/** Giorno, 3 giorni e settimana scorrono e mostrano anche i giorni accanto: si leggono da un intorno largo tenuto in memoria. */
+export const aScorrimento = (inizio: Date, fine: Date) => [1, 3, 7].includes(giorniTra(inizio, fine));
 export const dentroLaCache = (c: CacheLarga | null, inizio: Date, fine: Date) => !!c && inizio >= c.da && fine <= c.a;
 export const vicinoAlBordo = (c: CacheLarga, inizio: Date, fine: Date) => giorniTra(c.da, inizio) < SOGLIA_RABBOCCO || giorniTra(fine, c.a) < SOGLIA_RABBOCCO;
 export const periodoLargo = (inizio: Date, fine: Date): CacheLarga => ({ da: spostaGiorni(inizio, -PRIMA_GIORNI), a: spostaGiorni(fine, DOPO_GIORNI) });
@@ -421,6 +422,18 @@ export const sigleScheda = (nome: string) =>
 
 // ---- Vista adatta allo schermo -----------------------------------------------------
 export const VISTA_3G = "timeGridTreGiorni";
+
+/**
+ * Di quanti giorni si sposta una vista che scorre al rilascio (`dx` in px, positivo = trascinata a destra = indietro): il passo più vicino
+ * a dove arriverebbe frenando da sola (velocità in px/ms, frenata 0,0025 px/ms²: un trascinamento calmo resta quasi dov'è, un colpo veloce va
+ * più in là), mai oltre i giorni disegnati di lato.
+ */
+export function giorniDiArrivo(dx: number, velocita: number, colonna: number, passo: number, bordo: number): number {
+  if (!colonna) return 0;
+  const max = Math.floor(bordo / passo);
+  const passi = Math.round(-(dx + (velocita * Math.abs(velocita)) / 0.005) / (colonna * passo));
+  return Math.max(-max, Math.min(max, passi)) * passo || 0;
+}
 
 /** La vista con cui si apre uno schermo stretto quando non ne ha scelta una sua: la settimana salvata dal computer diventa 3 giorni. */
 export function vistaPerSchermo(vista: string, stretto: boolean): string {

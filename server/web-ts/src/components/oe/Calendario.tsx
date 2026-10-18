@@ -8,17 +8,37 @@ import listPlugin from "@fullcalendar/list";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import FullCalendar from "@fullcalendar/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { VISTA_3G, chiaveGiorno, iniziali, mappaLoghi } from "@/lib/oe/logic";
+import { VISTA_3G, chiaveGiorno, iniziali, mappaLoghi, spostaGiorni } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import "./calendario.css";
 import { ImgLogo } from "./ImgLogo";
 import { useOe } from "./OeProvider";
-import { useScorrimentoTreGiorni } from "./useScorrimentoTreGiorni";
+import { useScorrimento, type Scorrimento } from "./useScorrimento";
 
 export { VISTA_3G };
 export const VISTE_VALIDE = ["timeGridDay", VISTA_3G, "timeGridWeek", "dayGridMonth", "listWeek"] as const;
 export type Vista = (typeof VISTE_VALIDE)[number];
+
+/** Le viste che scorrono sotto il dito (useScorrimento): giorni visibili, giorni disegnati in più per lato, giorni di un passo. */
+const SCORRE: Record<string, Scorrimento & { titolo: Intl.DateTimeFormatOptions }> = {
+  timeGridDay: { visibili: 1, bordo: 2, passo: 1, titolo: { day: "numeric", month: "long", year: "numeric" } },
+  [VISTA_3G]: { visibili: 3, bordo: 3, passo: 1, titolo: { day: "numeric", month: "long", year: "numeric" } },
+  timeGridWeek: { visibili: 7, bordo: 7, passo: 7, titolo: { day: "numeric", month: "short", year: "numeric" } },
+};
+
+/** FullCalendar dà alla durata delle sue viste Giorno e Settimana la precedenza su visibleRange: qui sono viste nostre con un altro
+ * nome. Fuori da questo file (configurazione salvata, barra, pagina) restano timeGridDay e timeGridWeek. */
+const A_FC: Record<string, string> = { timeGridDay: "timeGridGiorno", timeGridWeek: "timeGridSettimana" };
+const DA_FC: Record<string, string> = Object.fromEntries(Object.entries(A_FC).map(([a, b]) => [b, a]));
+const aFc = (v: string) => A_FC[v] ?? v;
+const daFc = (v: string) => DA_FC[v] ?? v;
+
+/** Il periodo che FullCalendar disegna per una data: quello visibile (la settimana parte dal lunedì) con i giorni nascosti ai lati. */
+const intervallo = (s: Scorrimento) => (d: Date) => {
+  const inizio = s.passo === 7 ? spostaGiorni(d, -((d.getDay() + 6) % 7)) : spostaGiorni(d, 0);
+  return { start: spostaGiorni(inizio, -s.bordo), end: spostaGiorni(inizio, s.visibili + s.bordo) };
+};
 
 export type ComandiCalendario = {
   oggi: () => void;
@@ -64,10 +84,14 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     prima: () => api()?.prev(),
     dopo: () => api()?.next(),
     vaiA: (d) => api()?.gotoDate(d),
-    cambiaVista: (v) => api()?.changeView(v),
+    cambiaVista: (v) => api()?.changeView(aFc(v)),
   }));
 
-  useScorrimentoTreGiorni(radice, () => (tipoCorrente.current === VISTA_3G ? api() ?? null : null));
+  useScorrimento(radice, () => {
+    const s = SCORRE[tipoCorrente.current];
+    const a = api();
+    return s && a ? { api: a, s } : null;
+  });
 
   // Lo zoom alza o abbassa le righe: FullCalendar rimisura la griglia ma non le posizioni degli eventi,
   // quindi si ridisegna la vista rimettendosi sullo stesso orario.
@@ -90,9 +114,16 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
 
   const datesSet = useCallback(
     (i: DatesSetArg) => {
-      tipoCorrente.current = i.view.type;
-      setTipo(i.view.type);
-      onDatesSet({ start: i.start, end: i.end, tipo: i.view.type, titolo: i.view.title });
+      const tipo = daFc(i.view.type);
+      tipoCorrente.current = tipo;
+      setTipo(tipo);
+      const s = SCORRE[tipo];
+      if (!s) return onDatesSet({ start: i.start, end: i.end, tipo, titolo: i.view.title });
+      // i giorni nascosti ai lati non sono il periodo della pagina: titolo, eventi e minicalendario seguono quelli che si vedono
+      const start = spostaGiorni(i.start, s.bordo);
+      const end = spostaGiorni(i.end, -s.bordo);
+      const separatore = i.view.calendar.getOption("titleRangeSeparator");
+      onDatesSet({ start, end, tipo, titolo: i.view.calendar.formatRange(start, spostaGiorni(end, -1), { ...s.titolo, separator: separatore }) });
     },
     [onDatesSet],
   );
@@ -111,7 +142,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   const eventContent = useCallback(
     (arg: EventContentArg) => {
       const p = arg.event.extendedProps as Evento;
-      const tipo = arg.view.type;
+      const tipo = daFc(arg.view.type);
       if (tipo === "dayGridMonth" || tipo.startsWith("list")) {
         // mese e agenda: una riga sola, orario e titolo
         const logoRiga = loghi[p.alias || p.account || ""];
@@ -207,19 +238,21 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
 
   const viste = useMemo<NonNullable<CalendarOptions["views"]>>(
     () => ({
-      // tre giorni che scorrono di uno alla volta, come in Outlook
-      [VISTA_3G]: { type: "timeGrid", duration: { days: 3 }, dateIncrement: { days: 1 }, titleFormat: { day: "numeric", month: "long", year: "numeric" } },
+      // giorno, tre giorni e settimana scorrono sotto il dito come in Outlook: FullCalendar disegna anche i giorni accanto
+      [A_FC.timeGridDay]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridDay), dateIncrement: { days: 1 } },
+      [VISTA_3G]: { type: "timeGrid", visibleRange: intervallo(SCORRE[VISTA_3G]), dateIncrement: { days: 1 } },
+      [A_FC.timeGridWeek]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridWeek), dateIncrement: { weeks: 1 } },
       dayGridMonth: { dayHeaderFormat: { weekday: "short" } },
     }),
     [],
   );
 
   return (
-    <div ref={radice} className={cn("calendario h-full", tipo === VISTA_3G && "vista-3g", tipo === "timeGridWeek" && "vista-sett")} style={{ ["--slot-h" as string]: `${zoom}px` }}>
+    <div ref={radice} className={cn("calendario h-full", SCORRE[tipo] && "scorre", tipo === "timeGridWeek" && "vista-sett")} style={{ ["--slot-h" as string]: `${zoom}px` }}>
       <FullCalendar
         ref={fc}
         plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
-        initialView={vistaIniziale}
+        initialView={aFc(vistaIniziale)}
         views={viste}
         locale={itLocale}
         firstDay={1}

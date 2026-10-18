@@ -6,7 +6,7 @@ import { api } from "@/lib/oe/api";
 import {
   coloriDinamici,
   dentroLaCache,
-  eATreGiorni,
+  aScorrimento,
   etichettaSync,
   eventiPerGriglia,
   gruppiAttivi,
@@ -281,12 +281,12 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   useEffect(() => {
     if (!periodo) return;
     const mia = ++richiesta.current;
-    const tre = eATreGiorni(periodo.start, periodo.end);
-    if (!tre) cache.current = null;
+    const scorre = aScorrimento(periodo.start, periodo.end);
+    if (!scorre) cache.current = null;
 
-    // Vista a 3 giorni: ogni passo di un giorno cambia periodo. Per non lasciare una colonna vuota
-    // fino alla risposta si legge un intorno largo e si risponde dalla memoria finché il periodo ci sta dentro.
-    if (tre && dentroLaCache(cache.current, periodo.start, periodo.end)) {
+    // Giorno, 3 giorni e settimana scorrono: ogni passo cambia periodo, e sotto il dito si vedono anche i giorni accanto. Per non
+    // lasciare colonne vuote fino alla risposta si legge un intorno largo e si risponde dalla memoria finché il periodo ci sta dentro.
+    if (scorre && dentroLaCache(cache.current, periodo.start, periodo.end)) {
       const c = cache.current!;
       if (vicinoAlBordo(c, periodo.start, periodo.end) && !rabboccoInCorso.current) {
         rabboccoInCorso.current = true;
@@ -307,7 +307,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
       return;
     }
 
-    const largo = tre ? periodoLargo(periodo.start, periodo.end) : { da: periodo.start, a: periodo.end };
+    const largo = scorre ? periodoLargo(periodo.start, periodo.end) : { da: periodo.start, a: periodo.end };
     mostraAvviso(null);
     syncInizio();
     leggi(largo.da, largo.a)
@@ -336,7 +336,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
         setEventi(res.events || []);
         setStatoFonti(res.fonti || {});
         setPallinoInAttesa(false);
-        cache.current = tre && !res.outlook_starting ? largo : null;
+        cache.current = scorre && !res.outlook_starting ? largo : null;
       })
       .catch((err) => {
         syncFine(false);

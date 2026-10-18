@@ -7,7 +7,8 @@ import {
   corrisponde,
   dentroLaCache,
   dovePagina,
-  eATreGiorni,
+  aScorrimento,
+  giorniDiArrivo,
   etichettaSync,
   eventiPerGriglia,
   filtraAziende,
@@ -207,12 +208,15 @@ describe("dove si apre la pagina", () => {
   });
 });
 
-describe("vista a 3 giorni", () => {
+describe("viste che scorrono", () => {
   it("riconosce il periodo, la cache e il bordo", () => {
     const i = new Date(2026, 9, 12);
     const f = new Date(2026, 9, 15);
-    expect(eATreGiorni(i, f)).toBe(true);
-    expect(eATreGiorni(i, new Date(2026, 9, 19))).toBe(false);
+    expect(aScorrimento(i, f)).toBe(true);
+    expect(aScorrimento(i, new Date(2026, 9, 13))).toBe(true);
+    expect(aScorrimento(i, new Date(2026, 9, 19))).toBe(true);
+    expect(aScorrimento(i, new Date(2026, 9, 17))).toBe(false);
+    expect(aScorrimento(new Date(2026, 8, 28), new Date(2026, 10, 9))).toBe(false);
     const c = periodoLargo(i, f);
     expect(dentroLaCache(c, i, f)).toBe(true);
     expect(dentroLaCache(c, spostaGiorni(i, 10), spostaGiorni(f, 10))).toBe(true);
@@ -220,6 +224,24 @@ describe("vista a 3 giorni", () => {
     expect(dentroLaCache(null, i, f)).toBe(false);
     expect(vicinoAlBordo(c, i, f)).toBe(false);
     expect(vicinoAlBordo(c, spostaGiorni(i, 12), spostaGiorni(f, 12))).toBe(true);
+  });
+
+  it("al rilascio va al passo più vicino, più in là con un colpo veloce, mai oltre i giorni disegnati", () => {
+    // colonne da 100 px, 3 giorni nascosti per lato, passo di un giorno; dx negativo = trascinata a sinistra = avanti
+    expect(giorniDiArrivo(-40, 0, 100, 1, 3)).toBe(0);
+    expect(giorniDiArrivo(40, 0, 100, 1, 3)).toBe(0);
+    expect(giorniDiArrivo(-60, 0, 100, 1, 3)).toBe(1);
+    expect(giorniDiArrivo(160, 0, 100, 1, 3)).toBe(-2);
+    expect(giorniDiArrivo(-40, -1.5, 100, 1, 3)).toBe(3);
+    expect(giorniDiArrivo(-290, -3, 100, 1, 3)).toBe(3);
+    expect(giorniDiArrivo(30, 1, 100, 1, 3)).toBe(-2);
+    // un trascinamento calmo di poco più di una colonna non va oltre il giorno dopo
+    expect(giorniDiArrivo(-100, -0.5, 120, 1, 3)).toBe(1);
+    // settimana: colonne da 50 px, passo e bordo di 7 giorni
+    expect(giorniDiArrivo(-150, 0, 50, 7, 7)).toBe(0);
+    expect(giorniDiArrivo(-200, 0, 50, 7, 7)).toBe(7);
+    expect(giorniDiArrivo(60, 1.5, 50, 7, 7)).toBe(-7);
+    expect(giorniDiArrivo(-10, 0, 0, 1, 3)).toBe(0);
   });
 });
 

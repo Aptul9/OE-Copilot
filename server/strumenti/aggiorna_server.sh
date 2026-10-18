@@ -15,7 +15,7 @@ cd "$DIR"
 # l'ultimo comando (il supervisore) dà lo stato di ritorno della funzione.
 avvia() {
     lsmod | grep -q '^binder_linux' \
-        || { echo "modulo binder_linux non caricato (vedi GUIDA.md, 4.1)" >&2; return 1; }
+        || { echo "modulo binder_linux non caricato (vedi README.md, 4.1)" >&2; return 1; }
     # Il telefono si ricrea solo se la sua configurazione è cambiata: un riavvio
     # inutile fermerebbe le sincronizzazioni per un paio di minuti.
     docker compose up -d --build telefono \
@@ -34,7 +34,7 @@ avvia() {
     # Il codice dell'agente è nell'immagine, niente file montati: compose lo ricrea da sé quando l'immagine o la configurazione cambiano.
     docker compose up -d --build agent \
         || { echo "docker compose non ha avviato l'agente" >&2; return 1; }
-    # Il giro di sincronizzazione, il battito e il rilevatore degli accessi li fa il supervisore (supervisore/, GUIDA.md 4.5), che si
+    # Il giro di sincronizzazione, il battito e il rilevatore degli accessi li fa il supervisore (supervisore/, README.md 4.5), che si
     # ricrea a ogni aggiornamento senza toccare il telefono (--no-deps).
     riavvio=$(date +%s)
     docker compose up -d --build --force-recreate --no-deps supervisore
@@ -52,17 +52,17 @@ credenziali_da_stdin() {
     done
 }
 
-# Interfaccia web (facoltativa, GUIDA.md 4.7): il gateway, che chiede l'accesso e serve la
+# Interfaccia web (facoltativa, README.md 4.7): il gateway, che chiede l'accesso e serve la
 # pagina, l'API e i loghi, e il Caddy che le mette HTTPS davanti. Parte solo se in .env c'è UI_HOST.
 # Gira dopo che agente e battito sono a posto e non fa tornare indietro niente: se la web
 # non parte, la Action diventa rossa ma l'agente e il telefono restano come sono. Il Caddy
 # nuovo si ricrea solo se il gateway è sano (depends_on): se non lo è resta quello di prima.
 avvia_ui() {
     grep -q '^UI_HOST=.' .env || { echo "interfaccia web non configurata (UI_HOST in .env): salto"; return 0; }
-    [ -d ui-dati ] || { echo "manca $DIR/ui-dati (vedi GUIDA.md, 4.7)" >&2; return 1; }
+    [ -d ui-dati ] || { echo "manca $DIR/ui-dati (vedi README.md, 4.7)" >&2; return 1; }
     for v in ADMIN_EMAIL ADMIN_PASSWORD BETTER_AUTH_SECRET; do
         [ -n "${!v:-}" ] || grep -q "^$v=." .env \
-            || { echo "manca $v (né nei secret della Action né in $DIR/.env, vedi GUIDA.md, 4.7): l'interfaccia web resta com'è" >&2; return 1; }
+            || { echo "manca $v (né nei secret della Action né in $DIR/.env, vedi README.md, 4.7): l'interfaccia web resta com'è" >&2; return 1; }
     done
     docker compose up -d --build gateway caddy-ui \
         || { echo "docker compose non ha avviato gateway e caddy-ui" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
@@ -117,7 +117,7 @@ avvia_ui() {
     fi
 }
 
-# Schermo del telefono nel browser (schermo-web, GUIDA.md 4.8). Come la web: se non parte la Action diventa rossa,
+# Schermo del telefono nel browser (schermo-web, README.md 4.8). Come la web: se non parte la Action diventa rossa,
 # agente e telefono restano come sono. Il telefono non si tocca: si costruisce e si avvia solo questo servizio.
 avvia_schermo() {
     docker compose up -d --build schermo
@@ -128,7 +128,7 @@ avvia_schermo() {
         sleep 2
     done
     [ "$stato" = healthy ] || { echo "il servizio oe-copilot-schermo non risponde" >&2; docker logs --tail 40 oe-copilot-schermo >&2 || true; return 1; }
-    # la cartella del file PAUSA (stato/schermo, utente 10001, si crea una volta a mano: GUIDA.md 4.5) deve essere scrivibile dal container: senza,
+    # la cartella del file PAUSA (stato/schermo, utente 10001, si crea una volta a mano: README.md 4.5) deve essere scrivibile dal container: senza,
     # la sincronizzazione continuerebbe a portare Outlook in primo piano mentre si usa il telefono nel browser
     docker exec oe-copilot-schermo sh -c 'touch /pausa/.prova && rm /pausa/.prova' \
         || { echo "stato/schermo non è scrivibile dal servizio schermo (sudo install -d -o 10001 -g 10001 -m 755 /opt/oe-copilot/stato/schermo)" >&2; return 1; }
@@ -168,7 +168,7 @@ case "${1:-}" in
         sha="${2:-sconosciuto}"
         credenziali_da_stdin
         for f in .env agent/fonti.json; do
-            [ -f "$f" ] || { echo "$f mancante in $DIR: la prima installazione va fatta a mano (vedi GUIDA.md)" >&2; exit 1; }
+            [ -f "$f" ] || { echo "$f mancante in $DIR: la prima installazione va fatta a mano (vedi README.md)" >&2; exit 1; }
         done
         echo "aggiornamento a $sha"
         if avvia && sano; then

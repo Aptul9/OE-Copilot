@@ -256,7 +256,7 @@ jobs:
           test "$(ws -b jar "$C/telefono/?action=goog-device-list")" = 403
           # il resto del sito resta come prima dietro lo stesso Caddy
           curl -fsS -b jar $C/ | grep -q 'Cerca tra le riunioni'
-          # calendario condiviso (GUIDA.md, 4.10): un indirizzo che non vale è 404 come un percorso che non c'è; con la sessione si crea un link, e il calendario si legge
+          # calendario condiviso (README.md, 4.10): un indirizzo che non vale è 404 come un percorso che non c'è; con la sessione si crea un link, e il calendario si legge
           # senza sessione (text/calendar, rilettura ogni 30 minuti) e nel livello occupato non ha niente di quello che chi lo condivide ha scritto
           test "$(codice $G/condividi/prova.ics)" = 404
           test "$(codice "$G/condividi/$(openssl rand -hex 22 | cut -c1-43).ics")" = 404

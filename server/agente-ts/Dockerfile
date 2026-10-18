@@ -1,4 +1,4 @@
-# Agente di Oe Copilot: legge il calendario del telefono e lo serve al gateway con un'API a chiave. È il servizio agent di compose (GUIDA.md,
+# Agente di Oe Copilot: legge il calendario del telefono e lo serve al gateway con un'API a chiave. È il servizio agent di compose (README.md,
 # sezioni 4.4 e 5). L'immagine si costruisce sulla macchina che la esegue (arm64 sulla VM). Node 26 esegue i sorgenti TypeScript così come
 # sono e non ci sono dipendenze: niente compilazione, niente npm.
 # Fissata per digest (indice amd64 e arm64): per aggiornarla `docker buildx imagetools inspect node:26-slim` e si riscrive lo sha256 in tutti i FROM node di agente-ts, supervisore e web-ts. Su tag mobili restano anche schermo-web (`node:26-slim`) e caddy-ui (`caddy:2.11.4-alpine`).

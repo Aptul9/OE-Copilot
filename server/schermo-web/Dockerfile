@@ -1,4 +1,4 @@
-# Schermo del telefono virtuale nel browser (ws-scrcpy, GUIDA.md 4.8): il servizio che tiene il flusso e i tocchi tra il
+# Schermo del telefono virtuale nel browser (ws-scrcpy, README.md 4.8): il servizio che tiene il flusso e i tocchi tra il
 # browser e il telefono. Non è pubblicato: ci arriva solo il Caddy, dopo l'accesso. L'immagine si costruisce sulla
 # macchina che la esegue (arm64 sulla VM).
 FROM node:26-slim AS build

@@ -36,7 +36,7 @@ server/web-ts/logos-predefiniti/*
 # APK delle app del telefono: stanno fra i file della release "apk", non nel repository
 server/apk/*.apk
 
-# Dati e segreti del server: restano sul server (GUIDA.md, sezioni 4.2 e 4.7), mai nel repository
+# Dati e segreti del server: restano sul server (README.md, sezioni 4.2 e 4.7), mai nel repository
 server/.env
 server/agent/fonti.json
 server/ui-dati/

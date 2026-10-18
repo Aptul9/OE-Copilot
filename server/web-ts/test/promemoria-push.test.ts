@@ -140,11 +140,11 @@ describe("le chiavi VAPID", () => {
     expect(chiaviVapid()).toBeNull();
   });
 
-  it("il comando della guida (GUIDA.md, 4.9) fa una coppia di chiavi che il server accetta", (ctx) => {
-    const percorso = path.join(process.cwd(), "..", "..", "GUIDA.md");
-    if (!fs.existsSync(percorso)) return ctx.skip("senza la guida accanto (fuori dal repository)");
+  it("il comando del README (4.9) fa una coppia di chiavi che il server accetta", (ctx) => {
+    const percorso = path.join(process.cwd(), "..", "..", "README.md");
+    if (!fs.existsSync(percorso)) return ctx.skip("senza il README accanto (fuori dal repository)");
     const comando = /node -e "(const c=require\('crypto'\);[^"\r\n]+)"/.exec(fs.readFileSync(percorso, "utf-8"));
-    expect(comando, "il comando per le chiavi VAPID non è più nella guida").not.toBeNull();
+    expect(comando, "il comando per le chiavi VAPID non è più nel README").not.toBeNull();
     const uscita = execFileSync(process.execPath, ["-e", comando![1]], { encoding: "utf-8" });
     const righe = uscita.trim().split(/\r?\n/);
     expect(righe.map((r) => r.split("=")[0])).toEqual(["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"]);

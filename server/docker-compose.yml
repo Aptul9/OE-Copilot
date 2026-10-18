@@ -4,7 +4,7 @@
 name: oe-copilot
 services:
   # agent = legge il calendario del telefono (agente-ts/, TypeScript) e lo serve con un'API a chiave
-  # al gateway (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (GUIDA.md, sezione 5).
+  # al gateway (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (README.md, sezione 5).
   # Gira senza privilegi: i file del calendario sono del gruppo 10019 (l'utente di Android che li scrive), che entra come
   # gruppo aggiuntivo; se Android cambia quel numero, in .env si scrive CALENDARIO_GID=<gid dei file di calendar.db> e si ricrea il servizio.
   agent:
@@ -68,7 +68,7 @@ services:
       - "127.0.0.1:5555:5555"
     restart: unless-stopped
 
-  # Interfaccia web (facoltativa, GUIDA.md 4.7). Gateway (web-ts/, Next.js e Better Auth): pagina di
+  # Interfaccia web (facoltativa, README.md 4.7). Gateway (web-ts/, Next.js e Better Auth): pagina di
   # accesso, sessioni, pagina in TypeScript, metodi dell'API e loghi. Senza sessione una pagina rimanda
   # a /login e l'API risponde 401; con la sessione risponde da sé (POST /api/<metodo>, GET /logos/<file>)
   # e il resto è 404. Il proprietario nasce da ADMIN_EMAIL e ADMIN_PASSWORD di .env, le sessioni, il
@@ -89,11 +89,11 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
-      # secondo fattore dell'accesso (GUIDA.md 4.7): off (predefinito), totp o passkey; un altro valore ferma l'avvio
+      # secondo fattore dell'accesso (README.md 4.7): off (predefinito), totp o passkey; un altro valore ferma l'avvio
       - AUTH_2FA=${AUTH_2FA:-off}
-      # promemoria dal server (GUIDA.md 4.9): il giro è ogni PROMEMORIA_INTERVALLO_S secondi (da 5 a 3600)
+      # promemoria dal server (README.md 4.9): il giro è ogni PROMEMORIA_INTERVALLO_S secondi (da 5 a 3600)
       - PROMEMORIA_INTERVALLO_S=${PROMEMORIA_INTERVALLO_S:-30}
-      # notifiche del browser (GUIDA.md 4.9): la coppia di chiavi VAPID e un contatto (mailto: o https:); vuoti, il canale non è configurato
+      # notifiche del browser (README.md 4.9): la coppia di chiavi VAPID e un contatto (mailto: o https:); vuoti, il canale non è configurato
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
@@ -109,7 +109,7 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # Schermo del telefono nel browser (schermo-web/, ws-scrcpy, GUIDA.md 4.8): il flusso del video e i tocchi tra il
+  # Schermo del telefono nel browser (schermo-web/, ws-scrcpy, README.md 4.8): il flusso del video e i tocchi tra il
   # browser e il telefono, con adb sulla rete di compose (telefono:5555). Non è pubblicato su nessuna porta e non ha
   # password: ci arriva solo il Caddy, dopo l'accesso del gateway. adb sul telefono non chiede conferme
   # (ro.adb.secure=0), quindi l'accesso davanti a questo servizio è l'unico cancello.
@@ -144,7 +144,7 @@ services:
       start_period: 15s
     restart: unless-stopped
 
-  # Supervisore del telefono (supervisore/, GUIDA.md 4.5 e 6): il giro di sincronizzazione, il battito e il rilevatore degli accessi,
+  # Supervisore del telefono (supervisore/, README.md 4.5 e 6): il giro di sincronizzazione, il battito e il rilevatore degli accessi,
   # con adb sulla rete di compose, senza docker.sock. È l'unico che fa questo lavoro e parte con `docker compose up` come gli altri
   # servizi. Gira come l'utente 10080, quello di Outlook sul telefono: solo lui e root leggono i suoi dati, e stato/ deve essere suo.
   supervisore:

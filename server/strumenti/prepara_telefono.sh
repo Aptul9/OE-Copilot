@@ -52,7 +52,7 @@ for voce in $APP; do
         e rm -f /data/local/tmp/app.apk
         echo "installato $app da $apk"
     else
-        echo "$app non installato e APK assente in $DIR/apk (vedi GUIDA.md, 4.4)" >&2
+        echo "$app non installato e APK assente in $DIR/apk (vedi README.md, 4.4)" >&2
     fi
 done
 

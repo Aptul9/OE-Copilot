@@ -35,7 +35,7 @@ Il cookie di sessione dura 30 giorni e resta nel profilo; la password non è sal
 
 ## Promemoria
 
-Si scelgono nel sito, *Impostazioni > Promemoria* (GUIDA.md, 4.9). Quando avvisare e cosa scrivere lo decide il nucleo in Rust `src-tauri/src/promemoria.rs`, uguale per Windows e Android: dalle impostazioni e dagli eventi dell'API una voce per riunione e anticipo, con l'ora di Roma, il titolo e il corpo. Un avviso per riunione e anticipo; niente per i giorni interi o con dati in cache. Le WebView non hanno notifiche web: nell'app manca *Notifiche del browser*.
+Si scelgono nel sito, *Impostazioni > Promemoria* ([README, 4.9](../README.md#49-i-promemoria)). Quando avvisare e cosa scrivere lo decide il nucleo in Rust `src-tauri/src/promemoria.rs`, uguale per Windows e Android: dalle impostazioni e dagli eventi dell'API una voce per riunione e anticipo, con l'ora di Roma, il titolo e il corpo. Un avviso per riunione e anticipo; niente per i giorni interi o con dati in cache. Le WebView non hanno notifiche web: nell'app manca *Notifiche del browser*.
 
 Su Windows lo script `src-tauri/src/inizializzazione.js`, sulla pagina del sito, ogni minuto rilegge impostazioni ed eventi e passa al nucleo (comando `pianifica_promemoria`); gli avvisi partono solo ad app in esecuzione, e un clic porta davanti la finestra. Su Android vedi sotto.
 
@@ -93,4 +93,5 @@ Aggiornamento automatico (il repository è privato), firma del codice, pulsanti 
 
 ## Prove
 
-- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina, con il nucleo finto. La Action non prova `app/`.- Una build di prova accanto a quella vera vuole un altro identificativo, con una seconda `--config` (`{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }`): con lo stesso condivide profilo, istanza unica e avvio con Windows.
+- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina, con il nucleo finto. La Action non prova `app/`.
+- Una build di prova accanto a quella vera vuole un altro identificativo, con una seconda `--config` (`{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }`): con lo stesso condivide profilo, istanza unica e avvio con Windows.

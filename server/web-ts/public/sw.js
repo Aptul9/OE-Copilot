@@ -1,4 +1,4 @@
-// Il service worker delle notifiche del browser (GUIDA.md, 4.9): il server manda un testo, la prima riga è il titolo e il resto il corpo.
+// Il service worker delle notifiche del browser (README.md, 4.9): il server manda un testo, la prima riga è il titolo e il resto il corpo.
 // Non tiene niente in memoria e non chiama nessun indirizzo.
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));

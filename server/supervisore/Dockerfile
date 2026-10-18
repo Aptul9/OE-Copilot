@@ -1,4 +1,4 @@
-# Supervisore del telefono virtuale (GUIDA.md 4.5 e 6): il giro di sincronizzazione, il battito e il rilevatore degli accessi, con adb sulla
+# Supervisore del telefono virtuale (README.md 4.5 e 6): il giro di sincronizzazione, il battito e il rilevatore degli accessi, con adb sulla
 # rete di compose (telefono:5555) al posto di `docker exec`. Non è pubblicato su nessuna porta. L'immagine si costruisce sulla macchina che
 # la esegue (arm64 sulla VM).
 # Fissata per digest (indice amd64 e arm64): per aggiornarla `docker buildx imagetools inspect node:26-slim` e si riscrive lo sha256 in tutti i FROM node di agente-ts, supervisore e web-ts. Su tag mobili restano anche schermo-web (`node:26-slim`) e caddy-ui (`caddy:2.11.4-alpine`).

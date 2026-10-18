@@ -10,7 +10,7 @@ import { type Dict, isDict, pyStr } from "./py";
 // stesso database delle sessioni. Una volta sola, alla prima apertura, si importano i due file di prima; da lì in poi il database è la
 // fonte e ogni modifica è una transazione (il servizio Python rileggeva e riscriveva il file a ogni richiesta, senza blocchi).
 // I due file si riscrivono dopo ogni modifica, nel formato di sempre: servono a tornare a una versione che li leggeva (fino al commit
-// 142e789 c'era il servizio Python ui) senza perdere niente, e a correggere lo stato a mano (GUIDA.md, sezione 7). Non si rileggono mai,
+// 142e789 c'era il servizio Python ui) senza perdere niente, e a correggere lo stato a mano (README.md, sezione 7). Non si rileggono mai,
 // salvo nell'importazione.
 
 export type Config = Dict;

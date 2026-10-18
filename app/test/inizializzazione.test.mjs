@@ -53,11 +53,49 @@ function voce(id, minuti = 10, extra = {}) {
   };
 }
 
+/** Una pagina finta quanto basta alla fascia della batteria: elementi con figli, id, testo, attributi, classi, stile e clic */
+function paginaFinta() {
+  const elemento = (tag) => {
+    const classi = new Set();
+    return {
+      tag,
+      id: "",
+      textContent: "",
+      figli: [],
+      genitore: null,
+      attributi: {},
+      ascoltatori: {},
+      offsetHeight: 44,
+      classi,
+      classList: { add: (c) => classi.add(c), remove: (c) => classi.delete(c), contains: (c) => classi.has(c) },
+      style: { proprieta: {}, setProperty(k, v) { this.proprieta[k] = v; } },
+      setAttribute(k, v) { this.attributi[k] = v; },
+      append(...figli) {
+        for (const f of figli) {
+          f.genitore = this;
+          this.figli.push(f);
+        }
+      },
+      remove() {
+        if (this.genitore) this.genitore.figli = this.genitore.figli.filter((f) => f !== this);
+        this.genitore = null;
+      },
+      addEventListener(tipo, f) { this.ascoltatori[tipo] = f; },
+    };
+  };
+  const html = elemento("html");
+  const cerca = (el, id) => (el.id === id ? el : el.figli.map((f) => cerca(f, id)).find(Boolean) || null);
+  return { readyState: "complete", documentElement: html, createElement: elemento, getElementById: (id) => cerca(html, id), addEventListener() {} };
+}
+
+/** Tutto il testo di un elemento finto e dei suoi figli */
+const testoDi = (el) => [el.textContent, ...el.figli.map(testoDi)].join(" ");
+
 /**
  * Carica lo script in un ambiente finto: adesso (ms), le risposte dell'API per metodo, le voci del nucleo (una lista, o una funzione
  * degli argomenti), i file dei loghi (indirizzo -> contenuto), il browser (PC o Android)
  */
-function ambiente({ adesso = ADESSO, api = {}, voci = [], avvisoRotto = false, notificaRotta = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted", ua = UA_PC } = {}) {
+function ambiente({ adesso = ADESSO, api = {}, voci = [], avvisoRotto = false, notificaRotta = false, loghi = {}, origine = ORIGINE, protocollo = "https:", memoria = {}, permesso = true, esitoRichiesta = "granted", ua = UA_PC, batteria } = {}) {
   const timer = [];
   // le notifiche mostrate, e da chi: "app" (notifica.rs, sul PC) o "plugin"
   const notifiche = [];
@@ -116,6 +154,13 @@ function ambiente({ adesso = ADESSO, api = {}, voci = [], avvisoRotto = false, n
     },
   };
   sandbox.window = sandbox;
+  // l'app su Android dice se l'ottimizzazione della batteria è attiva (OeBatteria, MainActivity.kt): batteria undefined vale come un'app
+  // senza l'interfaccia; con l'interfaccia c'è anche una pagina finta, dove va la fascia
+  const fascia = { ottimizzata: batteria, richieste: 0 };
+  if (batteria !== undefined) {
+    sandbox.OeBatteria = { ottimizzata: () => fascia.ottimizzata, togli: () => void (fascia.richieste += 1) };
+    sandbox.document = paginaFinta();
+  }
   sandbox.__OE_ORIGINE__ = ORIGINE;
   sandbox.__OE_AVVIO__ = "http://tauri.localhost/index.html";
   sandbox.__TAURI_INTERNALS__ = {
@@ -188,6 +233,7 @@ function ambiente({ adesso = ADESSO, api = {}, voci = [], avvisoRotto = false, n
       assert.equal(timer.length, atteso, "è partito un altro giro");
     },
     stato: () => copia(sandbox.__oeNotifiche),
+    fascia,
   };
 }
 
@@ -427,6 +473,40 @@ test("su Android senza sessione il permesso non si chiede, e si riprova dopo 5 m
   assert.equal(await a.giro(), 300_000);
   assert.equal(a.sistema.richieste, 0);
   assert.equal(a.sistema.controlli, 0);
+});
+
+test("su Android con l'ottimizzazione della batteria attiva una fascia rossa in cima lo dice, e il tasto apre la richiesta per toglierla", () => {
+  const a = ambiente({ ua: UA_ANDROID, batteria: true });
+  const pagina = a.sandbox.document;
+  const fascia = pagina.getElementById("oe-batteria");
+  assert.ok(fascia, "nessuna fascia");
+  assert.equal(fascia.genitore, pagina.documentElement);
+  assert.match(testoDi(fascia), /ottimizzazione della batteria/i);
+  assert.ok(pagina.documentElement.classList.contains("oe-batteria"));
+  // il calendario si accorcia di quanto è alta la fascia
+  assert.equal(pagina.documentElement.style.proprieta["--oe-batteria-h"], "44px");
+  const tasto = fascia.figli.find((f) => f.tag === "button");
+  tasto.ascoltatori.click();
+  assert.equal(a.fascia.richieste, 1);
+});
+
+test("la fascia della batteria se ne va quando l'ottimizzazione è tolta (al ritorno nell'app) e torna se si riattiva, una sola", () => {
+  const a = ambiente({ ua: UA_ANDROID, batteria: true });
+  const pagina = a.sandbox.document;
+  a.fascia.ottimizzata = false;
+  // MainActivity.onResume
+  a.sandbox.__oeBatteria();
+  assert.equal(pagina.getElementById("oe-batteria"), null);
+  assert.ok(!pagina.documentElement.classList.contains("oe-batteria"));
+  a.fascia.ottimizzata = true;
+  a.sandbox.__oeBatteria();
+  a.sandbox.__oeBatteria();
+  assert.equal(pagina.documentElement.figli.filter((f) => f.id === "oe-batteria").length, 1);
+});
+
+test("sul PC, o con l'ottimizzazione della batteria già tolta, nessuna fascia", () => {
+  assert.equal(ambiente({ ua: UA_PC, batteria: true }).sandbox.document.getElementById("oe-batteria"), null);
+  assert.equal(ambiente({ ua: UA_ANDROID, batteria: false }).sandbox.document.getElementById("oe-batteria"), null);
 });
 
 test("lanciato due volte nella stessa pagina (WebView di Android) lavora una volta sola", async () => {

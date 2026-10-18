@@ -59,7 +59,7 @@ Le notifiche ci sono sempre; il permesso `POST_NOTIFICATIONS` lo chiede la pagin
 - gli allarmi sono esatti (`USE_EXACT_ALARM`) e partono anche ad app chiusa e con il telefono in Doze; la notifica è una per riunione (quella dei 10 minuti prende il posto di quella dei 30), sparisce all'inizio e un tocco apre l'app;
 - senza sessione gli allarmi si annullano; con dati in cache restano quelli che ci sono.
 
-Per un lavoro in orario anche a telefono fermo: *Impostazioni > App > OE Copilot > Batteria > Senza restrizioni*. Senza, gli allarmi partono lo stesso, ma una riunione aggiunta o cancellata può arrivare tardi. Dopo un riavvio gli allarmi tornano al primo giro del lavoro.
+Per un lavoro in orario anche a telefono fermo: *Impostazioni > App > OE Copilot > Batteria > Senza restrizioni*. Senza, gli allarmi partono lo stesso, ma una riunione aggiunta o cancellata può arrivare tardi. Dopo un riavvio gli allarmi tornano al primo giro del lavoro. Finché l'ottimizzazione della batteria è attiva, una fascia rossa in cima al calendario lo ricorda: l'app lo dice alla pagina (`Batteria.kt`, `window.OeBatteria`), il tasto **Disattiva** apre la richiesta di Android, e al ritorno nell'app la fascia se ne va. Su HyperOS *Nessuna restrizione* nella batteria dell'app vale come ottimizzazione tolta.
 
 ### Costruirla
 

@@ -7,6 +7,8 @@
          porta WorkManager, che dopo un riavvio fa ripartire il lavoro che rifà gli allarmi -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <!-- La richiesta di Android per togliere l'ottimizzazione della batteria, dalla fascia rossa della pagina (Batteria.kt) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />

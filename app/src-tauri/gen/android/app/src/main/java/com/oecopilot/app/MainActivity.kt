@@ -3,11 +3,20 @@ package com.oecopilot.app
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : TauriActivity() {
+  private var vista: WebView? = null
+
+  // la pagina del sito chiede all'app se l'ottimizzazione della batteria è attiva, e la fa togliere (Batteria.kt)
+  override fun onWebViewCreate(webView: WebView) {
+    vista = webView
+    webView.addJavascriptInterface(Batteria(this), "OeBatteria")
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
@@ -28,6 +37,8 @@ class MainActivity : TauriActivity() {
     super.onResume()
     // all'apertura dell'app, e quando si chiude la richiesta del permesso delle notifiche, gli allarmi si rifanno subito
     Promemoria.aggiornaOra(this)
+    // al ritorno dalle impostazioni della batteria la fascia della pagina si aggiorna
+    vista?.evaluateJavascript("window.__oeBatteria && window.__oeBatteria()", null)
   }
 
   override fun onPause() {

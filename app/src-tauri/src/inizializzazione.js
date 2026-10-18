@@ -34,6 +34,53 @@
   // Solo contatori, per chi guarda dall'esterno se il giro funziona
   const stato = (window.__oeNotifiche = { giri: 0, inviate: 0, errori: 0, esito: "avvio" });
 
+  // Su Android l'app dice se l'ottimizzazione della batteria è attiva (window.OeBatteria, MainActivity.kt): con l'ottimizzazione
+  // Android rimanda o salta i promemoria ad app chiusa, e finché c'è una fascia rossa in cima al calendario lo ricorda. Il tasto apre
+  // la richiesta di Android per toglierla; al ritorno nell'app (onResume) l'app richiama __oeBatteria e la fascia si aggiorna.
+  // La fascia sta fuori da <body>, che è della pagina: il calendario (.app, alto quanto lo schermo) si accorcia di quanto è alta.
+  const FASCIA = "oe-batteria";
+  function fasciaBatteria() {
+    const pagina = document.documentElement;
+    let attiva = false;
+    try {
+      attiva = window.OeBatteria.ottimizzata() === true;
+    } catch {
+      // senza risposta dell'app nessuna fascia
+    }
+    const presente = document.getElementById(FASCIA);
+    if (!attiva) {
+      if (presente) presente.remove();
+      pagina.classList.remove(FASCIA);
+      return;
+    }
+    if (presente) return;
+    const fascia = document.createElement("div");
+    fascia.id = FASCIA;
+    fascia.setAttribute("role", "alert");
+    const stile = document.createElement("style");
+    stile.textContent =
+      `#${FASCIA}{position:fixed;top:0;left:0;right:0;z-index:2147483647;display:flex;align-items:center;gap:12px;padding:10px 14px;` +
+      "background:#c62828;color:#fff;font:500 14px/1.35 system-ui,sans-serif}" +
+      `#${FASCIA} button{margin-left:auto;flex:none;border:0;border-radius:8px;padding:8px 12px;background:#fff;color:#c62828;font:inherit}` +
+      `html.${FASCIA} body{padding-top:var(--oe-batteria-h)}` +
+      `html.${FASCIA} .app{height:calc(100dvh - var(--oe-batteria-h))!important}` +
+      `html.${FASCIA} .min-h-dvh{min-height:calc(100dvh - var(--oe-batteria-h))!important}`;
+    const testo = document.createElement("span");
+    testo.textContent = "Ottimizzazione della batteria attiva: i promemoria con l'app chiusa possono arrivare tardi o saltare.";
+    const tasto = document.createElement("button");
+    tasto.textContent = "Disattiva";
+    tasto.addEventListener("click", () => window.OeBatteria.togli());
+    fascia.append(stile, testo, tasto);
+    pagina.append(fascia);
+    pagina.style.setProperty("--oe-batteria-h", `${fascia.offsetHeight}px`);
+    pagina.classList.add(FASCIA);
+  }
+  if (SU_ANDROID && window.OeBatteria) {
+    window.__oeBatteria = fasciaBatteria;
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fasciaBatteria);
+    else fasciaBatteria();
+  }
+
   const due = (n) => String(n).padStart(2, "0");
 
   // Come la pagina: ISO con lo scarto orario locale (lib/oe/logic.ts)

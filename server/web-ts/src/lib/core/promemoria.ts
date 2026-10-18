@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Ev } from "./caselle";
 import { archivio, type Config, loadConfig, modificaConfig } from "./archivio";
-import { raccogli } from "./eventi";
+import { raccogli, tuttiAccesi } from "./eventi";
 import { chiave as microsecondi, daIstante, daSecondi, iso, isoSecondi, naiveLocale, piuGiorni, type Naive } from "./fuso";
 import { adesso } from "./orologio";
 import { type Canale, canaliDelServer, type Esito } from "./promemoria-canali";
@@ -380,12 +380,12 @@ const intervalloMs = () => {
   return (Number.isInteger(s) && s >= 5 && s <= 3600 ? s : INTERVALLO_PREDEFINITO_S) * 1000;
 };
 
-/** Il motore sui dati veri: la stessa lettura di get_events (ma sempre fresca: un promemoria non parte da dati vecchi), lo stato di gateway.db, i canali del server. */
+/** Il motore sui dati veri: la stessa lettura di get_events per le app (tutti i calendari, ma sempre fresca: un promemoria non parte da dati vecchi), lo stato di gateway.db, i canali del server. */
 export function dipendenzeReali(stato: StatoMotore = statoGlobale()): Dipendenze {
   return {
     adesso,
     leggiEventi: async (inizio, fine) => {
-      const [eventi, errori] = await raccogli(loadConfig(), inizio, fine, false);
+      const [eventi, errori] = await raccogli(tuttiAccesi(loadConfig()), inizio, fine, false);
       return { eventi, problemi: errori.length };
     },
     impostazioni: () => leggiImpostazioni(loadConfig()),

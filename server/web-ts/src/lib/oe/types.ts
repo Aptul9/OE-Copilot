@@ -137,7 +137,7 @@ export type Metodi = {
   save_config: [[Partial<Config>], Esito];
   get_personalizzazione: [[], Personalizzazione];
   get_calendars: [[boolean?], CalendariRisposta];
-  get_events: [[string, string], EventiRisposta];
+  get_events: [[string, string, boolean?], EventiRisposta];
   set_calendar_enabled: [[string, boolean], Esito];
   set_account_enabled: [[string, boolean], Esito];
   set_azienda_enabled: [[string, boolean], Esito & { calendari?: number }];

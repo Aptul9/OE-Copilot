@@ -107,6 +107,13 @@ function soloAziendeAccese(cfg: Config, eventi: Ev[], aziendeCaselle: Record<str
 }
 
 /**
+ * La configurazione con tutti i calendari accesi, per chi non guarda la vista (disponibilità, promemoria): gli interruttori della barra
+ * laterale sono un filtro della pagina. È una copia che non va su disco: le sorgenti salvano la configurazione quando assegnano un colore,
+ * e vi scriverebbero gli interruttori vuoti.
+ */
+export const tuttiAccesi = (cfg: Config): Config => ({ ...cfg, disabled_calendars: [], _sola_lettura: true });
+
+/**
  * Tutti gli eventi dell'intervallo, da ogni sorgente. -> (eventi, errori, meta). `allowCache` false vieta di rispondere con l'ultima
  * lettura salvata: serve alla disponibilità, che non deve dire "libero" per dati vecchi. `conFeed` false lascia fuori i calendari da link ICS
  * (anche le festività): la condivisione del calendario non pubblica mai quello che l'app ha ricevuto da altri.
@@ -157,11 +164,8 @@ export async function occupato(cfg: Config, primoGiorno: { a: number; m: number;
     membri = membriGruppo(cfg, gruppo);
     if (membri === null) throw new Error("Gruppo non trovato");
   }
-  // Copia di lavoro: senza interruttori e che non va su disco (le sorgenti salvano la configurazione quando assegnano un colore,
-  // e vi scriverebbero gli interruttori vuoti)
-  const copia: Config = { ...cfg, disabled_calendars: [], _sola_lettura: true };
   const inizio = mezzanotte(primoGiorno.a, primoGiorno.m, primoGiorno.g);
-  const [eventi, errori, meta] = await raccogli(copia, iso(inizio), iso(piuGiorni(inizio, giorni)), false);
+  const [eventi, errori, meta] = await raccogli(tuttiAccesi(cfg), iso(inizio), iso(piuGiorni(inizio, giorni)), false);
   const completo = !errori.length && !meta.outlook_starting && !meta.stale;
   // il calendario che un altro OE Copilot ha condiviso con noi non è un impegno nostro: non rende occupata la pagina pubblica
   return [impegni(eventi.filter((e) => !e.da_condivisione), primoGiorno, giorni, membri), festivita(eventi, FESTIVITA_NOME), completo];

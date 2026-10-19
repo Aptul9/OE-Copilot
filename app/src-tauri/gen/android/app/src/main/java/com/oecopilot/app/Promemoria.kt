@@ -10,6 +10,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.os.Build
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
@@ -26,6 +34,7 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -58,6 +67,9 @@ object Promemoria {
   private const val PREFERENZE = "promemoria"
   private const val CHIAVI = "chiavi"
   private const val GIORNO_MS = 24 * 3_600_000L
+  // lato del logo o della sigla nella notifica, px
+  private const val ICONA = 128
+  private const val LOGHI = "loghi"
 
   private class SenzaSessione : Exception()
 
@@ -93,15 +105,24 @@ object Promemoria {
       // il terzo argomento vuole anche i calendari spenti nella barra laterale: filtra solo la vista, non i promemoria
       val dati = chiama(sito, cookie, "get_events", JSONArray().put(iso(adesso)).put(iso(adesso + GIORNO_MS)).put(true)) ?: throw IOException("get_events non c'è")
       if (dati.optBoolean("stale")) return
-      pianifica(contesto, impostazioni?.toString() ?: "null", (dati.optJSONArray("events") ?: JSONArray()).toString())
+      // sigle e loghi delle aziende, come la pagina: senza (un errore di rete) la notifica ha la sigla calcolata dal nome
+      val interfaccia = try {
+        chiama(sito, cookie, "get_personalizzazione", JSONArray())?.optJSONObject("interfaccia")
+      } catch (e: IOException) {
+        null
+      } ?: JSONObject()
+      pianifica(contesto, impostazioni?.toString() ?: "null", (dati.optJSONArray("events") ?: JSONArray()).toString()) { voce ->
+        marca(contesto, sito, cookie, interfaccia, voce)
+      }
     } catch (e: SenzaSessione) {
       pianifica(contesto, "null", "[]")
     }
   }
 
-  /** Il nucleo decide con le chiavi della volta prima; qui si eseguono le azioni e si ricordano le chiavi nuove */
+  /** Il nucleo decide con le chiavi della volta prima; qui si eseguono le azioni e si ricordano le chiavi nuove. Ogni voce da
+   * programmare o mostrare passa prima da marca, che le aggiunge logo e sigla dell'azienda */
   @SuppressLint("ScheduleExactAlarm")
-  private fun pianifica(contesto: Context, impostazioni: String, eventi: String) {
+  private fun pianifica(contesto: Context, impostazioni: String, eventi: String, marca: (JSONObject) -> Unit = {}) {
     val preferenze = contesto.getSharedPreferences(PREFERENZE, Context.MODE_PRIVATE)
     val gia = JSONArray(preferenze.getStringSet(CHIAVI, emptySet())!!.toList()).toString()
     val azioni = JSONObject(NucleoPromemoria.aggiorna(impostazioni, eventi, System.currentTimeMillis(), gia))
@@ -110,7 +131,7 @@ object Promemoria {
     for (i in 0 until annulla.length()) allarmi.cancel(allarme(contesto, annulla.getInt(i), null))
     val programma = azioni.getJSONArray("programma")
     for (i in 0 until programma.length()) {
-      val voce = programma.getJSONObject(i)
+      val voce = programma.getJSONObject(i).also(marca)
       val intento = allarme(contesto, voce.getInt("allarme"), voce)
       // senza il permesso degli allarmi esatti l'avviso arriva comunque, al più qualche minuto dopo
       if (Build.VERSION.SDK_INT >= 31 && !allarmi.canScheduleExactAlarms()) {
@@ -120,7 +141,7 @@ object Promemoria {
       }
     }
     val subito = azioni.getJSONArray("subito")
-    for (i in 0 until subito.length()) mostra(contesto, subito.getJSONObject(i))
+    for (i in 0 until subito.length()) mostra(contesto, subito.getJSONObject(i).also(marca))
     val chiavi = azioni.getJSONArray("chiavi")
     preferenze.edit().putStringSet(CHIAVI, (0 until chiavi.length()).map { chiavi.getString(it) }.toSet()).apply()
   }
@@ -142,8 +163,16 @@ object Promemoria {
     val apri = PendingIntent.getActivity(contesto, 0, Intent(contesto, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
     val corpo = voce.getString("corpo")
     val mancano = voce.getLong("inizio") - System.currentTimeMillis()
+    val tinta = try {
+      Color.parseColor(voce.optString("colore"))
+    } catch (e: IllegalArgumentException) {
+      Color.parseColor("#2563eb")
+    }
+    val logo = voce.optString("logo").takeIf { it.isNotEmpty() }?.let { BitmapFactory.decodeFile(File(File(contesto.cacheDir, LOGHI), it).path) }
     val notifica = NotificationCompat.Builder(contesto, CANALE)
-      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .setSmallIcon(R.drawable.ic_stat_promemoria)
+      .setLargeIcon(logo?.let(::tondo) ?: sigla(tinta, voce.optString("sigla")))
+      .setColor(tinta)
       .setContentTitle(voce.getString("titolo"))
       .setContentText(corpo)
       .setStyle(NotificationCompat.BigTextStyle().bigText(corpo))
@@ -154,6 +183,82 @@ object Promemoria {
       .apply { if (mancano > 0) setTimeoutAfter(mancano) }
       .build()
     gestore.notify(voce.getInt("notifica"), notifica)
+  }
+
+  /** Logo (il nome del file nella cache) e sigla dell'azienda di una voce, come logoDi e avviso in inizializzazione.js: la notifica
+   * può partire da un allarme a telefono senza rete, il logo va scaricato prima */
+  private fun marca(contesto: Context, sito: String, cookie: String, interfaccia: JSONObject, voce: JSONObject) {
+    val azienda = voce.optString("azienda")
+    val indirizzo = interfaccia.optJSONObject("loghi")?.optString(azienda)?.takeIf { it.isNotEmpty() }
+      ?: if (azienda == "Eventi personali") "/logos/personale.png" else null
+    indirizzo?.let { logo(contesto, sito, cookie, it) }?.let { voce.put("logo", it) }
+    voce.put("sigla", interfaccia.optJSONObject("sigle")?.optString(azienda)?.takeIf { it.isNotEmpty() } ?: iniziali(azienda))
+  }
+
+  /** Un logo del sito (mai un indirizzo di fuori) nella cache dell'app, scaricato una volta: un logo nuovo ha un indirizzo nuovo
+   * ("logos/roar.png?v=..."). Il nome del file, o null se non c'è o non è un'immagine: allora la sigla, e si ritenta al giro dopo */
+  private fun logo(contesto: Context, sito: String, cookie: String, indirizzo: String): String? {
+    try {
+      val base = URL("$sito/")
+      val url = URL(base, indirizzo)
+      if (url.protocol != base.protocol || url.authority != base.authority) return null
+      val nome = Integer.toHexString(url.toString().hashCode())
+      val file = File(File(contesto.cacheDir, LOGHI), nome)
+      if (file.exists()) return nome
+      val connessione = url.openConnection() as HttpURLConnection
+      try {
+        connessione.instanceFollowRedirects = false
+        connessione.connectTimeout = 20_000
+        connessione.readTimeout = 30_000
+        connessione.setRequestProperty("Cookie", cookie)
+        if (connessione.responseCode !in 200..299) return null
+        val dati = connessione.inputStream.use { it.readBytes() }
+        val misure = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(dati, 0, dati.size, misure)
+        // al più 1 MB: lo decodifica il ricevitore dell'allarme
+        if (dati.size > 1_000_000 || misure.outWidth <= 0) return null
+        file.parentFile?.mkdirs()
+        file.writeBytes(dati)
+        return nome
+      } finally {
+        connessione.disconnect()
+      }
+    } catch (e: IOException) {
+      return null
+    }
+  }
+
+  /** Il logo dentro un disco bianco, come nell'avviso a comparsa del PC */
+  private fun tondo(immagine: Bitmap): Bitmap {
+    val fuori = Bitmap.createBitmap(ICONA, ICONA, Bitmap.Config.ARGB_8888)
+    val tela = Canvas(fuori)
+    val pennello = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { color = Color.WHITE }
+    tela.drawCircle(ICONA / 2f, ICONA / 2f, ICONA / 2f, pennello)
+    tela.clipPath(Path().apply { addCircle(ICONA / 2f, ICONA / 2f, ICONA / 2f, Path.Direction.CW) })
+    val margine = ICONA * 0.1f
+    tela.drawBitmap(immagine, null, RectF(margine, margine, ICONA - margine, ICONA - margine), pennello)
+    return fuori
+  }
+
+  /** La sigla dell'azienda nel suo colore, come nel calendario, dove l'azienda non ha logo */
+  private fun sigla(tinta: Int, testo: String): Bitmap {
+    val fuori = Bitmap.createBitmap(ICONA, ICONA, Bitmap.Config.ARGB_8888)
+    val tela = Canvas(fuori)
+    val pennello = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tinta }
+    tela.drawCircle(ICONA / 2f, ICONA / 2f, ICONA / 2f, pennello)
+    pennello.color = Color.WHITE
+    pennello.textAlign = Paint.Align.CENTER
+    pennello.textSize = ICONA * 0.4f
+    pennello.typeface = Typeface.DEFAULT_BOLD
+    tela.drawText(testo, ICONA / 2f, ICONA / 2f - (pennello.ascent() + pennello.descent()) / 2, pennello)
+    return fuori
+  }
+
+  /** Come iniziali in inizializzazione.js: "Alfa" -> "AL", "Beta Servizi" -> "BS" */
+  private fun iniziali(nome: String): String {
+    val s = nome.split("·")[0].trim().split("@")[0]
+    val parole = s.split(Regex("[\\s._\\-+]")).filter { it.isNotEmpty() }
+    return (if (parole.size >= 2) "${parole[0][0]}${parole[1][0]}" else s.take(2)).uppercase()
   }
 
   /** L'indirizzo del sito, dalla configurazione che la build mette nell'app (plugins.oe.url in assets/tauri.conf.json) */

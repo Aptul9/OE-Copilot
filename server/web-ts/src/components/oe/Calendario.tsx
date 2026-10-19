@@ -1,7 +1,7 @@
 "use client";
 
 import itLocale from "@fullcalendar/core/locales/it";
-import type { DatesSetArg, DayHeaderContentArg, EventClickArg, EventContentArg, CalendarOptions } from "@fullcalendar/core";
+import type { CalendarApi, DatesSetArg, DayHeaderContentArg, EventClickArg, EventContentArg, CalendarOptions } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
@@ -39,6 +39,24 @@ const intervallo = (s: Scorrimento) => (d: Date) => {
   const inizio = s.passo === 7 ? spostaGiorni(d, -((d.getDay() + 6) % 7)) : spostaGiorni(d, 0);
   return { start: spostaGiorni(inizio, -s.bordo), end: spostaGiorni(inizio, s.visibili + s.bordo) };
 };
+
+/** Le viste con il nome di FullCalendar: giorno, tre giorni e settimana scorrono sotto il dito come in Outlook, FullCalendar disegna anche i giorni accanto. */
+export const VISTE_FC: NonNullable<CalendarOptions["views"]> = {
+  [A_FC.timeGridDay]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridDay), dateIncrement: { days: 1 } },
+  [VISTA_3G]: { type: "timeGrid", visibleRange: intervallo(SCORRE[VISTA_3G]), dateIncrement: { days: 1 } },
+  [A_FC.timeGridWeek]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridWeek), dateIncrement: { weeks: 1 } },
+  dayGridMonth: { dayHeaderFormat: { weekday: "short" } },
+};
+
+/** Un periodo avanti (1) o indietro (-1), le frecce della barra. prev() e next() di FullCalendar mettono la data corrente al primo giorno del
+ * periodo, che nelle viste che scorrono è uno dei giorni nascosti a sinistra: la freccia dopo partiva da lì (avanti una volta, poi indietro), e
+ * così il dito, lo zoom e il cambio di vista. Qui la data si sposta di un passo come col dito e con le frecce della tastiera. */
+export function unPasso(a: CalendarApi, verso: 1 | -1) {
+  const s = SCORRE[daFc(a.view.type)];
+  if (s) a.incrementDate({ days: verso * s.passo });
+  else if (verso > 0) a.next();
+  else a.prev();
+}
 
 export type ComandiCalendario = {
   oggi: () => void;
@@ -81,8 +99,14 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
 
   useImperativeHandle(ref, () => ({
     oggi: () => api()?.today(),
-    prima: () => api()?.prev(),
-    dopo: () => api()?.next(),
+    prima: () => {
+      const a = api();
+      if (a) unPasso(a, -1);
+    },
+    dopo: () => {
+      const a = api();
+      if (a) unPasso(a, 1);
+    },
     vaiA: (d) => api()?.gotoDate(d),
     cambiaVista: (v) => api()?.changeView(aFc(v)),
   }));
@@ -236,24 +260,13 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     [festivi, intero],
   );
 
-  const viste = useMemo<NonNullable<CalendarOptions["views"]>>(
-    () => ({
-      // giorno, tre giorni e settimana scorrono sotto il dito come in Outlook: FullCalendar disegna anche i giorni accanto
-      [A_FC.timeGridDay]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridDay), dateIncrement: { days: 1 } },
-      [VISTA_3G]: { type: "timeGrid", visibleRange: intervallo(SCORRE[VISTA_3G]), dateIncrement: { days: 1 } },
-      [A_FC.timeGridWeek]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridWeek), dateIncrement: { weeks: 1 } },
-      dayGridMonth: { dayHeaderFormat: { weekday: "short" } },
-    }),
-    [],
-  );
-
   return (
     <div ref={radice} className={cn("calendario h-full", SCORRE[tipo] && "scorre", tipo === "timeGridWeek" && "vista-sett")} style={{ ["--slot-h" as string]: `${zoom}px` }}>
       <FullCalendar
         ref={fc}
         plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
         initialView={aFc(vistaIniziale)}
-        views={viste}
+        views={VISTE_FC}
         locale={itLocale}
         firstDay={1}
         nowIndicator

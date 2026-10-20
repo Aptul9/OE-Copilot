@@ -3,9 +3,9 @@
 Il disegno: tre calendari sovrapposti e un po' sfasati, ognuno del suo colore (come le
 aziende nella barra laterale). Si disegna in grande e si riduce con LANCZOS per bordi netti.
 
-Scrive icon.png (l'icona di partenza per ogni altro formato) e, se c'è la cartella
-dell'interfaccia nel browser, anche server/web-ts/src/app/icon.png e apple-icon.png
-(sfondo pieno: iOS riempie di nero il trasparente).
+Scrive app/app-icon.png (l'icona di partenza per ogni altro formato, quella che `tauri icon`
+legge senza argomenti) e, se c'è la cartella dell'interfaccia nel browser, anche
+server/web-ts/src/app/icon.png e apple-icon.png (sfondo pieno: iOS riempie di nero il trasparente).
 """
 import os
 
@@ -75,12 +75,12 @@ def su_fondo(icona, lato, fondo=(248, 248, 252), scala=0.78):
 
 
 if __name__ == "__main__":
-    qui = os.path.dirname(os.path.abspath(__file__))
+    app = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     grande = composizione()
     icona = grande.resize((256, 256), Image.LANCZOS)
-    icona.save(os.path.join(qui, "icon.png"))
-    scritti = ["icon.png"]
-    web = os.path.join(qui, "server", "web-ts", "src", "app")
+    icona.save(os.path.join(app, "app-icon.png"))
+    scritti = ["app/app-icon.png"]
+    web = os.path.join(os.path.dirname(app), "server", "web-ts", "src", "app")
     if os.path.isdir(web):
         grande.resize((512, 512), Image.LANCZOS).save(os.path.join(web, "icon.png"))
         su_fondo(grande, 180).save(os.path.join(web, "apple-icon.png"))

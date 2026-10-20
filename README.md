@@ -198,7 +198,7 @@ cd /opt/oe-copilot && tar -xzf /var/tmp/oe-copilot-prima.tgz ./caddy-ui && docke
 sudo useradd -m -s /bin/bash -G docker oecopilot
 # il codice è dell'utente della Action; telefono/ resta di root, stato/ del 10080 (4.5), ui-dati/ del 10001 (4.7)
 sudo chown oecopilot:oecopilot /opt/oe-copilot /opt/oe-copilot/.env
-cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-ts apk caddy-ui immagine-telefono schermo-web strumenti supervisore web-ts docker-compose.yml .env.esempio
+cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-ts apk caddy-ui immagine-telefono schermo-web strumenti supervisore web-ts docker-compose.yml .env.esempio personalizzazione.esempio.json
 ```
 La sua chiave pubblica va in `/home/oecopilot/.ssh/authorized_keys`. I secret del repository (`gh secret set <NOME> --repo <proprietario>/<repository>`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (da `ssh-keyscan -t ed25519 <server>`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `API_KEY` e `BETTER_AUTH_SECRET` (4.7).
 
@@ -212,7 +212,7 @@ Messa in funzione, poi `UI_HOST=<nome del sito>` in `.env`:
 ```bash
 # dati dell'interfaccia: i container li scrivono come utente 10001, senza privilegi
 sudo install -d -o 10001 -g 10001 -m 700 /opt/oe-copilot/ui-dati
-# facoltativo: dal modello personalizzazione.esempio.json, nella radice del repository (non in server/)
+# facoltativo: dal modello server/personalizzazione.esempio.json (sul server in /opt/oe-copilot/)
 sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-dati/
 ```
 
@@ -266,7 +266,7 @@ docker start oe-copilot-gateway
 
 #### Personalizzazione
 
-Nomi delle aziende, ordine dei calendari, sigle, loghi e schede del Timesheet stanno in `ui-dati/personalizzazione.json`, fuori dal repository; `personalizzazione.esempio.json`, nella radice del repository, ha un esempio di ogni voce. Senza il file ogni calendario prende il nome dal dominio della sua casella. Il gateway rilegge il file quando cambia.
+Nomi delle aziende, ordine dei calendari, sigle, loghi e schede del Timesheet stanno in `ui-dati/personalizzazione.json`, fuori dal repository; `server/personalizzazione.esempio.json` ha un esempio di ogni voce. Senza il file ogni calendario prende il nome dal dominio della sua casella. Il gateway rilegge il file quando cambia.
 
 | Voce | A cosa serve |
 |------|--------------|

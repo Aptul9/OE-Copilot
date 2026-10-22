@@ -6,10 +6,13 @@ aziende nella barra laterale). Si disegna in grande e si riduce con LANCZOS per 
 Scrive app/app-icon.png (l'icona di partenza per ogni altro formato, quella che `tauri icon`
 legge senza argomenti) e, se c'è la cartella dell'interfaccia nel browser, anche
 server/web-ts/src/app/icon.png e apple-icon.png (sfondo pieno: iOS riempie di nero il trasparente).
+La sagoma bianca su trasparente, l'unica che la barra di stato di Android sa mostrare, va in
+server/web-ts/public/badge.png (notifiche del browser) e nelle drawable-*/ic_stat_promemoria.png
+dell'app Android (i promemoria).
 """
 import os
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 # misure di lavoro: un calendario e quanto sporgono gli anelli
 L, A, RAGGIO, BORDO, TESTATA = 1120, 1200, 130, 18, 300
@@ -48,16 +51,17 @@ def calendario(colore):
     return img
 
 
-def composizione():
+def composizione(ombre=True):
     """I tre calendari uno sull'altro, ognuno con la sua ombra, ritagliati e centrati in un quadrato."""
     tela = Image.new("RGBA", (2900, 2900), (0, 0, 0, 0))
     for colore, angolo, (cx, cy) in CALENDARI:
         c = calendario(colore).rotate(angolo, resample=Image.BICUBIC, expand=True)
-        ombra = Image.new("RGBA", c.size, (0, 0, 0, 0))
-        ombra.putalpha(c.getchannel("A").point(lambda v: v * 0.38))
-        ombra = ombra.filter(ImageFilter.GaussianBlur(28))
         x, y = round(cx - c.width / 2), round(cy - c.height / 2)
-        tela.alpha_composite(ombra, (x - 14, y + 22))
+        if ombre:
+            ombra = Image.new("RGBA", c.size, (0, 0, 0, 0))
+            ombra.putalpha(c.getchannel("A").point(lambda v: v * 0.38))
+            ombra = ombra.filter(ImageFilter.GaussianBlur(28))
+            tela.alpha_composite(ombra, (x - 14, y + 22))
         tela.alpha_composite(c, (x, y))
     tela = tela.crop(tela.getbbox())
     lato = round(max(tela.size) * 1.1)
@@ -74,6 +78,19 @@ def su_fondo(icona, lato, fondo=(248, 248, 252), scala=0.78):
     return quadro.convert("RGB")
 
 
+def sagoma(lato):
+    """L'icona senza ombre in bianco su trasparente: pieno il colore, vuoto il foglio bianco e i giorni chiari (Android legge solo l'alfa)."""
+    img = composizione(ombre=False)
+    r, g, b, a = img.split()
+    pieno = ImageChops.darker(ImageChops.darker(r, g), b).point(lambda v: 255 if v < 170 else 0)
+    bianca = Image.new("RGBA", img.size, (255, 255, 255, 0))
+    bianca.putalpha(ImageChops.multiply(pieno, a))
+    return bianca.resize((lato, lato), Image.LANCZOS)
+
+
+# la barra di stato di Android: 24 dp per densità
+DENSITA = {"mdpi": 24, "hdpi": 36, "xhdpi": 48, "xxhdpi": 72, "xxxhdpi": 96}
+
 if __name__ == "__main__":
     app = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     grande = composizione()
@@ -84,5 +101,11 @@ if __name__ == "__main__":
     if os.path.isdir(web):
         grande.resize((512, 512), Image.LANCZOS).save(os.path.join(web, "icon.png"))
         su_fondo(grande, 180).save(os.path.join(web, "apple-icon.png"))
-        scritti += ["server/web-ts/src/app/icon.png", "server/web-ts/src/app/apple-icon.png"]
+        sagoma(96).save(os.path.join(os.path.dirname(os.path.dirname(web)), "public", "badge.png"))
+        scritti += ["server/web-ts/src/app/icon.png", "server/web-ts/src/app/apple-icon.png", "server/web-ts/public/badge.png"]
+    res = os.path.join(app, "src-tauri", "gen", "android", "app", "src", "main", "res")
+    for densita, lato in DENSITA.items():
+        os.makedirs(os.path.join(res, f"drawable-{densita}"), exist_ok=True)
+        sagoma(lato).save(os.path.join(res, f"drawable-{densita}", "ic_stat_promemoria.png"))
+    scritti.append("drawable-*/ic_stat_promemoria.png")
     print("rigenerati:", ", ".join(scritti))

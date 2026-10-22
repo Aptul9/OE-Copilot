@@ -490,13 +490,13 @@ describe("il service worker (public/sw.js)", () => {
   it("un push diventa una notifica: la prima riga è il titolo, il resto il corpo", () => {
     const sw = carica();
     sw.ascoltatori.push(sw.evento({ data: { text: () => "Tra 10 min, alle 15:30\nRiunione di prova\nSala Rossa" } }));
-    expect(sw.mostrate).toEqual([["Tra 10 min, alle 15:30", { body: "Riunione di prova\nSala Rossa", icon: "/icon.png" }]]);
+    expect(sw.mostrate).toEqual([["Tra 10 min, alle 15:30", { body: "Riunione di prova\nSala Rossa", icon: "/icon.png", badge: "/badge.png" }]]);
   });
 
   it("senza testo c'è comunque una notifica (Chrome la chiede a ogni push)", () => {
     const sw = carica();
     sw.ascoltatori.push(sw.evento({}));
-    expect(sw.mostrate).toEqual([["Promemoria", { body: "", icon: "/icon.png" }]]);
+    expect(sw.mostrate).toEqual([["Promemoria", { body: "", icon: "/icon.png", badge: "/badge.png" }]]);
   });
 
   it("un clic sulla notifica la chiude e porta alla pagina: una finestra aperta o una nuova", async () => {

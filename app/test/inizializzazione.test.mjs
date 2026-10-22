@@ -130,6 +130,7 @@ function ambiente({ adesso = ADESSO, api = {}, voci = [], avvisoRotto = false, n
       setItem: (k, v) => {
         memoria[k] = String(v);
       },
+      removeItem: (k) => void delete memoria[k],
     },
     setTimeout: (f, ms) => timer.push({ f, ms }),
     URL,
@@ -269,7 +270,7 @@ test("una riunione con l'anticipo raggiunto avvisa una volta sola, con il testo 
   assert.deepEqual(a.vie, ["app"]);
   assert.equal(await a.giro(), 60_000);
   assert.equal(a.notifiche.length, 1);
-  assert.deepEqual(a.stato(), { giri: 2, inviate: 1, errori: 0, esito: "ok" });
+  assert.deepEqual(a.stato(), { giri: 2, inviate: 1, errori: 0, esito: "ok", ultimaLettura: false });
 });
 
 test("il nucleo riceve le impostazioni del server così come sono, gli eventi letti e l'ora del giro; senza get_promemoria nessuna impostazione", async () => {
@@ -419,7 +420,7 @@ test("errori di rete: l'attesa raddoppia fino a 5 minuti e si azzera al primo su
   assert.deepEqual([await a.giro(), await a.giro(), await a.giro(), await a.giro()], [120_000, 240_000, 300_000, 300_000]);
   ok = true;
   assert.equal(await a.giro(), 60_000);
-  assert.deepEqual(a.stato(), { giri: 5, inviate: 0, errori: 0, esito: "ok" });
+  assert.deepEqual(a.stato(), { giri: 5, inviate: 0, errori: 0, esito: "ok", ultimaLettura: false });
 });
 
 test("5xx: errore con attesa crescente, niente avvisi", async () => {
@@ -439,6 +440,43 @@ test("dati in cache (stale): nessun avviso", async () => {
   assert.equal(a.avvisi.length, 0);
   assert.equal(a.pianifica.length, 0);
   assert.equal(a.stato().esito, "dati-non-freschi");
+});
+
+test("senza rete, o con dati vecchi, i promemoria vengono dall'ultima lettura buona, come gli allarmi già programmati su Android", async () => {
+  const api = { get_promemoria: soloNotifica, get_events: EVENTI };
+  const a = ambiente({ api, voci: (x) => (x.eventi.length ? [voce("e1", 10)] : []) });
+  a.timer[0].f();
+  a.imposta(DIECI - 20 * MIN);
+  await a.giro();
+  assert.equal(a.notifiche.length, 0);
+  // la rete cade: niente impostazioni, niente eventi
+  api.get_promemoria = new TypeError("Failed to fetch");
+  api.get_events = new TypeError("Failed to fetch");
+  a.imposta(ADESSO);
+  assert.equal(await a.giro(), 60_000);
+  assert.deepEqual(a.pianifica.at(-1).eventi, [evento("e1", "Riunione A", "2026-10-12T10:00:00")]);
+  assert.equal(a.notifiche.length, 1);
+  assert.equal(a.stato().ultimaLettura, true);
+  // la copia del service worker (stale) non sostituisce l'ultima lettura buona
+  api.get_promemoria = soloNotifica;
+  api.get_events = json([], { stale: true });
+  await a.giro();
+  assert.equal(a.pianifica.at(-1).eventi.length, 1);
+  assert.equal(a.stato().esito, "ok");
+});
+
+test("senza sessione l'ultima lettura si cancella: poi, senza rete, nessun promemoria", async () => {
+  const api = { get_promemoria: soloNotifica, get_events: EVENTI };
+  const a = ambiente({ api, voci: [voce("e1")] });
+  a.timer[0].f();
+  await a.giro();
+  assert.ok(a.memoria["oe-app:ultima-lettura"]);
+  api.get_promemoria = risposta(401, { error: "sessione" });
+  await a.giro();
+  assert.equal(a.memoria["oe-app:ultima-lettura"], undefined);
+  api.get_promemoria = new TypeError("Failed to fetch");
+  await a.giro();
+  assert.equal(a.stato().esito, "errore");
 });
 
 test("notifica e avviso a comparsa spenti sul sito: si leggono solo le impostazioni", async () => {

@@ -26,6 +26,7 @@
   const ERRORE_MAX_MS = 300_000;
   const INTERFACCIA_OGNI_MS = 1_800_000;
   const CHIAVE_INVIATE = "oe-app:notifiche-inviate";
+  const CHIAVE_ULTIMA = "oe-app:ultima-lettura";
   const SU_ANDROID = typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "");
 
   const origine = window.__OE_ORIGINE__;
@@ -166,6 +167,26 @@
     }
   }
 
+  // L'ultima lettura buona (impostazioni ed eventi delle 24 ore da allora). Come su Android, dove restano gli allarmi programmati da
+  // quella: senza rete, o con dati vecchi del server, i promemoria vengono da qui. Senza sessione si cancella
+  function leggiUltima() {
+    try {
+      const u = JSON.parse(localStorage.getItem(CHIAVE_ULTIMA) || "null");
+      return u && u.imp && Array.isArray(u.eventi) ? u : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function salvaUltima(u) {
+    try {
+      if (u) localStorage.setItem(CHIAVE_ULTIMA, JSON.stringify(u));
+      else localStorage.removeItem(CHIAVE_ULTIMA);
+    } catch {
+      // senza memoria, senza rete non ci sono promemoria
+    }
+  }
+
   // Le sigle e i loghi delle aziende (get_personalizzazione), riletti ogni 30 minuti
   let interfaccia = null;
   let interfacciaAl = 0;
@@ -264,29 +285,52 @@
     return invoca("mostra_notifica", { dati }).catch(() => invoca("plugin:notification|notify", { options: t }));
   }
 
-  async function controlla() {
+  // Impostazioni ed eventi freschi, o null se la sessione non c'è più. Dati vecchi (il server dei calendari non risponde, o la copia del
+  // service worker senza rete) sollevano DatiVecchi: decide chi chiama
+  class DatiVecchi extends Error {}
+  async function leggiFresca() {
     const imp = await leggiImpostazioni();
-    if (!imp) return "non-autenticato";
+    if (!imp) return null;
+    if (SU_ANDROID || (!imp.notifiche && !imp.comparsa)) return { imp, eventi: [] };
+    const ora = Date.now();
+    const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS)), true]);
+    if (sessioneFinita(r)) return null;
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const dati = await r.json();
+    if (dati && dati.stale) throw new DatiVecchi();
+    return { imp, eventi: Array.isArray(dati && dati.events) ? dati.events : [] };
+  }
+
+  async function controlla() {
+    let lettura;
+    try {
+      lettura = await leggiFresca();
+      if (!SU_ANDROID) salvaUltima(lettura);
+      stato.ultimaLettura = false;
+    } catch (errore) {
+      // un promemoria su dati vecchi vale solo se sono quelli dell'ultima lettura buona, come gli allarmi già programmati su Android
+      lettura = SU_ANDROID ? null : leggiUltima();
+      if (!lettura) {
+        if (errore instanceof DatiVecchi) return "dati-non-freschi";
+        throw errore;
+      }
+      stato.ultimaLettura = true;
+    }
+    if (!lettura) return "non-autenticato";
+    const { imp, eventi } = lettura;
     // su Android i promemoria li programma l'app, anche ad app chiusa (Promemoria.kt): alla pagina resta il permesso, chiesto una volta
     if (SU_ANDROID) {
       await permessoNotifiche();
       return "android";
     }
     if (!imp.notifiche && !imp.comparsa) return "spente";
-    let ora = Date.now();
-    const r = await chiama("get_events", [isoLocale(new Date(ora)), isoLocale(new Date(ora + FINESTRA_MS)), true]);
-    if (sessioneFinita(r)) return "non-autenticato";
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const dati = await r.json();
     const concesso = await permessoNotifiche();
-    // un promemoria vale solo su dati freschi, non su quelli tenuti in cache quando l'agente non risponde
-    if (dati && dati.stale) return "dati-non-freschi";
     if (!concesso) return "senza-permesso";
     // la richiesta del permesso può aver aspettato la risposta di chi usa il telefono
-    ora = Date.now();
+    const ora = Date.now();
     const inviate = leggiInviate(ora);
     // le voci di ogni riunione e anticipo, già in ordine di inizio e con il testo; qui le riunioni con un anticipo arrivato e non ancora avvisato
-    const voci = await invoca("pianifica_promemoria", { impostazioni: imp.grezze, eventi: Array.isArray(dati && dati.events) ? dati.events : [], ora });
+    const voci = await invoca("pianifica_promemoria", { impostazioni: imp.grezze, eventi, ora });
     const arrivate = new Map();
     for (const voce of voci) {
       if (voce.at > ora) continue;

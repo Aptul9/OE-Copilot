@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError, creaApi } from "@/lib/oe/api";
 import {
   azioniEvento,
+  cambiaSpenti,
   chiaveGiorno,
   coloriDinamici,
   corrisponde,
@@ -15,6 +16,9 @@ import {
   limitaLarghezza,
   LARGHEZZA_PANNELLO,
   secondariEffettivi,
+  soloDelDispositivo,
+  soloDelServer,
+  unisciConfig,
   separaSecondari,
   fmtRange,
   giorniTra,
@@ -457,5 +461,23 @@ describe("coloriDinamici", () => {
     );
     expect(new Set(m.values()).size).toBe(TINTE_DINAMICHE.length);
     expect(m.get("Z")).toBe(m.get("A"));
+  });
+});
+
+describe("impostazioni del dispositivo", () => {
+  const server = { theme: "dark" as const, zoom_calendario: 70, disabled_calendars: ["a"], gruppi_calendari: { G: ["Alfa"] }, account_aliases: { x: "X" } };
+  it("un dispositivo senza impostazioni parte da quelle del server; uno con le sue tiene le sue", () => {
+    expect(unisciConfig(server, null)).toEqual({ config: server, dispositivo: { theme: "dark", zoom_calendario: 70, disabled_calendars: ["a"] } });
+    const mio = { theme: "light" as const, disabled_calendars: [] };
+    expect(unisciConfig(server, mio).config).toEqual({ ...server, ...mio });
+  });
+  it("una modifica si divide tra dispositivo e server", () => {
+    const patch = { vista: "timeGridDay", colori_dinamici: true, gruppi_calendari: {} };
+    expect(soloDelDispositivo(patch)).toEqual({ vista: "timeGridDay", colori_dinamici: true });
+    expect(soloDelServer(patch)).toEqual({ gruppi_calendari: {} });
+  });
+  it("cambiaSpenti accende, spegne e lascia com'è", () => {
+    const cals = ["a", "b", "c"].map((id) => ({ id, account: id, label: id, color: "", enabled: true }));
+    expect(cambiaSpenti(cals, ["a", "z"], (c) => (c.id === "a" ? true : c.id === "c" ? false : undefined))).toEqual(["c", "z"]);
   });
 });

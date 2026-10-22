@@ -13,11 +13,11 @@
   if (window.__oeInizializzato) return;
   window.__oeInizializzato = true;
 
-  // Una navigazione fallita (rete caduta) lascia la pagina di errore del browser: si torna alla pagina di avvio, che
-  // mostra il messaggio, riprova da sola e riporta al sito appena risponde. Il controllo è differito perché all'avvio
-  // dello script l'indirizzo della pagina di errore non è ancora quello definitivo.
+  // Una navigazione fallita (rete caduta e nessuna copia della pagina nel service worker del sito) lascia la pagina di errore del
+  // browser: si torna alla pagina di avvio, che mostra il messaggio, riprova da sola e riporta al sito appena risponde. Il controllo è
+  // differito perché all'avvio dello script l'indirizzo della pagina di errore non è ancora quello definitivo.
   setTimeout(() => {
-    if (location.protocol === "chrome-error:" && window.__OE_AVVIO__) location.replace(window.__OE_AVVIO__);
+    if (location.protocol === "chrome-error:" && window.__OE_AVVIO__) location.replace(window.__OE_AVVIO__ + "#senza-copia");
   }, 1500);
 
   const PERIODO_MS = 60_000;

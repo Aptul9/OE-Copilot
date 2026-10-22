@@ -65,6 +65,15 @@ describe("promemoria di tutte le aziende", () => {
     expect(eventi.map((e) => e.title).sort()).toEqual(["Riunione Alfa", "Riunione Gamma"]);
   });
 
+  it("con il quarto argomento valgono i calendari spenti del dispositivo, non quelli salvati (che non cambiano)", async () => {
+    const salvati = loadConfig().disabled_calendars;
+    expect(titoli(await chiama("get_events", [INIZIO, FINE, null, []]))).toEqual(["Riunione Alfa", "Riunione Gamma"]);
+    expect(titoli(await chiama("get_events", [INIZIO, FINE, null, salvati]))).toEqual(["Riunione Alfa"]);
+    // un quarto argomento che non è una lista di id si ignora
+    expect(titoli(await chiama("get_events", [INIZIO, FINE, null, "tutti"]))).toEqual(["Riunione Alfa"]);
+    expect(loadConfig().disabled_calendars).toEqual(salvati);
+  });
+
   it("l'interruttore resta spento, nella configurazione e per la pagina", async () => {
     await chiama("get_events", [INIZIO, FINE, true]);
     await dipendenzeReali().leggiEventi(INIZIO, FINE);

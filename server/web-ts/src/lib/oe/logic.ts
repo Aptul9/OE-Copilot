@@ -1,6 +1,6 @@
 import { daIstante, istante, isoSecondi, leggiIso } from "../core/fuso";
 import { comeLoLegge, portaFuori } from "../valore-logo";
-import type { Calendario, Evento, FonteStato, GruppiCalendari, SchedaTimesheet } from "./types";
+import type { Calendario, Config, Evento, FonteStato, GruppiCalendari, SchedaTimesheet } from "./types";
 
 // Funzioni pure della pagina, portate dalla vecchia pagina (app.js, nella storia di git fino a 2d57a83^): niente DOM, niente rete, provabili da sole.
 
@@ -405,6 +405,35 @@ export function testoDatiVecchi(quando: string | null | undefined, motivo: strin
   const ora = quando ? quando.slice(11, 16) : null;
   const cosa = motivo || "Il server dei calendari non risponde";
   return ora ? `${cosa}. Dati aggiornati alle ${ora}.` : `${cosa}.`;
+}
+
+// ---- Impostazioni del dispositivo ------------------------------------------------
+/**
+ * Le voci di config che restano nel dispositivo (localStorage della pagina): aspetto, vista e calendari accesi. Il resto (nomi,
+ * gruppi, link ICS, promemoria) sta sul server, uguale per tutti. I calendari spenti salvati sul server restano quelli dei link condivisi.
+ */
+export const VOCI_DEL_DISPOSITIVO: readonly string[] = ["theme", "zoom_calendario", "colori_dinamici", "vista", "secondari_scelti", "reminder_poll_seconds", "disabled_calendars"];
+
+const scegli = (c: Partial<Config>, delDispositivo: boolean): Partial<Config> =>
+  Object.fromEntries(Object.entries(c).filter(([k]) => VOCI_DEL_DISPOSITIVO.includes(k) === delDispositivo));
+export const soloDelDispositivo = (c: Partial<Config>) => scegli(c, true);
+export const soloDelServer = (c: Partial<Config>) => scegli(c, false);
+
+/** La config della pagina: quella del server con sopra quella del dispositivo. Un dispositivo che non ha niente parte da quella del server. */
+export function unisciConfig(server: Config, dispositivo: Partial<Config> | null): { config: Config; dispositivo: Partial<Config> } {
+  const mia = dispositivo ?? soloDelDispositivo(server);
+  return { config: { ...server, ...mia }, dispositivo: mia };
+}
+
+/** I calendari spenti dopo una scelta: `acceso(c)` vero lo accende, falso lo spegne, undefined lo lascia com'è. */
+export function cambiaSpenti(cals: Calendario[], spenti: readonly string[], acceso: (c: Calendario) => boolean | undefined): string[] {
+  const s = new Set(spenti);
+  for (const c of cals) {
+    const on = acceso(c);
+    if (on === true) s.delete(c.id);
+    else if (on === false) s.add(c.id);
+  }
+  return [...s].sort();
 }
 
 // ---- Dove si apre la pagina -----------------------------------------------------

@@ -90,7 +90,7 @@ Il rilascio si firma con `%USERPROFILE%\.oe-copilot\android\keystore.properties`
 
 ## Cosa non c'è
 
-Aggiornamento automatico (il repository è privato), firma del codice, pulsanti nelle notifiche, uso offline.
+Aggiornamento automatico (il repository è privato), firma del codice, pulsanti nelle notifiche. Senza rete si vede l'ultima copia del sito (README, 4.11).
 
 ## Prove
 

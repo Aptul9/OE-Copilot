@@ -4,6 +4,7 @@ import { useTheme } from "next-themes";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/oe/api";
 import {
+  cambiaSpenti,
   coloriDinamici,
   dentroLaCache,
   aScorrimento,
@@ -17,7 +18,10 @@ import {
   raccogliFestivi,
   raggruppaAziende,
   secondariEffettivi,
+  soloDelDispositivo,
+  soloDelServer,
   testoDatiVecchi,
+  unisciConfig,
   vicinoAlBordo,
   type CacheLarga,
   type EventoGriglia,
@@ -34,6 +38,24 @@ export const ZOOM_MAX = 110;
 export const ZOOM_PASSO = 8;
 export const ZOOM_DEFAULT = 58;
 const MAX_TENTATIVI = 12;   // ~2 minuti: quanto basta a un riavvio del server dei calendari
+const CHIAVE_DISPOSITIVO = "oe.impostazioni-dispositivo";
+
+/** Le impostazioni di questo dispositivo (VOCI_DEL_DISPOSITIVO in logic.ts), o null se non ne ha ancora. */
+function leggiDispositivo(): Partial<Config> | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHIAVE_DISPOSITIVO) ?? "null");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+function scriviDispositivo(c: Partial<Config>): void {
+  try {
+    localStorage.setItem(CHIAVE_DISPOSITIVO, JSON.stringify(c));
+  } catch {
+    // vale in questa pagina e non resta
+  }
+}
 
 type Valori = {
   /** La pagina pubblica (senza accesso): stessi dati e stesse viste, impegni ridotti a "Occupato", niente scritture. */
@@ -52,6 +74,7 @@ type Valori = {
   pallinoInAttesa: boolean;
   aggiornaCalendari: (forza?: boolean) => Promise<void>;
   accendiAzienda: (azienda: string, acceso: boolean) => Promise<void>;
+  accendiCalendario: (id: string, acceso: boolean) => Promise<void>;
   soloAzienda: (azienda: string) => Promise<void>;
   // gruppi di calendari
   gruppiCalendari: GruppiCalendari;
@@ -122,6 +145,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   const richiesta = useRef(0);
   const tentativi = useRef(0);
   const timerRitentativo = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spentiRef = useRef<string[]>([]);
   const eraFerma = useRef(false);
   const inCorsoRef = useRef(0);
   const rabboccoInCorso = useRef(false);
@@ -136,10 +160,15 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     let vivo = true;
     Promise.all([
       api("get_personalizzazione").catch(() => ({ interfaccia: {} }) as Personalizzazione),
-      api("get_config").catch(() => ({}) as Config),
-    ]).then(([p, c]) => {
+      api("get_config").catch(() => null),
+    ]).then(([p, server]) => {
       if (!vivo) return;
       setPers(p);
+      // senza la config del server (niente rete e niente copia) vale quella del dispositivo, e non si prende come punto di partenza
+      const salvata = leggiDispositivo();
+      const { config: c, dispositivo } = unisciConfig(server ?? {}, salvata);
+      if (server && !salvata) scriviDispositivo(dispositivo);
+      spentiRef.current = Array.isArray(c.disabled_calendars) ? c.disabled_calendars : [];
       setConfig(c);
       setVistaIniziale(typeof c.vista === "string" ? c.vista : null);
       if (c.theme) setTheme(c.theme === "auto" ? "system" : c.theme);
@@ -228,6 +257,26 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   );
   aggiornaCalendariRef.current = aggiornaCalendari;
 
+  // il service worker (public/sw.js) tiene la pagina e le ultime letture: senza rete la pagina si apre con quelle
+  useEffect(() => {
+    if (!inPubblico) navigator.serviceWorker?.register("/sw.js").catch(() => {});
+  }, [inPubblico]);
+
+  // tornata la rete si rilegge subito, senza aspettare il prossimo tentativo; lo stesso quando il service worker prende la pagina
+  // (la prima volta arriva a letture già fatte, che quindi non ha salvato)
+  useEffect(() => {
+    const subito = () => {
+      void aggiornaCalendariRef.current();
+      ricarica();
+    };
+    window.addEventListener("online", subito);
+    navigator.serviceWorker?.addEventListener("controllerchange", subito);
+    return () => {
+      window.removeEventListener("online", subito);
+      navigator.serviceWorker?.removeEventListener("controllerchange", subito);
+    };
+  }, [ricarica]);
+
   useEffect(() => {
     if (pronta) void aggiornaCalendari();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -236,41 +285,25 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   // ---- colori dinamici (config.colori_dinamici): un colore per azienda scelto sulla pagina che si guarda, al posto di quello fisso ----
   // Le tinte di prima restano da una lettura all'altra: cambia solo chi finisce accanto a una tinta uguale o vicina.
   const tintePrima = useRef<Map<string, string>>(new Map());
+  const calendariAccesi = useMemo(() => {
+    const spenti = new Set(Array.isArray(config.disabled_calendars) ? config.disabled_calendars : []);
+    return calendariLetti.map((c) => ({ ...c, enabled: !spenti.has(c.id) }));
+  }, [calendariLetti, config.disabled_calendars]);
   const colori = useMemo(() => {
     if (!config.colori_dinamici || inPubblico) return null;
     const aziende = calendariLetti.filter((c) => !c.builtin).map((c) => c.alias || c.account);
     return (tintePrima.current = coloriDinamici(eventiLetti, aziende, tintePrima.current, periodo ?? undefined));
   }, [config.colori_dinamici, inPubblico, calendariLetti, eventiLetti, periodo]);
-  const calendari = useMemo(() => (colori ? calendariLetti.map((c) => ({ ...c, color: colori.get(c.alias || c.account) ?? c.color })) : calendariLetti), [calendariLetti, colori]);
+  const calendari = useMemo(() => (colori ? calendariAccesi.map((c) => ({ ...c, color: colori.get(c.alias || c.account) ?? c.color })) : calendariAccesi), [calendariAccesi, colori]);
   const eventi = useMemo(() => (colori ? eventiLetti.map((e) => ({ ...e, color: colori.get(e.alias || e.account) ?? e.color })) : eventiLetti), [eventiLetti, colori]);
 
   const gruppi = useMemo(() => raggruppaAziende(calendari), [calendari]);
-
-  const dopoModifica = useCallback(async () => {
-    await aggiornaCalendari();
-    ricarica();
-  }, [aggiornaCalendari, ricarica]);
-
-  const accendiAzienda = useCallback(
-    async (azienda: string, acceso: boolean) => {
-      await api("set_azienda_enabled", azienda, acceso);
-      await dopoModifica();
-    },
-    [dopoModifica],
-  );
-  const soloAzienda = useCallback(
-    async (azienda: string) => {
-      await api("mostra_solo_azienda", azienda);
-      await dopoModifica();
-    },
-    [dopoModifica],
-  );
 
   // ---- eventi ----------------------------------------------------------------------------
   const leggi = useCallback(
     async (da: Date, a: Date): Promise<EventiRisposta> => {
       let dati: EventiRisposta;
-      if (!inPubblico) dati = await api("get_events", isoLocale(da), isoLocale(a));
+      if (!inPubblico) dati = await api("get_events", isoLocale(da), isoLocale(a), null, spentiRef.current);
       else {
         const q = new URLSearchParams({ da: isoLocale(da), a: isoLocale(a), ...(gruppoPubblico ? { gruppo: gruppoPubblico } : {}) });
         const r = await fetch(`/api/disponibilita?${q}`);
@@ -372,27 +405,48 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   const infoGiorni = useMemo(() => raccogliFestivi(eventi), [eventi]);
 
   // ---- impostazioni ----------------------------------------------------------------------
+  // aspetto, vista e calendari accesi restano in questo dispositivo (VOCI_DEL_DISPOSITIVO), il resto va sul server
   const salvaConfig = useCallback(async (patch: Partial<Config>) => {
     setConfig((c) => ({ ...c, ...patch }));
     if (inPubblico) return;
+    const mio = soloDelDispositivo(patch);
+    if (Object.keys(mio).length) scriviDispositivo({ ...leggiDispositivo(), ...mio });
+    const delServer = soloDelServer(patch);
+    if (!Object.keys(delServer).length) return;
     try {
-      await api("save_config", patch);
+      await api("save_config", delServer);
     } catch {
       // la rete non c'è: l'impostazione vale in questa pagina, non resta salvata
     }
   }, [inPubblico]);
 
-  // ---- gruppi di calendari: stanno in config.gruppi_calendari, si filtra con mostra_solo_gruppo ---------
+  // ---- calendari accesi: nel dispositivo, e get_events riceve quelli spenti --------------------------------------------
+  const nomeDi = (c: Calendario) => c.alias || c.account;
+  const scegliAccesi = useCallback(
+    async (acceso: (c: Calendario) => boolean | undefined) => {
+      const spenti = cambiaSpenti(calendariLetti, spentiRef.current, acceso);
+      spentiRef.current = spenti;
+      await salvaConfig({ disabled_calendars: spenti });
+      ricarica();
+    },
+    [calendariLetti, salvaConfig, ricarica],
+  );
+  const accendiAzienda = useCallback((azienda: string, on: boolean) => scegliAccesi((c) => (nomeDi(c) === azienda ? on : undefined)), [scegliAccesi]);
+  const accendiCalendario = useCallback((id: string, on: boolean) => scegliAccesi((c) => (c.id === id ? on : undefined)), [scegliAccesi]);
+  /** Lascia accesa una sola azienda, o tutte se `azienda` è vuota. */
+  const soloAzienda = useCallback((azienda: string) => scegliAccesi((c) => !azienda || nomeDi(c) === azienda), [scegliAccesi]);
+
+  // ---- gruppi di calendari: stanno in config.gruppi_calendari, il filtro accende solo le loro aziende ---------
   const gruppiCalendari = useMemo(() => leggiGruppi(config.gruppi_calendari), [config.gruppi_calendari]);
   const gruppiAccesi = useMemo(() => gruppiAttivi(gruppiCalendari, gruppi), [gruppiCalendari, gruppi]);
   const salvaGruppi = useCallback((g: GruppiCalendari) => salvaConfig({ gruppi_calendari: g }), [salvaConfig]);
   const impostaSecondario = useCallback((nome: string, on: boolean) => salvaConfig({ secondari_scelti: { ...config.secondari_scelti, [nome]: on } }), [salvaConfig, config.secondari_scelti]);
   const soloGruppo = useCallback(
     async (nome: string) => {
-      await api("mostra_solo_gruppo", nome);
-      await dopoModifica();
+      const membri = gruppiCalendari[nome];
+      if (membri) await scegliAccesi((c) => membri.includes(nomeDi(c)));
     },
-    [dopoModifica],
+    [gruppiCalendari, scegliAccesi],
   );
 
   const cambiaZoom = useCallback(
@@ -425,7 +479,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   const valori: Valori = {
     pubblico: inPubblico, gruppoPubblico,
     pronta, pers, ricaricaPers, config, vistaIniziale,
-    calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, soloAzienda,
+    calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, accendiCalendario, soloAzienda,
     gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi, secondari, impostaSecondario,
     periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync,
     avviso, datiVecchi, sincronizzando: inCorso > 0, etichetta: etichettaSync(ultimaSync, adesso, inCorso),

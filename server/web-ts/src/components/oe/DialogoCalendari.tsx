@@ -16,7 +16,7 @@ type Props = { aperto: boolean; onChiudi: () => void };
 
 /** "Calendari da mostrare": un interruttore per calendario, il nome di ogni account, i calendari da link. */
 export function DialogoCalendari({ aperto, onChiudi }: Props) {
-  const { aggiornaCalendari, ricarica, ricaricaPers } = useOe();
+  const { aggiornaCalendari, ricarica, ricaricaPers, config } = useOe();
   const [dati, setDati] = useState<CalendariRisposta | null>(null);
   // i loghi scelti da qui (quelli di personalizzazione.json non ci sono): nome mostrato -> indirizzo e data
   const [loghi, setLoghi] = useState<Record<string, VoceLogo>>({});
@@ -93,7 +93,10 @@ export function DialogoCalendari({ aperto, onChiudi }: Props) {
 
   // un blocco per nome mostrato: gli account uniti sotto lo stesso nome stanno insieme
   const blocchi: { alias: string; conti: { account: string; cals: Calendario[] }[] }[] = [];
-  for (const c of dati?.calendars ?? []) {
+  // acceso o spento lo dice questo dispositivo, non il server
+  const spenti = new Set(config.disabled_calendars ?? []);
+  for (const letto of dati?.calendars ?? []) {
+    const c = { ...letto, enabled: !spenti.has(letto.id) };
     const alias = c.alias || c.account;
     let b = blocchi.find((x) => x.alias === alias);
     if (!b) blocchi.push((b = { alias, conti: [] }));
@@ -297,6 +300,7 @@ function BloccoAzienda({ alias, conti, onModificato, onRicarica, onRinominato, l
 }
 
 function RigaCalendario({ c, onModificato, onRicarica }: { c: Calendario; onModificato: () => Promise<void>; onRicarica: () => Promise<void> }) {
+  const { accendiCalendario } = useOe();
   const [acceso, setAcceso] = useState(c.enabled);
   useEffect(() => setAcceso(c.enabled), [c.enabled]);
   const nome = c.label.startsWith(c.account + " · ") ? c.label.slice(c.account.length + 3) : c.label;
@@ -311,8 +315,7 @@ function RigaCalendario({ c, onModificato, onRicarica }: { c: Calendario; onModi
         checked={acceso}
         onChange={async (e) => {
           setAcceso(e.target.checked);
-          await api("set_calendar_enabled", c.id, e.target.checked);
-          await onModificato();
+          await accendiCalendario(c.id, e.target.checked);
         }}
       />
       <span className="min-w-0 flex-1 truncate">{nome}</span>

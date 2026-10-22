@@ -256,7 +256,7 @@ test("nella pagina di errore del browser torna alla pagina di avvio", () => {
   assert.equal(a.timer.length, 1);
   assert.equal(a.timer[0].ms, 1500);
   a.timer[0].f();
-  assert.deepEqual(a.chiamate, [["replace", "http://tauri.localhost/index.html"]]);
+  assert.deepEqual(a.chiamate, [["replace", "http://tauri.localhost/index.html#senza-copia"]]);
 });
 
 test("una riunione con l'anticipo raggiunto avvisa una volta sola, con il testo del nucleo", async () => {

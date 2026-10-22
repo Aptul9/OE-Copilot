@@ -120,11 +120,15 @@ export const apiTs = {
     return { calendars, error: errore };
   },
 
-  /** `perPromemoria` (app Android e Windows): tutti i calendari, anche quelli spenti nella barra laterale, che filtra solo la vista. */
-  async get_events(startIso: string, endIso: string, perPromemoria?: unknown) {
+  /**
+   * `perPromemoria` (app Android e Windows): tutti i calendari, anche quelli spenti nella barra laterale, che filtra solo la vista.
+   * `spenti`: i calendari spenti di chi chiede (la pagina li tiene nel dispositivo) al posto di quelli salvati, che restano ai link condivisi.
+   */
+  async get_events(startIso: string, endIso: string, perPromemoria?: unknown, spenti?: unknown) {
     const t0 = Date.now();
     try {
-      const cfg = loadConfig();
+      let cfg = loadConfig();
+      if (Array.isArray(spenti) && spenti.every((id) => typeof id === "string")) cfg = { ...cfg, disabled_calendars: spenti };
       const [events, errors, meta] = await raccogli(perPromemoria === true ? tuttiAccesi(cfg) : cfg, startIso, endIso);
       console.info(`get_events: ${events.length} eventi in ${((Date.now() - t0) / 1000).toFixed(1)}s (stale=${meta.stale}, errori: ${JSON.stringify(errors)})`);
       return { events, errors, ...meta };

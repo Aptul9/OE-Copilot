@@ -36,7 +36,7 @@ function useStretto(): boolean {
 
 const CHIAVE_VISTA = "oe.vista-stretto";
 
-/** La vista scelta su uno schermo stretto, che resta in questo browser: quella salvata sul server è del computer. */
+/** La vista scelta su uno schermo stretto, a parte da quella dello schermo largo: lo stesso browser può essere stretto o largo. */
 function vistaLocale(): string | null {
   try {
     const v = localStorage.getItem(CHIAVE_VISTA);
@@ -89,7 +89,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
 
   const cambiaVista = (v: string) => {
     comandi.current?.cambiaVista(v);
-    // la vista scelta si ricorda: sul server quella del computer, in questo browser quella di uno schermo stretto
+    // la vista scelta resta in questo dispositivo: una per lo schermo largo (config.vista), una per quello stretto
     if (!stretto) void oe.salvaConfig({ vista: v });
     else {
       try {

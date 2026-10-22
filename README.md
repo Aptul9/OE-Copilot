@@ -313,10 +313,17 @@ Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o
 Un link ICS per persona, `https://<UI_HOST>/condividi/<testo segreto>.ics`. L'altro OE Copilot lo aggiunge con *Gestisci calendari > Aggiungi un calendario da link* e lo rilegge ogni 30 minuti.
 - **Gestione**: *Impostazioni > Condivisione > Gestisci i link*. Per ogni link: livello, cosa condividere, giorni indietro (0-30, di norma 7) e avanti (1-365, di norma 90). Al più 50 link, nella tabella `condivisioni`.
 - **Livelli**: *Occupato* dà solo gli orari; *Con titoli* aggiunge titolo e luogo, mai descrizione, partecipanti o link per collegarsi.
-- **Cosa esce**: i calendari accesi, o un gruppo. Mai quelli ricevuti da altri (link ICS, festività, altre condivisioni).
+- **Cosa esce**: i calendari accesi secondo `disabled_calendars` salvato sul server, o un gruppo. Mai quelli ricevuti da altri (link ICS, festività, altre condivisioni). Gli interruttori della pagina non cambiano più quell'elenco (4.11): resta quello di prima.
 - **Revoca** e **Cambia indirizzo** valgono subito: l'indirizzo vecchio dà 404, e chi lo legge toglie la copia.
 - **Trappola: 503, mai vuoto.** Agente fermo, casella in errore, gruppo sparito o più di 5000 eventi danno 503 con `Retry-After`: un calendario vuoto vorrebbe dire "libero". Il motivo sta nel log del gateway.
 - **Un link è una chiave.** Il gateway non lo scrive nei log, e il filtro del Caddyfile lo toglie da quelli di Caddy (`/condividi/REDATTO`). In `condivisioni` sta in chiaro: una copia di `ui-dati/` va protetta.
+
+### 4.11 Impostazioni del dispositivo e uso senza rete
+
+- **Per dispositivo.** Tema, zoom, vista, colori dinamici, calendari secondari, intervallo di lettura e calendari accesi stanno nel `localStorage` di ogni browser e di ogni app (`oe.impostazioni-dispositivo`, `VOCI_DEL_DISPOSITIVO` in `server/web-ts/src/lib/oe/logic.ts`). Un dispositivo nuovo parte dalla config del server. Nomi, gruppi, link ICS, loghi e promemoria restano sul server. La pagina manda i suoi calendari spenti come quarto argomento di `get_events`.
+- **Senza rete.** `public/sw.js` tiene la pagina `/` e i suoi file, e l'ultima risposta di `get_config`, `get_personalizzazione`, `get_calendars`, `get_events` e `get_loghi`. Senza rete la pagina si apre da lì, con la fascia "Senza rete. Dati aggiornati alle HH:MM", e rilegge appena la rete torna. Le scritture senza rete falliscono come prima.
+- **Le app.** La pagina di avvio porta al sito anche quando il server non risponde: se il sito non ha ancora una copia (mai aperto con questa versione) la finestra torna alla pagina di avvio, che riprova.
+- **Trappola: i dati restano nel dispositivo.** Gli eventi letti stanno in Cache Storage (`oe-1-dati`) finché non si esce dall'account (*Esci*), che li cancella.
 
 ---
 

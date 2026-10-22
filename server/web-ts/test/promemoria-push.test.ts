@@ -482,7 +482,9 @@ describe("il service worker (public/sw.js)", () => {
       clients: { claim: vi.fn(), matchAll: async () => finestre, openWindow: (u: string) => void aperte.push(u) },
       registration: { showNotification: (t: string, o: unknown) => void mostrate.push([t, o]) },
     };
-    vm.runInNewContext(codice, { self });
+    // la copia per quando manca la rete (sw-copia.test.ts) qui non serve: niente rete e niente salvato
+    const caches = { keys: async () => [], delete: async () => true };
+    vm.runInNewContext(codice, { self, caches, fetch: async () => new Response("", { status: 503 }) });
     const evento = (extra: object) => ({ waitUntil: (p: Promise<unknown>) => void attese.push(Promise.resolve(p)), ...extra });
     return { ascoltatori, mostrate, attese, finestre, aperte, self, evento };
   }

@@ -8,6 +8,8 @@
   const SEGNAPOSTO = "oe.example.com";
 
   const origine = window.__OE_ORIGINE__;
+  // #senza-copia: la finestra è tornata qui perché il sito, senza rete, non aveva una copia da mostrare (inizializzazione.js)
+  const senzaCopia = location.hash === "#senza-copia";
   const rotella = document.getElementById("rotella");
   const stato = document.getElementById("stato");
   const dettaglio = document.getElementById("dettaglio");
@@ -40,6 +42,11 @@
       // risposta opaca (no-cors): basta sapere che il server risponde, la pagina vera la carica poi la finestra
       await fetch(origine + "/login", { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(ATTESA_MS) });
     } catch {
+      // senza rete il sito si apre lo stesso se ha una copia della pagina (il suo service worker); se non l'ha si torna qui
+      if (!senzaCopia) {
+        location.replace(origine + "/");
+        return;
+      }
       mostra("Server non raggiungibile.", `${host}. Riprovo tra ${NUOVO_TENTATIVO_MS / 1000} secondi.`, true);
       timer = setTimeout(prova, NUOVO_TENTATIVO_MS);
       inCorso = false;

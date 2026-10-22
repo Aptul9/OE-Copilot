@@ -78,6 +78,7 @@ export type Config = {
   secondari_scelti?: Record<string, boolean>;
   reminder_poll_seconds?: number;
   reminder_minutes_before?: number[];
+  disabled_calendars?: string[];
   [chiave: string]: unknown;
 };
 
@@ -137,7 +138,7 @@ export type Metodi = {
   save_config: [[Partial<Config>], Esito];
   get_personalizzazione: [[], Personalizzazione];
   get_calendars: [[boolean?], CalendariRisposta];
-  get_events: [[string, string, boolean?], EventiRisposta];
+  get_events: [[string, string, (boolean | null)?, string[]?], EventiRisposta];
   set_calendar_enabled: [[string, boolean], Esito];
   set_account_enabled: [[string, boolean], Esito];
   set_azienda_enabled: [[string, boolean], Esito & { calendari?: number }];

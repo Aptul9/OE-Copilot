@@ -20,6 +20,8 @@ import {
   giorniTra,
   iniziali,
   urlLogo,
+  daDatetimeLocal,
+  inOraDelDispositivo,
   isoLocale,
   periodoLargo,
   raccogliFestivi,
@@ -76,6 +78,18 @@ describe("date", () => {
   });
   it("isoLocale ha lo scarto orario", () => {
     expect(isoLocale(new Date(2026, 9, 11, 0, 0, 0))).toMatch(/^2026-10-11T00:00:00[+-]\d\d:\d\d$/);
+  });
+  it("gli orari di Roma diventano istanti, i giorni interi e gli orari con lo scarto restano", () => {
+    const ev = (start: string, end: string, allDay = false) => ({ id: "1", title: "t", start, end, allDay, color: "", account: "A" }) as Evento;
+    expect(inOraDelDispositivo(ev("2026-10-22T10:00:00", "2026-10-22T11:00:00"))).toMatchObject({ start: "2026-10-22T08:00:00.000Z", end: "2026-10-22T09:00:00.000Z" });
+    expect(inOraDelDispositivo(ev("2026-12-01T10:00:00", "2026-12-01T10:30:00")).start).toBe("2026-12-01T09:00:00.000Z");
+    expect(inOraDelDispositivo(ev("2026-10-22", "2026-10-23", true))).toMatchObject({ start: "2026-10-22", end: "2026-10-23" });
+    expect(inOraDelDispositivo(ev("2026-10-22T10:00:00+03:00", "illeggibile"))).toMatchObject({ start: "2026-10-22T10:00:00+03:00", end: "illeggibile" });
+  });
+  it("daDatetimeLocal: l'ora del dispositivo come ora di Roma", () => {
+    const ms = new Date("2026-10-22T11:00").getTime();
+    expect(new Date(inOraDelDispositivo({ start: daDatetimeLocal("2026-10-22T11:00"), end: "", allDay: false } as Evento).start).getTime()).toBe(ms);
+    expect(daDatetimeLocal("")).toBe("");
   });
   it("fmtRange", () => {
     const s = new Date(2026, 9, 12, 9, 30);

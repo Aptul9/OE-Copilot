@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/oe/api";
-import { perDatetimeLocal } from "@/lib/oe/logic";
+import { daDatetimeLocal, perDatetimeLocal } from "@/lib/oe/logic";
 import { useOe } from "./OeProvider";
 
 type Props = { aperto: boolean; onChiudi: () => void };
@@ -42,7 +42,9 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
     setEsito("Salvo…");
     setOccupato(true);
     try {
-      const r = await api("add_local_event", { title: titolo, start: inizio, end: fine, allDay: tutto, location: luogo, notes: note });
+      // l'ora scritta è quella del dispositivo, il server salva l'ora di Roma; un giorno intero è una data e resta com'è
+      const roma = (t: string) => (tutto ? t : daDatetimeLocal(t));
+      const r = await api("add_local_event", { title: titolo, start: roma(inizio), end: roma(fine), allDay: tutto, location: luogo, notes: note });
       if (r.ok) {
         onChiudi();
         await aggiornaCalendari();

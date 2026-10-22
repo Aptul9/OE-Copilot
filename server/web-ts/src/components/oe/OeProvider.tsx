@@ -10,6 +10,7 @@ import {
   etichettaSync,
   eventiPerGriglia,
   gruppiAttivi,
+  inOraDelDispositivo,
   isoLocale,
   leggiGruppi,
   periodoLargo,
@@ -268,12 +269,16 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   // ---- eventi ----------------------------------------------------------------------------
   const leggi = useCallback(
     async (da: Date, a: Date): Promise<EventiRisposta> => {
-      if (!inPubblico) return api("get_events", isoLocale(da), isoLocale(a));
-      const q = new URLSearchParams({ da: isoLocale(da), a: isoLocale(a), ...(gruppoPubblico ? { gruppo: gruppoPubblico } : {}) });
-      const r = await fetch(`/api/disponibilita?${q}`);
-      const dati = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error((dati && dati.error) || `HTTP ${r.status}`);
-      return dati as EventiRisposta;
+      let dati: EventiRisposta;
+      if (!inPubblico) dati = await api("get_events", isoLocale(da), isoLocale(a));
+      else {
+        const q = new URLSearchParams({ da: isoLocale(da), a: isoLocale(a), ...(gruppoPubblico ? { gruppo: gruppoPubblico } : {}) });
+        const r = await fetch(`/api/disponibilita?${q}`);
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error((j && j.error) || `HTTP ${r.status}`);
+        dati = j;
+      }
+      return dati.events ? { ...dati, events: dati.events.map(inOraDelDispositivo) } : dati;
     },
     [inPubblico, gruppoPubblico],
   );

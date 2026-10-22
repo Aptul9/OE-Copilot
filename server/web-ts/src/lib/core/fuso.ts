@@ -51,7 +51,19 @@ export function daIstante(ms: number, us = 0): Naive {
   return { a: p.year, m: p.month, g: p.day, h: p.hour, mi: p.minute, s: p.second, us };
 }
 
-const GIORNI_NEL_MESE = (a: number, m: number) => new Date(Date.UTC(a, m, 0)).getUTCDate();
+/**
+ * L'istante (millisecondi dall'epoca) di un'ora locale di Roma, con lo scarto del giorno prima o di quello dopo: l'ora che il cambio
+ * ripete vale la prima volta, quella che salta vale come prima del salto (come istante() in promemoria.rs dell'app).
+ */
+export function istante(n: Naive): number {
+  const comeUtc = Date.UTC(n.a, n.m - 1, n.g, n.h, n.mi, n.s);
+  const aRoma = (ms: number) => chiave(daIstante(ms)) / 1000;
+  const prima = comeUtc - (aRoma(comeUtc - 86_400_000) - (comeUtc - 86_400_000));
+  const dopo = comeUtc - (aRoma(comeUtc + 86_400_000) - (comeUtc + 86_400_000));
+  return aRoma(prima) === comeUtc || aRoma(dopo) !== comeUtc ? prima : dopo;
+}
+
+const GIORNI_NEL_MESE =(a: number, m: number) => new Date(Date.UTC(a, m, 0)).getUTCDate();
 
 // datetime.fromisoformat (Python 3.12), nelle forme che arrivano davvero: data, data e ora (T o spazio), frazione di secondo,
 // scarto (Z, +HH, +HH:MM, +HHMM). Il resto è "Invalid isoformat string", come in Python.

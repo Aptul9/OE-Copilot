@@ -143,6 +143,8 @@ pub fn pianifica(impostazioni: Option<&Value>, eventi: &Value, ora: i64, finestr
     let Ok(roma) = TimeZone::get(FUSO) else {
         return Vec::new();
     };
+    // l'ora scritta nell'avviso è quella del dispositivo: chi è in viaggio legge l'ora di dove si trova. Nelle prove resta Roma
+    let qui = if cfg!(test) { roma.clone() } else { TimeZone::try_system().unwrap_or_else(|_| roma.clone()) };
     let (anticipi, minimo) = leggi_impostazioni(impostazioni);
     let mut voci = Vec::new();
     for ev in eventi.as_array().into_iter().flatten().filter(|ev| ev.is_object()) {
@@ -154,7 +156,7 @@ pub fn pianifica(impostazioni: Option<&Value>, eventi: &Value, ora: i64, finestr
             continue;
         };
         let riunione = format!("{}|{start}", campo(ev, "id"));
-        let Ok(alle) = jiff::Timestamp::from_millisecond(inizio).map(|t| t.to_zoned(roma.clone())) else {
+        let Ok(alle) = jiff::Timestamp::from_millisecond(inizio).map(|t| t.to_zoned(qui.clone())) else {
             continue;
         };
         let alle = format!("{:02}:{:02}", alle.hour(), alle.minute());

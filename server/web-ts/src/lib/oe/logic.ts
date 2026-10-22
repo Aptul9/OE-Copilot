@@ -1,3 +1,4 @@
+import { daIstante, istante, isoSecondi, leggiIso } from "../core/fuso";
 import { comeLoLegge, portaFuori } from "../valore-logo";
 import type { Calendario, Evento, FonteStato, GruppiCalendari, SchedaTimesheet } from "./types";
 
@@ -65,6 +66,29 @@ export function isoLocale(d: Date): string {
     `${scarto < 0 ? "-" : "+"}${due(Math.floor(assoluto / 60))}:${due(assoluto % 60)}`
   );
 }
+
+/**
+ * Gli orari di get_events sono ore di Roma senza scarto, e il browser li leggerebbe come ore sue: si passano a istanti, così chi è in un
+ * altro fuso vede la riunione all'ora di dove si trova. Un evento di tutto il giorno è una data e resta com'è, come un orario con lo scarto.
+ */
+export function inOraDelDispositivo(e: Evento): Evento {
+  if (e.allDay) return e;
+  const converti = (t: string) => {
+    try {
+      const { naive, scarto } = leggiIso(t);
+      return scarto === null ? new Date(istante(naive)).toISOString() : t;
+    } catch {
+      return t;
+    }
+  };
+  return { ...e, start: converti(e.start), end: e.end && converti(e.end) };
+}
+
+/** L'ora scritta in un campo datetime-local (ora del dispositivo) come ora di Roma senza scarto, quella che il server salva. */
+export const daDatetimeLocal = (testo: string): string => {
+  const ms = new Date(testo).getTime();
+  return Number.isNaN(ms) ? testo : isoSecondi(daIstante(ms));
+};
 
 /** "YYYY-MM-DD" in ora locale. */
 export const chiaveGiorno = (d: Date) => `${d.getFullYear()}-${due(d.getMonth() + 1)}-${due(d.getDate())}`;

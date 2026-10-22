@@ -68,7 +68,7 @@ La prima installazione è a mano, poi aggiorna la Action del proprio repository:
 ### 4.1 Requisiti dell'host
 
 - Linux ARM64 con Docker, il plugin `compose`, `rsync` e `curl`, e 2-4 GB di RAM. I servizi Google e l'APK di Outlook sono solo per arm64-v8a.
-- Il fuso `Europe/Rome` è fisso nel gateway (`server/web-ts/src/lib/core/fuso.ts`), nell'agente (`TZ` nel Dockerfile) e sul telefono (`prepara_telefono.sh`): non c'è una variabile.
+- Il fuso `Europe/Rome` è fisso nel gateway (`server/web-ts/src/lib/core/fuso.ts`), nell'agente (`TZ` nel Dockerfile) e sul telefono (`prepara_telefono.sh`): non c'è una variabile. La pagina e l'avviso dell'app mostrano gli orari nel fuso del dispositivo; il testo delle notifiche del browser, scritto dal server, resta in ora di Roma.
 - Il modulo del kernel `binder_linux`. Su alcuni kernel cloud manca, e serve `linux-modules-extra`.
   ```bash
   grep -E 'CONFIG_ANDROID_BINDER_IPC|CONFIG_ANDROID_BINDERFS' "/boot/config-$(uname -r)"

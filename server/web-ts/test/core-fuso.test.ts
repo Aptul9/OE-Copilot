@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daIstante, daSecondi, ErroreData, iso, isoSecondi, leggiNaive, naiveLocale, oraHHMM, parseBound, piuGiorni } from "@/lib/core/fuso";
+import { daIstante, daSecondi, ErroreData, iso, isoSecondi, istante, leggiNaive, naiveLocale, oraHHMM, parseBound, piuGiorni } from "@/lib/core/fuso";
 
 // Le date locali dell'app sono ora di Roma senza scarto, come i datetime del servizio Python: i casi sono quelli che la pagina
 // manda (FullCalendar, con lo scarto) e quelli che Python rifiutava, con lo stesso testo di errore.
@@ -80,5 +80,18 @@ describe("altre forme", () => {
     expect(daSecondi(1_700_000_000)).toBe("2023-11-14T23:13:20");
     expect(daSecondi(1_788_000_000.5)).toBe("2026-08-29T12:40:00");
     expect(daIstante(Date.UTC(2026, 0, 1, 0, 0, 0))).toMatchObject({ a: 2026, m: 1, g: 1, h: 1 });
+  });
+});
+
+describe("istante", () => {
+  const n = (t: string) => leggiNaive(t);
+  it("l'ora di Roma come istante, d'estate e d'inverno", () => {
+    expect(new Date(istante(n("2026-10-22T10:00:00"))).toISOString()).toBe("2026-10-22T08:00:00.000Z");
+    expect(new Date(istante(n("2026-12-01T10:00:00"))).toISOString()).toBe("2026-12-01T09:00:00.000Z");
+    expect(new Date(istante(n("2026-10-25T10:00:00"))).toISOString()).toBe("2026-10-25T09:00:00.000Z");
+  });
+  it("al cambio dell'ora: la ripetuta vale la prima volta, quella che salta come prima del salto", () => {
+    expect(new Date(istante(n("2026-10-25T02:30:00"))).toISOString()).toBe("2026-10-25T00:30:00.000Z");
+    expect(new Date(istante(n("2026-03-29T02:30:00"))).toISOString()).toBe("2026-03-29T01:30:00.000Z");
   });
 });

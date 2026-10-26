@@ -25,6 +25,7 @@ import {
   unisciConfig,
   separaSecondari,
   fmtRange,
+  orariInCima,
   giorniTra,
   iniziali,
   urlLogo,
@@ -104,6 +105,17 @@ describe("date", () => {
     const e = new Date(2026, 9, 12, 10, 0);
     expect(fmtRange(s, e, false)).toMatch(/^Lunedì 12 ottobre · 09:30–10:00$/);
     expect(fmtRange(s, e, true)).toBe("Lunedì 12 ottobre · tutto il giorno");
+  });
+  it("un evento di più giorni ha anche il giorno della fine; una fine a mezzanotte resta del giorno prima", () => {
+    // la finestra di un change di ServiceNow: 19 ottobre 14:45 - 30 novembre 09:20
+    const s = new Date(2026, 9, 19, 14, 45);
+    const e = new Date(2026, 10, 30, 9, 20);
+    expect(fmtRange(s, e, false)).toBe("Lunedì 19 ottobre, 14:45 – lunedì 30 novembre, 09:20");
+    expect(orariInCima(s, e)).toBe("19 ott 14:45 – 30 nov 09:20");
+    expect(fmtRange(new Date(2026, 9, 26, 18, 0), new Date(2026, 9, 27, 0, 0), false)).toBe("Lunedì 26 ottobre · 18:00–00:00");
+    expect(orariInCima(new Date(2026, 9, 26, 9, 0), new Date(2026, 9, 26, 22, 0))).toBe("09:00–22:00");
+    expect(fmtRange(new Date(2026, 9, 12), new Date(2026, 9, 15), true)).toBe("Lunedì 12 ottobre – mercoledì 14 ottobre · tutto il giorno");
+    expect(fmtRange(new Date(2026, 9, 12), new Date(2026, 9, 13), true)).toBe("Lunedì 12 ottobre · tutto il giorno");
   });
 });
 

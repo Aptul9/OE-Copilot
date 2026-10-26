@@ -5,12 +5,16 @@ import { pyStr } from "./py";
 // Quello che la pagina pubblica (senza accesso) può sapere degli impegni: quando, mai cosa (era disponibilita.py, fino al commit 142e789). Da qui escono solo
 // orari di inizio e fine, e le festività (date pubbliche): né un titolo, né un luogo, né chi partecipa, né il nome di un calendario.
 
+/** Un giorno in unità di chiave (microsecondi). */
+const GIORNO = 86_400_000_000;
+
 const maggiore = (a: Naive, b: Naive) => (chiave(a) >= chiave(b) ? a : b);
 
 /**
  * [[inizio, fine], ...] (ISO, ora locale, al secondo): quando si è occupati nei `giorni` giorni da `primoGiorno`, in ordine.
  * Con `aziende` contano solo gli eventi di quelle aziende. Se si è occupati, si è occupati: gli impegni che si sovrappongono o si
- * toccano diventano un blocco solo, anche a cavallo della mezzanotte. Un giorno intero non conta, e nemmeno un impegno senza durata.
+ * toccano diventano un blocco solo, anche a cavallo della mezzanotte. Un giorno intero non conta, e nemmeno un impegno senza durata o da
+ * GIORNO in su: è una finestra (un change di ServiceNow di sei settimane), non un'ora in cui non si risponde, e renderebbe occupate settimane intere.
  */
 export function impegni(eventi: Ev[], primoGiorno: { a: number; m: number; g: number }, giorni: number, aziende: Set<string> | null = null): string[][] {
   const da = mezzanotte(primoGiorno.a, primoGiorno.m, primoGiorno.g);
@@ -26,7 +30,8 @@ export function impegni(eventi: Ev[], primoGiorno: { a: number; m: number; g: nu
     } catch {
       continue;
     }
-    if (chiave(fine) > chiave(inizio) && chiave(fine) > chiave(da) && chiave(inizio) < chiave(a)) trovati.push([inizio, fine]);
+    const durata = chiave(fine) - chiave(inizio);
+    if (durata > 0 && durata < GIORNO && chiave(fine) > chiave(da) && chiave(inizio) < chiave(a)) trovati.push([inizio, fine]);
   }
   trovati.sort((x, y) => chiave(x[0]) - chiave(y[0]) || chiave(x[1]) - chiave(y[1]));
   const uniti: [Naive, Naive][] = [];

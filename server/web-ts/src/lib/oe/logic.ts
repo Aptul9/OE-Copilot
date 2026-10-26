@@ -96,13 +96,27 @@ export const chiaveGiorno = (d: Date) => `${d.getFullYear()}-${due(d.getMonth() 
 /** "YYYY-MM-DDTHH:MM" in ora locale, per i campi datetime-local. */
 export const perDatetimeLocal = (d: Date) => `${chiaveGiorno(d)}T${due(d.getHours())}:${due(d.getMinutes())}`;
 
+const ora = (d: Date) => d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+/** L'ultimo giorno che un evento tocca: una fine a mezzanotte (esclusiva, come nei giorni interi) è del giorno prima. */
+const ultimoGiorno = (start: Date, end: Date) => (end > start && end.getHours() === 0 && end.getMinutes() === 0 ? new Date(end.getTime() - 1) : end);
+const stessoGiorno = (start: Date, end: Date) => chiaveGiorno(start) === chiaveGiorno(ultimoGiorno(start, end));
+
+/** Quando, nella scheda: il giorno e gli orari; un evento di più giorni ha anche il giorno della fine, che senza sembrerebbe finire la notte stessa. */
 export function fmtRange(start: Date | null, end: Date | null, tuttoIlGiorno: boolean): string {
-  const opt: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit" };
-  const giorno = start ? start.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" }) : "";
-  if (tuttoIlGiorno) return `${capitalizza(giorno)} · tutto il giorno`;
-  const s = start ? start.toLocaleTimeString("it-IT", opt) : "";
-  const e = end ? end.toLocaleTimeString("it-IT", opt) : "";
-  return `${capitalizza(giorno)} · ${s}–${e}`;
+  if (!start) return "";
+  const fine = end ?? start;
+  const giorno = (d: Date) => d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+  const inizio = capitalizza(giorno(start));
+  if (tuttoIlGiorno) return `${inizio}${stessoGiorno(start, fine) ? "" : ` – ${giorno(ultimoGiorno(start, fine))}`} · tutto il giorno`;
+  if (stessoGiorno(start, fine)) return `${inizio} · ${ora(start)}–${ora(fine)}`;
+  return `${inizio}, ${ora(start)} – ${giorno(fine)}, ${ora(fine)}`;
+}
+
+/** Gli orari scritti sulla barra in cima (inAlto): le ore, e i giorni se la riunione ne tocca più d'uno. */
+export function orariInCima(start: Date, end: Date): string {
+  if (stessoGiorno(start, end)) return `${ora(start)}–${ora(end)}`;
+  const giorno = (d: Date) => d.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+  return `${giorno(start)} ${ora(start)} – ${giorno(end)} ${ora(end)}`;
 }
 
 // ---- Festività, sotto la data ------------------------------------------------

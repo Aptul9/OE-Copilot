@@ -254,7 +254,7 @@ docker start oe-copilot-gateway
 - **Gruppi** (*Gestisci calendari*, voce `gruppi_calendari`): un pulsante nella barra lascia accesi solo i calendari del gruppo.
 - **Account uniti** (voce `account_aliases`): più account sotto un nome solo. Vince su `nomi_per_indirizzo` e `nomi_per_dominio`.
 - **Secondario** (voce `secondari_scelti`): la voce va sotto *Altri calendari*. Vince su `interfaccia.calendari_secondari`.
-- **Disponibilità pubblica**: `https://<UI_HOST>/disponibilita`, senza accesso. Solo blocchi "Occupato", da tutti i calendari, anche spenti, senza giorni interi. `?gruppo=<nome>` la limita a un gruppo.
+- **Disponibilità pubblica**: `https://<UI_HOST>/disponibilita`, senza accesso. Solo blocchi "Occupato", da tutti i calendari, anche spenti, senza giorni interi né finestre da 24 ore in su (un change di ServiceNow di settimane, `impegni.ts`). `?gruppo=<nome>` la limita a un gruppo.
 - **Eliminati** (voce `eventi_eliminati`): *Elimina* sulla scheda di una riunione delle caselle o dei link la toglie solo qui, perché il telefono si legge e basta. Esce dalla pagina, dalla disponibilità, dalla condivisione e dai promemoria; torna con *Annulla* nell'avviso o con *Ripristina* in *Impostazioni*. La riconosce titolo (senza `FW:`/`RE:`), inizio e fine: spostata a un'altra ora, ricompare. Un evento personale invece si cancella davvero.
 - **Riunioni lunghe**: in Giorno, 3 giorni e Settimana una riunione da 4 ore in su sta nella riga in cima alle colonne, con i giorni interi (`inAlto` in `server/web-ts/src/lib/oe/logic.ts`).
 

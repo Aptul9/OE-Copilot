@@ -8,7 +8,7 @@ import listPlugin from "@fullcalendar/list";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import FullCalendar from "@fullcalendar/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { VISTA_3G, chiaveGiorno, dataEvento, inAlto, iniziali, mappaLoghi, spezzaAl, spostaGiorni } from "@/lib/oe/logic";
+import { VISTA_3G, chiaveGiorno, dataEvento, inAlto, iniziali, mappaLoghi, orariInCima, spezzaAl, spostaGiorni } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import "./calendario.css";
@@ -72,8 +72,6 @@ type Props = {
   onDatesSet: (info: { start: Date; end: Date; tipo: string; titolo: string }) => void;
   onEventClick: (ev: Evento, titolo: string, inizio: Date | null, fine: Date | null, x: number, y: number) => void;
 };
-
-const ORA = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
 
 /** Orario della riga in cima alla parte visibile della griglia, per rimettersi lì dopo un ridisegno. */
 function oraInCima(radice: HTMLElement | null): string | null {
@@ -183,7 +181,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       if (tipo === "dayGridMonth" || tipo.startsWith("list") || arg.event.allDay) {
         // mese, agenda e la riga in cima alle colonne: una riga sola, orario e titolo
         const logoRiga = loghi[p.alias || p.account || ""];
-        const orario = arg.event.allDay && !p.allDay ? `${ORA.format(new Date(p.start))}–${ORA.format(new Date(p.end))}` : arg.timeText;
+        const orario = arg.event.allDay && !p.allDay ? orariInCima(new Date(p.start), new Date(p.end)) : arg.timeText;
         return (
           <div className="ev-line">
             {logoRiga && <ImgLogo key={logoRiga} src={logoRiga} className="ev-logo" alternativa={null} />}

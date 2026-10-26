@@ -91,7 +91,7 @@ function oraInCima(radice: HTMLElement | null): string | null {
 }
 
 export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendario({ vistaIniziale, onDatesSet, onEventClick }, ref) {
-  const { eventiGriglia, infoGiorni, pers, zoom, periodo } = useOe();
+  const { eventiGriglia, infoGiorni, pers, zoom, periodo, pubblico } = useOe();
   const fc = useRef<FullCalendar>(null);
   const radice = useRef<HTMLDivElement>(null);
   const [tipo, setTipo] = useState<string>(vistaIniziale);
@@ -164,11 +164,12 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     [onEventClick],
   );
 
-  // nelle viste a colonne le riunioni lunghe vanno in cima, con il titolo nel primo giorno che si vede
+  // nelle viste a colonne le riunioni lunghe vanno in cima, con il titolo nel primo giorno che si vede. Non nella pagina pubblica: lì sono
+  // blocchi "Occupato" uniti, e in cima lascerebbero libere nella griglia le ore in cui si è occupati
   const primoGiorno = periodo ? chiaveGiorno(periodo.start) : "";
   const eventi = useMemo(
-    () => (SCORRE[tipo] ? eventiGriglia.flatMap((e) => spezzaAl(inAlto(e), primoGiorno)) : eventiGriglia),
-    [eventiGriglia, tipo, primoGiorno],
+    () => (SCORRE[tipo] && !pubblico ? eventiGriglia.flatMap((e) => spezzaAl(inAlto(e), primoGiorno)) : eventiGriglia),
+    [eventiGriglia, tipo, primoGiorno, pubblico],
   );
 
   const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
@@ -290,6 +291,8 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         slotEventOverlap={false}
         slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
+        // la pagina pubblica non ha niente da mettere in cima: le festività stanno sotto la data
+        allDaySlot={!pubblico}
         allDayText=""
         dayHeaderFormat={{ weekday: "short", day: "numeric" }}
         headerToolbar={false}

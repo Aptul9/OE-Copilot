@@ -8,7 +8,7 @@ import listPlugin from "@fullcalendar/list";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import FullCalendar from "@fullcalendar/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { VISTA_3G, chiaveGiorno, iniziali, mappaLoghi, spostaGiorni } from "@/lib/oe/logic";
+import { VISTA_3G, chiaveGiorno, dataEvento, inAlto, iniziali, mappaLoghi, spezzaAl, spostaGiorni } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import "./calendario.css";
@@ -42,9 +42,10 @@ const intervallo = (s: Scorrimento) => (d: Date) => {
 
 /** Le viste con il nome di FullCalendar: giorno, tre giorni e settimana scorrono sotto il dito come in Outlook, FullCalendar disegna anche i giorni accanto. */
 export const VISTE_FC: NonNullable<CalendarOptions["views"]> = {
-  [A_FC.timeGridDay]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridDay), dateIncrement: { days: 1 } },
-  [VISTA_3G]: { type: "timeGrid", visibleRange: intervallo(SCORRE[VISTA_3G]), dateIncrement: { days: 1 } },
-  [A_FC.timeGridWeek]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridWeek), dateIncrement: { weeks: 1 } },
+  // in cima (inAlto) al più tre righe, poi "+N"
+  [A_FC.timeGridDay]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridDay), dateIncrement: { days: 1 }, dayMaxEventRows: 3 },
+  [VISTA_3G]: { type: "timeGrid", visibleRange: intervallo(SCORRE[VISTA_3G]), dateIncrement: { days: 1 }, dayMaxEventRows: 3 },
+  [A_FC.timeGridWeek]: { type: "timeGrid", visibleRange: intervallo(SCORRE.timeGridWeek), dateIncrement: { weeks: 1 }, dayMaxEventRows: 3 },
   dayGridMonth: { dayHeaderFormat: { weekday: "short" } },
 };
 
@@ -72,6 +73,8 @@ type Props = {
   onEventClick: (ev: Evento, titolo: string, inizio: Date | null, fine: Date | null, x: number, y: number) => void;
 };
 
+const ORA = new Intl.DateTimeFormat("it-IT", { hour: "2-digit", minute: "2-digit" });
+
 /** Orario della riga in cima alla parte visibile della griglia, per rimettersi lì dopo un ridisegno. */
 function oraInCima(radice: HTMLElement | null): string | null {
   const sc = radice?.querySelector(".fc-scroller-liquid-absolute");
@@ -90,7 +93,7 @@ function oraInCima(radice: HTMLElement | null): string | null {
 }
 
 export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendario({ vistaIniziale, onDatesSet, onEventClick }, ref) {
-  const { eventiGriglia, infoGiorni, pers, zoom } = useOe();
+  const { eventiGriglia, infoGiorni, pers, zoom, periodo } = useOe();
   const fc = useRef<FullCalendar>(null);
   const radice = useRef<HTMLDivElement>(null);
   const [tipo, setTipo] = useState<string>(vistaIniziale);
@@ -155,9 +158,19 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   const eventClick = useCallback(
     (a: EventClickArg) => {
       a.jsEvent.preventDefault();
-      onEventClick(a.event.extendedProps as Evento, a.event.title, a.event.start, a.event.end, a.jsEvent.clientX, a.jsEvent.clientY);
+      const p = a.event.extendedProps as Evento;
+      // in cima l'evento può avere altri orari (inAlto, spezzaAl): la scheda mostra i suoi
+      const su = a.event.allDay;
+      onEventClick(p, a.event.title, su ? dataEvento(p.start, p.allDay) : a.event.start, su ? dataEvento(p.end || p.start, p.allDay) : a.event.end, a.jsEvent.clientX, a.jsEvent.clientY);
     },
     [onEventClick],
+  );
+
+  // nelle viste a colonne le riunioni lunghe vanno in cima, con il titolo nel primo giorno che si vede
+  const primoGiorno = periodo ? chiaveGiorno(periodo.start) : "";
+  const eventi = useMemo(
+    () => (SCORRE[tipo] ? eventiGriglia.flatMap((e) => spezzaAl(inAlto(e), primoGiorno)) : eventiGriglia),
+    [eventiGriglia, tipo, primoGiorno],
   );
 
   const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
@@ -167,13 +180,14 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     (arg: EventContentArg) => {
       const p = arg.event.extendedProps as Evento;
       const tipo = daFc(arg.view.type);
-      if (tipo === "dayGridMonth" || tipo.startsWith("list")) {
-        // mese e agenda: una riga sola, orario e titolo
+      if (tipo === "dayGridMonth" || tipo.startsWith("list") || arg.event.allDay) {
+        // mese, agenda e la riga in cima alle colonne: una riga sola, orario e titolo
         const logoRiga = loghi[p.alias || p.account || ""];
+        const orario = arg.event.allDay && !p.allDay ? `${ORA.format(new Date(p.start))}–${ORA.format(new Date(p.end))}` : arg.timeText;
         return (
           <div className="ev-line">
             {logoRiga && <ImgLogo key={logoRiga} src={logoRiga} className="ev-logo" alternativa={null} />}
-            {arg.timeText && <span className="ev-time">{arg.timeText} </span>}
+            {orario && <span className="ev-time">{orario} </span>}
             {arg.event.title}
           </div>
         );
@@ -181,7 +195,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       const alias = p.alias || p.account || "";
       const logo = loghi[alias];
       const sigla = sigle[alias] || iniziali(alias);
-      const angolo = arg.event.allDay ? null : logo ? (
+      const angolo = logo ? (
         <span className="ev-corner" title={alias}>
           {/* se il logo non si carica restano le iniziali nel colore dell'azienda */}
           <ImgLogo key={logo} src={logo} alternativa={<span className="grid size-full place-items-center" style={{ background: p.color }}>{sigla}</span>} />
@@ -214,10 +228,9 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   );
 
   const festivi = infoGiorni.festivi;
-  const intero = infoGiorni.tuttoGiorno;
 
-  // Weekend e festività si distinguono a colpo d'occhio; le festività e gli eventi di un giorno
-  // intero stanno sotto la data, non come blocco nella griglia.
+  // Weekend e festività si distinguono a colpo d'occhio; le festività stanno sotto la data, gli eventi di un giorno intero e le
+  // riunioni lunghe (inAlto) nella riga in cima alle colonne.
   const classiGiorno = useCallback(
     (d: Date) => {
       const dow = d.getDay();
@@ -236,28 +249,20 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     (arg: DayHeaderContentArg) => {
       if (!arg.view.type.startsWith("timeGrid")) return arg.text;
       const g = chiaveGiorno(arg.date);
-      const chip = intero[g] ?? [];
       return (
         <>
           <span>{arg.text}</span>
-          {(festivi[g] || chip.length > 0) && (
+          {festivi[g] && (
             <span className="fc-day-extra">
-              {festivi[g] && (
-                <span className="fc-festivo-pill" title={festivi[g]}>
-                  {festivi[g]}
-                </span>
-              )}
-              {chip.map((c, i) => (
-                <span key={i} className="fc-allday-chip" style={{ background: `color-mix(in srgb, ${c.color} 16%, var(--card))`, borderLeftColor: c.color }} title={c.title}>
-                  {c.title}
-                </span>
-              ))}
+              <span className="fc-festivo-pill" title={festivi[g]}>
+                {festivi[g]}
+              </span>
             </span>
           )}
         </>
       );
     },
-    [festivi, intero],
+    [festivi],
   );
 
   return (
@@ -287,10 +292,10 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         slotEventOverlap={false}
         slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-        allDaySlot={false}
+        allDayText=""
         dayHeaderFormat={{ weekday: "short", day: "numeric" }}
         headerToolbar={false}
-        events={eventiGriglia}
+        events={eventi}
         eventClick={eventClick}
         eventContent={eventContent}
         datesSet={datesSet}

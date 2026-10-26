@@ -11,7 +11,7 @@ const DURATA = 230; // ms della corsa fino al passo di arrivo
 
 /**
  * Le viste a colonne di giorni scorrono sotto il dito, come in Outlook. FullCalendar disegna `bordo` giorni in più per lato; le tabelle delle
- * colonne (intestazione e griglia) sono larghe quanto tutti quei giorni e si spostano insieme (left, calendario.css dice perché), mentre l'asse
+ * colonne (intestazione, riga in cima e griglia) sono larghe quanto tutti quei giorni e si spostano insieme (left, calendario.css dice perché), mentre l'asse
  * delle ore resta fermo. Al rilascio la griglia corre al passo più vicino, o più in là con un colpo veloce; arrivata, la data cambia di quei
  * giorni e le tabelle tornano al riposo appena FullCalendar ha ridisegnato (MutationObserver: prima che il browser disegni).
  * Dito, penna e mouse trascinano anche sopra le riunioni, e il tocco che ha trascinato non apre la riunione; rotellina e trackpad in
@@ -28,10 +28,10 @@ export function useScorrimento(radice: RefObject<HTMLElement | null>, vista: () 
     let scadenza: ReturnType<typeof setTimeout> | undefined;
     let trascinato = -Infinity;
 
-    // sulle due tabelle e non con una variabile sulla radice: a ogni movimento si ricalcolano due elementi, non tutto il calendario
+    // sulle tre tabelle e non con una variabile sulla radice: a ogni movimento si ricalcolano tre elementi, non tutto il calendario
     const posa = (x: number, corsa: boolean) => {
       el.classList.toggle("scivola", corsa);
-      for (const t of el.querySelectorAll<HTMLElement>(".fc-col-header, .fc-timegrid-cols > table")) t.style.left = `${x}px`;
+      for (const t of el.querySelectorAll<HTMLElement>(".fc-col-header, .fc-daygrid-body, .fc-timegrid-cols > table")) t.style.left = `${x}px`;
     };
     // la larghezza di una colonna e delle tabelle, e il punto di riposo: i giorni nascosti di sinistra fuori dalla vista
     const misura = (s: Scorrimento) => {
@@ -85,7 +85,7 @@ export function useScorrimento(radice: RefObject<HTMLElement | null>, vista: () 
       const v = vista();
       if (!v || fermo || (e.pointerType === "mouse" && e.button !== 0)) return;
       const t = e.target as HTMLElement;
-      if (!t.closest(".fc-timegrid-body, .fc-col-header") || t.closest("a[href], button")) return;
+      if (!t.closest(".fc-timegrid-body, .fc-col-header, .fc-daygrid-body") || t.closest("a[href], button")) return;
       const m = misura(v.s);
       if (m) presa = { id: e.pointerId, x: e.clientX, y: e.clientY, attiva: false, ...m, campioni: [[e.timeStamp, e.clientX]] };
     };

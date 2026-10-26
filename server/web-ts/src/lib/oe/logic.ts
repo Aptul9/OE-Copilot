@@ -105,27 +105,49 @@ export function fmtRange(start: Date | null, end: Date | null, tuttoIlGiorno: bo
   return `${capitalizza(giorno)} · ${s}–${e}`;
 }
 
-// ---- Festività e eventi di un giorno intero, sotto la data -----------------
-export type ChipGiorno = { title: string; color: string };
-export type InfoGiorni = { festivi: Record<string, string>; tuttoGiorno: Record<string, ChipGiorno[]> };
+// ---- Festività, sotto la data ------------------------------------------------
+export type InfoGiorni = { festivi: Record<string, string> };
 
 export function raccogliFestivi(eventi: Evento[]): InfoGiorni {
   const festivi: Record<string, string> = {};
-  const tuttoGiorno: Record<string, ChipGiorno[]> = {};
   for (const e of eventi) {
-    if (!e.allDay || e.nascosto) continue;   // calendario spento: niente riga sotto il giorno
+    if (!e.allDay || e.nascosto || e.account !== "Festività") continue;
     const da = new Date(e.start);
     let ultimo = e.end ? new Date(e.end) : new Date(da);
     // La fine di un evento "tutto il giorno" è esclusiva: "1 nov → 2 nov" è solo il 1.
     if (e.end && ultimo > da && ultimo.getHours() === 0 && ultimo.getMinutes() === 0) ultimo = new Date(ultimo.getTime() - 86400000);
-    for (const d = new Date(da); chiaveGiorno(d) <= chiaveGiorno(ultimo); d.setDate(d.getDate() + 1)) {
-      const g = chiaveGiorno(d);
-      if (e.account === "Festività") festivi[g] = e.title;
-      else (tuttoGiorno[g] ??= []).push({ title: e.title, color: e.color });
-    }
+    for (const d = new Date(da); chiaveGiorno(d) <= chiaveGiorno(ultimo); d.setDate(d.getDate() + 1)) festivi[chiaveGiorno(d)] = e.title;
   }
-  return { festivi, tuttoGiorno };
+  return { festivi };
 }
+
+/** Da quante ore una riunione sta in cima alle colonne dei giorni (inAlto). */
+export const ORE_IN_ALTO = 4;
+
+/**
+ * Nelle viste a colonne una riunione da ORE_IN_ALTO ore in su sta in cima, nella riga dei giorni interi, su tutti i giorni che tocca,
+ * come gli eventi di più giorni in Outlook: nella griglia copriva la colonna e stringeva le riunioni accanto. Gli orari veri restano
+ * nell'evento (extendedProps). La fine di un giorno intero è esclusiva: una riunione che finisce a mezzanotte non tocca il giorno dopo.
+ */
+export function inAlto(e: EventoGriglia): EventoGriglia {
+  if (e.allDay) return e;
+  const da = new Date(e.start);
+  const a = new Date(e.end);
+  if (!(a.getTime() - da.getTime() >= ORE_IN_ALTO * 3600000)) return e;
+  return { ...e, allDay: true, start: chiaveGiorno(da), end: chiaveGiorno(spostaGiorni(a, a.getHours() || a.getMinutes() ? 1 : 0)) };
+}
+
+/**
+ * Un evento in cima che comincia prima del primo giorno che si vede (`giorno`, AAAA-MM-GG) diviso lì in due: FullCalendar scrive il titolo
+ * all'inizio della barra, che starebbe fra i giorni nascosti a sinistra (quelli dove si scorre), e nella parte che si vede resterebbe una barra vuota.
+ */
+export function spezzaAl(e: EventoGriglia, giorno: string): EventoGriglia[] {
+  if (!e.allDay || !(e.start < giorno && e.end > giorno)) return [e];
+  return [{ ...e, end: giorno }, { ...e, id: `${e.id}|${giorno}`, start: giorno }];
+}
+
+/** Un orario di un evento come data: un giorno intero è una data, da leggere come mezzanotte del dispositivo (new Date la prenderebbe in UTC). */
+export const dataEvento = (t: string, tuttoIlGiorno: boolean) => new Date(tuttoIlGiorno ? `${t.slice(0, 10)}T00:00` : t);
 
 // ---- Elenco calendari raggruppato per azienda -------------------------------
 export type GruppoAzienda = {

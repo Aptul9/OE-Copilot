@@ -31,7 +31,7 @@ import {
 import type { Calendario, Config, Evento, EventiRisposta, FonteStato, GruppiCalendari, Personalizzazione, TemaConfig } from "@/lib/oe/types";
 
 export type Periodo = { start: Date; end: Date; tipo: string };
-export type Avviso = { testo: string; tipo: "errore" | "info" };
+export type Avviso = { testo: string; tipo: "errore" | "info"; azione?: { testo: string; fai: () => void } };
 
 export const ZOOM_MIN = 26;
 export const ZOOM_MAX = 110;
@@ -93,6 +93,9 @@ type Valori = {
   impostaRicerca: (q: string) => void;
   ricarica: () => void;
   forzaSync: () => void;
+  /** Toglie dalla vista un evento delle caselle o dei link (elimina_evento), con "Annulla" nell'avviso; ripristinaEvento lo rimette. */
+  eliminaEvento: (e: Evento) => Promise<void>;
+  ripristinaEvento: (chiave: string) => Promise<void>;
   // stato della sincronizzazione
   avviso: Avviso | null;
   datiVecchi: string | null;
@@ -400,6 +403,36 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     ricarica();
   }, [ricarica]);
 
+  // la lista degli eliminati la cambia solo il server (due dispositivi non si sovrascrivono): la pagina tiene quella che riceve
+  const ripristinaEvento = useCallback(
+    async (chiave: string) => {
+      try {
+        const r = await api("ripristina_evento", chiave);
+        setConfig((c) => ({ ...c, eventi_eliminati: r.eventi_eliminati }));
+        ricarica();
+      } catch (e) {
+        mostraAvviso({ testo: `Evento non ripristinato: ${e instanceof Error ? e.message : String(e)}`, tipo: "errore" });
+      }
+    },
+    [ricarica],
+  );
+  const eliminaEvento = useCallback(
+    async (ev: Evento) => {
+      try {
+        const r = await api("elimina_evento", ev);
+        if (!r.ok || !r.chiave) throw new Error(r.error || "risposta vuota");
+        const chiave = r.chiave;
+        setConfig((c) => ({ ...c, eventi_eliminati: r.eventi_eliminati }));
+        // via subito: la prossima lettura non lo porta più
+        setEventi((tutti) => tutti.filter((x) => x.id !== ev.id));
+        mostraAvviso({ testo: `Eliminato “${ev.title}”.`, tipo: "info", azione: { testo: "Annulla", fai: () => void ripristinaEvento(chiave) } });
+      } catch (e) {
+        mostraAvviso({ testo: `Evento non eliminato: ${e instanceof Error ? e.message : String(e)}`, tipo: "errore" });
+      }
+    },
+    [ripristinaEvento],
+  );
+
   const secondari = useMemo(() => secondariEffettivi(pers.interfaccia.calendari_secondari, config.secondari_scelti), [pers, config.secondari_scelti]);
   const eventiGriglia = useMemo(() => eventiPerGriglia(eventi, { secondari, ricerca }), [eventi, secondari, ricerca]);
   const infoGiorni = useMemo(() => raccogliFestivi(eventi), [eventi]);
@@ -481,7 +514,7 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
     pronta, pers, ricaricaPers, config, vistaIniziale,
     calendari, gruppi, statoFonti, pallinoInAttesa, aggiornaCalendari, accendiAzienda, accendiCalendario, soloAzienda,
     gruppiCalendari, gruppiAccesi, soloGruppo, salvaGruppi, secondari, impostaSecondario,
-    periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync,
+    periodo, impostaPeriodo, eventi, eventiGriglia, infoGiorni, ricerca, impostaRicerca, ricarica, forzaSync, eliminaEvento, ripristinaEvento,
     avviso, datiVecchi, sincronizzando: inCorso > 0, etichetta: etichettaSync(ultimaSync, adesso, inCorso),
     salvaConfig, zoom, cambiaZoom, intervalloSync, impostaIntervallo,
     tema, temaScuro: resolvedTheme === "dark", impostaTema, mostraAvviso,

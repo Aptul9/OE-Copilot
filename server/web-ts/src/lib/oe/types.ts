@@ -79,8 +79,12 @@ export type Config = {
   reminder_poll_seconds?: number;
   reminder_minutes_before?: number[];
   disabled_calendars?: string[];
+  /** Eventi delle caselle e dei link eliminati dalla pagina (elimina_evento): il server non li manda più, finché non si ripristinano. */
+  eventi_eliminati?: EventoEliminato[];
   [chiave: string]: unknown;
 };
+
+export type EventoEliminato = { chiave: string; title: string; start: string; end: string; allDay: boolean; alias: string };
 
 export type SchedaTimesheet = {
   nome: string;
@@ -149,6 +153,8 @@ export type Metodi = {
   remove_ics_calendar: [[string], Esito];
   add_local_event: [[NuovoEvento], Esito];
   delete_local_event: [[string], Esito];
+  elimina_evento: [[Evento], Esito & { chiave?: string; eventi_eliminati?: EventoEliminato[] }];
+  ripristina_evento: [[string], Esito & { eventi_eliminati?: EventoEliminato[] }];
   get_promemoria: [[], PromemoriaRisposta];
   set_promemoria: [[Partial<ImpostazioniPromemoria>], Esito & { promemoria?: ImpostazioniPromemoria }];
   prova_promemoria: [[string], Esito];

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Modo2fa } from "@/lib/config";
+import { dataEvento, fmtRange } from "@/lib/oe/logic";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
@@ -78,6 +79,8 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
             </label>
           </section>
 
+          <EventiEliminati />
+
           {accesso2fa !== "off" && (
             <section>
               <h3 className="mb-2 font-semibold">Sicurezza</h3>
@@ -95,5 +98,33 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Gli eventi tolti dalla vista con Elimina, l'ultimo in cima: Ripristina li rimette. */
+function EventiEliminati() {
+  const { config, ripristinaEvento } = useOe();
+  const tutti = config.eventi_eliminati ?? [];
+  if (!tutti.length) return null;
+  return (
+    <section>
+      <h3 className="mb-2 font-semibold">Eventi eliminati</h3>
+      <ul id="cfg-eliminati" className="flex flex-col gap-2">
+        {[...tutti].reverse().map((v) => (
+          <li key={v.chiave} className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium">{v.title}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {fmtRange(dataEvento(v.start, v.allDay), dataEvento(v.end || v.start, v.allDay), v.allDay)}
+                {v.alias && ` · ${v.alias}`}
+              </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => void ripristinaEvento(v.chiave)}>
+              Ripristina
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

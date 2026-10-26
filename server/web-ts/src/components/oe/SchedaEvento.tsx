@@ -12,7 +12,8 @@ type Props = {
   scheda: Scheda | null;
   senzaTeams: Set<string>;
   onChiudi: () => void;
-  onElimina: (uid: string) => void;
+  /** `uid` c'è per un evento personale, che si cancella davvero; gli altri si tolgono dalla vista (elimina_evento). */
+  onElimina: (evento: Evento, uid: string | null) => void;
 };
 
 /** I dettagli di una riunione, vicino al clic; su uno schermo stretto è un riquadro in basso. */
@@ -82,25 +83,21 @@ export function SchedaEvento({ scheda, senzaTeams, onChiudi, onElimina }: Props)
       ) : (
         p.organizer && <Riga etichetta="Organizza">{p.organizer}</Riga>
       )}
-      {(a.partecipa || a.apriInTeams || a.elimina) && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {a.partecipa && (
-            <Button size="sm" className="join" onClick={() => apri(a.partecipa!)}>
-              Partecipa
-            </Button>
-          )}
-          {a.apriInTeams && (
-            <Button size="sm" variant="outline" onClick={() => { apri(a.apriInTeams!.url); onChiudi(); }}>
-              Apri in Teams
-            </Button>
-          )}
-          {a.elimina && (
-            <Button size="sm" variant="outline" className="text-destructive" onClick={() => onElimina(a.elimina!)}>
-              Elimina
-            </Button>
-          )}
-        </div>
-      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {a.partecipa && (
+          <Button size="sm" className="join" onClick={() => apri(a.partecipa!)}>
+            Partecipa
+          </Button>
+        )}
+        {a.apriInTeams && (
+          <Button size="sm" variant="outline" onClick={() => { apri(a.apriInTeams!.url); onChiudi(); }}>
+            Apri in Teams
+          </Button>
+        )}
+        <Button id="ev-elimina" size="sm" variant="outline" className="text-destructive" onClick={() => onElimina(p, a.elimina)}>
+          Elimina
+        </Button>
+      </div>
     </div>
   );
 }

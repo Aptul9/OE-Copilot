@@ -255,6 +255,8 @@ docker start oe-copilot-gateway
 - **Account uniti** (voce `account_aliases`): più account sotto un nome solo. Vince su `nomi_per_indirizzo` e `nomi_per_dominio`.
 - **Secondario** (voce `secondari_scelti`): la voce va sotto *Altri calendari*. Vince su `interfaccia.calendari_secondari`.
 - **Disponibilità pubblica**: `https://<UI_HOST>/disponibilita`, senza accesso. Solo blocchi "Occupato", da tutti i calendari, anche spenti, senza giorni interi. `?gruppo=<nome>` la limita a un gruppo.
+- **Eliminati** (voce `eventi_eliminati`): *Elimina* sulla scheda di una riunione delle caselle o dei link la toglie solo qui, perché il telefono si legge e basta. Esce dalla pagina, dalla disponibilità, dalla condivisione e dai promemoria; torna con *Annulla* nell'avviso o con *Ripristina* in *Impostazioni*. La riconosce titolo (senza `FW:`/`RE:`), inizio e fine: spostata a un'altra ora, ricompare. Un evento personale invece si cancella davvero.
+- **Riunioni lunghe**: in Giorno, 3 giorni e Settimana una riunione da 4 ore in su sta nella riga in cima alle colonne, con i giorni interi (`inAlto` in `server/web-ts/src/lib/oe/logic.ts`).
 
 #### Loghi e calendari da link
 
@@ -300,7 +302,7 @@ Si scelgono nel sito, *Impostazioni > Promemoria*, e stanno sul server (voce `pr
 - **Contenuto**, per tutti i canali: *Completo* (titolo e luogo) o *Solo ora e azienda* (l'avviso a comparsa mostra logo e ora).
 - **Suono**: solo l'app per Windows, tra i suoni di sistema. Lo fa l'avviso a comparsa; ad avviso spento, la notifica.
 
-Le voci degli avvisi le calcola il nucleo delle app (`app/src-tauri/src/promemoria.rs`): su Windows avvisa lo script della pagina, finché l'app è in esecuzione; su Android un lavoro in background programma un allarme per avviso, che parte anche ad app chiusa (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; i giorni interi non avvisano. Gli interruttori dei calendari nella barra laterale filtrano solo la vista: una riunione di un calendario spento avvisa lo stesso (le app chiedono `get_events` con un terzo argomento, `true`). Una cancellazione fatta in Outlook arriva a telefono sbloccato: prima la riunione può avvisare.
+Le voci degli avvisi le calcola il nucleo delle app (`app/src-tauri/src/promemoria.rs`): su Windows avvisa lo script della pagina, finché l'app è in esecuzione; su Android un lavoro in background programma un allarme per avviso, che parte anche ad app chiusa (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; i giorni interi e le riunioni eliminate dalla pagina non avvisano. Gli interruttori dei calendari nella barra laterale filtrano solo la vista: una riunione di un calendario spento avvisa lo stesso (le app chiedono `get_events` con un terzo argomento, `true`). Una cancellazione fatta in Outlook arriva a telefono sbloccato: prima la riunione può avvisare.
 
 **Notifiche del browser.** Il testo passa cifrato (RFC 8291) dal servizio di notifiche del browser. Le WebView delle app non hanno notifiche web, quindi nell'app questo interruttore non c'è. Servono le chiavi VAPID:
    ```bash

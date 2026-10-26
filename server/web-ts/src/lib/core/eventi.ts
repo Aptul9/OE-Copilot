@@ -1,6 +1,6 @@
 import { calendariDiInoltro, elencoCalendari, tuttiGliEventi, type Meta } from "./agente";
 import { ANNULLATO_RE, cedeIlPosto, titoloBase, type Ev } from "./caselle";
-import { ErroreData, iso, mezzanotte, oraHHMM, parseBound, piuGiorni } from "./fuso";
+import { ErroreData, iso, isoSecondi, mezzanotte, naiveLocale, oraHHMM, parseBound, piuGiorni } from "./fuso";
 import { elencoFeed, eventiFeed } from "./ics";
 import { elencoLocali, eventiLocali } from "./locali";
 import { impegni, festivita } from "./impegni";
@@ -50,6 +50,27 @@ export function senzaDoppioni(eventi: Ev[]): Ev[] {
     }
   }
   return out;
+}
+
+/**
+ * La chiave di un evento eliminato dalla pagina (config eventi_eliminati): titolo senza FW/RE, inizio e fine in ora di Roma, come in
+ * senzaDoppioni. Non l'id: Outlook riscrive le righe del calendario del telefono, e la copia tenuta da senzaDoppioni può cambiare. La pagina
+ * manda gli orari con lo scarto (inOraDelDispositivo): si riportano a Roma. null se non si leggono.
+ */
+export function chiaveEliminato(e: { title?: unknown; start?: unknown; end?: unknown }): string | null {
+  const ora = (t: unknown) => isoSecondi(naiveLocale(typeof t === "string" ? t : ""));
+  try {
+    return JSON.stringify([titoloBase(String(e.title || "").trim()).toLowerCase(), ora(e.start), ora(e.end || e.start)]);
+  } catch (err) {
+    if (err instanceof ErroreData) return null;
+    throw err;
+  }
+}
+
+/** Toglie gli eventi eliminati dalla pagina: le caselle si leggono e basta, quindi l'evento si nasconde qui, per la pagina, i promemoria e la disponibilità. */
+function senzaEliminati(cfg: Config, eventi: Ev[]): Ev[] {
+  const chiavi = new Set((Array.isArray(cfg.eventi_eliminati) ? cfg.eventi_eliminati : []).map((v) => v?.chiave));
+  return chiavi.size ? eventi.filter((e) => !chiavi.has(chiaveEliminato(e))) : eventi;
 }
 
 /** Come è andata QUESTA lettura, azienda per azienda: il pallino accanto a ogni calendario. Se un'azienda ha più sorgenti vince la peggiore. */
@@ -145,7 +166,7 @@ export async function raccogli(cfg: Config, startIso: string, endIso: string, al
     errori.push(`Eventi personali: ${messaggio(e)}`);
   }
   // Una riunione annullata resta nel calendario con "Canceled:" nel titolo: qui, che è la strada di pagina, disponibilità, condivisione e promemoria, non esce
-  eventi = senzaDoppioni(eventi.filter((e) => !ANNULLATO_RE.test(String(e.title || ""))));
+  eventi = senzaEliminati(cfg, senzaDoppioni(eventi.filter((e) => !ANNULLATO_RE.test(String(e.title || "")))));
   eventi = soloAziendeAccese(cfg, eventi, (meta.aziende || {}) as Record<string, boolean>);
   eventi.sort((a, b) => ((a.start || "") < (b.start || "") ? -1 : (a.start || "") > (b.start || "") ? 1 : 0));
   meta.fonti = statoFonti(cfg, meta, errori);

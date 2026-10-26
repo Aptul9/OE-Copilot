@@ -12,7 +12,11 @@ import {
   giorniDiArrivo,
   etichettaSync,
   eventiPerGriglia,
+  eventoPerGriglia,
   filtraAziende,
+  inAlto,
+  spezzaAl,
+  dataEvento,
   limitaLarghezza,
   LARGHEZZA_PANNELLO,
   secondariEffettivi,
@@ -108,13 +112,50 @@ describe("festività e giorni interi", () => {
     const r = raccogliFestivi([ev({ allDay: true, title: "Ognissanti", account: "Festività", start: "2026-11-01T00:00:00", end: "2026-11-02T00:00:00" })]);
     expect(Object.keys(r.festivi)).toEqual(["2026-11-01"]);
   });
-  it("un evento intero di una casella va fra i chip, e uno nascosto no", () => {
-    const r = raccogliFestivi([
-      ev({ allDay: true, title: "Ferie", start: "2026-10-12T00:00:00", end: "2026-10-14T00:00:00" }),
-      ev({ allDay: true, title: "Nascosto", nascosto: true, start: "2026-10-12T00:00:00", end: "2026-10-13T00:00:00" }),
-    ]);
-    expect(Object.keys(r.tuttoGiorno)).toEqual(["2026-10-12", "2026-10-13"]);
-    expect(r.tuttoGiorno["2026-10-12"].map((c) => c.title)).toEqual(["Ferie"]);
+  it("un evento intero di una casella non è una festività", () => {
+    const r = raccogliFestivi([ev({ allDay: true, title: "Ferie", start: "2026-10-12T00:00:00", end: "2026-10-14T00:00:00" })]);
+    expect(r.festivi).toEqual({});
+  });
+});
+
+describe("riunioni lunghe in cima (inAlto)", () => {
+  // orari del dispositivo come li riceve la griglia (inOraDelDispositivo): istanti
+  const lunga = (da: Date, a: Date, extra: Partial<Evento> = {}) => eventoPerGriglia(ev({ start: da.toISOString(), end: a.toISOString(), ...extra }), new Set());
+  it("sotto le 4 ore resta nella griglia", () => {
+    const e = lunga(new Date(2026, 9, 26, 9, 0), new Date(2026, 9, 26, 12, 59));
+    expect(inAlto(e)).toBe(e);
+  });
+  it("da 4 ore in su va nella riga dei giorni interi, con gli orari veri nell'evento", () => {
+    const e = inAlto(lunga(new Date(2026, 9, 26, 9, 0), new Date(2026, 9, 26, 22, 30)));
+    expect(e).toMatchObject({ allDay: true, start: "2026-10-26", end: "2026-10-27" });
+    expect(new Date(e.extendedProps.start).getHours()).toBe(9);
+  });
+  it("su più giorni tocca tutti i giorni, e una fine a mezzanotte non tocca il giorno dopo", () => {
+    expect(inAlto(lunga(new Date(2026, 9, 25, 22, 0), new Date(2026, 9, 27, 6, 0)))).toMatchObject({ start: "2026-10-25", end: "2026-10-28" });
+    expect(inAlto(lunga(new Date(2026, 9, 26, 18, 0), new Date(2026, 9, 27, 0, 0)))).toMatchObject({ start: "2026-10-26", end: "2026-10-27" });
+  });
+  it("una barra in cima che comincia fra i giorni nascosti si divide al primo giorno che si vede", () => {
+    const e = inAlto(lunga(new Date(2026, 9, 23, 14, 45), new Date(2026, 9, 26, 9, 20)));
+    const [prima, dopo] = spezzaAl(e, "2026-10-26");
+    expect([prima.start, prima.end, dopo.start, dopo.end]).toEqual(["2026-10-23", "2026-10-26", "2026-10-26", "2026-10-27"]);
+    expect(dopo.id).not.toBe(prima.id);
+    expect(dopo.extendedProps).toBe(e.extendedProps);
+    // comincia dal giorno che si vede, finisce prima, o non è in cima: resta intera
+    expect(spezzaAl(e, "2026-10-23")).toEqual([e]);
+    expect(spezzaAl(e, "2026-10-27")).toEqual([e]);
+    const sotto = lunga(new Date(2026, 9, 26, 9, 0), new Date(2026, 9, 26, 10, 0));
+    expect(spezzaAl(sotto, "2026-10-26")).toEqual([sotto]);
+  });
+  it("dataEvento legge un giorno intero come mezzanotte del dispositivo", () => {
+    expect(dataEvento("2026-10-26", true).getDate()).toBe(26);
+    expect(dataEvento("2026-10-26T00:00:00", true).getHours()).toBe(0);
+    expect(dataEvento("2026-10-26T07:00:00.000Z", false).getTime()).toBe(Date.UTC(2026, 9, 26, 7));
+  });
+  it("un giorno intero e una fine illeggibile restano come sono", () => {
+    const intero = eventoPerGriglia(ev({ allDay: true, start: "2026-10-26", end: "2026-10-27" }), new Set());
+    expect(inAlto(intero)).toBe(intero);
+    const rotto = eventoPerGriglia(ev({ end: "illeggibile" }), new Set());
+    expect(inAlto(rotto)).toBe(rotto);
   });
 });
 

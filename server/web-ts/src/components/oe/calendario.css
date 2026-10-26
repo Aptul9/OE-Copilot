@@ -114,9 +114,10 @@
 /* sabato e domenica più stretti, così i giorni feriali hanno più spazio (solo nella settimana); su un telefono anche meno di 54 px.
    --giorni è la larghezza dei sette giorni che si vedono: la tabella è più larga, ha anche le settimane accanto */
 .calendario.vista-sett .fc .fc-col-header-cell.giorno-weekend,
+.calendario.vista-sett .fc .fc-daygrid-day.giorno-weekend,
 .calendario.vista-sett .fc .fc-timegrid-col.giorno-weekend { width: min(54px, calc(var(--giorni, 100%) * .07)); }
 
-/* riga sotto la data: la festività come pillola, gli eventi di un giorno intero come chip */
+/* riga sotto la data: la festività come pillola */
 .fc-day-extra { padding: 2px 4px 4px; display: flex; flex-direction: column; gap: 3px; align-items: center; width: 100%; }
 .fc-festivo-pill {
   display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
@@ -127,24 +128,26 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .fc-festivo-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #e24b4a; flex: none; }
-.fc-allday-chip {
-  width: 100%; font-size: 10px; line-height: 1.2; text-align: left;
-  padding: 1px 5px; border-left: 3px solid; border-radius: 3px; color: var(--foreground);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
 
 /* viste che scorrono sotto il dito (useScorrimento.ts): il movimento orizzontale è nostro, quello verticale resta allo scorrimento
    della griglia. FullCalendar disegna giorni nascosti ai lati: le tabelle delle colonne sono larghe quanto tutti i giorni e spostate
    a sinistra con left (una trasformazione o un clip-path farebbero un contesto di sovrapposizione: le riunioni finirebbero sotto le
    righe delle ore, che si prenderebbero i tocchi). La griglia dei giorni comincia dopo l'asse delle ore e taglia quello che esce */
 .calendario.scorre .fc-timegrid-body,
-.calendario.scorre .fc-col-header { touch-action: pan-y; }
+.calendario.scorre .fc-col-header,
+.calendario.scorre .fc-daygrid-body { touch-action: pan-y; }
 .calendario.scorre { overscroll-behavior-x: none; }
 .calendario.scorre .fc .fc-col-header { position: relative; width: var(--tabella) !important; }
 .calendario.scorre .fc .fc-timegrid-cols { left: var(--asse, 0px); overflow: hidden; }
 .calendario.scorre .fc .fc-timegrid-cols > table { position: relative; width: var(--tabella) !important; margin-left: calc(-1 * var(--asse, 0px)); }
 .calendario.scorre .fc .fc-scrollgrid-section-header .fc-scroller { clip-path: inset(0 0 0 var(--asse, 0px)); }
+/* la riga in cima (giorni interi e riunioni lunghe, inAlto in logic.ts) come l'intestazione */
+.calendario.scorre .fc .fc-daygrid-body { position: relative; }
+.calendario.scorre .fc .fc-daygrid-body,
+.calendario.scorre .fc .fc-daygrid-body > table { width: var(--tabella) !important; }
+.calendario.scorre .fc .fc-scroller:has(> .fc-daygrid-body) { clip-path: inset(0 0 0 var(--asse, 0px)); }
 .calendario.scorre.scivola .fc .fc-col-header,
+.calendario.scorre.scivola .fc .fc-daygrid-body,
 .calendario.scorre.scivola .fc .fc-timegrid-cols > table { transition: left var(--durata) cubic-bezier(.25, .8, .3, 1); }
 .calendario[data-trascina] { user-select: none; cursor: grabbing; }
 /* mentre si trascina la colonna dei calendari: niente passaggi del mouse e selezioni sul resto della pagina, e il puntatore resta quello del bordo */

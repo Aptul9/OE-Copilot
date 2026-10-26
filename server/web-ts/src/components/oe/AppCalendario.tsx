@@ -115,9 +115,10 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
   );
   const chiudiScheda = useCallback(() => setScheda(null), []);
 
-  const elimina = async (uid: string) => {
-    await api("delete_local_event", uid);
+  const elimina = async (evento: Evento, uid: string | null) => {
     setScheda(null);
+    if (!uid) return oe.eliminaEvento(evento);
+    await api("delete_local_event", uid);
     await oe.aggiornaCalendari();
     oe.ricarica();
   };
@@ -270,6 +271,11 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
               className={cn("banner flex-none rounded-md border-l-[3px] px-3 py-2 text-[13px]", oe.avviso?.tipo === "errore" ? "banner-errore border-red-600 bg-red-600/10 font-semibold" : "border-primary bg-accent")}
             >
               {oe.avviso ? oe.avviso.testo : `Nessun risultato per “${oe.ricerca.trim()}”.`}
+              {oe.avviso?.azione && (
+                <button id="banner-azione" className="ml-2 font-semibold text-primary underline-offset-2 hover:underline" onClick={oe.avviso.azione.fai}>
+                  {oe.avviso.azione.testo}
+                </button>
+              )}
             </div>
           )}
 
@@ -286,7 +292,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
         </main>
       </div>
 
-      {!pub && <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(uid) => void elimina(uid)} />}
+      {!pub && <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(evento, uid) => void elimina(evento, uid)} />}
 
       <Sheet open={menu} onOpenChange={setMenu}>
         <SheetContent side="left" className="w-[19rem] overflow-y-auto p-0">

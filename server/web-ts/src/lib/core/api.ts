@@ -1,7 +1,7 @@
 import { AgenteNonDisponibile } from "./agente";
 import type { Ev } from "./caselle";
 import { aggiornaCondivisione, creaCondivisione, elencoCondivisioni, eliminaCondivisione, revocaCondivisione, ruotaCondivisione } from "./condivisione";
-import { calendariCaselle, calendariExtra, occupato, raccogli, tuttiAccesi } from "./eventi";
+import { calendariCaselle, calendariExtra, chiaveEliminato, occupato, raccogli, tuttiAccesi } from "./eventi";
 import { aggiungiFeed, rimuoviFeed } from "./ics";
 import { aggiungiEvento, eliminaEvento } from "./locali";
 import { leggiPromemoria, provaPromemoria, salvaPromemoria } from "./promemoria";
@@ -262,6 +262,30 @@ export const apiTs = {
   async delete_local_event(uid: unknown) {
     eliminaEvento(uid);
     return { ok: true };
+  },
+
+  /**
+   * Elimina dalla vista un evento delle caselle o dei link, che da qui non si possono cambiare: resta nella configurazione (eventi_eliminati)
+   * e raccogli lo salta. `evento` è quello della pagina; per l'elenco delle Impostazioni si tengono titolo, orari e azienda.
+   */
+  async elimina_evento(evento: unknown) {
+    const e = isDict(evento) ? evento : {};
+    const chiave = chiaveEliminato(e);
+    if (!chiave) return { ok: false, error: "Evento non riconosciuto" };
+    const testo = (v: unknown) => (typeof v === "string" ? v.slice(0, 300) : "");
+    const voce = { chiave, title: testo(e.title), start: testo(e.start), end: testo(e.end), allDay: e.allDay === true, alias: testo(e.alias || e.account) };
+    const eventi_eliminati = modificaConfig((cfg) => {
+      const prima = Array.isArray(cfg.eventi_eliminati) ? cfg.eventi_eliminati.filter((v) => v?.chiave !== chiave) : [];
+      return (cfg.eventi_eliminati = [...prima, voce]);
+    });
+    console.info(`elimina_evento: ${eventi_eliminati.length} eliminati`);
+    return { ok: true, chiave, eventi_eliminati };
+  },
+
+  /** Rimette in vista un evento eliminato con elimina_evento. */
+  async ripristina_evento(chiave: unknown) {
+    const eventi_eliminati = modificaConfig((cfg) => (cfg.eventi_eliminati = Array.isArray(cfg.eventi_eliminati) ? cfg.eventi_eliminati.filter((v) => v?.chiave !== chiave) : []));
+    return { ok: true, eventi_eliminati };
   },
 
   // ---- Loghi delle aziende (loghi.ts) --------------------------------------------------------------------------------------

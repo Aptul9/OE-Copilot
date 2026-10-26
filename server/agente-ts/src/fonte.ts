@@ -26,6 +26,8 @@ export interface Lettura {
   cal: Map<number, string>;
   eventi: RigaDb[];
   persone: Map<number, Persona>;
+  /** Le righe segnate "Occupato" (Mostra come di Outlook e Google); manca se calendar.db non ha la colonna. */
+  occupati?: Set<number>;
 }
 export type Stato = { stato: string; msg: unknown };
 export type Evento = Record<string, unknown>;
@@ -119,6 +121,9 @@ const SQL_CALENDARI = "select _id, account_name, account_type, calendar_displayN
 const SQL_EVENTI =
   "select _id, _sync_id, calendar_id, title, eventLocation, description, eventStatus, dtstart, dtend, eventTimezone, eventEndTimezone, duration, allDay, rrule, rdate, " +
   "exrule, exdate, original_id, original_sync_id, originalInstanceTime, originalAllDay, organizer, isOrganizer, hasAttendeeData from Events where deleted = 0 and calendar_id in (%s)";
+// "Mostra come" di Outlook e Google (CalendarContract.Events.AVAILABILITY): 0 occupato, 1 libero, 2 provvisorio. A parte da SQL_EVENTI: la
+// colonna c'è in ogni calendar.db di Android, ma non nei database di prova scritti per i golden dell'agente Python, che non la leggeva.
+const SQL_OCCUPATI = "select _id from Events where deleted = 0 and availability = 0 and calendar_id in (%s)";
 const SQL_INVITATI =
   "select event_id, attendeeName, attendeeEmail, attendeeRelationship from Attendees where event_id in (select _id from Events where calendar_id in (%s))";
 
@@ -154,12 +159,18 @@ export function estrai(db: DatabaseSync, account: string, calendari: string[], i
     if (pyBool(email)) p.invitati.push(minuscolo(email));
     if (r.attendeeRelationship === ORGANIZZATORE) p.organizzatore = (pyBool(r.attendeeName) ? r.attendeeName : email) as string | null;
   }
-  return { cal: scelti, eventi, persone };
+  let occupati: Set<number> | undefined;
+  try {
+    occupati = new Set((db.prepare(SQL_OCCUPATI.replace("%s", segnaposti)).all(...ids) as { _id: number }[]).map((r) => r._id));
+  } catch (e) {
+    if (!/no such column: availability/.test(e instanceof Error ? e.message : String(e))) throw e;
+  }
+  return occupati ? { cal: scelti, eventi, persone, occupati } : { cal: scelti, eventi, persone };
 }
 
-type Dettagli = { calendario: string; email: string; organizzatore: string; invitati: string[]; serie?: boolean };
+type Dettagli = { calendario: string; email: string; organizzatore: string; invitati: string[]; serie?: boolean; occupato?: boolean };
 
-/** Per ogni UID di iCalendar i campi che iCalendar non ha: il calendario, l'organizzatore, gli invitati, se viene da una serie. */
+/** Per ogni UID di iCalendar i campi che iCalendar non ha: il calendario, l'organizzatore, gli invitati, se viene da una serie, se è "Occupato". */
 function dettagliDi(lettura: Lettura): Map<string, Dettagli> {
   const { cal, eventi, persone } = lettura;
   const dettagli = new Map<string, Dettagli>();
@@ -179,6 +190,8 @@ function dettagliDi(lettura: Lettura): Map<string, Dettagli> {
         invitati: [...new Set(p?.invitati ?? [])].sort(confrontaPy),
       });
     if (serie || r.rrule || r.rdate) dettagli.get(uid)!.serie = true;
+    // di una serie vale la riga della serie, non quella di un'occorrenza cambiata
+    if (lettura.occupati && !serie) dettagli.get(uid)!.occupato = lettura.occupati.has(r._id);
   }
   return dettagli;
 }
@@ -226,6 +239,7 @@ export function eventiDaLettura(lettura: Lettura, info: InfoCasella, inizio: Tem
       web_link: null,
       fonte: "android",
       tipo: info.tipo,
+      ...(d?.occupato === undefined ? {} : { occupato: d.occupato }),
     };
     const peso = [!d?.serie, Boolean(e.online_url), Boolean(o.luogo), Boolean(e.organizer_email)];
     const chiave = JSON.stringify([e.title, e.start, e.end]);

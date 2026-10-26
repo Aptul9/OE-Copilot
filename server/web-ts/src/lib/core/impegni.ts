@@ -8,30 +8,52 @@ import { pyStr } from "./py";
 /** Un giorno in unità di chiave (microsecondi). */
 const GIORNO = 86_400_000_000;
 
+/**
+ * Un blocco voluto: un evento personale con "Blocca il tempo", o uno delle caselle segnato "Occupato" in Outlook o Google (occupato,
+ * dall'agente). Un evento personale con "Blocca il tempo" spento non rende mai occupati; uno senza la scelta (fatto prima che ci fosse) conta
+ * come uno delle caselle libero.
+ */
+const blocca = (e: Ev): boolean => (e.is_local ? e.blocca === true : e.occupato === true);
+
+/**
+ * Un giorno intero, con la fine esclusiva come in iCalendar: da mezzanotte del primo giorno a mezzanotte dopo l'ultimo. Una fine con l'ora (un
+ * evento personale salvato dai campi data e ora) o non dopo l'inizio chiude il suo giorno.
+ */
+function giorniInteri(start: string, end: string): [Naive, Naive] {
+  const s = naiveLocale(start);
+  const f = naiveLocale(end);
+  const inizio = mezzanotte(s.a, s.m, s.g);
+  const fine = mezzanotte(f.a, f.m, f.g);
+  return [inizio, chiave(fine) !== chiave(f) || chiave(fine) <= chiave(inizio) ? piuGiorni(fine, 1) : fine];
+}
+
 const maggiore = (a: Naive, b: Naive) => (chiave(a) >= chiave(b) ? a : b);
 
 /**
  * [[inizio, fine], ...] (ISO, ora locale, al secondo): quando si è occupati nei `giorni` giorni da `primoGiorno`, in ordine.
  * Con `aziende` contano solo gli eventi di quelle aziende. Se si è occupati, si è occupati: gli impegni che si sovrappongono o si
- * toccano diventano un blocco solo, anche a cavallo della mezzanotte. Un giorno intero non conta, e nemmeno un impegno senza durata o da
- * GIORNO in su: è una finestra (un change di ServiceNow di sei settimane), non un'ora in cui non si risponde, e renderebbe occupate settimane intere.
+ * toccano diventano un blocco solo, anche a cavallo della mezzanotte. Non conta un impegno senza durata. Un giorno intero o un impegno da
+ * GIORNO in su conta solo se è un blocco (blocca): altrimenti è una finestra (un change di ServiceNow di sei settimane) o un promemoria, non
+ * un'ora in cui non si risponde, e renderebbe occupate settimane intere. Un giorno intero che blocca occupa da mezzanotte a mezzanotte.
  */
 export function impegni(eventi: Ev[], primoGiorno: { a: number; m: number; g: number }, giorni: number, aziende: Set<string> | null = null): string[][] {
   const da = mezzanotte(primoGiorno.a, primoGiorno.m, primoGiorno.g);
   const a = piuGiorni(da, giorni);
   const trovati: [Naive, Naive][] = [];
   for (const e of eventi) {
-    if (e.allDay || !e.start) continue;
+    if (!e.start) continue;
     if (aziende !== null && !aziende.has(e.alias || e.account)) continue;
+    const blocco = blocca(e);
+    if (e.is_local && e.blocca === false) continue;
     let inizio: Naive, fine: Naive;
     try {
-      inizio = naiveLocale(e.start);
-      fine = naiveLocale(e.end || e.start);
+      [inizio, fine] = e.allDay ? giorniInteri(e.start, e.end || e.start) : [naiveLocale(e.start), naiveLocale(e.end || e.start)];
     } catch {
       continue;
     }
     const durata = chiave(fine) - chiave(inizio);
-    if (durata > 0 && durata < GIORNO && chiave(fine) > chiave(da) && chiave(inizio) < chiave(a)) trovati.push([inizio, fine]);
+    if ((e.allDay || durata >= GIORNO) && !blocco) continue;
+    if (durata > 0 && chiave(fine) > chiave(da) && chiave(inizio) < chiave(a)) trovati.push([inizio, fine]);
   }
   trovati.sort((x, y) => chiave(x[0]) - chiave(y[0]) || chiave(x[1]) - chiave(y[1]));
   const uniti: [Naive, Naive][] = [];

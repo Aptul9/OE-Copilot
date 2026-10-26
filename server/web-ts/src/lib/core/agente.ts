@@ -301,6 +301,8 @@ export async function tuttiGliEventi(cfg: Config, startIso: string, endIso: stri
     };
     // Calendario Google: è il calendario dell'azienda e la sua etichetta vince su quella della casella in cui Outlook ha archiviato lo stesso invito
     if (e.tipo === "caldav") ev.is_google = true;
+    // "Mostra come: Occupato" in Outlook o Google: un giorno intero o un impegno lungo così conta nella disponibilità (impegni.ts)
+    if (typeof e.occupato === "boolean") ev.occupato = e.occupato;
     const invitati = (Array.isArray(e.attendees) ? e.attendees : []).map((x: unknown) => pyStr(x).toLowerCase());
     accoda(events, seen, ev, label, () => invitati.find((i: string) => mie.has(i)) ?? "");
   }

@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/oe/api";
-import { daDatetimeLocal, perDatetimeLocal } from "@/lib/oe/logic";
+import { chiaveGiorno, daDatetimeLocal, perDatetimeLocal, spostaGiorni } from "@/lib/oe/logic";
 import { useOe } from "./OeProvider";
 
 type Props = { aperto: boolean; onChiudi: () => void };
@@ -22,6 +22,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
   const [note, setNote] = useState("");
   const [esito, setEsito] = useState("");
   const [occupato, setOccupato] = useState(false);
+  const [blocca, setBlocca] = useState(true);
 
   useEffect(() => {
     if (!aperto) return;
@@ -33,6 +34,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
     setLuogo("");
     setNote("");
     setTutto(false);
+    setBlocca(true);
     setInizio(perDatetimeLocal(ora));
     setFine(perDatetimeLocal(new Date(ora.getTime() + 3600_000)));
     setEsito("");
@@ -42,9 +44,10 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
     setEsito("Salvo…");
     setOccupato(true);
     try {
-      // l'ora scritta è quella del dispositivo, il server salva l'ora di Roma; un giorno intero è una data e resta com'è
-      const roma = (t: string) => (tutto ? t : daDatetimeLocal(t));
-      const r = await api("add_local_event", { title: titolo, start: roma(inizio), end: roma(fine), allDay: tutto, location: luogo, notes: note });
+      // l'ora scritta è quella del dispositivo, il server salva l'ora di Roma; un giorno intero è una data, e la fine si salva esclusiva
+      // (il giorno dopo l'ultimo, come in iCalendar), mentre il campo mostra l'ultimo giorno
+      const [s, f] = tutto ? [inizio, chiaveGiorno(spostaGiorni(new Date(`${fine || inizio}T00:00`), 1))] : [daDatetimeLocal(inizio), daDatetimeLocal(fine)];
+      const r = await api("add_local_event", { title: titolo, start: s, end: f, allDay: tutto, location: luogo, notes: note, blocca });
       if (r.ok) {
         onChiudi();
         await aggiornaCalendari();
@@ -57,6 +60,13 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
     } finally {
       setOccupato(false);
     }
+  };
+
+  // un giorno intero ha i campi data, e un'ora torna con l'ora tonda delle 9
+  const cambiaTutto = (v: boolean) => {
+    setTutto(v);
+    setInizio((t) => (v ? t.slice(0, 10) : `${t.slice(0, 10)}T09:00`));
+    setFine((t) => (v ? t.slice(0, 10) : `${t.slice(0, 10)}T10:00`));
   };
 
   return (
@@ -80,17 +90,25 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
             <Input id="ev-title" autoFocus value={titolo} onChange={(e) => setTitolo(e.target.value)} placeholder="es. Dentista" />
           </label>
           <label className="flex items-center gap-2 text-sm">
-            <Switch id="ev-allday" checked={tutto} onCheckedChange={setTutto} /> Tutto il giorno
+            <Switch id="ev-allday" checked={tutto} onCheckedChange={cambiaTutto} /> Tutto il giorno
           </label>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs font-medium">
-              Inizio
-              <Input id="ev-start" type="datetime-local" value={inizio} onChange={(e) => setInizio(e.target.value)} />
+              {tutto ? "Dal" : "Inizio"}
+              <Input id="ev-start" type={tutto ? "date" : "datetime-local"} value={inizio} onChange={(e) => setInizio(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium">
-              Fine
-              <Input id="ev-end" type="datetime-local" value={fine} onChange={(e) => setFine(e.target.value)} />
+              {tutto ? "Al (compreso)" : "Fine"}
+              <Input id="ev-end" type={tutto ? "date" : "datetime-local"} value={fine} onChange={(e) => setFine(e.target.value)} />
             </label>
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch id="ev-blocca" checked={blocca} onCheckedChange={setBlocca} /> Blocca il tempo
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {blocca ? "Nella disponibilità pubblica risulti occupato, anche per giorni interi." : "Solo nel tuo calendario: la disponibilità resta libera."}
+            </p>
           </div>
           <label className="flex flex-col gap-1 text-xs font-medium">
             Luogo (facoltativo)

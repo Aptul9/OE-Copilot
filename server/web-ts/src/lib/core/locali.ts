@@ -19,7 +19,10 @@ function nuovoId(esistenti: Ev[]): string {
   return String(numeri.length ? Math.max(...numeri) + 1 : 1);
 }
 
-/** Aggiunge un evento. dati: title, start, end, allDay, location, notes. Solleva ErroreValore con il testo che la pagina mostra. */
+/**
+ * Aggiunge un evento. dati: title, start, end, allDay, location, notes, blocca. Solleva ErroreValore con il testo che la pagina mostra.
+ * `blocca` ("Blocca il tempo", impegni.ts) si salva solo se la pagina lo manda: un evento che non ce l'ha resta come prima.
+ */
 export function aggiungiEvento(dati: unknown): void {
   const d = pyBool(dati) ? dati : {};
   if (!isDict(d)) throw new TypeError(`'${tipoPy(d)}' object has no attribute 'get'`);
@@ -45,6 +48,7 @@ export function aggiungiEvento(dati: unknown): void {
     allDay: pyBool(d.allDay),
     location: testoPulito(d.location),
     notes: testoPulito(d.notes),
+    ...(typeof d.blocca === "boolean" ? { blocca: d.blocca } : {}),
   }));
 }
 
@@ -107,6 +111,7 @@ export function eventiLocali(cfg: Config, inizio: Naive, fine: Naive): Ev[] {
       online_url: null,
       web_link: null,
       is_local: true,
+      ...(typeof e.blocca === "boolean" ? { blocca: e.blocca } : {}),
     });
   }
   return out;

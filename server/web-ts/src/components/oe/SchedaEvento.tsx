@@ -83,6 +83,7 @@ export function SchedaEvento({ scheda, senzaTeams, onChiudi, onElimina }: Props)
       ) : (
         p.organizer && <Riga etichetta="Organizza">{p.organizer}</Riga>
       )}
+      {p.is_local && p.blocca !== undefined && <Riga etichetta="Blocca">{p.blocca ? "Sì, risulti occupato" : "No, la disponibilità resta libera"}</Riga>}
       <div className="mt-3 flex flex-wrap gap-2">
         {a.partecipa && (
           <Button size="sm" className="join" onClick={() => apri(a.partecipa!)}>

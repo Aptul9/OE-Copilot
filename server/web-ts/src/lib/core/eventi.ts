@@ -141,7 +141,8 @@ export const tuttiAccesi = (cfg: Config): Config => ({ ...cfg, disabled_calendar
  */
 export async function raccogli(cfg: Config, startIso: string, endIso: string, allowCache = true, conFeed = true): Promise<[Ev[], string[], Meta]> {
   let [eventi, errori, meta] = await tuttiGliEventi(cfg, startIso, endIso, allowCache);
-  if (!personalizzazione().mostraTuttoIlGiorno) eventi = eventi.filter((e) => !e.allDay);
+  // i giorni interi delle caselle restano fuori, ma non uno segnato "Occupato": è un giorno bloccato (impegni.ts), e si vede anche nella pagina
+  if (!personalizzazione().mostraTuttoIlGiorno) eventi = eventi.filter((e) => !e.allDay || e.occupato === true);
   let inizio, fine;
   try {
     inizio = parseBound(startIso);

@@ -29,6 +29,10 @@ export type Evento = {
   uid?: string;
   inoltrata_da?: string;
   invitato_come?: string;
+  /** Evento personale: "Blocca il tempo" (impegni.ts); manca se è stato fatto prima che ci fosse. */
+  blocca?: boolean;
+  /** "Mostra come: Occupato" in Outlook o Google. */
+  occupato?: boolean;
 };
 
 export type EventiRisposta = {
@@ -118,6 +122,7 @@ export type NuovoEvento = {
   allDay: boolean;
   location: string;
   notes: string;
+  blocca: boolean;
 };
 
 export type Esito = { ok: boolean; error?: string };

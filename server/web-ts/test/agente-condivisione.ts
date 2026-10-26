@@ -20,6 +20,8 @@ export type EventoFinto = {
   organizer_email?: string;
   online_url?: string | null;
   attendees?: string[];
+  /** "Mostra come: Occupato" (l'agente vero lo legge da calendar.db). */
+  occupato?: boolean;
 };
 
 /** `perTesto`: l'evento si espande solo dal testo ICS che contiene questa riga (l'agente vero legge il testo; qui ci si finge di farlo). */

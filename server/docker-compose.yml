@@ -49,7 +49,7 @@ services:
   # Entrambi copiano i calendari nel calendario del telefono, che l'agente legge.
   # Il supervisore li tiene aggiornati a ogni giro, circa ogni 35 secondi
   # (da solo Android sincronizzerebbe ogni 15 minuti).
-  # La VM è ARM come i telefoni: Android gira nativo, senza emulazione.
+  # VM arm64 o x86_64: l'immagine prende i servizi Google della sua architettura e Android gira nativo, senza emulazione.
   # Serve il modulo binder_linux caricato sulla VM.
   telefono:
     build: ./immagine-telefono

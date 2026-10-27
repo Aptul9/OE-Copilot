@@ -34,7 +34,9 @@ e settings put global stay_on_while_plugged_in 7
 # in apk/ con l'aggiornamento. Si installa solo quello che è elencato in apk/SHA256SUMS, e solo se
 # l'impronta coincide; che la firma sia quella di chi pubblica l'app lo controlla Android. I calendari
 # Google non hanno un'app da installare: li sincronizzano i servizi Google dell'immagine del telefono.
-APP="$OUTLOOK:Outlook-*.apk"
+# Il nome dell'APK porta l'ABI (Outlook-arm64-v8a-..., Outlook-x86_64-...): si prende quello del telefono.
+ABI=$(e getprop ro.product.cpu.abi | tr -d '\r')
+APP="$OUTLOOK:Outlook-$ABI-*.apk"
 installate=$(e pm list packages)
 for voce in $APP; do
     app=${voce%%:*}; modello=${voce#*:}

@@ -67,7 +67,8 @@ La prima installazione è a mano, poi aggiorna la Action del proprio repository:
 
 ### 4.1 Requisiti dell'host
 
-- Linux ARM64 con Docker, il plugin `compose`, `rsync` e `curl`, e 2-4 GB di RAM. I servizi Google e l'APK di Outlook sono solo per arm64-v8a.
+- Linux ARM64 o x86_64 con Docker, il plugin `compose`, `rsync` e `curl`, e 2-4 GB di RAM. L'immagine del telefono prende i servizi Google dell'architettura della VM; l'APK di Outlook deve essere della stessa ABI del telefono (`arm64-v8a` o `x86_64`, 4.4).
+- Kernel con il meta `linux-image-generic` (non `linux-virtual`, che hanno alcune VPS): solo così `linux-modules-extra`, dove sta `binder_linux`, segue gli aggiornamenti del kernel.
 - Il fuso `Europe/Rome` è fisso nel gateway (`server/web-ts/src/lib/core/fuso.ts`), nell'agente (`TZ` nel Dockerfile) e sul telefono (`prepara_telefono.sh`): non c'è una variabile. La pagina e l'avviso dell'app mostrano gli orari nel fuso del dispositivo; il testo delle notifiche del browser, scritto dal server, resta in ora di Roma.
 - Il modulo del kernel `binder_linux`. Su alcuni kernel cloud manca, e serve `linux-modules-extra`.
   ```bash
@@ -131,7 +132,7 @@ L'agente va avviato a telefono pronto: altrimenti Docker crea vuota, e di root, 
 sudo /opt/oe-copilot/strumenti/prepara_telefono.sh
 ```
 
-**L'APK di Outlook** (arm64-v8a) sta nella release `apk`: supera il limite di GitHub per un file. Si installa solo quello elencato in `apk/SHA256SUMS`, con l'impronta giusta. A mano:
+**L'APK di Outlook** sta nella release `apk`: supera il limite di GitHub per un file. Il nome porta l'ABI, `Outlook-<abi>-<versione>.apk`, e `prepara_telefono.sh` prende quello di `ro.product.cpu.abi` del telefono (`arm64-v8a` o `x86_64`). Si installa solo quello elencato in `apk/SHA256SUMS`, con l'impronta giusta. A mano:
 ```bash
 gh release download apk --repo <proprietario>/OE-Copilot --pattern 'Outlook-*.apk' --dir /opt/oe-copilot/apk
 ```

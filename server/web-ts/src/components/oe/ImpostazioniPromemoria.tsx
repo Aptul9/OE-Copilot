@@ -182,7 +182,7 @@ export function ImpostazioniPromemoria() {
     <section id="cfg-promemoria">
       <h3 className="mb-2 font-semibold">Promemoria</h3>
       <div className="flex flex-col gap-3">
-        <fieldset className="flex flex-col gap-1.5" id="cfg-promemoria-orari">
+        <fieldset className="grid grid-cols-2 gap-x-4 gap-y-1.5" id="cfg-promemoria-orari">
           <legend className="mb-1 text-xs font-medium">Quando</legend>
           {ORARI.map((o) => (
             <label key={o.minuti} className="flex items-center gap-2">
@@ -197,7 +197,7 @@ export function ImpostazioniPromemoria() {
               {o.testo}
             </label>
           ))}
-          <label className="mt-1 flex flex-col gap-1 text-xs font-medium">
+          <label className="col-span-2 mt-1 flex flex-col gap-1 text-xs font-medium">
             Altri minuti prima
             <Input
               id="cfg-promemoria-minuti"

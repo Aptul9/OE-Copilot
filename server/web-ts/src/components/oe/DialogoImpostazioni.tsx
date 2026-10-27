@@ -32,66 +32,69 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
 
   return (
     <Dialog open={aperto} onOpenChange={(o) => !o && onChiudi()}>
-      <DialogContent id="modal-appsettings" className="max-h-[86dvh] overflow-y-auto sm:max-w-lg">
+      {/* Larga e a due colonne, così sta sullo schermo senza scorrere; su uno schermo stretto torna a una colonna e scorre. */}
+      <DialogContent id="modal-appsettings" className="max-h-[92dvh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Impostazioni</DialogTitle>
           <DialogDescription className="sr-only">Aspetto e sincronizzazione</DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-5 text-sm">
-          <section>
-            <h3 className="mb-2 font-semibold">Aspetto</h3>
-            <div id="cfg-theme" className="inline-flex rounded-lg border p-0.5">
-              {TEMI.map((t) => (
-                <button
-                  key={t.valore}
-                  data-theme={t.valore}
-                  aria-pressed={tema === t.valore}
-                  className={cn("rounded-md px-3 py-1 text-[13px]", tema === t.valore ? "is-active bg-accent font-semibold text-accent-foreground" : "text-muted-foreground hover:bg-muted")}
-                  onClick={() => impostaTema(t.valore)}
-                >
-                  {t.testo}
-                </button>
-              ))}
-            </div>
-            <label className="mt-3 flex items-center gap-2">
-              <Switch id="cfg-colori-dinamici" checked={!!config.colori_dinamici} onCheckedChange={(v) => void salvaConfig({ colori_dinamici: v })} /> Colori dinamici
-            </label>
-            <p className="mt-1.5 text-xs text-muted-foreground">Riunioni vicine di aziende diverse mai dello stesso colore.</p>
-          </section>
-
-          <section>
-            <h3 className="mb-2 font-semibold">Sincronizzazione</h3>
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Ricontrolla il calendario ogni
-              <Select value={String(intervalloSync)} onValueChange={(v) => impostaIntervallo(Number(v))}>
-                <SelectTrigger id="cfg-sync-interval" className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {INTERVALLI.map((i) => (
-                    <SelectItem key={i.valore} value={String(i.valore)}>
-                      {i.testo}
-                    </SelectItem>
-                  ))}
-                  {!INTERVALLI.some((i) => i.valore === intervalloSync) && <SelectItem value={String(intervalloSync)}>{intervalloSync} secondi</SelectItem>}
-                </SelectContent>
-              </Select>
-            </label>
-          </section>
-
-          <EventiEliminati />
-
-          {accesso2fa !== "off" && (
+        <div className="grid gap-x-10 gap-y-5 text-sm md:grid-cols-2">
+          <div className="flex flex-col gap-5">
             <section>
-              <h3 className="mb-2 font-semibold">Sicurezza</h3>
-              <p className="mb-2 text-xs text-muted-foreground">Codice dell&apos;app di autenticazione{accesso2fa === "passkey" ? " e passkey" : ""}.</p>
-              <a id="cfg-sicurezza" href="/sicurezza" className={buttonVariants({ variant: "outline", size: "sm" })}>
-                Gestisci l&apos;accesso
-              </a>
+              <h3 className="mb-2 font-semibold">Aspetto</h3>
+              <div id="cfg-theme" className="inline-flex rounded-lg border p-0.5">
+                {TEMI.map((t) => (
+                  <button
+                    key={t.valore}
+                    data-theme={t.valore}
+                    aria-pressed={tema === t.valore}
+                    className={cn("rounded-md px-3 py-1 text-[13px]", tema === t.valore ? "is-active bg-accent font-semibold text-accent-foreground" : "text-muted-foreground hover:bg-muted")}
+                    onClick={() => impostaTema(t.valore)}
+                  >
+                    {t.testo}
+                  </button>
+                ))}
+              </div>
+              <label className="mt-3 flex items-center gap-2">
+                <Switch id="cfg-colori-dinamici" checked={!!config.colori_dinamici} onCheckedChange={(v) => void salvaConfig({ colori_dinamici: v })} /> Colori dinamici
+              </label>
+              <p className="mt-1.5 text-xs text-muted-foreground">Riunioni vicine di aziende diverse mai dello stesso colore.</p>
             </section>
-          )}
+
+            <section>
+              <h3 className="mb-2 font-semibold">Sincronizzazione</h3>
+              <label className="flex flex-col gap-1 text-xs font-medium">
+                Ricontrolla il calendario ogni
+                <Select value={String(intervalloSync)} onValueChange={(v) => impostaIntervallo(Number(v))}>
+                  <SelectTrigger id="cfg-sync-interval" className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INTERVALLI.map((i) => (
+                      <SelectItem key={i.valore} value={String(i.valore)}>
+                        {i.testo}
+                      </SelectItem>
+                    ))}
+                    {!INTERVALLI.some((i) => i.valore === intervalloSync) && <SelectItem value={String(intervalloSync)}>{intervalloSync} secondi</SelectItem>}
+                  </SelectContent>
+                </Select>
+              </label>
+            </section>
+
+            <EventiEliminati />
+
+            {accesso2fa !== "off" && (
+              <section>
+                <h3 className="mb-2 font-semibold">Sicurezza</h3>
+                <p className="mb-2 text-xs text-muted-foreground">Codice dell&apos;app di autenticazione{accesso2fa === "passkey" ? " e passkey" : ""}.</p>
+                <a id="cfg-sicurezza" href="/sicurezza" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                  Gestisci l&apos;accesso
+                </a>
+              </section>
+            )}
+            <ImpostazioniCondivisione />
+          </div>
           <ImpostazioniPromemoria />
-          <ImpostazioniCondivisione />
         </div>
         <DialogFooter>
           <Button onClick={onChiudi}>Fine</Button>

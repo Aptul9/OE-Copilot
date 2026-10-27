@@ -161,7 +161,7 @@ Il servizio `supervisore` (`server/supervisore/`) parla col telefono con adb su 
 
 Con un file `PAUSA` fresco (`telefono/PAUSA`, o `stato/schermo/PAUSA` della pagina del telefono) non porta Outlook davanti.
 
-Gira come l'utente 10080, quello di Outlook sul telefono, l'unico oltre a root che ne legge database e log. `stato/` deve essere suo, `stato/schermo` dell'utente 10001:
+Gira come l'utente di Outlook sul telefono, l'unico oltre a root che ne legge database e log: 10080, o `OUTLOOK_UID` in `.env`. Il numero lo assegna Android all'installazione e su un telefono nuovo può cambiare (sul telefono x86_64 è 10090, e il calendario è del gruppo 10020): si legge con `sudo stat -c %u /opt/oe-copilot/telefono/data/data/com.microsoft.office.outlook`. Con un numero sbagliato il rilevatore scrive `EACCES, utente 10080`. `stato/` deve essere suo, `stato/schermo` dell'utente 10001:
 ```bash
 cd /opt/oe-copilot
 sudo chown 10080:10080 stato

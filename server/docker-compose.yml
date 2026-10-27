@@ -146,11 +146,12 @@ services:
 
   # Supervisore del telefono (supervisore/, README.md 4.5 e 6): il giro di sincronizzazione, il battito e il rilevatore degli accessi,
   # con adb sulla rete di compose, senza docker.sock. È l'unico che fa questo lavoro e parte con `docker compose up` come gli altri
-  # servizi. Gira come l'utente 10080, quello di Outlook sul telefono: solo lui e root leggono i suoi dati, e stato/ deve essere suo.
+  # servizi. Gira come l'utente di Outlook sul telefono (OUTLOOK_UID in .env, 10080 se manca): solo lui e root leggono i suoi dati,
+  # e stato/ deve essere suo.
   supervisore:
     build: ./supervisore
     container_name: oe-copilot-supervisore
-    user: "10080:10080"
+    user: "${OUTLOOK_UID:-10080}:${OUTLOOK_UID:-10080}"
     read_only: true
     tmpfs:
       - /tmp

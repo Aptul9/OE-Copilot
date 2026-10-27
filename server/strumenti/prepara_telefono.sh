@@ -67,6 +67,13 @@ if grep -qx "package:com.google.android.syncadapters.calendar" <<<"$installate";
         e pm grant com.google.android.syncadapters.calendar "android.permission.$permesso"
     done
 fi
+# Outlook installato da APK non ha il permesso sul calendario: l'interruttore Sincronizza calendari
+# risponde "Non è possibile sincronizzare i calendari" e nel calendario di Android non arriva niente.
+if grep -qx "package:$OUTLOOK" <<<"$installate"; then
+    for permesso in READ_CALENDAR WRITE_CALENDAR; do
+        e pm grant "$OUTLOOK" "android.permission.$permesso"
+    done
+fi
 for app in $SVEGLIE; do
     if grep -qx "package:$app" <<<"$installate"; then
         e dumpsys deviceidle whitelist "+$app" >/dev/null

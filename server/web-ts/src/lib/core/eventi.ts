@@ -2,11 +2,11 @@ import { calendariDiInoltro, elencoCalendari, tuttiGliEventi, type Meta } from "
 import { ANNULLATO_RE, cedeIlPosto, titoloBase, type Ev } from "./caselle";
 import { ErroreData, iso, isoSecondi, mezzanotte, naiveLocale, oraHHMM, parseBound, piuGiorni } from "./fuso";
 import { elencoFeed, eventiFeed } from "./ics";
-import { elencoLocali, eventiLocali } from "./locali";
+import { elencoLocali, eventiLocali, gruppiDi } from "./locali";
 import { impegni, festivita } from "./impegni";
 import { adesso } from "./orologio";
 import { FESTIVITA_NOME, personalizzazione } from "./personalizzazione";
-import { messaggio } from "./py";
+import { isDict, messaggio, pyStr } from "./py";
 import { membriGruppo, type Config } from "./stato";
 
 // La raccolta degli eventi da tutte le sorgenti, in un posto solo (era eventi.py, fino al commit 142e789): le caselle lette dall'agente, i link ICS e il
@@ -124,7 +124,15 @@ function soloAziendeAccese(cfg: Config, eventi: Ev[], aziendeCaselle: Record<str
   }
   const spente = new Set(Object.entries(acceso).filter(([, on]) => !on).map(([nome]) => nome));
   if (!spente.size) return eventi;
-  return eventi.filter((e) => !spente.has(e.alias || e.account));
+  // un evento personale fatto per dei gruppi ("A chi") si vede con gli eventi personali accesi, o se è acceso qualcosa di uno dei suoi gruppi:
+  // nella vista di un gruppo (solo le sue aziende accese) escono quelli di quel gruppo, e in quella di tutti uno per due gruppi esce una volta
+  const gruppi = isDict(cfg.gruppi_calendari) ? (cfg.gruppi_calendari as Record<string, unknown>) : {};
+  const gruppoAcceso = (g: string) => Array.isArray(gruppi[g]) && (gruppi[g] as unknown[]).some((a) => acceso[pyStr(a)]);
+  return eventi.filter((e) => {
+    const nome = e.alias || e.account;
+    if (e.is_local && gruppiDi(e).length) return !spente.has(nome) || gruppiDi(e).some(gruppoAcceso);
+    return !spente.has(nome);
+  });
 }
 
 /**

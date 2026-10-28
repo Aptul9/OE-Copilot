@@ -9,13 +9,14 @@ import { api } from "@/lib/oe/api";
 import { chiaveGiorno, daDatetimeLocal, perDatetimeLocal, spostaGiorni } from "@/lib/oe/logic";
 import type { Bozza } from "./CreazioneRapida";
 import { useOe } from "./OeProvider";
+import { SceltaGruppi, gruppiDiPartenza } from "./SceltaGruppi";
 
 /** `iniziale`: quello che arriva dalla creazione rapida (Altre opzioni), al posto dell'ora tonda successiva. */
 type Props = { aperto: boolean; onChiudi: () => void; iniziale?: Bozza | null };
 
 /** Un evento tuo, nel calendario "Altro": sta solo sul server. */
 export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
-  const { aggiornaCalendari, ricarica } = useOe();
+  const { aggiornaCalendari, ricarica, gruppiAccesi } = useOe();
   const [titolo, setTitolo] = useState("");
   const [tutto, setTutto] = useState(false);
   const [inizio, setInizio] = useState("");
@@ -25,6 +26,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
   const [esito, setEsito] = useState("");
   const [occupato, setOccupato] = useState(false);
   const [blocca, setBlocca] = useState(true);
+  const [gruppi, setGruppi] = useState<string[]>([]);
 
   useEffect(() => {
     if (!aperto) return;
@@ -37,6 +39,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
       setTitolo(iniziale.titolo);
       setTutto(t);
       setBlocca(iniziale.blocca);
+      setGruppi(iniziale.gruppi);
       setInizio(t ? chiaveGiorno(iniziale.inizio) : perDatetimeLocal(iniziale.inizio));
       setFine(t ? chiaveGiorno(spostaGiorni(iniziale.fine, -1)) : perDatetimeLocal(iniziale.fine));
       return;
@@ -48,8 +51,10 @@ export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
     setTitolo("");
     setTutto(false);
     setBlocca(true);
+    setGruppi(gruppiDiPartenza(gruppiAccesi));
     setInizio(perDatetimeLocal(ora));
     setFine(perDatetimeLocal(new Date(ora.getTime() + 3600_000)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aperto, iniziale]);
 
   const salva = async () => {
@@ -59,7 +64,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
       // l'ora scritta è quella del dispositivo, il server salva l'ora di Roma; un giorno intero è una data, e la fine si salva esclusiva
       // (il giorno dopo l'ultimo, come in iCalendar), mentre il campo mostra l'ultimo giorno
       const [s, f] = tutto ? [inizio, chiaveGiorno(spostaGiorni(new Date(`${fine || inizio}T00:00`), 1))] : [daDatetimeLocal(inizio), daDatetimeLocal(fine)];
-      const r = await api("add_local_event", { title: titolo, start: s, end: f, allDay: tutto, location: luogo, notes: note, blocca });
+      const r = await api("add_local_event", { title: titolo, start: s, end: f, allDay: tutto, location: luogo, notes: note, blocca, gruppi });
       if (r.ok) {
         onChiudi();
         await aggiornaCalendari();
@@ -122,6 +127,7 @@ export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
               {blocca ? "Nella disponibilità pubblica risulti occupato, anche per giorni interi." : "Solo nel tuo calendario: la disponibilità resta libera."}
             </p>
           </div>
+          <SceltaGruppi id="ev-gruppi" scelti={gruppi} onCambia={setGruppi} />
           <label className="flex flex-col gap-1 text-xs font-medium">
             Luogo (facoltativo)
             <Input id="ev-location" value={luogo} onChange={(e) => setLuogo(e.target.value)} placeholder="es. Studio, via Roma 1" />

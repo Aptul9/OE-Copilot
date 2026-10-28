@@ -9,7 +9,7 @@ import { chiave, iso, isoSecondi, leggiNaive, mezzanotte, naiveLocale, piuGiorni
 import { impegni } from "./impegni";
 import { ID_CALENDARIO } from "./locali";
 import { ACCOUNT_LOCALE } from "./personalizzazione";
-import { type Config, loadConfig, membriGruppo } from "./stato";
+import { type Config, loadConfig, membriGruppo, nelGruppo } from "./stato";
 
 // Cosa c'è nel calendario di un link: gli stessi eventi che l'app mostra (raccogli, lo stesso di get_events), letti a blocchi di 28 giorni come la
 // disponibilità pubblica, e ridotti a quello che il livello del link permette. Qui si decide cosa può uscire: i calendari ricevuti da altri (link ICS,
@@ -203,7 +203,7 @@ const nostro = (e: Ev) => e.remoto === true || e.is_local === true;
 function eventiDelBlocco(eventi: Ev[], membri: Set<string> | null): EventoLetto[] {
   const out: EventoLetto[] = [];
   for (const e of eventi) {
-    if (membri !== null && !membri.has(e.alias || e.account)) continue;
+    if (membri !== null && !nelGruppo(e, membri)) continue;
     if (!e.start) continue;
     const titolo = titoloEsportabile(e.title);
     const luogo = luogoEsportabile(e.location);

@@ -9,9 +9,10 @@ import { chiaveGiorno, daDatetimeLocal, perDatetimeLocal, spostaGiorni } from "@
 import { cn } from "@/lib/utils";
 import type { Selezione } from "./Calendario";
 import { useOe } from "./OeProvider";
+import { SceltaGruppi, gruppiDiPartenza } from "./SceltaGruppi";
 
 /** Quello che passa alla finestra completa con "Altre opzioni". */
-export type Bozza = { titolo: string; inizio: Date; fine: Date; tuttoIlGiorno: boolean; blocca: boolean };
+export type Bozza = { titolo: string; inizio: Date; fine: Date; tuttoIlGiorno: boolean; blocca: boolean; gruppi: string[] };
 
 type Props = {
   selezione: Selezione | null;
@@ -44,12 +45,13 @@ function istanti(c: Campi): { inizio: Date; fine: Date } | null {
  * Salva. Va nel calendario Altro, come Nuovo evento; "Altre opzioni" apre quella finestra con quello che c'è già scritto. Su uno schermo
  * stretto è un riquadro in basso. */
 export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia }: Props) {
-  const { aggiornaCalendari, ricarica } = useOe();
+  const { aggiornaCalendari, ricarica, gruppiAccesi } = useOe();
   const ref = useRef<HTMLFormElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [titolo, setTitolo] = useState("");
   const [campi, setCampi] = useState<Campi | null>(null);
   const [blocca, setBlocca] = useState(true);
+  const [gruppi, setGruppi] = useState<string[]>([]);
   const [esito, setEsito] = useState("");
   const [occupato, setOccupato] = useState(false);
 
@@ -64,7 +66,9 @@ export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia 
     if (!selezione) return;
     setTitolo("");
     setBlocca(true);
+    setGruppi(gruppiDiPartenza(gruppiAccesi));
     setEsito("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selezione]);
 
   // la posizione si calcola all'apertura, non a ogni orario cambiato: il riquadro non salta sotto il mouse
@@ -132,7 +136,7 @@ export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia 
     try {
       // come Nuovo evento: l'ora è quella del dispositivo e il server salva quella di Roma; un giorno intero è una data, con la fine esclusiva
       const [s, f] = campi.tutto ? [chiaveGiorno(t.inizio), chiaveGiorno(t.fine)] : [daDatetimeLocal(perDatetimeLocal(t.inizio)), daDatetimeLocal(perDatetimeLocal(t.fine))];
-      const r = await api("add_local_event", { title: titolo.trim(), start: s, end: f, allDay: campi.tutto, location: "", notes: "", blocca });
+      const r = await api("add_local_event", { title: titolo.trim(), start: s, end: f, allDay: campi.tutto, location: "", notes: "", blocca, gruppi });
       if (r.ok) {
         onChiudi();
         await aggiornaCalendari();
@@ -199,6 +203,7 @@ export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia 
           <Switch id="quick-blocca" checked={blocca} onCheckedChange={setBlocca} /> Blocca il tempo
         </label>
       </div>
+      <SceltaGruppi id="quick-gruppi" scelti={gruppi} onCambia={setGruppi} />
       {(errore || esito) && (
         <span id="quick-result" className={cn("text-xs", errore ? "text-destructive" : "text-muted-foreground")}>
           {errore || esito}
@@ -210,7 +215,7 @@ export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia 
           variant="outline"
           size="sm"
           id="quick-more"
-          onClick={() => onAltreOpzioni({ titolo, inizio: t?.inizio ?? selezione.inizio, fine: t?.fine ?? selezione.fine, tuttoIlGiorno: campi.tutto, blocca })}
+          onClick={() => onAltreOpzioni({ titolo, inizio: t?.inizio ?? selezione.inizio, fine: t?.fine ?? selezione.fine, tuttoIlGiorno: campi.tutto, blocca, gruppi })}
         >
           Altre opzioni
         </Button>

@@ -1,6 +1,7 @@
 import type { Ev } from "./caselle";
 import { chiave, isoSecondi, mezzanotte, naiveLocale, piuGiorni, type Naive } from "./fuso";
 import { pyStr } from "./py";
+import { nelGruppo } from "./stato";
 
 // Quello che la pagina pubblica (senza accesso) può sapere degli impegni: quando, mai cosa (era disponibilita.py, fino al commit 142e789). Da qui escono solo
 // orari di inizio e fine, e le festività (date pubbliche): né un titolo, né un luogo, né chi partecipa, né il nome di un calendario.
@@ -42,7 +43,7 @@ export function impegni(eventi: Ev[], primoGiorno: { a: number; m: number; g: nu
   const trovati: [Naive, Naive][] = [];
   for (const e of eventi) {
     if (!e.start) continue;
-    if (aziende !== null && !aziende.has(e.alias || e.account)) continue;
+    if (aziende !== null && !nelGruppo(e, aziende)) continue;
     const blocco = blocca(e);
     if (e.is_local && e.blocca === false) continue;
     let inizio: Naive, fine: Naive;

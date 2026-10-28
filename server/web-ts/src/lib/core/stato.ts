@@ -64,11 +64,27 @@ export function aliasPerAccount(cfg: Config, indirizzi: Iterable<string>): Recor
   return out;
 }
 
+/** Le aziende di un gruppo, con il nome del gruppo: un evento personale fatto "per" quel gruppo (campo `gruppi`) ne fa parte anche lui. */
+export class MembriGruppo extends Set<string> {
+  constructor(
+    readonly gruppo: string,
+    aziende: Iterable<string>,
+  ) {
+    super(aziende);
+  }
+}
+
 /** Le aziende di un gruppo (config "gruppi_calendari"), o null se il gruppo non esiste. */
-export function membriGruppo(cfg: Config, nome: string): Set<string> | null {
+export function membriGruppo(cfg: Config, nome: string): MembriGruppo | null {
   const gruppi = cfg.gruppi_calendari;
   const membri = isDict(gruppi) ? gruppi[nome] : undefined;
-  return Array.isArray(membri) ? new Set(membri.map(pyStr)) : null;
+  return Array.isArray(membri) ? new MembriGruppo(nome, membri.map(pyStr)) : null;
+}
+
+/** Un evento sta in un gruppo se è di una delle sue aziende, o se è un evento personale fatto per quel gruppo ("A chi"). */
+export function nelGruppo(e: { alias?: unknown; account?: unknown; is_local?: unknown; gruppi?: unknown }, membri: Set<string>): boolean {
+  if (membri.has(String(e.alias || e.account || ""))) return true;
+  return membri instanceof MembriGruppo && e.is_local === true && Array.isArray(e.gruppi) && e.gruppi.includes(membri.gruppo);
 }
 
 /** Un'azienda che cambia nome resta nei suoi gruppi (senza doppioni se il nuovo nome c'era già). */

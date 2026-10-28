@@ -31,6 +31,8 @@ export type Evento = {
   invitato_come?: string;
   /** Evento personale: "Blocca il tempo" (impegni.ts); manca se è stato fatto prima che ci fosse. */
   blocca?: boolean;
+  /** Evento personale: i gruppi di "A chi" (locali.ts); manca se non è di un gruppo in particolare. */
+  gruppi?: string[];
   /** "Mostra come: Occupato" in Outlook o Google. */
   occupato?: boolean;
 };
@@ -125,6 +127,8 @@ export type NuovoEvento = {
   location: string;
   notes: string;
   blocca: boolean;
+  /** "A chi": i gruppi dei calendari per cui è l'evento. */
+  gruppi?: string[];
 };
 
 export type Esito = { ok: boolean; error?: string };

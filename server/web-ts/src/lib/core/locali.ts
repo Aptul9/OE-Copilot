@@ -19,9 +19,20 @@ function nuovoId(esistenti: Ev[]): string {
   return String(numeri.length ? Math.max(...numeri) + 1 : 1);
 }
 
+/** I gruppi di "A chi": nomi di gruppo (gruppi_calendari) senza doppioni, al più GRUPPI_MAX; vuoto = di nessuno in particolare. */
+const GRUPPI_MAX = 20;
+function leggiGruppiEvento(v: unknown): string[] {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v)) throw new ErroreValore("A chi: serve un elenco di gruppi.");
+  const nomi = [...new Set(v.map((g) => testoPulito(g)).filter(Boolean))];
+  if (nomi.length > GRUPPI_MAX || nomi.some((g) => g.length > 100)) throw new ErroreValore("A chi: troppi gruppi o nomi troppo lunghi.");
+  return nomi;
+}
+
 /**
- * Aggiunge un evento. dati: title, start, end, allDay, location, notes, blocca. Solleva ErroreValore con il testo che la pagina mostra.
- * `blocca` ("Blocca il tempo", impegni.ts) si salva solo se la pagina lo manda: un evento che non ce l'ha resta come prima.
+ * Aggiunge un evento. dati: title, start, end, allDay, location, notes, blocca, gruppi. Solleva ErroreValore con il testo che la pagina mostra.
+ * `blocca` ("Blocca il tempo", impegni.ts) si salva solo se la pagina lo manda: un evento che non ce l'ha resta come prima. `gruppi` ("A chi")
+ * sono i gruppi per cui è l'evento: si vede nella vista di ciascuno (soloAziendeAccese in eventi.ts) e nella loro disponibilità.
  */
 export function aggiungiEvento(dati: unknown): void {
   const d = pyBool(dati) ? dati : {};
@@ -40,6 +51,7 @@ export function aggiungiEvento(dati: unknown): void {
     if (e instanceof ErroreData) throw new ErroreValore(`Data non valida: ${e.message}`);
     throw e;
   }
+  const gruppi = leggiGruppiEvento(d.gruppi);
   aggiungiLocale((esistenti) => ({
     uid: nuovoId(esistenti),
     title: titolo,
@@ -49,6 +61,7 @@ export function aggiungiEvento(dati: unknown): void {
     location: testoPulito(d.location),
     notes: testoPulito(d.notes),
     ...(typeof d.blocca === "boolean" ? { blocca: d.blocca } : {}),
+    ...(gruppi.length ? { gruppi } : {}),
   }));
 }
 
@@ -77,13 +90,21 @@ export function elencoLocali(cfg: Config): Ev[] {
   ];
 }
 
-/** Gli eventi locali che si sovrappongono all'intervallo (ora locale senza fuso). */
+/** I gruppi di "A chi" di un evento salvato: solo testi, vuoto se non ne ha. */
+export const gruppiDi = (e: Ev): string[] => (Array.isArray(e.gruppi) ? e.gruppi.filter((g: unknown): g is string => typeof g === "string") : []);
+
+/**
+ * Gli eventi locali che si sovrappongono all'intervallo (ora locale senza fuso). Con il calendario spento restano quelli fatti per un gruppo:
+ * nella vista di un gruppo il calendario degli eventi personali è spento, e decide soloAziendeAccese (eventi.ts) se il loro gruppo è acceso.
+ */
 export function eventiLocali(cfg: Config, inizio: Naive, fine: Naive): Ev[] {
   const disabled = new Set(Array.isArray(cfg.disabled_calendars) ? cfg.disabled_calendars : []);
-  if (disabled.has(ID_CALENDARIO)) return [];
+  const spento = disabled.has(ID_CALENDARIO);
   const colore = colorForAccount(cfg, ACCOUNT_LOCALE);
   const out: Ev[] = [];
   for (const e of leggiLocali()) {
+    const gruppi = gruppiDi(e);
+    if (spento && !gruppi.length) continue;
     let s, f;
     try {
       s = leggiIso(String(e.start));
@@ -112,6 +133,7 @@ export function eventiLocali(cfg: Config, inizio: Naive, fine: Naive): Ev[] {
       web_link: null,
       is_local: true,
       ...(typeof e.blocca === "boolean" ? { blocca: e.blocca } : {}),
+      ...(gruppi.length ? { gruppi } : {}),
     });
   }
   return out;

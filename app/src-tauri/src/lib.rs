@@ -89,6 +89,12 @@ fn imposta_indirizzo(app: tauri::AppHandle, indirizzo: String) -> Result<bool, S
     Ok(cfg!(desktop))
 }
 
+/// L'uscita dall'account della pagina di avvio (finestra::esci_account). Asincrono come gli altri comandi che toccano la finestra
+#[tauri::command]
+async fn esci_account(app: tauri::AppHandle) -> Result<(), String> {
+    finestra::esci_account(&app)
+}
+
 /// L'avviso a comparsa delle riunioni di un giro, con il suono scelto (comparsa.rs). Asincrono: una finestra creata da un comando sincrono
 /// blocca Windows (wry#583)
 #[tauri::command]
@@ -211,9 +217,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
 
     #[cfg(all(feature = "prova", desktop))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, imposta_indirizzo, prova_menu]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, imposta_indirizzo, esci_account, prova_menu]);
     #[cfg(not(all(feature = "prova", desktop)))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, imposta_indirizzo]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, imposta_indirizzo, esci_account]);
 
     costruttore
         .setup(|app| {

@@ -75,6 +75,18 @@ button:disabled {
   opacity: 0.6;
 }
 
+button.discreto {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+
+.piede {
+  margin-top: 0.5rem;
+}
+
 .azioni {
   display: flex;
   flex-wrap: wrap;

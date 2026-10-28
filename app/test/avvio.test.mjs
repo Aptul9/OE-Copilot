@@ -36,7 +36,7 @@ async function avvia({ hash = "", rete = false, online = true, origine = ORIGINE
       },
     };
   };
-  const ids = ["rotella", "stato", "dettaglio", "azioni", "riprova", "copia", "cambia", "modulo", "indirizzo", "errore", "salva", "annulla"];
+  const ids = ["rotella", "stato", "dettaglio", "azioni", "riprova", "copia", "cambia", "modulo", "indirizzo", "errore", "salva", "annulla", "esci"];
   const elementi = Object.fromEntries(ids.map((id) => [id, elemento()]));
   const vai = [];
   const timer = [];
@@ -218,4 +218,38 @@ test("senza il comando dell'app (versione vecchia) lo dice e non fa altro", asyn
   await a.elementi.modulo.gestori.submit(evento());
   assert.equal(a.elementi.errore.textContent, "Questa versione dell'app non permette di cambiare server.");
   assert.equal(a.elementi.salva.disabled, false);
+});
+
+test("Esci dall'account si vede quando il sito non risponde e nel campo del server, non durante il controllo", async () => {
+  const muto = await avvia();
+  assert.equal(muto.elementi.esci.hidden, false);
+  const campo = await avvia({ hash: "#server" });
+  assert.equal(campo.elementi.esci.hidden, false);
+  const riuscito = await avvia({ rete: true });
+  assert.equal(riuscito.elementi.esci.hidden, true);
+});
+
+test("Esci dall'account chiama esci_account, senza argomenti", async () => {
+  const chiamate = [];
+  const a = await avvia({ invoke: async (comando, argomenti) => (chiamate.push([comando, argomenti]), undefined) });
+  a.elementi.esci.gestori.click();
+  await a.aspetta();
+  assert.equal(JSON.stringify(chiamate), JSON.stringify([["esci_account", undefined]]));
+  assert.equal(a.elementi.esci.disabled, true, "durante l'uscita non si preme due volte");
+});
+
+test("se l'uscita non riesce lo dice con il motivo e si può riprovare", async () => {
+  const a = await avvia({ invoke: async () => Promise.reject("finestra non trovata") });
+  a.elementi.esci.gestori.click();
+  await a.aspetta();
+  assert.equal(a.elementi.stato.textContent, "Uscita non riuscita.");
+  assert.equal(a.elementi.dettaglio.textContent, "finestra non trovata");
+  assert.equal(a.elementi.esci.disabled, false);
+});
+
+test("senza il comando dell'app (versione vecchia) l'uscita lo dice", async () => {
+  const a = await avvia();
+  a.elementi.esci.gestori.click();
+  await a.aspetta();
+  assert.equal(a.elementi.stato.textContent, "Uscita non riuscita.");
 });

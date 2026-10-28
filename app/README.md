@@ -3,7 +3,7 @@
 Client di OE Copilot: una finestra Tauri v2 (WebView2 su Windows, WebView su Android) sul sito vero, con la sua sessione e i promemoria delle riunioni. L'interfaccia sta nel sito; l'app cambia solo per le funzioni native.
 
 - Nella finestra si carica solo il sito: gli altri link http e https vanno al browser, gli altri schemi sono rifiutati. Se il sito non risponde, una pagina di avvio riprova ogni 5 secondi.
-- Su Windows: icona nell'area di notifica con *Apri*, *Avvia con Windows*, *Cambia server…* ed *Esci* (chiudere la finestra la nasconde), un solo processo, link di Teams aperti con lo schema `msteams:`. *Avvia con Windows* passa `--nascosto`: l'app parte nell'area di notifica, senza prendere il fuoco.
+- Su Windows: icona nell'area di notifica con *Apri*, *Avvia con Windows*, *Cambia server…*, *Esci dall'account* ed *Esci* (chiudere la finestra la nasconde), un solo processo, link di Teams aperti con lo schema `msteams:`. *Avvia con Windows* passa `--nascosto`: l'app parte nell'area di notifica, senza prendere il fuoco.
 
 ## Costruirla (Windows)
 
@@ -31,11 +31,17 @@ Login e profilo di WebView2 stanno in `%LOCALAPPDATA%\com.oecopilot.desktop`, le
 
 L'indirizzo scelto nell'app vale al posto di quello della build. Si cambia dalla pagina di avvio, nel campo *Indirizzo del server*:
 
+- Dal sito, dentro l'app: *Impostazioni > Account > Cambia server*, che porta alla pagina di avvio con il campo aperto (si vede solo nell'app, non nel browser).
 - Sul PC: voce *Cambia server…* del menu dell'icona. La pagina di avvio si apre anche da sola, con *Cambia server* accanto a *Riprova* e *Apri la copia salvata*, quando c'è la rete ma il sito non risponde (un server spostato).
 - Su Android: *Cambia server* nella stessa schermata, che compare quando il telefono ha la rete e il sito non risponde.
 - Senza rete il sito si apre con la sua copia, come prima, e la schermata non compare.
 
 Si scrive `oe.miosito.it` o l'indirizzo intero: senza schema si parte da `https://`, `http://` solo per `localhost`, percorso e parametri si tolgono (`src-tauri/src/indirizzo.rs`). L'indirizzo sta in `indirizzo.txt` nella cartella dei dati dell'app (sul PC `%LOCALAPPDATA%\com.oecopilot.desktop`, su Android la cartella dei dati dell'app); lo legge anche il lavoro dei promemoria di Android. Per tornare a quello della build si cancella il file.
+
+## Uscire dall'account
+
+- Dal sito: *Impostazioni > Account > Esci dall'account*, o la porta in fondo alla barra a sinistra. Chiude la sessione sul server.
+- Dall'app, anche se il sito non risponde: voce *Esci dall'account* del menu dell'icona sul PC, e il pulsante con lo stesso nome nella pagina di avvio (quando il sito non risponde e nel campo del server). Cancella tutti i dati del sito nella finestra: il cookie di sessione, le impostazioni del dispositivo e la copia per quando manca la rete. Sul server la sessione resta fino alla scadenza, senza il cookie non la usa nessuno. Il comando `esci_account` lo ha solo la pagina di avvio.
 
 **Trappola: l'indirizzo vale all'avvio.** La finestra, la lista degli indirizzi ammessi e i permessi dei comandi si fissano quando l'app parte, quindi dopo il salvataggio l'app si riavvia da sola sul PC e si chiude su Android (non ha un riavvio): si riapre a mano. Il sito nuovo vuole un altro accesso, il cookie è legato all'indirizzo.
 

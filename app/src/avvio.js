@@ -23,6 +23,7 @@
   const errore = nodo("errore");
   const salva = nodo("salva");
   const annulla = nodo("annulla");
+  const esci = nodo("esci");
   let timer = null;
   let inCorso = false;
 
@@ -31,6 +32,7 @@
     dettaglio.textContent = testo;
     azioni.hidden = !problema;
     riprova.hidden = !problema;
+    esci.hidden = !problema;
     rotella.hidden = problema;
   }
 
@@ -80,6 +82,7 @@
     campo.removeAttribute("aria-invalid");
     salva.disabled = false;
     modulo.hidden = false;
+    esci.hidden = false;
     campo.value = nonConfigurato() ? "" : origine;
     campo.focus();
     campo.select();
@@ -115,12 +118,29 @@
     }
   }
 
+  // cancella la sessione e i dati del sito nella finestra, anche se il sito non risponde: poi la finestra torna a questa pagina
+  async function esciDallAccount() {
+    const invoca = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+    if (!invoca) {
+      mostra("Uscita non riuscita.", "Questa versione dell'app non permette di uscire da qui.", true);
+      return;
+    }
+    esci.disabled = true;
+    try {
+      await invoca("esci_account");
+    } catch (causa) {
+      esci.disabled = false;
+      mostra("Uscita non riuscita.", typeof causa === "string" ? causa : "", true);
+    }
+  }
+
   riprova.addEventListener("click", () => {
     inCorso = false;
     prova(false);
   });
   copia.addEventListener("click", apriSito);
   cambia.addEventListener("click", apriModulo);
+  esci.addEventListener("click", esciDallAccount);
   annulla.addEventListener("click", chiudiModulo);
   modulo.addEventListener("submit", invia);
   window.addEventListener("hashchange", () => {

@@ -14,10 +14,10 @@
       "capabilities": [
         {
           "identifier": "avvio",
-          "description": "Il comando che salva l'indirizzo del sito, solo alla pagina di avvio inclusa nell'app, mai al sito",
+          "description": "I comandi che salvano l'indirizzo del sito e fanno uscire dall'account, solo alla pagina di avvio inclusa nell'app, mai al sito",
           "windows": ["main"],
           "local": true,
-          "permissions": ["allow-imposta-indirizzo"]
+          "permissions": ["allow-imposta-indirizzo", "allow-esci-account"]
         },
         {
           "identifier": "remoto-oe",

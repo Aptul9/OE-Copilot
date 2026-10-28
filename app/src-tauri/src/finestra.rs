@@ -4,8 +4,9 @@ use std::sync::atomic::Ordering;
 #[cfg(desktop)]
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
+use tauri::Url;
 #[cfg(desktop)]
-use tauri::{Url, WindowEvent};
+use tauri::WindowEvent;
 
 use crate::Stato;
 use crate::navigazione;
@@ -27,6 +28,15 @@ pub fn mostra(app: &AppHandle) {
         let _ = finestra.show();
         let _ = finestra.set_focus();
     }
+}
+
+/// Esce dall'account anche se il sito non risponde: cancella tutti i dati del sito nella finestra (il cookie di sessione, le impostazioni
+/// del dispositivo, la copia per quando manca la rete) e riporta la finestra alla pagina di avvio, che apre il sito sull'accesso. Sul
+/// server la sessione resta fino alla scadenza: senza il cookie non la usa nessuno. Dal sito c'è già Esci, che la chiude anche lì
+pub fn esci_account(app: &AppHandle) -> Result<(), String> {
+    let finestra = app.get_webview_window(PRINCIPALE).ok_or("finestra non trovata")?;
+    finestra.clear_all_browsing_data().map_err(|e| e.to_string())?;
+    finestra.navigate(Url::parse(AVVIO).map_err(|e| e.to_string())?).map_err(|e| e.to_string())
 }
 
 /// Porta davanti la finestra sulla pagina di avvio con il campo dell'indirizzo del sito aperto (voce del menu dell'icona)

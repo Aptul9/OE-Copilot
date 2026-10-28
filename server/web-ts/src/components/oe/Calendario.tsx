@@ -122,7 +122,10 @@ function oraInCima(radice: HTMLElement | null): string | null {
 }
 
 export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendario({ vistaIniziale, onDatesSet, onEventClick, onSeleziona }, ref) {
-  const { eventiGriglia, infoGiorni, pers, zoom, periodo, pubblico } = useOe();
+  const { eventiGriglia, infoGiorni, pers, zoom, periodo, pubblico, config } = useOe();
+  // senza riga in cima: la pagina pubblica, e chi ha spento "Eventi di tutto il giorno" (a quel punto in cima non c'è più niente da mettere:
+  // le riunioni lunghe tornano nella griglia e la riga si toglie, che lo spazio serve alle ore)
+  const senzaRiga = pubblico || config.nascondi_tutto_il_giorno === true;
   const fc = useRef<FullCalendar>(null);
   const radice = useRef<HTMLDivElement>(null);
   const [tipo, setTipo] = useState<string>(vistaIniziale);
@@ -244,8 +247,8 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   // blocchi "Occupato" uniti, e in cima lascerebbero libere nella griglia le ore in cui si è occupati
   const primoGiorno = periodo ? chiaveGiorno(periodo.start) : "";
   const eventi = useMemo(
-    () => (SCORRE[tipo] && !pubblico ? eventiGriglia.flatMap((e) => spezzaAl(inAlto(e), primoGiorno)) : eventiGriglia),
-    [eventiGriglia, tipo, primoGiorno, pubblico],
+    () => (SCORRE[tipo] && !senzaRiga ? eventiGriglia.flatMap((e) => spezzaAl(inAlto(e), primoGiorno)) : eventiGriglia),
+    [eventiGriglia, tipo, primoGiorno, senzaRiga],
   );
 
   const loghi = useMemo(() => mappaLoghi(pers.interfaccia.loghi), [pers]);
@@ -374,7 +377,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         slotLabelFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
         // la pagina pubblica non ha niente da mettere in cima: le festività stanno sotto la data
-        allDaySlot={!pubblico}
+        allDaySlot={!senzaRiga}
         allDayText=""
         dayHeaderFormat={{ weekday: "short", day: "numeric" }}
         headerToolbar={false}

@@ -40,7 +40,8 @@
 			reverse_proxy gateway:3000
 		}
 		handle {
-			redir / 302
+			# il * serve: con "redir / 302" Caddy prende / come matcher e il resto risponde 200 vuoto
+			redir * / 302
 		}
 	}
 

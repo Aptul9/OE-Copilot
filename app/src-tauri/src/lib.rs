@@ -1,6 +1,7 @@
 #[cfg(desktop)]
 mod comparsa;
 mod finestra;
+mod indirizzo;
 mod navigazione;
 #[cfg(windows)]
 mod notifica;
@@ -11,6 +12,7 @@ mod tray;
 #[cfg(desktop)]
 use std::sync::atomic::AtomicU32;
 
+use tauri::utils::config::CapabilityEntry;
 use tauri::{Manager, Url};
 #[cfg(desktop)]
 use tauri_plugin_autostart::MacosLauncher;
@@ -40,6 +42,51 @@ fn origine_da_config(config: &tauri::Config) -> Result<Url, String> {
         return Err(format!("indirizzo del sito non ammesso: {testo}"));
     }
     Ok(url)
+}
+
+/// L'indirizzo del sito di questo avvio: quello scelto nell'app (indirizzo.rs) se c'è, altrimenti quello della build
+fn origine_di_avvio(app: &tauri::App) -> Result<Url, String> {
+    let di_build = origine_da_config(app.config())?;
+    Ok(app.path().app_local_data_dir().ok().and_then(|cartella| indirizzo::leggi(&cartella)).unwrap_or(di_build))
+}
+
+/// I comandi nativi sono concessi solo alla pagina del sito (capability "remoto-oe" di tauri.conf.json, che ha l'indirizzo della build).
+/// Con un altro indirizzo scelto nell'app la stessa capability vale per quello: stessi permessi, un altro nome e un altro indirizzo
+fn permessi_dell_indirizzo_scelto(app: &tauri::App, scelto: &Url) -> Result<(), String> {
+    let base = app
+        .config()
+        .app
+        .security
+        .capabilities
+        .iter()
+        .find_map(|voce| match voce {
+            CapabilityEntry::Inlined(c) if c.identifier == "remoto-oe" => Some(c),
+            _ => None,
+        })
+        .ok_or("manca la capability remoto-oe nella configurazione")?;
+    let mut capability = serde_json::to_value(base).map_err(|e| e.to_string())?;
+    capability["identifier"] = "remoto-oe-scelto".into();
+    capability["remote"] = serde_json::json!({ "urls": [format!("{}/*", scelto.origin().ascii_serialization())] });
+    app.add_capability(capability.to_string()).map_err(|e| e.to_string())
+}
+
+/// Salva l'indirizzo scritto nella pagina di avvio (indirizzo.rs) e riavvia l'app, che lo legge all'avvio: la finestra, gli indirizzi
+/// ammessi e i permessi dei comandi si fissano lì. Risponde true se l'app riparte da sola, false se si chiude (Android non ha un riavvio:
+/// si riapre a mano)
+#[tauri::command]
+fn imposta_indirizzo(app: tauri::AppHandle, indirizzo: String) -> Result<bool, String> {
+    let url = indirizzo::normalizza(&indirizzo)?;
+    let cartella = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    indirizzo::salva(&cartella, &url)?;
+    // la pagina ha il tempo di mostrare la risposta prima che l'app si fermi
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(600));
+        #[cfg(desktop)]
+        app.request_restart();
+        #[cfg(mobile)]
+        app.exit(0);
+    });
+    Ok(cfg!(desktop))
 }
 
 /// L'avviso a comparsa delle riunioni di un giro, con il suono scelto (comparsa.rs). Asincrono: una finestra creata da un comando sincrono
@@ -164,13 +211,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build());
 
     #[cfg(all(feature = "prova", desktop))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, prova_menu]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, imposta_indirizzo, prova_menu]);
     #[cfg(not(all(feature = "prova", desktop)))]
-    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria]);
+    let costruttore = costruttore.invoke_handler(tauri::generate_handler![mostra_avviso, mostra_notifica, pianifica_promemoria, imposta_indirizzo]);
 
     costruttore
         .setup(|app| {
-            let origine = origine_da_config(app.config())?;
+            let origine = origine_di_avvio(app)?;
+            if origine.origin() != origine_da_config(app.config())?.origin() {
+                permessi_dell_indirizzo_scelto(app, &origine)?;
+            }
             app.manage(Stato {
                 origine,
                 #[cfg(desktop)]

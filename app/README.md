@@ -3,7 +3,7 @@
 Client di OE Copilot: una finestra Tauri v2 (WebView2 su Windows, WebView su Android) sul sito vero, con la sua sessione e i promemoria delle riunioni. L'interfaccia sta nel sito; l'app cambia solo per le funzioni native.
 
 - Nella finestra si carica solo il sito: gli altri link http e https vanno al browser, gli altri schemi sono rifiutati. Se il sito non risponde, una pagina di avvio riprova ogni 5 secondi.
-- Su Windows: icona nell'area di notifica con *Apri*, *Avvia con Windows* ed *Esci* (chiudere la finestra la nasconde), un solo processo, link di Teams aperti con lo schema `msteams:`. *Avvia con Windows* passa `--nascosto`: l'app parte nell'area di notifica, senza prendere il fuoco.
+- Su Windows: icona nell'area di notifica con *Apri*, *Avvia con Windows*, *Cambia server…* ed *Esci* (chiudere la finestra la nasconde), un solo processo, link di Teams aperti con lo schema `msteams:`. *Avvia con Windows* passa `--nascosto`: l'app parte nell'area di notifica, senza prendere il fuoco.
 
 ## Costruirla (Windows)
 
@@ -19,13 +19,27 @@ npx tauri build --no-bundle --config src-tauri/tauri.conf.local.json
 ```
 `npm run build` fa gli stessi due passi. Esce `app/src-tauri/target/release/oe-copilot-app.exe`.
 
-**Trappola: l'indirizzo del sito sta dentro l'exe.** `scripts/configura.mjs` scrive `OE_URL` (schema, nome ed eventuale porta; `http://` solo per `localhost`) in `src-tauri/tauri.conf.local.json`, ignorato da git, al posto del segnaposto `https://oe.example.com`. Con `--release` il segnaposto ferma la build. Cambiare sito vuol dire ricostruire.
+**Trappola: l'indirizzo della build è solo quello di partenza.** `scripts/configura.mjs` scrive `OE_URL` (schema, nome ed eventuale porta; `http://` solo per `localhost`) in `src-tauri/tauri.conf.local.json`, ignorato da git, al posto del segnaposto `https://oe.example.com`. Con `--release` il segnaposto ferma la build. Un altro sito si sceglie nell'app, senza ricostruire (*Cambiare server*, più sotto); la build serve solo a dare l'indirizzo con cui parte un'app nuova.
 
 ## Installare e aggiornare (Windows)
 
 Un file solo, senza installer: l'exe copiato come `%LOCALAPPDATA%\Programs\OE Copilot\OE Copilot.exe`, nient'altro nella cartella, e un collegamento *OE Copilot* nel menu Start. Per aggiornare: *Esci* dal menu dell'icona, l'exe nuovo sopra il vecchio, riavvio dal menu Start.
 
 Login e profilo di WebView2 stanno in `%LOCALAPPDATA%\com.oecopilot.desktop`, legati all'identificativo e non al percorso: sostituire l'exe lascia il login. Gli errori di avvio vanno in `errore.log`, nella stessa cartella.
+
+## Cambiare server
+
+L'indirizzo scelto nell'app vale al posto di quello della build. Si cambia dalla pagina di avvio, nel campo *Indirizzo del server*:
+
+- Sul PC: voce *Cambia server…* del menu dell'icona. La pagina di avvio si apre anche da sola, con *Cambia server* accanto a *Riprova* e *Apri la copia salvata*, quando c'è la rete ma il sito non risponde (un server spostato).
+- Su Android: *Cambia server* nella stessa schermata, che compare quando il telefono ha la rete e il sito non risponde.
+- Senza rete il sito si apre con la sua copia, come prima, e la schermata non compare.
+
+Si scrive `oe.miosito.it` o l'indirizzo intero: senza schema si parte da `https://`, `http://` solo per `localhost`, percorso e parametri si tolgono (`src-tauri/src/indirizzo.rs`). L'indirizzo sta in `indirizzo.txt` nella cartella dei dati dell'app (sul PC `%LOCALAPPDATA%\com.oecopilot.desktop`, su Android la cartella dei dati dell'app); lo legge anche il lavoro dei promemoria di Android. Per tornare a quello della build si cancella il file.
+
+**Trappola: l'indirizzo vale all'avvio.** La finestra, la lista degli indirizzi ammessi e i permessi dei comandi si fissano quando l'app parte, quindi dopo il salvataggio l'app si riavvia da sola sul PC e si chiude su Android (non ha un riavvio): si riapre a mano. Il sito nuovo vuole un altro accesso, il cookie è legato all'indirizzo.
+
+**Trappola: l'app già installata non ha il campo.** Un exe o un APK costruiti prima di questa funzione hanno l'indirizzo dentro e nessun modo di cambiarlo: vanno ricostruiti una volta (*Costruirla*).
 
 ## Accesso e sessione
 
@@ -45,7 +59,7 @@ Su Windows il sito mostra *Notifica di Windows* e *Avviso a comparsa*: una fines
 
 ## Sicurezza
 
-I comandi nativi valgono solo per la pagina del sito (`remote.urls`, `"local": false`, finestra `main`), con un elenco esplicito: `scripts/configura.mjs` rifiuta ogni permesso `:default`. Pagina di avvio, finestre in più e avviso a comparsa non hanno comandi, e le build di rilascio non hanno DevTools.
+I comandi nativi valgono solo per la pagina del sito (capability `remoto-oe`: `remote.urls`, `"local": false`, finestra `main`), con un elenco esplicito: `scripts/configura.mjs` rifiuta ogni permesso `:default`. Con un indirizzo scelto nell'app all'avvio nasce `remoto-oe-scelto`, la stessa capability per quell'indirizzo (`permessi_dell_indirizzo_scelto` in `lib.rs`). Alla pagina di avvio spetta un solo comando, `imposta_indirizzo` (capability `avvio`, `"local": true`): il sito non lo ha. Finestre in più e avviso a comparsa non hanno comandi, e le build di rilascio non hanno DevTools. La CSP della pagina di avvio ammette `https:` e `http://localhost`, perché l'indirizzo non è più noto alla build: la pagina non carica niente di esterno e il suo script è solo quello incluso.
 
 ## Android
 
@@ -54,7 +68,7 @@ Pacchetto `com.oecopilot.app`; `file:`, `data:` e `about:blank` sono rifiutati. 
 ### Promemoria ad app chiusa
 
 Le notifiche ci sono sempre; il permesso `POST_NOTIFICATIONS` lo chiede la pagina una volta, dopo l'accesso. Il resto lo fa l'app, in `gen/android/app/src/main/java/com/oecopilot/app/Promemoria.kt`:
-- un lavoro di WorkManager ogni 15 minuti, e subito quando l'app va in secondo piano (dopo l'accesso, o dopo un cambio delle impostazioni sul sito), legge `get_promemoria` e `get_events` con il cookie della WebView, all'indirizzo di `plugins.oe.url` in `assets/tauri.conf.json`;
+- un lavoro di WorkManager ogni 15 minuti, e subito quando l'app va in secondo piano (dopo l'accesso, o dopo un cambio delle impostazioni sul sito), legge `get_promemoria` e `get_events` con il cookie della WebView, all'indirizzo di `indirizzo.txt` nella cartella dei dati dell'app se c'è, altrimenti di `plugins.oe.url` in `assets/tauri.conf.json`;
 - il nucleo (funzione JNI `NucleoPromemoria.aggiorna`) dice quali allarmi programmare, quali avvisi mostrare subito (anticipo già passato, riunione non ancora iniziata, mai vista) e quali allarmi annullare;
 - gli allarmi sono esatti (`USE_EXACT_ALARM`) e partono anche ad app chiusa e con il telefono in Doze; la notifica è una per riunione (quella dei 10 minuti prende il posto di quella dei 30), sparisce all'inizio e un tocco apre l'app;
 - la notifica ha il logo dell'azienda in un disco bianco, o la sua sigla nel suo colore, come l'avviso a comparsa del PC: sigle e loghi vengono da `get_personalizzazione`, e il logo si scarica alla lettura (in `cache/loghi`, uno per indirizzo), perché l'allarme può partire senza rete. Nella barra di stato la sagoma bianca dell'icona (`drawable-*/ic_stat_promemoria.png`, da `scripts/genera_icona.py`): Android lì usa solo il canale alfa;
@@ -94,5 +108,5 @@ Aggiornamento automatico (il repository è privato), firma del codice, pulsanti 
 
 ## Prove
 
-- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina, con il nucleo finto. La Action non prova `app/`.
+- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina di avvio e quello del sito, con il nucleo finto. La Action non prova `app/`.
 - Una build di prova accanto a quella vera vuole un altro identificativo, con una seconda `--config` (`{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }`): con lo stesso condivide profilo, istanza unica e avvio con Windows.

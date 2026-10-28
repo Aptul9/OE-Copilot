@@ -29,6 +29,15 @@ pub fn mostra(app: &AppHandle) {
     }
 }
 
+/// Porta davanti la finestra sulla pagina di avvio con il campo dell'indirizzo del sito aperto (voce del menu dell'icona)
+#[cfg(desktop)]
+pub fn apri_scelta_server(app: &AppHandle) {
+    mostra(app);
+    if let (Some(finestra), Ok(url)) = (app.get_webview_window(PRINCIPALE), Url::parse(&format!("{AVVIO}#server"))) {
+        let _ = finestra.navigate(url);
+    }
+}
+
 /// La navigazione e le finestre nuove (window.open) passano dalla lista di indirizzi ammessi. Su Android wry non ha il
 /// gestore delle finestre nuove: window.open e target=_blank arrivano alla stessa vista come navigazione normale
 fn con_guardia<'a>(app: &AppHandle, costruttore: Costruttore<'a>) -> Costruttore<'a> {

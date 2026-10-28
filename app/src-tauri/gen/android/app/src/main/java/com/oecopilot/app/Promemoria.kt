@@ -261,10 +261,16 @@ object Promemoria {
     return (if (parole.size >= 2) "${parole[0][0]}${parole[1][0]}" else s.take(2)).uppercase()
   }
 
-  /** L'indirizzo del sito, dalla configurazione che la build mette nell'app (plugins.oe.url in assets/tauri.conf.json) */
+  /** L'indirizzo del sito: quello scelto nell'app (indirizzo.txt nella cartella dei dati, scritto da indirizzo.rs) e, senza, quello che la
+   * build mette nell'app (plugins.oe.url in assets/tauri.conf.json) */
   private fun sito(contesto: Context): String? = try {
-    val configurazione = contesto.assets.open("tauri.conf.json").bufferedReader().use { it.readText() }
-    JSONObject(configurazione).getJSONObject("plugins").getJSONObject("oe").getString("url").trimEnd('/')
+    val scelto = File(contesto.dataDir, "indirizzo.txt").takeIf { it.isFile }?.readText()?.trim()?.trimEnd('/')
+    if (scelto != null && (scelto.startsWith("https://") || scelto.startsWith("http://"))) {
+      scelto
+    } else {
+      val configurazione = contesto.assets.open("tauri.conf.json").bufferedReader().use { it.readText() }
+      JSONObject(configurazione).getJSONObject("plugins").getJSONObject("oe").getString("url").trimEnd('/')
+    }
   } catch (e: Exception) {
     null
   }

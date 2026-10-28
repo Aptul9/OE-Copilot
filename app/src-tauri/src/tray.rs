@@ -16,8 +16,9 @@ pub fn crea(app: &AppHandle) -> tauri::Result<()> {
     let avvio_acceso = app.autolaunch().is_enabled().unwrap_or(false);
     let apri = MenuItem::with_id(app, "apri", "Apri", true, None::<&str>)?;
     let avvio = CheckMenuItem::with_id(app, "avvio", "Avvia con Windows", true, avvio_acceso, None::<&str>)?;
+    let server = MenuItem::with_id(app, "server", "Cambia server…", true, None::<&str>)?;
     let esci = MenuItem::with_id(app, "esci", "Esci", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&apri, &avvio, &PredefinedMenuItem::separator(app)?, &esci])?;
+    let menu = Menu::with_items(app, &[&apri, &avvio, &server, &PredefinedMenuItem::separator(app)?, &esci])?;
     app.manage(Voci { menu: menu.clone(), avvio });
 
     let icona = app.default_window_icon().cloned().ok_or(tauri::Error::InvalidIcon(std::io::Error::other("icona dell'app mancante")))?;
@@ -40,6 +41,7 @@ pub fn crea(app: &AppHandle) -> tauri::Result<()> {
 fn azione(app: &AppHandle, id: &str) {
     match id {
         "apri" => finestra::mostra(app),
+        "server" => finestra::apri_scelta_server(app),
         "avvio" => imposta_avvio(app, app.state::<Voci>().avvio.is_checked().unwrap_or(false)),
         "esci" => app.exit(0),
         _ => {}

@@ -12,7 +12,21 @@
     <h1>OE Copilot</h1>
     <p id="stato" role="status">Connessione…</p>
     <p id="dettaglio" class="dettaglio"></p>
-    <button id="riprova" type="button" hidden>Riprova</button>
+    <div id="azioni" class="azioni" hidden>
+      <button id="riprova" type="button" class="primario">Riprova</button>
+      <button id="copia" type="button" hidden>Apri la copia salvata</button>
+      <button id="cambia" type="button">Cambia server</button>
+    </div>
+    <form id="modulo" hidden novalidate>
+      <label for="indirizzo">Indirizzo del server</label>
+      <input id="indirizzo" name="indirizzo" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="aiuto errore">
+      <p id="aiuto" class="dettaglio">Per esempio oe.miosito.it. Il sito deve usare https.</p>
+      <p id="errore" class="errore" role="alert"></p>
+      <div class="azioni">
+        <button id="salva" type="submit" class="primario">Salva e riavvia</button>
+        <button id="annulla" type="button">Annulla</button>
+      </div>
+    </form>
   </main>
   <script src="avvio.js"></script>
 </body>

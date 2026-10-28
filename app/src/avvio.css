@@ -48,10 +48,89 @@ p {
 }
 
 button {
-  margin-top: 1rem;
+  min-height: 2.75rem;
   padding: 0.5rem 1.2rem;
+  border: 1px solid color-mix(in srgb, CanvasText 45%, transparent);
+  border-radius: 0.4rem;
+  background: ButtonFace;
+  color: ButtonText;
   font: inherit;
   cursor: pointer;
+}
+
+button[hidden],
+form[hidden],
+.azioni[hidden] {
+  display: none;
+}
+
+button.primario {
+  border-color: transparent;
+  background: #2563eb;
+  color: #fff;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.azioni {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+form {
+  margin-top: 1rem;
+  text-align: left;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-weight: 600;
+}
+
+input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in srgb, CanvasText 45%, transparent);
+  border-radius: 0.4rem;
+  background: Field;
+  color: FieldText;
+  font: inherit;
+}
+
+input[aria-invalid="true"] {
+  border-width: 2px;
+  border-color: #b3261e;
+}
+
+.errore {
+  min-height: 1.2em;
+  color: #b3261e;
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  input[aria-invalid="true"] {
+    border-color: #f2b8b5;
+  }
+
+  .errore {
+    color: #f2b8b5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rotella {
+    animation-duration: 3s;
+  }
 }
 
 @keyframes gira {

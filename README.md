@@ -229,7 +229,7 @@ sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-
 
 **HTTPS.** Caddy ottiene il certificato da solo. Con la 443 libera bastano le porte `443:443` e `80:80` su `caddy-ui`, lasciando `127.0.0.1:4445:443` per il controllo del deploy. Con sslh sulla 443 si aggiunge a `/etc/sslh.cfg`, sopra la voce che prende tutto il resto:
 ```
-{ name: "tls"; host: "127.0.0.1"; port: "4445"; sni_hostnames: [ "oe.<IP con i trattini>.sslip.io" ]; },
+{ name: "tls"; host: "127.0.0.1"; port: "4445"; sni_hostnames: [ "<UI_HOST>", "<MEET_HOST>" ]; },
 ```
 e si riavvia sslh. Il certificato arriva col TLS-ALPN; il primo tentativo HTTP-01 fallisce, ed è previsto.
 
@@ -257,7 +257,7 @@ docker start oe-copilot-gateway
 - **Gruppi** (*Gestisci calendari*, voce `gruppi_calendari`): un pulsante nella barra lascia accesi solo i calendari del gruppo.
 - **Account uniti** (voce `account_aliases`): più account sotto un nome solo. Vince su `nomi_per_indirizzo` e `nomi_per_dominio`.
 - **Secondario** (voce `secondari_scelti`): la voce va sotto *Altri calendari*. Vince su `interfaccia.calendari_secondari`.
-- **Disponibilità pubblica**: `https://<UI_HOST>/disponibilita`, senza accesso. Solo blocchi "Occupato", da tutti i calendari, anche spenti, senza giorni interi né finestre da 24 ore in su (un change di ServiceNow di settimane, `impegni.ts`), a meno che siano blocchi voluti (sotto). `?gruppo=<nome>` la limita a un gruppo.
+- **Disponibilità pubblica**: `https://<UI_HOST>/disponibilita`, senza accesso. Solo blocchi "Occupato", da tutti i calendari, anche spenti, senza giorni interi né finestre da 24 ore in su (un change di ServiceNow di settimane, `impegni.ts`), a meno che siano blocchi voluti (sotto). `?gruppo=<nome>` la limita a un gruppo. Con `MEET_HOST=<altro nome>` in `.env` (stesso IP, e il nome in `sni_hostnames` di sslh) la pagina sta anche alla radice di quel nome, `https://<MEET_HOST>/?gruppo=<nome>`, e lì il resto del sito non c'è: ogni altro indirizzo torna alla radice.
 - **Eliminati** (voce `eventi_eliminati`): *Elimina* sulla scheda di una riunione delle caselle o dei link la toglie solo qui, perché il telefono si legge e basta. Esce dalla pagina, dalla disponibilità, dalla condivisione e dai promemoria; torna con *Annulla* nell'avviso o con *Ripristina* in *Impostazioni*. La riconosce titolo (senza `FW:`/`RE:`), inizio e fine: spostata a un'altra ora, ricompare. Un evento personale invece si cancella davvero.
 - **Blocchi di tempo**: un giorno intero o un impegno lungo rende occupati nella disponibilità se è voluto. Dall'app: *Nuovo evento* con *Blocca il tempo* (acceso di partenza; spento è solo una nota nel tuo calendario). Da Outlook o Google: *Mostra come: Occupato* (l'agente legge `availability` di `calendar.db`; un giorno intero è di solito *Libero*, i change di ServiceNow *Provvisorio*). Un giorno intero bloccato occupa da mezzanotte a mezzanotte, e quello delle caselle si vede anche nella pagina. Un evento personale fatto prima di questa scelta resta come prima.
 - **Riunioni lunghe**: in Giorno, 3 giorni e Settimana una riunione da 4 ore in su sta nella riga in cima alle colonne, con i giorni interi (`inAlto` in `server/web-ts/src/lib/oe/logic.ts`). Non nella disponibilità pubblica, che non ha la riga in cima: lì ogni blocco "Occupato" resta alle sue ore.

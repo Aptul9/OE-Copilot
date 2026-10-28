@@ -22,11 +22,26 @@
 	}
 }
 
-{$UI_HOST} {
+{$UI_HOST} {$MEET_HOST} {
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
 		Referrer-Policy no-referrer
+	}
+
+	# Nome a parte per la disponibilità pubblica (MEET_HOST, facoltativo): la radice è /disponibilita e del resto del sito
+	# (accesso, API, telefono) passa solo quello che serve alla pagina. Con MEET_HOST vuoto il confronto è con "" e non
+	# scatta mai: un matcher host vuoto, invece, prenderebbe ogni richiesta.
+	@meet expression `{host} == "{$MEET_HOST}"`
+	handle @meet {
+		rewrite / /disponibilita
+		@pagina path /disponibilita /api/disponibilita /_next/* /icon.png /apple-icon.png /favicon.ico /sw.js /badge.png
+		handle @pagina {
+			reverse_proxy gateway:3000
+		}
+		handle {
+			redir / 302
+		}
 	}
 
 	# Schermo del telefono (servizio schermo, README.md 4.8): il servizio non ha password e comanda il telefono, quindi

@@ -2,6 +2,7 @@
 
 import { EyeIcon, EyeOffIcon, KeyRoundIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { ServerApp } from "@/components/ServerApp";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -213,6 +214,7 @@ export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa
               )}
             </FieldGroup>
           </form>
+          <ServerApp className="mt-5 text-center text-sm text-muted-foreground" />
         </CardContent>
       </Card>
     </div>

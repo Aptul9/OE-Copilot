@@ -1,14 +1,14 @@
 "use client";
 
 import { LogOutIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useInfoApp } from "@/components/ServerApp";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Modo2fa } from "@/lib/config";
 import { esci } from "@/lib/esci";
-import { dataEvento, fmtRange, infoApp } from "@/lib/oe/logic";
+import { dataEvento, fmtRange } from "@/lib/oe/logic";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
@@ -110,9 +110,7 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
 
 /** L'uscita dall'account e, dentro l'app per Windows e Android, il server: *Cambia server* porta alla pagina di avvio dell'app, dove si scrive l'indirizzo. */
 function Account() {
-  // l'app lo sa solo nel browser dell'app: letto dopo il primo disegno, così il server e il browser disegnano la stessa cosa
-  const [app, setApp] = useState<ReturnType<typeof infoApp>>(null);
-  useEffect(() => setApp(infoApp(window as never)), []);
+  const app = useInfoApp();
   return (
     <section className="border-t pt-4 md:col-span-2">
       <h3 className="mb-2 font-semibold">Account</h3>

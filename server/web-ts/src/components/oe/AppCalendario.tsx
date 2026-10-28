@@ -128,6 +128,11 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
     setSelezione(null);
     comandi.current?.deseleziona();
   }, []);
+  // orari cambiati nella creazione rapida: lo spazio sulla griglia li segue, il riquadro resta dove si è aperto
+  const cambiaSelezione = useCallback((inizio: Date, fine: Date, tuttoIlGiorno: boolean) => {
+    setSelezione((s) => (s ? { ...s, inizio, fine, tuttoIlGiorno } : s));
+    comandi.current?.seleziona(inizio, fine, tuttoIlGiorno);
+  }, []);
   const altreOpzioni = (b: Bozza) => {
     chiudiSelezione();
     setBozza(b);
@@ -305,7 +310,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
       </div>
 
       {!pub && <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(evento, uid) => void elimina(evento, uid)} />}
-      {!pub && <CreazioneRapida selezione={selezione} onChiudi={chiudiSelezione} onAltreOpzioni={altreOpzioni} />}
+      {!pub && <CreazioneRapida selezione={selezione} onChiudi={chiudiSelezione} onAltreOpzioni={altreOpzioni} onCambia={cambiaSelezione} />}
 
       <Sheet open={menu} onOpenChange={setMenu}>
         <SheetContent side="left" className="w-[19rem] overflow-y-auto p-0">

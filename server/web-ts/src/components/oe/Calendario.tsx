@@ -67,6 +67,8 @@ export type ComandiCalendario = {
   cambiaVista: (v: string) => void;
   /** Toglie lo spazio scelto sulla griglia (la creazione rapida si è chiusa). */
   deseleziona: () => void;
+  /** Sposta lo spazio scelto dove dicono i campi della creazione rapida. */
+  seleziona: (inizio: Date, fine: Date, tuttoIlGiorno: boolean) => void;
 };
 
 /** Uno spazio scelto sulla griglia, per un evento nuovo: x e y sono il punto del clic. */
@@ -145,6 +147,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     vaiA: (d) => api()?.gotoDate(d),
     cambiaVista: (v) => api()?.changeView(aFc(v)),
     deseleziona: () => api()?.unselect(),
+    seleziona: (inizio, fine, tuttoIlGiorno) => api()?.select({ start: inizio, end: fine, allDay: tuttoIlGiorno }),
   }));
 
   // Il riquadro sotto il mouse nelle viste a colonne: un elemento solo, spostato a ogni movimento senza ridisegnare il calendario.
@@ -181,8 +184,10 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   const select = useCallback(
     (s: DateSelectArg) => {
       const e = s.jsEvent;
+      // senza evento del mouse è select() chiamata da qui (seleziona: i campi della creazione rapida), che sa già dove si trova
+      if (!e) return;
       const p = partenza.current;
-      if (!e || !onSeleziona || (p && Math.abs(e.clientX - p.x) >= 8 && Math.abs(e.clientX - p.x) > Math.abs(e.clientY - p.y))) {
+      if (!onSeleziona || (p &&Math.abs(e.clientX - p.x) >= 8 && Math.abs(e.clientX - p.x) > Math.abs(e.clientY - p.y))) {
         s.view.calendar.unselect();
         return;
       }

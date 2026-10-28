@@ -92,22 +92,44 @@ const spazioPrenotabile = (s: DateSpanApi) => !s.allDay && dentroUnGiorno(s) && 
 /** Le ore in cui si prenota, in grigio il resto (nell'ora del dispositivo: il server ricontrolla in quella di Roma). */
 const ORE_PRENOTABILI = { daysOfWeek: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "18:00" };
 
+const QUARTO_MS = 15 * 60_000;
+
+/** Pagina pubblica: lo spazio che prende un clic nella mezz'ora che parte da `cella`, col mouse sul quarto d'ora `sotto` (0 il primo, 1 il
+ * secondo). La mezz'ora, se è tutta libera e si prenota; se no il solo quarto sotto il mouse, se lo è (una riunione alle 10:45 lascia
+ * prenotare 10:30-10:45); null se nemmeno quello. */
+function spazioDelClic(a: CalendarApi, cella: Date, sotto: 0 | 1): { inizio: Date; fine: Date; quarto: boolean } | null {
+  const libero = (i: Date, f: Date) =>
+    prenotabile(i, f) &&
+    !a.getEvents().some((ev) => {
+      if (!ev.start) return false;
+      const fine = ev.end ?? (ev.allDay ? spostaGiorni(ev.start, 1) : ev.start);
+      return ev.start < f && fine > i;
+    });
+  const mezza = new Date(cella.getTime() + 2 * QUARTO_MS);
+  if (libero(cella, mezza)) return { inizio: cella, fine: mezza, quarto: false };
+  const inizio = new Date(cella.getTime() + sotto * QUARTO_MS);
+  const fine = new Date(inizio.getTime() + QUARTO_MS);
+  return libero(inizio, fine) ? { inizio, fine, quarto: true } : null;
+}
+
 /** Il riquadro da mezz'ora sotto il mouse, come in Outlook: la cornice della colonna del giorno (dove FullCalendar mette sfondo, selezione e
- * riunioni) e l'altezza della riga dell'orario, misurata dalla cornice. Null fuori dalla griglia, sopra una riunione o, nella pagina
- * pubblica, su una mezz'ora che non si prenota. */
-function cellaSotto(x: number, y: number, pubblico: boolean): { cornice: HTMLElement; top: number; height: number } | null {
+ * riunioni) e l'altezza della riga dell'orario, misurata dalla cornice. Null fuori dalla griglia o sopra una riunione. Nella pagina pubblica
+ * (`spazio`) è lo spazio che prenderebbe il clic: la mezz'ora, il quarto d'ora libero, o niente. */
+function cellaSotto(x: number, y: number, spazio?: (cella: Date, sotto: 0 | 1) => { quarto: boolean } | null): { cornice: HTMLElement; top: number; height: number } | null {
   const sotto = document.elementsFromPoint(x, y);
   if (sotto.some((e) => e.closest(".fc-event"))) return null;
   const colonna = sotto.find((e) => e.matches(".fc-timegrid-col[data-date]")) as HTMLElement | undefined;
   const cornice = colonna?.querySelector<HTMLElement>(".fc-timegrid-col-frame");
   const riga = sotto.find((e) => e.matches(".fc-timegrid-slot-lane[data-time]")) as HTMLElement | undefined;
   if (!colonna || !cornice || !riga) return null;
-  if (pubblico) {
-    const inizio = new Date(`${colonna.dataset.date}T${riga.dataset.time}`);
-    if (Number.isNaN(inizio.getTime()) || !prenotabile(inizio, new Date(inizio.getTime() + 30 * 60_000))) return null;
-  }
   const r = riga.getBoundingClientRect();
-  return { cornice, top: r.top - cornice.getBoundingClientRect().top, height: r.height };
+  const top = r.top - cornice.getBoundingClientRect().top;
+  if (!spazio) return { cornice, top, height: r.height };
+  const cella = new Date(`${colonna.dataset.date}T${riga.dataset.time}`);
+  const meta = y >= r.top + r.height / 2 ? 1 : 0;
+  const s = Number.isNaN(cella.getTime()) ? null : spazio(cella, meta);
+  if (!s) return null;
+  return s.quarto ? { cornice, top: top + (meta * r.height) / 2, height: r.height / 2 } : { cornice, top, height: r.height };
 }
 
 /** Orario della riga in cima alla parte visibile della griglia, per rimettersi lì dopo un ridisegno. */
@@ -162,12 +184,13 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   useEffect(() => {
     const el = radice.current;
     if (!el || !crea || !tipo.startsWith("timeGrid")) return;
+    const spazio = pubblico ? (cella: Date, sotto: 0 | 1) => (fc.current ? spazioDelClic(fc.current.getApi(), cella, sotto) : null) : undefined;
     const box = document.createElement("div");
     box.className = "cella-sotto";
     box.setAttribute("aria-hidden", "true");
     const nascondi = () => (box.style.display = "none");
     const muovi = (e: PointerEvent) => {
-      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(e.clientX, e.clientY, pubblico) : null;
+      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(e.clientX, e.clientY, spazio) : null;
       if (!r) return nascondi();
       if (box.parentElement !== r.cornice) r.cornice.appendChild(box);
       Object.assign(box.style, { display: "block", top: `${r.top + 1}px`, height: `${r.height - 1}px` });
@@ -199,9 +222,21 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         s.view.calendar.unselect();
         return;
       }
+      // pagina pubblica: il clic sceglie un quarto d'ora (snapDuration), e diventa lo spazio che il riquadro sotto il mouse mostrava
+      if (pubblico && !s.allDay && s.end.getTime() - s.start.getTime() === QUARTO_MS) {
+        const sotto = s.start.getMinutes() % 30 ? 1 : 0;
+        const r = spazioDelClic(s.view.calendar, new Date(s.start.getTime() - sotto * QUARTO_MS), sotto);
+        if (!r) {
+          s.view.calendar.unselect();
+          return;
+        }
+        if (!r.quarto) s.view.calendar.select({ start: r.inizio, end: r.fine });
+        onSeleziona({ inizio: r.inizio, fine: r.fine, tuttoIlGiorno: false, x: e.clientX, y: e.clientY });
+        return;
+      }
       onSeleziona({ inizio: s.start, fine: s.end, tuttoIlGiorno: s.allDay, x: e.clientX, y: e.clientY });
     },
-    [onSeleziona],
+    [onSeleziona, pubblico],
   );
 
   useScorrimento(radice, () => {
@@ -403,6 +438,8 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         selectAllow={pubblico ? spazioPrenotabile : dentroUnGiorno}
         selectOverlap={!pubblico}
         businessHours={pubblico ? ORE_PRENOTABILI : false}
+        // pagina pubblica: a quarti d'ora, come si prenota; trascinando si allunga di un quarto alla volta
+        snapDuration={pubblico ? "00:15:00" : undefined}
         select={select}
         eventContent={eventContent}
         datesSet={datesSet}

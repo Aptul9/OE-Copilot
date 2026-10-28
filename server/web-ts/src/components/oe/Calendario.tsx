@@ -10,6 +10,7 @@ import FullCalendar from "@fullcalendar/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { VISTA_3G, chiaveGiorno, dataEvento, inAlto, iniziali, mappaLoghi, orariInCima, spezzaAl, spostaGiorni } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
+import { aRoma, fuoriRegola } from "@/lib/prenota-regole";
 import { cn } from "@/lib/utils";
 import "./calendario.css";
 import { ImgLogo } from "./ImgLogo";
@@ -85,14 +86,26 @@ type Props = {
 /** Uno spazio si sceglie dentro un giorno solo: il trascinamento in orizzontale è lo scorrimento dei giorni (useScorrimento). */
 const dentroUnGiorno = (s: DateSpanApi) => s.allDay || chiaveGiorno(s.start) === chiaveGiorno(new Date(s.end.getTime() - 1));
 
+/** Pagina pubblica: si prenota solo dentro le regole (lib/prenota-regole.ts); che lo spazio sia libero lo dice selectOverlap. */
+const prenotabile = (inizio: Date, fine: Date) => !fuoriRegola(aRoma(inizio), aRoma(fine), Date.now());
+const spazioPrenotabile = (s: DateSpanApi) => !s.allDay && dentroUnGiorno(s) && prenotabile(s.start, s.end);
+/** Le ore in cui si prenota, in grigio il resto (nell'ora del dispositivo: il server ricontrolla in quella di Roma). */
+const ORE_PRENOTABILI = { daysOfWeek: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "18:00" };
+
 /** Il riquadro da mezz'ora sotto il mouse, come in Outlook: la cornice della colonna del giorno (dove FullCalendar mette sfondo, selezione e
- * riunioni) e l'altezza della riga dell'orario, misurata dalla cornice. Null fuori dalla griglia o sopra una riunione. */
-function cellaSotto(x: number, y: number): { cornice: HTMLElement; top: number; height: number } | null {
+ * riunioni) e l'altezza della riga dell'orario, misurata dalla cornice. Null fuori dalla griglia, sopra una riunione o, nella pagina
+ * pubblica, su una mezz'ora che non si prenota. */
+function cellaSotto(x: number, y: number, pubblico: boolean): { cornice: HTMLElement; top: number; height: number } | null {
   const sotto = document.elementsFromPoint(x, y);
   if (sotto.some((e) => e.closest(".fc-event"))) return null;
-  const cornice = sotto.find((e) => e.matches(".fc-timegrid-col[data-date]"))?.querySelector<HTMLElement>(".fc-timegrid-col-frame");
-  const riga = sotto.find((e) => e.matches(".fc-timegrid-slot-lane[data-time]"));
-  if (!cornice || !riga) return null;
+  const colonna = sotto.find((e) => e.matches(".fc-timegrid-col[data-date]")) as HTMLElement | undefined;
+  const cornice = colonna?.querySelector<HTMLElement>(".fc-timegrid-col-frame");
+  const riga = sotto.find((e) => e.matches(".fc-timegrid-slot-lane[data-time]")) as HTMLElement | undefined;
+  if (!colonna || !cornice || !riga) return null;
+  if (pubblico) {
+    const inizio = new Date(`${colonna.dataset.date}T${riga.dataset.time}`);
+    if (Number.isNaN(inizio.getTime()) || !prenotabile(inizio, new Date(inizio.getTime() + 30 * 60_000))) return null;
+  }
   const r = riga.getBoundingClientRect();
   return { cornice, top: r.top - cornice.getBoundingClientRect().top, height: r.height };
 }
@@ -145,7 +158,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   // nella cornice della colonna, sopra lo sfondo (z-index 2, dopo di lui) e sotto le riunioni (3): una riunione accanto resta sopra, e la
   // colonna lo taglia dove scorre. Lo crea l'effetto e non React, perché finisce dentro il DOM di FullCalendar; se FullCalendar ridisegna la
   // colonna, il movimento dopo lo rimette. Non col dito (niente passaggio) e non mentre si trascina o si scorre.
-  const crea = !pubblico && !!onSeleziona;
+  const crea = !!onSeleziona;
   useEffect(() => {
     const el = radice.current;
     if (!el || !crea || !tipo.startsWith("timeGrid")) return;
@@ -154,7 +167,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     box.setAttribute("aria-hidden", "true");
     const nascondi = () => (box.style.display = "none");
     const muovi = (e: PointerEvent) => {
-      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(e.clientX, e.clientY) : null;
+      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(e.clientX, e.clientY, pubblico) : null;
       if (!r) return nascondi();
       if (box.parentElement !== r.cornice) r.cornice.appendChild(box);
       Object.assign(box.style, { display: "block", top: `${r.top + 1}px`, height: `${r.height - 1}px` });
@@ -172,7 +185,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       el.removeEventListener("scroll", nascondi, true);
       el.removeEventListener("wheel", nascondi);
     };
-  }, [crea, tipo]);
+  }, [crea, tipo, pubblico]);
 
   // dove è partito il clic: uno spostamento soprattutto in orizzontale è lo scorrimento dei giorni, non uno spazio scelto
   const partenza = useRef<{ x: number; y: number } | null>(null);
@@ -382,11 +395,14 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         headerToolbar={false}
         events={eventi}
         eventClick={eventClick}
-        // spazio libero: un clic sceglie la mezz'ora, trascinando in verticale se ne prende di più; lo toglie la creazione rapida quando si chiude
+        // spazio libero: un clic sceglie la mezz'ora, trascinando in verticale se ne prende di più; lo toglie la creazione rapida quando si chiude.
+        // Nella pagina pubblica è la prenotazione: solo nelle ore in cui si prenota e mai sopra un impegno
         selectable={crea}
         selectMirror
         unselectAuto={false}
-        selectAllow={dentroUnGiorno}
+        selectAllow={pubblico ? spazioPrenotabile : dentroUnGiorno}
+        selectOverlap={!pubblico}
+        businessHours={pubblico ? ORE_PRENOTABILI : false}
         select={select}
         eventContent={eventContent}
         datesSet={datesSet}

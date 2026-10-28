@@ -165,7 +165,10 @@ jobs:
           code=$(codice "$G/api/disponibilita?da=$oggi&a=$fra7"); [[ $code == 200 || $code == 502 ]]
           test "$(codice "$G/api/disponibilita?da=$oggi&a=$fra7&gruppo=nessuno")" = 404
           test "$(codice "$G/api/disponibilita?da=ieri&a=oggi")" = 400
-          curl -fsS "$G/disponibilita" | grep -q '<title>Disponibilità'
+          curl -fsS "$G/disponibilita" | grep -q '<title>Prenota un meeting'
+          # la prenotazione è pubblica come la disponibilità: risponde senza sessione, e rifiuta quello che non è JSON o non rispetta le regole
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d x "$G/api/prenota")" = 415
+          curl -s -X POST -H 'Content-Type: application/json' -d '{"inizio":"2026-10-31T10:00:00","fine":"2026-10-31T10:30:00","nome":"Prova","email":"prova@example.com"}' "$G/api/prenota" | grep -q 'lunedì al venerdì'
           test -z "$(curl -fsS "$G/disponibilita" | grep -o 'Nuovo evento')"
           # password sbagliata, poi giusta: cookie HttpOnly, e dopo l'accesso passa tutto
           test "$(codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email)" = 401

@@ -35,7 +35,7 @@
 	@meet expression `{host} == "{$MEET_HOST}"`
 	handle @meet {
 		rewrite / /disponibilita
-		@pagina path /disponibilita /api/disponibilita /_next/* /icon.png /apple-icon.png /favicon.ico /sw.js /badge.png
+		@pagina path /disponibilita /api/disponibilita /api/prenota /_next/* /icon.png /apple-icon.png /favicon.ico /sw.js /badge.png
 		handle @pagina {
 			reverse_proxy gateway:3000
 		}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { Selezione } from "./Calendario";
 import { useOe } from "./OeProvider";
 import { SceltaGruppi, gruppiDiPartenza } from "./SceltaGruppi";
+import { useRiquadro } from "./useRiquadro";
 
 /** Quello che passa alla finestra completa con "Altre opzioni". */
 export type Bozza = { titolo: string; inizio: Date; fine: Date; tuttoIlGiorno: boolean; blocca: boolean; gruppi: string[] };
@@ -47,7 +48,6 @@ function istanti(c: Campi): { inizio: Date; fine: Date } | null {
 export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia }: Props) {
   const { aggiornaCalendari, ricarica, gruppiAccesi } = useOe();
   const ref = useRef<HTMLFormElement>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [titolo, setTitolo] = useState("");
   const [campi, setCampi] = useState<Campi | null>(null);
   const [blocca, setBlocca] = useState(true);
@@ -71,38 +71,8 @@ export function CreazioneRapida({ selezione, onChiudi, onAltreOpzioni, onCambia 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selezione]);
 
-  // la posizione si calcola all'apertura, non a ogni orario cambiato: il riquadro non salta sotto il mouse
-  // (pronto: il riquadro c'è solo quando ha i campi, un giro dopo la selezione; misurato prima non esisterebbe)
   const aperto = !!selezione;
-  const pronto = aperto && !!campi;
-  const x = selezione?.x;
-  const y = selezione?.y;
-  useLayoutEffect(() => {
-    if (!pronto || x === undefined || y === undefined || !ref.current) return;
-    const { offsetWidth: w, offsetHeight: h } = ref.current;
-    // accanto al clic, a destra se c'è posto, altrimenti a sinistra; mai fuori dalla finestra
-    const destra = x + 12 + w <= window.innerWidth - 10;
-    setPos({
-      left: Math.max(10, destra ? x + 12 : x - 12 - w),
-      top: Math.max(10, Math.min(y - 24, window.innerHeight - h - 16)),
-    });
-  }, [pronto, x, y]);
-
-  useEffect(() => {
-    if (!aperto) return;
-    // un clic fuori la chiude: su un altro spazio libero la griglia ne sceglie subito un altro, e il riquadro si riapre lì. I menu dei campi
-    // data e ora del browser non sono nel documento: non contano come fuori
-    const fuori = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onChiudi();
-    };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onChiudi();
-    document.addEventListener("pointerdown", fuori);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("pointerdown", fuori);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [aperto, onChiudi]);
+  const pos = useRiquadro(ref, { aperto, pronto: aperto && !!campi, x: selezione?.x, y: selezione?.y, onChiudi });
 
   if (!selezione || !campi) return null;
   const t = istanti(campi);

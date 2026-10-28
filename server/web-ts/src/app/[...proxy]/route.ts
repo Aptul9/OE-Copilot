@@ -2,7 +2,7 @@ import { chiama, METODI_TS, type NomeMetodoTs } from "@/lib/core/api";
 import { handle } from "@/lib/gateway";
 import { currentUser } from "@/lib/session";
 
-// Tutto ciò che non è una pagina, /api/auth, /api/disponibilita, /api/verifica-sessione o /salute, dopo il controllo della sessione: i
+// Tutto ciò che non è una pagina, /api/auth, /api/disponibilita, /api/prenota, /api/verifica-sessione o /salute, dopo il controllo della sessione: i
 // metodi dell'API (POST /api/<metodo>, lib/core) e i loghi (GET /logos/<file>). Il resto è 404.
 export const dynamic = "force-dynamic";
 

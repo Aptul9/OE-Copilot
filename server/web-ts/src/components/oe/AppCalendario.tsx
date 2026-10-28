@@ -20,6 +20,7 @@ import { Legenda } from "./Legenda";
 import { MiniCalendario } from "./MiniCalendario";
 import { OeProvider, useOe } from "./OeProvider";
 import { PannelloLaterale } from "./PannelloLaterale";
+import { Prenotazione } from "./Prenotazione";
 import { SchedaEvento, type Scheda } from "./SchedaEvento";
 import { Timesheet } from "./Timesheet";
 
@@ -48,10 +49,11 @@ function vistaLocale(): string | null {
   }
 }
 
-/** `pubblico`: la pagina senza accesso, gli stessi componenti con gli impegni ridotti a "Occupato" e niente che scriva. */
 /** La pagina dello schermo del telefono (servizio schermo, dietro la stessa sessione): il telefono, già adattato alla finestra. */
 const SCHERMO_TELEFONO = "/telefono/#!action=stream&udid=telefono%3A5555&player=webcodecs&fitToScreen=true";
 
+/** `pubblico`: la pagina senza accesso, gli stessi componenti con gli impegni ridotti a "Occupato"; l'unica cosa che scrive è la prenotazione
+ * di un meeting in uno spazio libero (Prenotazione). */
 export function AppCalendario({ pubblico, accesso2fa = "off" }: { pubblico?: { gruppo: string }; accesso2fa?: Modo2fa }) {
   return (
     <OeProvider pubblico={pubblico}>
@@ -213,7 +215,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
           <img src="/icon.png" alt="" width={28} height={28} className="size-7 flex-none" />
           {pub ? (
             <span className="truncate">
-              Disponibilità
+              Prenota un meeting
               {oe.gruppoPubblico && <span className="bg-gradient-to-br from-primary to-[#8b8ff0] bg-clip-text text-transparent">{" · "}{oe.gruppoPubblico}</span>}
             </span>
           ) : (
@@ -282,6 +284,11 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
               {oe.datiVecchi}
             </div>
           )}
+          {pub && (
+            <div id="prenota-aiuto" className="flex-none rounded-md border-l-[3px] border-primary bg-accent px-3 py-2 text-[13px]">
+              Clicca su un orario libero per prenotare un meeting: dal lunedì al venerdì, dalle 9 alle 18, con almeno due ore di anticipo.
+            </div>
+          )}
           {(oe.avviso || nessunRisultato) && (
             <div
               id="banner"
@@ -299,7 +306,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
           <section id="view-calendar" className={cn("surface min-h-0 flex-1 overflow-hidden rounded-lg border bg-card p-1.5 shadow-sm", sezione !== "calendario" && "hidden")}>
             <div id="calendar" className="h-full">
               {oe.pronta ? (
-                <Calendario ref={comandi} vistaIniziale={vistaIniziale} onDatesSet={onDatesSet} onEventClick={onEventClick} onSeleziona={pub ? undefined : onSeleziona} />
+                <Calendario ref={comandi} vistaIniziale={vistaIniziale} onDatesSet={onDatesSet} onEventClick={onEventClick} onSeleziona={onSeleziona} />
               ) : (
                 <div className="grid h-full place-items-center text-sm text-muted-foreground">Caricamento…</div>
               )}
@@ -310,7 +317,11 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
       </div>
 
       {!pub && <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(evento, uid) => void elimina(evento, uid)} />}
-      {!pub && <CreazioneRapida selezione={selezione} onChiudi={chiudiSelezione} onAltreOpzioni={altreOpzioni} onCambia={cambiaSelezione} />}
+      {pub ? (
+        <Prenotazione selezione={selezione} onChiudi={chiudiSelezione} onCambia={cambiaSelezione} />
+      ) : (
+        <CreazioneRapida selezione={selezione} onChiudi={chiudiSelezione} onAltreOpzioni={altreOpzioni} onCambia={cambiaSelezione} />
+      )}
 
       <Sheet open={menu} onOpenChange={setMenu}>
         <SheetContent side="left" className="w-[19rem] overflow-y-auto p-0">

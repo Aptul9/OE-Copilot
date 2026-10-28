@@ -116,6 +116,11 @@ const cache = new Map<string, { fino: number; esito: Esito }>();
 const inCorso = new Map<string, Promise<Esito>>();
 const letture: number[] = [];
 
+/** Dimentica i blocchi letti, non il conteggio delle letture: dopo una prenotazione la pagina rilegge e la vede subito. */
+export function dimenticaDisponibilita() {
+  cache.clear();
+}
+
 /** Svuota la memoria (per le prove). */
 export function azzera() {
   cache.clear();

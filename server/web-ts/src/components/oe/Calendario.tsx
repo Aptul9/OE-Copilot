@@ -85,25 +85,16 @@ type Props = {
 /** Uno spazio si sceglie dentro un giorno solo: il trascinamento in orizzontale è lo scorrimento dei giorni (useScorrimento). */
 const dentroUnGiorno = (s: DateSpanApi) => s.allDay || chiaveGiorno(s.start) === chiaveGiorno(new Date(s.end.getTime() - 1));
 
-/** Il riquadro da mezz'ora sotto il mouse, come in Outlook: colonna del giorno per riga dell'orario, tagliato alla parte visibile della
- * griglia. Null fuori dalla griglia o sopra una riunione. */
-function cellaSotto(radice: HTMLElement, x: number, y: number): { left: number; top: number; width: number; height: number } | null {
+/** Il riquadro da mezz'ora sotto il mouse, come in Outlook: la cornice della colonna del giorno (dove FullCalendar mette sfondo, selezione e
+ * riunioni) e l'altezza della riga dell'orario, misurata dalla cornice. Null fuori dalla griglia o sopra una riunione. */
+function cellaSotto(x: number, y: number): { cornice: HTMLElement; top: number; height: number } | null {
   const sotto = document.elementsFromPoint(x, y);
   if (sotto.some((e) => e.closest(".fc-event"))) return null;
-  const col = sotto.find((e) => e.matches(".fc-timegrid-col[data-date]"));
+  const cornice = sotto.find((e) => e.matches(".fc-timegrid-col[data-date]"))?.querySelector<HTMLElement>(".fc-timegrid-col-frame");
   const riga = sotto.find((e) => e.matches(".fc-timegrid-slot-lane[data-time]"));
-  const giorni = radice.querySelector(".fc-timegrid-cols");
-  const scorre = radice.querySelector(".fc-scroller-liquid-absolute");
-  if (!col || !riga || !giorni || !scorre) return null;
-  const c = col.getBoundingClientRect();
+  if (!cornice || !riga) return null;
   const r = riga.getBoundingClientRect();
-  const g = giorni.getBoundingClientRect();
-  const s = scorre.getBoundingClientRect();
-  const left = Math.max(c.left, g.left);
-  const right = Math.min(c.right, g.right, s.left + scorre.clientWidth);
-  const top = Math.max(r.top, s.top);
-  const bottom = Math.min(r.bottom, s.top + scorre.clientHeight);
-  return right > left && bottom > top ? { left: left + 1, top: top + 1, width: right - left - 2, height: bottom - top - 1 } : null;
+  return { cornice, top: r.top - cornice.getBoundingClientRect().top, height: r.height };
 }
 
 /** Orario della riga in cima alla parte visibile della griglia, per rimettersi lì dopo un ridisegno. */
@@ -150,19 +141,23 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     seleziona: (inizio, fine, tuttoIlGiorno) => api()?.select({ start: inizio, end: fine, allDay: tuttoIlGiorno }),
   }));
 
-  // Il riquadro sotto il mouse nelle viste a colonne: un elemento solo, spostato a ogni movimento senza ridisegnare il calendario.
-  // Non col dito (niente passaggio) e non mentre si trascina o si scorre.
-  const cella = useRef<HTMLDivElement>(null);
+  // Il riquadro sotto il mouse nelle viste a colonne: un elemento solo, spostato a ogni movimento senza ridisegnare il calendario. Sta
+  // nella cornice della colonna, sopra lo sfondo (z-index 2, dopo di lui) e sotto le riunioni (3): una riunione accanto resta sopra, e la
+  // colonna lo taglia dove scorre. Lo crea l'effetto e non React, perché finisce dentro il DOM di FullCalendar; se FullCalendar ridisegna la
+  // colonna, il movimento dopo lo rimette. Non col dito (niente passaggio) e non mentre si trascina o si scorre.
   const crea = !pubblico && !!onSeleziona;
   useEffect(() => {
     const el = radice.current;
-    const box = cella.current;
-    if (!el || !box || !crea || !tipo.startsWith("timeGrid")) return;
+    if (!el || !crea || !tipo.startsWith("timeGrid")) return;
+    const box = document.createElement("div");
+    box.className = "cella-sotto";
+    box.setAttribute("aria-hidden", "true");
     const nascondi = () => (box.style.display = "none");
     const muovi = (e: PointerEvent) => {
-      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(el, e.clientX, e.clientY) : null;
+      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(e.clientX, e.clientY) : null;
       if (!r) return nascondi();
-      Object.assign(box.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+      if (box.parentElement !== r.cornice) r.cornice.appendChild(box);
+      Object.assign(box.style, { display: "block", top: `${r.top + 1}px`, height: `${r.height - 1}px` });
     };
     el.addEventListener("pointermove", muovi);
     el.addEventListener("pointerleave", nascondi);
@@ -170,7 +165,7 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     el.addEventListener("scroll", nascondi, true);
     el.addEventListener("wheel", nascondi, { passive: true });
     return () => {
-      nascondi();
+      box.remove();
       el.removeEventListener("pointermove", muovi);
       el.removeEventListener("pointerleave", nascondi);
       el.removeEventListener("pointerdown", nascondi);
@@ -355,7 +350,6 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
       style={{ ["--slot-h" as string]: `${zoom}px` }}
       onPointerDownCapture={(e) => (partenza.current = { x: e.clientX, y: e.clientY })}
     >
-      <div ref={cella} className="cella-sotto" aria-hidden />
       <FullCalendar
         ref={fc}
         plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}

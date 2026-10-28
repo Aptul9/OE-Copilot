@@ -22,7 +22,7 @@
 	}
 }
 
-{$UI_HOST} {$MEET_HOST} {$SERVIZI_HOST} {
+{$UI_HOST} {$MEET_HOST} {
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
@@ -41,21 +41,6 @@
 		}
 		handle {
 			# il * serve: con "redir / 302" Caddy prende / come matcher e il resto risponde 200 vuoto
-			redir * / 302
-		}
-	}
-
-	# Nome a parte per la pagina dei servizi Everbright (SERVIZI_HOST, facoltativo): solo i file di servizi/, statici,
-	# e niente del gateway. Come per MEET_HOST, vuoto non scatta mai.
-	@servizi expression `{host} == "{$SERVIZI_HOST}"`
-	handle @servizi {
-		root * /srv/servizi
-		# la radice è la cartella: il suo index.html conta come file
-		@file file {path} {path}index.html
-		handle @file {
-			file_server
-		}
-		handle {
 			redir * / 302
 		}
 	}

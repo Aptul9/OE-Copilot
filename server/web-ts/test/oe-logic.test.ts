@@ -13,6 +13,7 @@ import {
   etichettaSync,
   eventiPerGriglia,
   eventoPerGriglia,
+  infoApp,
   filtraAziende,
   inAlto,
   spezzaAl,
@@ -545,5 +546,23 @@ describe("impostazioni del dispositivo", () => {
   it("cambiaSpenti accende, spegne e lascia com'è", () => {
     const cals = ["a", "b", "c"].map((id) => ({ id, account: id, label: id, color: "", enabled: true }));
     expect(cambiaSpenti(cals, ["a", "z"], (c) => (c.id === "a" ? true : c.id === "c" ? false : undefined))).toEqual(["c", "z"]);
+  });
+});
+
+describe("dentro l'app", () => {
+  it("nel browser non c'è niente: null", () => {
+    expect(infoApp({})).toBeNull();
+    expect(infoApp({ __OE_ORIGINE__: "https://oe.prova.test" })).toBeNull();
+  });
+  it("l'app dà l'indirizzo del sito e quello della pagina di avvio: host e link per cambiare server", () => {
+    expect(infoApp({ __OE_ORIGINE__: "https://oe.prova.test:8443", __OE_AVVIO__: "http://tauri.localhost/index.html" })).toEqual({
+      host: "oe.prova.test:8443",
+      cambiaServer: "http://tauri.localhost/index.html#server",
+    });
+  });
+  it("valori che non sono indirizzi: null", () => {
+    expect(infoApp({ __OE_ORIGINE__: 5, __OE_AVVIO__: "http://tauri.localhost/" })).toBeNull();
+    expect(infoApp({ __OE_ORIGINE__: "non un indirizzo", __OE_AVVIO__: "http://tauri.localhost/" })).toBeNull();
+    expect(infoApp({ __OE_ORIGINE__: "https://oe.prova.test", __OE_AVVIO__: "" })).toBeNull();
   });
 });

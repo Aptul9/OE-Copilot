@@ -1,11 +1,14 @@
 "use client";
 
+import { LogOutIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import type { Modo2fa } from "@/lib/config";
-import { dataEvento, fmtRange } from "@/lib/oe/logic";
+import { esci } from "@/lib/esci";
+import { dataEvento, fmtRange, infoApp } from "@/lib/oe/logic";
 import type { TemaConfig } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
@@ -95,12 +98,39 @@ export function DialogoImpostazioni({ aperto, onChiudi, accesso2fa = "off" }: Pr
             <ImpostazioniCondivisione />
           </div>
           <ImpostazioniPromemoria />
+          <Account />
         </div>
         <DialogFooter>
           <Button onClick={onChiudi}>Fine</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** L'uscita dall'account e, dentro l'app per Windows e Android, il server: *Cambia server* porta alla pagina di avvio dell'app, dove si scrive l'indirizzo. */
+function Account() {
+  // l'app lo sa solo nel browser dell'app: letto dopo il primo disegno, così il server e il browser disegnano la stessa cosa
+  const [app, setApp] = useState<ReturnType<typeof infoApp>>(null);
+  useEffect(() => setApp(infoApp(window as never)), []);
+  return (
+    <section className="border-t pt-4 md:col-span-2">
+      <h3 className="mb-2 font-semibold">Account</h3>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        {app && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Server</span>
+            <b id="cfg-server">{app.host}</b>
+            <a id="cfg-server-cambia" href={app.cambiaServer} className={buttonVariants({ variant: "outline", size: "sm" })}>
+              Cambia server
+            </a>
+          </div>
+        )}
+        <Button id="cfg-esci" variant="outline" size="sm" onClick={esci}>
+          <LogOutIcon /> Esci dall&apos;account
+        </Button>
+      </div>
+    </section>
   );
 }
 

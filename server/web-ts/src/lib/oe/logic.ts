@@ -446,6 +446,23 @@ export function testoDatiVecchi(quando: string | null | undefined, motivo: strin
   return ora ? `${cosa}. Dati aggiornati alle ${ora}.` : `${cosa}.`;
 }
 
+// ---- Dentro l'app -----------------------------------------------------------------
+/**
+ * L'app per Windows e Android (app/) mette nella pagina l'indirizzo del sito e quello della sua pagina di avvio, dove si cambia il server
+ * (window.__OE_ORIGINE__ e __OE_AVVIO__). Nel browser non ci sono: null.
+ */
+export function infoApp(w: { __OE_ORIGINE__?: unknown; __OE_AVVIO__?: unknown }): { host: string; cambiaServer: string } | null {
+  const { __OE_ORIGINE__: origine, __OE_AVVIO__: avvio } = w;
+  if (typeof origine !== "string" || typeof avvio !== "string") return null;
+  try {
+    const pagina = new URL(avvio);
+    pagina.hash = "server";
+    return { host: new URL(origine).host, cambiaServer: pagina.href };
+  } catch {
+    return null;
+  }
+}
+
 // ---- Impostazioni del dispositivo ------------------------------------------------
 /**
  * Le voci di config che restano nel dispositivo (localStorage della pagina): aspetto, vista e calendari accesi. Il resto (nomi,

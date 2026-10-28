@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { Modo2fa } from "@/lib/config";
+import { esci } from "@/lib/esci";
 import { api } from "@/lib/oe/api";
 import { vistaPerSchermo } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
@@ -121,13 +122,6 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
     await api("delete_local_event", uid);
     await oe.aggiornaCalendari();
     oe.ricarica();
-  };
-  const esci = () => {
-    fetch("/api/auth/sign-out", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-      .catch(() => {})
-      .finally(() => {
-        window.location.href = "/login";
-      });
   };
   const vaiA = (d: Date) => {
     setSezione("calendario");

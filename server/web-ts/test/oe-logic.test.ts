@@ -214,6 +214,19 @@ describe("eventi per la griglia", () => {
     expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "  bandpey " }).map((e) => e.id)).toEqual(["4"]);
     expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "zzzz" })).toEqual([]);
   });
+  it("senzaTuttoIlGiorno toglie gli eventi di tutto il giorno, non quelli Occupato né quelli con l'orario", () => {
+    const eventi = [
+      ev({ id: "1" }),
+      ev({ id: "2", allDay: true, start: "2026-10-12", end: "2026-10-13" }),
+      ev({ id: "3", allDay: true, occupato: true, start: "2026-10-12", end: "2026-10-13" }),
+    ];
+    const ids = (senzaTuttoIlGiorno?: boolean, ricerca = "") =>
+      eventiPerGriglia(eventi, { secondari: new Set(), ricerca, senzaTuttoIlGiorno }).map((e) => e.id);
+    expect(ids()).toEqual(["1", "2", "3"]);
+    expect(ids(false)).toEqual(["1", "2", "3"]);
+    expect(ids(true)).toEqual(["1", "3"]);
+    expect(ids(true, "zzzz")).toEqual([]);
+  });
   it("la ricerca guarda titolo, azienda, indirizzo, calendario, luogo e organizzatore", () => {
     const e = ev({ location: "Sala Verdi", organizer: "Mario Rossi", calendar: "a@x.it · Team" });
     for (const q of ["riunione", "roar", "a@x.it", "team", "verdi", "rossi"]) expect(corrisponde(e, q)).toBe(true);
@@ -525,8 +538,8 @@ describe("impostazioni del dispositivo", () => {
     expect(unisciConfig(server, mio).config).toEqual({ ...server, ...mio });
   });
   it("una modifica si divide tra dispositivo e server", () => {
-    const patch = { vista: "timeGridDay", colori_dinamici: true, gruppi_calendari: {} };
-    expect(soloDelDispositivo(patch)).toEqual({ vista: "timeGridDay", colori_dinamici: true });
+    const patch = { vista: "timeGridDay", colori_dinamici: true, nascondi_tutto_il_giorno: true, gruppi_calendari: {} };
+    expect(soloDelDispositivo(patch)).toEqual({ vista: "timeGridDay", colori_dinamici: true, nascondi_tutto_il_giorno: true });
     expect(soloDelServer(patch)).toEqual({ gruppi_calendari: {} });
   });
   it("cambiaSpenti accende, spegne e lascia com'è", () => {

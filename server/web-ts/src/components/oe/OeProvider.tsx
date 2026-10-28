@@ -434,7 +434,10 @@ export function OeProvider({ children, pubblico }: { children: React.ReactNode; 
   );
 
   const secondari = useMemo(() => secondariEffettivi(pers.interfaccia.calendari_secondari, config.secondari_scelti), [pers, config.secondari_scelti]);
-  const eventiGriglia = useMemo(() => eventiPerGriglia(eventi, { secondari, ricerca }), [eventi, secondari, ricerca]);
+  const eventiGriglia = useMemo(
+    () => eventiPerGriglia(eventi, { secondari, ricerca, senzaTuttoIlGiorno: config.nascondi_tutto_il_giorno === true }),
+    [eventi, secondari, ricerca, config.nascondi_tutto_il_giorno],
+  );
   const infoGiorni = useMemo(() => raccogliFestivi(eventi), [eventi]);
 
   // ---- impostazioni ----------------------------------------------------------------------

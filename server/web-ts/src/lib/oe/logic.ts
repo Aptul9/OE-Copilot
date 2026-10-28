@@ -298,7 +298,7 @@ export function gruppiAttivi(gruppi: GruppiCalendari, aziende: GruppoAzienda[]):
 }
 
 // ---- Eventi per la griglia ---------------------------------------------------
-export type OpzioniEventi = { secondari: Set<string>; ricerca: string };
+export type OpzioniEventi = { secondari: Set<string>; ricerca: string; senzaTuttoIlGiorno?: boolean };
 
 export const eventoVisibile = (e: Evento) => !e.nascosto && e.account !== "Festività";
 
@@ -339,8 +339,11 @@ export function eventoPerGriglia(e: Evento, secondari: Set<string>): EventoGrigl
   };
 }
 
-export function eventiPerGriglia(eventi: Evento[], { secondari, ricerca }: OpzioniEventi): EventoGriglia[] {
-  return eventi.filter((e) => eventoVisibile(e) && corrisponde(e, ricerca)).map((e) => eventoPerGriglia(e, secondari));
+/** Come `mostra_tutto_il_giorno` del server: un evento di tutto il giorno segnato "Occupato" resta, perché occupa il tempo. */
+const daTogliere = (e: Evento) => e.allDay && e.occupato !== true;
+
+export function eventiPerGriglia(eventi: Evento[], { secondari, ricerca, senzaTuttoIlGiorno }: OpzioniEventi): EventoGriglia[] {
+  return eventi.filter((e) => eventoVisibile(e) && !(senzaTuttoIlGiorno && daTogliere(e)) && corrisponde(e, ricerca)).map((e) => eventoPerGriglia(e, secondari));
 }
 
 // ---- Colori dinamici ------------------------------------------------------------
@@ -448,7 +451,7 @@ export function testoDatiVecchi(quando: string | null | undefined, motivo: strin
  * Le voci di config che restano nel dispositivo (localStorage della pagina): aspetto, vista e calendari accesi. Il resto (nomi,
  * gruppi, link ICS, promemoria) sta sul server, uguale per tutti. I calendari spenti salvati sul server restano quelli dei link condivisi.
  */
-export const VOCI_DEL_DISPOSITIVO: readonly string[] = ["theme", "zoom_calendario", "colori_dinamici", "vista", "secondari_scelti", "reminder_poll_seconds", "disabled_calendars"];
+export const VOCI_DEL_DISPOSITIVO: readonly string[] = ["theme", "zoom_calendario", "colori_dinamici", "nascondi_tutto_il_giorno", "vista", "secondari_scelti", "reminder_poll_seconds", "disabled_calendars"];
 
 const scegli = (c: Partial<Config>, delDispositivo: boolean): Partial<Config> =>
   Object.fromEntries(Object.entries(c).filter(([k]) => VOCI_DEL_DISPOSITIVO.includes(k) === delDispositivo));

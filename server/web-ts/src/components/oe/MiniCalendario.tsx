@@ -3,6 +3,7 @@
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { chiaveGiorno } from "@/lib/oe/logic";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useOe } from "./OeProvider";
 
@@ -13,7 +14,7 @@ const stesso = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.ge
 
 /** Il mese in piccolo: segue il periodo del calendario grande, e un clic su un giorno ci porta lì. */
 export function MiniCalendario({ onVaiA }: { onVaiA: (d: Date) => void }) {
-  const { periodo, infoGiorni } = useOe();
+  const { periodo, infoGiorni, pubblico, config, salvaConfig } = useOe();
   const [mese, setMese] = useState<Date | null>(null);
 
   // al primo periodo il mese è quello mostrato; poi lo cambiano le frecce (o un salto del calendario grande)
@@ -76,6 +77,12 @@ export function MiniCalendario({ onVaiA }: { onVaiA: (d: Date) => void }) {
           );
         })}
       </div>
+      {!pubblico && (
+        <label className="mt-1.5 flex min-h-9 items-center justify-between gap-2 rounded-md text-[12.5px] text-muted-foreground">
+          Eventi di tutto il giorno
+          <Switch id="minical-tutto-il-giorno" checked={config.nascondi_tutto_il_giorno !== true} onCheckedChange={(v) => void salvaConfig({ nascondi_tutto_il_giorno: !v })} />
+        </label>
+      )}
     </div>
   );
 }

@@ -215,17 +215,22 @@ describe("eventi per la griglia", () => {
     expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "  bandpey " }).map((e) => e.id)).toEqual(["4"]);
     expect(eventiPerGriglia(eventi, { secondari: new Set(), ricerca: "zzzz" })).toEqual([]);
   });
-  it("senzaTuttoIlGiorno toglie gli eventi di tutto il giorno, non quelli Occupato né quelli con l'orario", () => {
+  it("senzaTuttoIlGiorno toglie i giorni interi (anche Occupato) e gli eventi che durano un giorno o più, non le riunioni con l'orario", () => {
     const eventi = [
-      ev({ id: "1" }),
-      ev({ id: "2", allDay: true, start: "2026-10-12", end: "2026-10-13" }),
-      ev({ id: "3", allDay: true, occupato: true, start: "2026-10-12", end: "2026-10-13" }),
+      ev({ id: "riunione" }),
+      ev({ id: "intero", allDay: true, start: "2026-10-12", end: "2026-10-13" }),
+      ev({ id: "intero-occupato", allDay: true, occupato: true, start: "2026-10-12", end: "2026-10-13" }),
+      ev({ id: "blocco-di-un-mese", start: "2026-10-19T14:45:00", end: "2026-11-30T09:20:00" }),
+      ev({ id: "un-giorno-con-orario", start: "2026-10-12T00:00:00", end: "2026-10-13T00:00:00" }),
+      ev({ id: "quasi-un-giorno", start: "2026-10-12T00:00:00", end: "2026-10-12T23:59:00" }),
+      ev({ id: "riunione-lunga", start: "2026-10-29T17:00:00", end: "2026-10-29T21:30:00", occupato: true }),
     ];
     const ids = (senzaTuttoIlGiorno?: boolean, ricerca = "") =>
       eventiPerGriglia(eventi, { secondari: new Set(), ricerca, senzaTuttoIlGiorno }).map((e) => e.id);
-    expect(ids()).toEqual(["1", "2", "3"]);
-    expect(ids(false)).toEqual(["1", "2", "3"]);
-    expect(ids(true)).toEqual(["1", "3"]);
+    const tutti = ["riunione", "intero", "intero-occupato", "blocco-di-un-mese", "un-giorno-con-orario", "quasi-un-giorno", "riunione-lunga"];
+    expect(ids()).toEqual(tutti);
+    expect(ids(false)).toEqual(tutti);
+    expect(ids(true)).toEqual(["riunione", "quasi-un-giorno", "riunione-lunga"]);
     expect(ids(true, "zzzz")).toEqual([]);
   });
   it("la ricerca guarda titolo, azienda, indirizzo, calendario, luogo e organizzatore", () => {

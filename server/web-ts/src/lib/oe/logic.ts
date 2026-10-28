@@ -339,8 +339,12 @@ export function eventoPerGriglia(e: Evento, secondari: Set<string>): EventoGrigl
   };
 }
 
-/** Come `mostra_tutto_il_giorno` del server: un evento di tutto il giorno segnato "Occupato" resta, perché occupa il tempo. */
-const daTogliere = (e: Evento) => e.allDay && e.occupato !== true;
+/**
+ * Cosa toglie l'interruttore "Eventi di tutto il giorno": i giorni interi, anche segnati "Occupato" (sono quelli che restano in cima alle
+ * colonne quando il server mostra solo questi), e gli eventi con l'orario che durano un giorno o più, come un blocco di un mese. Le riunioni
+ * con l'orario restano, anche se lunghe e messe in cima (inAlto): sono riunioni.
+ */
+const daTogliere = (e: Evento) => e.allDay || new Date(e.end).getTime() - new Date(e.start).getTime() >= 86400000;
 
 export function eventiPerGriglia(eventi: Evento[], { secondari, ricerca, senzaTuttoIlGiorno }: OpzioniEventi): EventoGriglia[] {
   return eventi.filter((e) => eventoVisibile(e) && !(senzaTuttoIlGiorno && daTogliere(e)) && corrisponde(e, ricerca)).map((e) => eventoPerGriglia(e, secondari));

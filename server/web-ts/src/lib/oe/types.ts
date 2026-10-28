@@ -76,7 +76,7 @@ export type Config = {
   zoom_calendario?: number;
   /** Colori scelti sulla pagina che si guarda (coloriDinamici in logic.ts) al posto di quello fisso dell'azienda. */
   colori_dinamici?: boolean;
-  /** Toglie dalla griglia gli eventi di tutto il giorno, tranne quelli "Occupato" (eventiPerGriglia in logic.ts). */
+  /** Toglie dalla griglia i giorni interi e gli eventi che durano un giorno o più (daTogliere in logic.ts). */
   nascondi_tutto_il_giorno?: boolean;
   vista?: string;
   gruppi_calendari?: GruppiCalendari;

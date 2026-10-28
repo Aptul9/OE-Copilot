@@ -192,6 +192,7 @@ services:
     environment:
       - UI_HOST=${UI_HOST:-}
       - MEET_HOST=${MEET_HOST:-}
+      - SERVIZI_HOST=${SERVIZI_HOST:-}
     depends_on:
       gateway:
         condition: service_healthy

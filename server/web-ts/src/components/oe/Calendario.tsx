@@ -1,7 +1,7 @@
 "use client";
 
 import itLocale from "@fullcalendar/core/locales/it";
-import type { CalendarApi, DatesSetArg, DayHeaderContentArg, EventClickArg, EventContentArg, CalendarOptions } from "@fullcalendar/core";
+import type { CalendarApi, DateSelectArg, DateSpanApi, DatesSetArg, DayHeaderContentArg, EventClickArg, EventContentArg, CalendarOptions } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
@@ -65,13 +65,44 @@ export type ComandiCalendario = {
   dopo: () => void;
   vaiA: (d: Date) => void;
   cambiaVista: (v: string) => void;
+  /** Toglie lo spazio scelto sulla griglia (la creazione rapida si è chiusa). */
+  deseleziona: () => void;
 };
+
+/** Uno spazio scelto sulla griglia, per un evento nuovo: x e y sono il punto del clic. */
+export type Selezione = { inizio: Date; fine: Date; tuttoIlGiorno: boolean; x: number; y: number };
 
 type Props = {
   vistaIniziale: string;
   onDatesSet: (info: { start: Date; end: Date; tipo: string; titolo: string }) => void;
   onEventClick: (ev: Evento, titolo: string, inizio: Date | null, fine: Date | null, x: number, y: number) => void;
+  /** Clic (o trascinamento in verticale) su uno spazio libero: come in Outlook, apre la creazione di un evento lì. */
+  onSeleziona?: (s: Selezione) => void;
 };
+
+/** Uno spazio si sceglie dentro un giorno solo: il trascinamento in orizzontale è lo scorrimento dei giorni (useScorrimento). */
+const dentroUnGiorno = (s: DateSpanApi) => s.allDay || chiaveGiorno(s.start) === chiaveGiorno(new Date(s.end.getTime() - 1));
+
+/** Il riquadro da mezz'ora sotto il mouse, come in Outlook: colonna del giorno per riga dell'orario, tagliato alla parte visibile della
+ * griglia. Null fuori dalla griglia o sopra una riunione. */
+function cellaSotto(radice: HTMLElement, x: number, y: number): { left: number; top: number; width: number; height: number } | null {
+  const sotto = document.elementsFromPoint(x, y);
+  if (sotto.some((e) => e.closest(".fc-event"))) return null;
+  const col = sotto.find((e) => e.matches(".fc-timegrid-col[data-date]"));
+  const riga = sotto.find((e) => e.matches(".fc-timegrid-slot-lane[data-time]"));
+  const giorni = radice.querySelector(".fc-timegrid-cols");
+  const scorre = radice.querySelector(".fc-scroller-liquid-absolute");
+  if (!col || !riga || !giorni || !scorre) return null;
+  const c = col.getBoundingClientRect();
+  const r = riga.getBoundingClientRect();
+  const g = giorni.getBoundingClientRect();
+  const s = scorre.getBoundingClientRect();
+  const left = Math.max(c.left, g.left);
+  const right = Math.min(c.right, g.right, s.left + scorre.clientWidth);
+  const top = Math.max(r.top, s.top);
+  const bottom = Math.min(r.bottom, s.top + scorre.clientHeight);
+  return right > left && bottom > top ? { left: left + 1, top: top + 1, width: right - left - 2, height: bottom - top - 1 } : null;
+}
 
 /** Orario della riga in cima alla parte visibile della griglia, per rimettersi lì dopo un ridisegno. */
 function oraInCima(radice: HTMLElement | null): string | null {
@@ -90,7 +121,7 @@ function oraInCima(radice: HTMLElement | null): string | null {
   return migliore;
 }
 
-export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendario({ vistaIniziale, onDatesSet, onEventClick }, ref) {
+export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendario({ vistaIniziale, onDatesSet, onEventClick, onSeleziona }, ref) {
   const { eventiGriglia, infoGiorni, pers, zoom, periodo, pubblico } = useOe();
   const fc = useRef<FullCalendar>(null);
   const radice = useRef<HTMLDivElement>(null);
@@ -110,7 +141,52 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
     },
     vaiA: (d) => api()?.gotoDate(d),
     cambiaVista: (v) => api()?.changeView(aFc(v)),
+    deseleziona: () => api()?.unselect(),
   }));
+
+  // Il riquadro sotto il mouse nelle viste a colonne: un elemento solo, spostato a ogni movimento senza ridisegnare il calendario.
+  // Non col dito (niente passaggio) e non mentre si trascina o si scorre.
+  const cella = useRef<HTMLDivElement>(null);
+  const crea = !pubblico && !!onSeleziona;
+  useEffect(() => {
+    const el = radice.current;
+    const box = cella.current;
+    if (!el || !box || !crea || !tipo.startsWith("timeGrid")) return;
+    const nascondi = () => (box.style.display = "none");
+    const muovi = (e: PointerEvent) => {
+      const r = e.pointerType === "mouse" && !e.buttons && !el.dataset.trascina ? cellaSotto(el, e.clientX, e.clientY) : null;
+      if (!r) return nascondi();
+      Object.assign(box.style, { display: "block", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    };
+    el.addEventListener("pointermove", muovi);
+    el.addEventListener("pointerleave", nascondi);
+    el.addEventListener("pointerdown", nascondi);
+    el.addEventListener("scroll", nascondi, true);
+    el.addEventListener("wheel", nascondi, { passive: true });
+    return () => {
+      nascondi();
+      el.removeEventListener("pointermove", muovi);
+      el.removeEventListener("pointerleave", nascondi);
+      el.removeEventListener("pointerdown", nascondi);
+      el.removeEventListener("scroll", nascondi, true);
+      el.removeEventListener("wheel", nascondi);
+    };
+  }, [crea, tipo]);
+
+  // dove è partito il clic: uno spostamento soprattutto in orizzontale è lo scorrimento dei giorni, non uno spazio scelto
+  const partenza = useRef<{ x: number; y: number } | null>(null);
+  const select = useCallback(
+    (s: DateSelectArg) => {
+      const e = s.jsEvent;
+      const p = partenza.current;
+      if (!e || !onSeleziona || (p && Math.abs(e.clientX - p.x) >= 8 && Math.abs(e.clientX - p.x) > Math.abs(e.clientY - p.y))) {
+        s.view.calendar.unselect();
+        return;
+      }
+      onSeleziona({ inizio: s.start, fine: s.end, tuttoIlGiorno: s.allDay, x: e.clientX, y: e.clientY });
+    },
+    [onSeleziona],
+  );
 
   useScorrimento(radice, () => {
     const s = SCORRE[tipoCorrente.current];
@@ -265,7 +341,13 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   );
 
   return (
-    <div ref={radice} className={cn("calendario h-full", SCORRE[tipo] && "scorre", tipo === "timeGridWeek" && "vista-sett")} style={{ ["--slot-h" as string]: `${zoom}px` }}>
+    <div
+      ref={radice}
+      className={cn("calendario h-full", SCORRE[tipo] && "scorre", tipo === "timeGridWeek" && "vista-sett", crea && "crea")}
+      style={{ ["--slot-h" as string]: `${zoom}px` }}
+      onPointerDownCapture={(e) => (partenza.current = { x: e.clientX, y: e.clientY })}
+    >
+      <div ref={cella} className="cella-sotto" aria-hidden />
       <FullCalendar
         ref={fc}
         plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -298,6 +380,12 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
         headerToolbar={false}
         events={eventi}
         eventClick={eventClick}
+        // spazio libero: un clic sceglie la mezz'ora, trascinando in verticale se ne prende di più; lo toglie la creazione rapida quando si chiude
+        selectable={crea}
+        selectMirror
+        unselectAuto={false}
+        selectAllow={dentroUnGiorno}
+        select={select}
         eventContent={eventContent}
         datesSet={datesSet}
         dayHeaderClassNames={classiIntestazione}

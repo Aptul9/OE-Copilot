@@ -172,3 +172,16 @@
 /* mentre si trascina la colonna dei calendari: niente passaggi del mouse e selezioni sul resto della pagina, e il puntatore resta quello del bordo */
 body[data-trascina-pannello] { cursor: col-resize; user-select: none; }
 body[data-trascina-pannello] main { pointer-events: none; }
+
+/* Creazione dalla griglia (Calendario.tsx), come in Outlook: il riquadro da mezz'ora sotto il mouse è pieno del colore del tema, e lo
+   spazio scelto con il clic resta segnato finché la creazione rapida è aperta. Il riquadro è fisso (coordinate della finestra) e non
+   prende il mouse: il clic arriva alla griglia di FullCalendar. */
+.calendario .cella-sotto {
+  display: none; position: fixed; z-index: 3; pointer-events: none;
+  background: var(--primary); border-radius: 2px; opacity: .9;
+}
+.calendario.crea .fc-timegrid-body, .calendario.crea .fc-daygrid-day { cursor: pointer; }
+.calendario .fc .fc-highlight { background: color-mix(in oklch, var(--primary) 22%, transparent); }
+.calendario .fc .fc-event-mirror { background: var(--primary); border-color: var(--primary); }
+.calendario .fc .fc-event-mirror .ev-meta, .calendario .fc .fc-event-mirror .ev-meta-text,
+.calendario .fc .fc-event-mirror .ev-title, .calendario .fc .fc-event-mirror .fc-event-main { color: var(--primary-foreground); }

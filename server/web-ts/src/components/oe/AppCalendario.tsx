@@ -11,7 +11,8 @@ import { vistaPerSchermo } from "@/lib/oe/logic";
 import type { Evento } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
 import { BarraComandi } from "./BarraComandi";
-import { Calendario, VISTE_VALIDE, type ComandiCalendario } from "./Calendario";
+import { Calendario, VISTE_VALIDE, type ComandiCalendario, type Selezione } from "./Calendario";
+import { CreazioneRapida, type Bozza } from "./CreazioneRapida";
 import { DialogoCalendari } from "./DialogoCalendari";
 import { DialogoImpostazioni } from "./DialogoImpostazioni";
 import { DialogoNuovoEvento } from "./DialogoNuovoEvento";
@@ -116,6 +117,23 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
   );
   const chiudiScheda = useCallback(() => setScheda(null), []);
 
+  // clic su uno spazio libero della griglia: la creazione rapida lì; chiusa, lo spazio scelto si toglie
+  const [selezione, setSelezione] = useState<Selezione | null>(null);
+  const [bozza, setBozza] = useState<Bozza | null>(null);
+  const onSeleziona = useCallback((s: Selezione) => {
+    setScheda(null);
+    setSelezione(s);
+  }, []);
+  const chiudiSelezione = useCallback(() => {
+    setSelezione(null);
+    comandi.current?.deseleziona();
+  }, []);
+  const altreOpzioni = (b: Bozza) => {
+    chiudiSelezione();
+    setBozza(b);
+    setDialogo("evento");
+  };
+
   const elimina = async (evento: Evento, uid: string | null) => {
     setScheda(null);
     if (!uid) return oe.eliminaEvento(evento);
@@ -135,7 +153,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
     <div className="flex flex-col gap-4">
       {!pub && (
         <div className="px-3">
-          <Button id="btn-new-event" className="w-full" onClick={() => { setMenu(false); setDialogo("evento"); }}>
+          <Button id="btn-new-event" className="w-full" onClick={() => { setMenu(false); setBozza(null); setDialogo("evento"); }}>
             <PlusIcon /> Nuovo evento
           </Button>
         </div>
@@ -276,7 +294,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
           <section id="view-calendar" className={cn("surface min-h-0 flex-1 overflow-hidden rounded-lg border bg-card p-1.5 shadow-sm", sezione !== "calendario" && "hidden")}>
             <div id="calendar" className="h-full">
               {oe.pronta ? (
-                <Calendario ref={comandi} vistaIniziale={vistaIniziale} onDatesSet={onDatesSet} onEventClick={onEventClick} />
+                <Calendario ref={comandi} vistaIniziale={vistaIniziale} onDatesSet={onDatesSet} onEventClick={onEventClick} onSeleziona={pub ? undefined : onSeleziona} />
               ) : (
                 <div className="grid h-full place-items-center text-sm text-muted-foreground">Caricamento…</div>
               )}
@@ -287,6 +305,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
       </div>
 
       {!pub && <SchedaEvento scheda={scheda} senzaTeams={senzaTeams} onChiudi={chiudiScheda} onElimina={(evento, uid) => void elimina(evento, uid)} />}
+      {!pub && <CreazioneRapida selezione={selezione} onChiudi={chiudiSelezione} onAltreOpzioni={altreOpzioni} />}
 
       <Sheet open={menu} onOpenChange={setMenu}>
         <SheetContent side="left" className="w-[19rem] overflow-y-auto p-0">
@@ -304,7 +323,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
       {!pub && (
         <>
           <DialogoCalendari aperto={dialogo === "calendari"} onChiudi={() => setDialogo(null)} />
-          <DialogoNuovoEvento aperto={dialogo === "evento"} onChiudi={() => setDialogo(null)} />
+          <DialogoNuovoEvento aperto={dialogo === "evento"} onChiudi={() => setDialogo(null)} iniziale={bozza} />
           <DialogoImpostazioni aperto={dialogo === "impostazioni"} onChiudi={() => setDialogo(null)} accesso2fa={accesso2fa} />
         </>
       )}

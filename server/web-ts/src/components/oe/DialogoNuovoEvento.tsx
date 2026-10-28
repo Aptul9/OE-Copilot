@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/oe/api";
 import { chiaveGiorno, daDatetimeLocal, perDatetimeLocal, spostaGiorni } from "@/lib/oe/logic";
+import type { Bozza } from "./CreazioneRapida";
 import { useOe } from "./OeProvider";
 
-type Props = { aperto: boolean; onChiudi: () => void };
+/** `iniziale`: quello che arriva dalla creazione rapida (Altre opzioni), al posto dell'ora tonda successiva. */
+type Props = { aperto: boolean; onChiudi: () => void; iniziale?: Bozza | null };
 
 /** Un evento tuo, nel calendario "Altro": sta solo sul server. */
-export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
+export function DialogoNuovoEvento({ aperto, onChiudi, iniziale }: Props) {
   const { aggiornaCalendari, ricarica } = useOe();
   const [titolo, setTitolo] = useState("");
   const [tutto, setTutto] = useState(false);
@@ -26,19 +28,29 @@ export function DialogoNuovoEvento({ aperto, onChiudi }: Props) {
 
   useEffect(() => {
     if (!aperto) return;
+    setLuogo("");
+    setNote("");
+    setEsito("");
+    if (iniziale) {
+      // un giorno intero: il campo mostra l'ultimo giorno, la selezione ha la fine esclusiva
+      const t = iniziale.tuttoIlGiorno;
+      setTitolo(iniziale.titolo);
+      setTutto(t);
+      setBlocca(iniziale.blocca);
+      setInizio(t ? chiaveGiorno(iniziale.inizio) : perDatetimeLocal(iniziale.inizio));
+      setFine(t ? chiaveGiorno(spostaGiorni(iniziale.fine, -1)) : perDatetimeLocal(iniziale.fine));
+      return;
+    }
     // preimposta sull'ora tonda successiva, durata un'ora
     const ora = new Date();
     ora.setMinutes(0, 0, 0);
     ora.setHours(ora.getHours() + 1);
     setTitolo("");
-    setLuogo("");
-    setNote("");
     setTutto(false);
     setBlocca(true);
     setInizio(perDatetimeLocal(ora));
     setFine(perDatetimeLocal(new Date(ora.getTime() + 3600_000)));
-    setEsito("");
-  }, [aperto]);
+  }, [aperto, iniziale]);
 
   const salva = async () => {
     setEsito("Salvo…");

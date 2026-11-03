@@ -30,6 +30,8 @@ export const logOutlook = (c: Pick<ContestoRilevatore, "dati">): string => path.
 export const cartellaStato = (c: ContestoRilevatore): string => path.dirname(c.uscita);
 export const battitoJson = (c: ContestoRilevatore): string => path.join(cartellaStato(c), "battito.json");
 export const googleStato = (c: ContestoRilevatore): string => path.join(cartellaStato(c), "google-sync.json");
+export const chiaveOutlookBin = (c: ContestoRilevatore): string => path.join(cartellaStato(c), "chiave-outlook.bin");
+export const tokenOutlookJson = (c: ContestoRilevatore): string => path.join(cartellaStato(c), "token-outlook.json");
 
 /** Secondi dell'ora di adesso: l'orologio dà millisecondi, il rilevatore ragiona in secondi con la frazione come time.time(). */
 export const secondiAdesso = (c: ContestoRilevatore): number => c.orologio.adesso() / 1000;

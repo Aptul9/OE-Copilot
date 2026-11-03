@@ -40,7 +40,7 @@ Indice:
 - **telefono**: redroid con Outlook e i servizi Google, che scrivono nel calendario di Android.
 - **agent** (`server/agente-ts/`): serve quel calendario con un'API a chiave, solo su `127.0.0.1:3180`, ed espande i calendari da link (`POST /api/ics`).
 - **supervisore** (`server/supervisore/`): tiene aggiornato il telefono e scrive `stato/battito.json` e `stato/accessi.json`.
-- **gateway** e **caddy-ui** (4.7): accesso, pagina e logica dell'app, con lo stato in `ui-dati/gateway.db`.
+- **gateway** e **caddy-ui** (4.7): accesso, pagina e logica dell'app, con lo stato in `ui-dati/gateway.db`, più l'endpoint MCP `/mcp` per leggere e inviare le email delle caselle Outlook collegate sul telefono.
 - **schermo** (4.8): il telefono nel browser.
 
 Tutti stanno in `server/docker-compose.yml`, senza profili.

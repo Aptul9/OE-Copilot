@@ -1,7 +1,9 @@
+import crypto from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Soglie } from "../configurazione.js";
+import { scriviAtomico } from "../file.js";
 import {
   ErroreTipo,
   ErroreValore,
@@ -17,13 +19,120 @@ import {
 } from "../python.js";
 import { apriCopia } from "./db.js";
 import { coda } from "./log.js";
-import { battitoJson, dbOutlook, logOutlook, secondiAdesso, type ContestoRilevatore, type Verdetto } from "./tipi.js";
+import {
+  battitoJson,
+  chiaveOutlookBin,
+  dbOutlook,
+  logOutlook,
+  secondiAdesso,
+  tokenOutlookJson,
+  type ContestoRilevatore,
+  type Verdetto,
+} from "./tipi.js";
 
 const RIGA_CASELLA = /^\w\t(\S+)\t.*isSyncingForAccount: accountId=(\d+), hxAccountIsSyncing=\w+.*=> isSyncing=(true|false)/;
 const RIGA_PUSH = /^\w\t(\S+)\t.*FCM push sync is (available|unavailable)/;
 
 /** Mappa indirizzo -> verdetto: l'ordine è quello in cui il dict di Python vedeva le caselle. */
 export type Verdetti = Map<string, Verdetto>;
+
+export interface TokenPosta {
+  upn: string;
+  token: string;
+  exp: number;
+  endpoint_type: "outlook_rest" | "graph";
+  base_url: string;
+  scopes: string;
+}
+
+function decifraTokenHx(cifrato: string, chiave: Buffer): string | null {
+  try {
+    const b64 = cifrato.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (cifrato.length % 4)) % 4);
+    const raw = Buffer.from(b64, "base64");
+    if (raw.length < 33) return null;
+    const iv = raw.subarray(5, 17);
+    const tag = raw.subarray(raw.length - 16);
+    const ct = raw.subarray(17, raw.length - 16);
+    const dec = crypto.createDecipheriv("aes-256-gcm", chiave, iv);
+    dec.setAuthTag(tag);
+    return Buffer.concat([dec.update(ct), dec.final()]).toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+function classificaJwt(jwt: string, adessoS: number): TokenPosta | null {
+  const parti = jwt.split(".");
+  if (parti.length < 3 || !parti[1]) return null;
+  try {
+    const b64 = parti[1].replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (parti[1].length % 4)) % 4);
+    const claims = JSON.parse(Buffer.from(b64, "base64").toString("utf8")) as Record<string, unknown>;
+    const upn = String(claims.upn ?? claims.email ?? claims.unique_name ?? "").trim();
+    const exp = Number(claims.exp ?? 0);
+    if (!upn || !Number.isFinite(exp) || exp <= adessoS) return null;
+    const aud = String(claims.aud ?? "");
+    const scp = String(claims.scp ?? "");
+    if (aud.includes("outlook.office.com") || aud.includes("outlook.office365.com")) {
+      if (["Mail.Read", "Mail.ReadWrite", "EAS.AccessAsUser", "OWA.AccessAsUser"].some((s) => scp.includes(s))) {
+        return { upn, token: jwt, exp: Math.trunc(exp), endpoint_type: "outlook_rest", base_url: "https://outlook.office.com/api/v2.0", scopes: scp };
+      }
+    } else if (aud.includes("graph.microsoft.com") || aud === "00000003-0000-0000-c000-000000000000") {
+      if (scp.includes("Mail.Read") || scp.includes("Mail.ReadWrite")) {
+        return { upn, token: jwt, exp: Math.trunc(exp), endpoint_type: "graph", base_url: "https://graph.microsoft.com/v1.0", scopes: scp };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function aggiornaTokenPosta(
+  c: ContestoRilevatore,
+  db: { prepare: (sql: string) => { all: () => Record<string, unknown>[] } },
+): Promise<void> {
+  const percorsoChiave = chiaveOutlookBin(c);
+  if (!existsSync(percorsoChiave)) return;
+  let chiave: Buffer;
+  try {
+    chiave = await readFile(percorsoChiave);
+    if (chiave.length !== 32) return;
+  } catch {
+    return;
+  }
+  const adessoS = secondiAdesso(c);
+  const perAccount = new Map<string, TokenPosta>();
+  const aggiungi = (cifrato: unknown) => {
+    if (typeof cifrato !== "string" || !cifrato) return;
+    const jwt = decifraTokenHx(cifrato, chiave);
+    if (!jwt) return;
+    const info = classificaJwt(jwt, adessoS);
+    if (!info) return;
+    const k = info.upn.toLowerCase();
+    const prec = perAccount.get(k);
+    if (
+      !prec ||
+      (prec.endpoint_type === "graph" && info.endpoint_type === "outlook_rest") ||
+      (prec.endpoint_type === info.endpoint_type && info.exp > prec.exp)
+    ) {
+      perAccount.set(k, info);
+    }
+  };
+  try {
+    for (const r of db
+      .prepare("select token as t from tokenStore where token is not null and (resource like '%outlook%' or resource like '%graph%')")
+      .all()) {
+      aggiungi(r.t);
+    }
+    for (const r of db.prepare("select directToken as t from mailAccounts where directToken is not null").all()) {
+      aggiungi(r.t);
+    }
+    const payload = JSON.stringify({ generato: Math.trunc(adessoS), account: [...perAccount.values()] });
+    await scriviAtomico(tokenOutlookJson(c), payload);
+  } catch {
+    // La raccolta dei token per la posta non deve mai interrompere il rilevatore degli accessi.
+  }
+}
 
 /**
  * Caselle Microsoft, accesso: la bandierina needsReauth nel registro di Outlook. Si leggono solo l'indirizzo, l'identificativo
@@ -56,6 +165,7 @@ export async function accessiOutlook(c: ContestoRilevatore): Promise<Verdetti> {
       }
       for (const email of reauth.keys()) if (chiaro.includes(email)) reauth.set(email, true);
     }
+    await aggiornaTokenPosta(c, db);
     return new Map(
       [...reauth].map(([e, daRifare]) => [
         e,

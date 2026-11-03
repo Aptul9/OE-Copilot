@@ -81,5 +81,31 @@ for app in $SVEGLIE; do
 done
 
 versione=$(e dumpsys package "$OUTLOOK" | sed -n 's/^ *versionName=//p' | head -1 || true)
+# Chiave AES-256-GCM con cui Outlook cifra i token OAuth in acompliAcct.db (HxCoreSecureStringAES256Gcm nel keystore di Android).
+# Il supervisore gira come OUTLOOK_UID (non root) e non legge data/misc/keystore: gli si lascia la chiave di 32 byte in stato/chiave-outlook.bin.
+KS="$DIR/telefono/data/misc/keystore/persistent.sqlite"
+OUT_DIR="$DIR/telefono/data/data/$OUTLOOK"
+if [ -f "$KS" ] && [ -d "$OUT_DIR" ] && [ -d "$DIR/stato" ]; then
+    ouid=$(stat -c %u "$OUT_DIR" 2>/dev/null || echo "")
+    if [ -n "$ouid" ]; then
+        python3 - "$KS" "$DIR/stato/chiave-outlook.bin" "$ouid" <<'PY' || true
+import os, sqlite3, sys
+ks, dest, uid = sys.argv[1], sys.argv[2], int(sys.argv[3])
+c = sqlite3.connect(f'file:{ks}?mode=ro', uri=True)
+row = c.execute(
+    "SELECT b.blob FROM blobentry b JOIN keyentry k ON b.keyentryid = k.id "
+    "WHERE k.alias = 'HxCoreSecureStringAES256Gcm' AND b.subcomponent_type = 0"
+).fetchone()
+c.close()
+if row and len(row[0]) >= 45:
+    tmp = dest + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(row[0][13:45])
+    os.chown(tmp, uid, uid)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, dest)
+PY
+    fi
+fi
 echo "telefono pronto: fuso $(e getprop persist.sys.timezone), lingua $(e getprop persist.sys.locale)," \
      "schermo acceso=$(e settings get global stay_on_while_plugged_in), Outlook ${versione:-assente}"

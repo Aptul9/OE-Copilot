@@ -17,14 +17,23 @@ try {
   if (!/^\s*[+-]?\d+\s*$/.test(portaTesto)) throw new Error(`invalid literal for int() with base 10: ${pyRepr(portaTesto)}`);
   const porta = Number(portaTesto.trim());
   const cartellaDb = process.env.ANDROID_DB ?? "/android-calendario";
-  const ctx = contestoDi({ accessi: process.env.ACCESSI ?? "/stato/accessi.json", zona });
+  const accessiPath = process.env.ACCESSI ?? "/stato/accessi.json";
+  const ctx = contestoDi({ accessi: accessiPath, zona });
   // le fonti si leggono prima di controllare la chiave, come in Python: un fonti.json che manca ferma l'avvio con 1
   const fonti = caricaFonti(process.env.FONTI ?? "/app/fonti.json", cartellaDb, ctx);
   if (!chiave) {
     registro("ERROR", "API_KEY mancante: l'API resterebbe aperta a chiunque, non parto");
     process.exit(2);
   }
-  const { server } = creaServer({ chiave, fonti, battito: process.env.BATTITO ?? "/stato/battito.json", zona, registro });
+  const { server } = creaServer({
+    chiave,
+    fonti,
+    battito: process.env.BATTITO ?? "/stato/battito.json",
+    tokenPosta: process.env.TOKEN_POSTA ?? "/stato/token-outlook.json",
+    accessi: accessiPath,
+    zona,
+    registro,
+  });
   server.listen(porta, "0.0.0.0", () => registro("INFO", `agente in ascolto sulla porta ${porta}, fonti: ${pyRepr(fonti.map((f) => f.nome))}`));
   const ferma = () => {
     server.close(() => process.exit(0));

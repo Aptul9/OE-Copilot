@@ -23,6 +23,10 @@ export interface OpzioniAgente {
   battito: string;
   /** Il fuso locale: TZ, o Europe/Rome. */
   zona: string;
+  /** Token OAuth decifrati dal supervisore per l'MCP della posta (token-outlook.json). */
+  tokenPosta?: string;
+  /** Stato degli accessi scritto dal rilevatore (accessi.json). */
+  accessi?: string;
   /** Il testo di un calendario ICS da espandere (POST /api/ics): oltre questi byte la richiesta è rifiutata. */
   maxCorpo?: number;
   /** Letture ravvicinate dello stesso periodo: una sola (il telefono si aggiorna ogni 30 s). */
@@ -90,7 +94,15 @@ export class Agente {
 
   constructor(o: OpzioniAgente) {
     const adesso = o.adesso ?? Date.now;
-    this.o = { ...o, maxCorpo: o.maxCorpo ?? MAX_CORPO, cacheS: o.cacheS ?? CACHE_S, adesso, registro: o.registro ?? registroSuStderr(o.zona, adesso) };
+    this.o = {
+      ...o,
+      tokenPosta: o.tokenPosta ?? "/stato/token-outlook.json",
+      accessi: o.accessi ?? "/stato/accessi.json",
+      maxCorpo: o.maxCorpo ?? MAX_CORPO,
+      cacheS: o.cacheS ?? CACHE_S,
+      adesso,
+      registro: o.registro ?? registroSuStderr(o.zona, adesso),
+    };
   }
 
   /** Il segno di vita del servizio che aggiorna il telefono, o null se manca. "eta_s" dice da quanti secondi non passa: se cresce, l'app lo dice. */
@@ -245,6 +257,36 @@ export class Agente {
     const { percorso, query } = analizzaTarget(req.url ?? "");
     const q = parseQs(query);
     if (percorso === "/api/salute") return this.invia(req, res, 200, { fonti: this.fontiStato(), servizio: this.servizio() });
+    if (percorso === "/api/token-posta") {
+      let generato = 0;
+      let account: Record<string, unknown>[] = [];
+      try {
+        const raw = JSON.parse(leggiUtf8(this.o.tokenPosta)) as Record<string, unknown>;
+        if (typeof raw.generato === "number") generato = raw.generato;
+        if (Array.isArray(raw.account)) account = raw.account as Record<string, unknown>[];
+      } catch {
+        // Se il file non è ancora stato scritto dal supervisore, si risponde con elenco vuoto.
+      }
+      let caselleStato: Record<string, { stato?: string; msg?: string }> = {};
+      try {
+        const accRaw = JSON.parse(leggiUtf8(this.o.accessi)) as Record<string, unknown>;
+        if (accRaw.caselle && typeof accRaw.caselle === "object") {
+          caselleStato = accRaw.caselle as Record<string, { stato?: string; msg?: string }>;
+        }
+      } catch {
+        // Ignora assenza accessi.json
+      }
+      const arricchiti = account.map((a) => {
+        const upn = String(a.upn ?? "").toLowerCase();
+        const st = caselleStato[upn];
+        return {
+          ...a,
+          phone_status: st?.stato ?? "ok",
+          phone_msg: st?.msg ?? "",
+        };
+      });
+      return this.invia(req, res, 200, { generato, account: arricchiti, servizio: this.servizio() });
+    }
     if (percorso === "/api/calendari") {
       const caselle: Record<string, unknown>[] = [];
       for (const f of this.o.fonti) {

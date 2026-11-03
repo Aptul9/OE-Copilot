@@ -51,6 +51,9 @@ export const config = {
   get agenteChiave() {
     return (process.env.AGENTE_CHIAVE || "").trim();
   },
+  get mcpToken() {
+    return (process.env.MCP_TOKEN || process.env.AGENTE_CHIAVE || "").trim();
+  },
   get adminEmail() {
     return (process.env.ADMIN_EMAIL || "").trim().toLowerCase();
   },

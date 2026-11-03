@@ -333,6 +333,30 @@ Un link ICS per persona, `https://<UI_HOST>/condividi/<testo segreto>.ics`. L'al
 - **Le app.** La pagina di avvio porta al sito anche quando il server non risponde: se il sito non ha ancora una copia (mai aperto con questa versione) la finestra torna alla pagina di avvio, che riprova.
 - **Trappola: i dati restano nel dispositivo.** Gli eventi letti stanno in Cache Storage (`oe-1-dati`) finché non si esce dall'account (*Esci*), che li cancella.
 
+### 4.12 MCP per le email del telefono (`/mcp`)
+
+`https://<UI_HOST>/mcp` (Streamable HTTP, JSON-RPC `2025-06-18`) espone ai client AI tutte le caselle di posta Outlook collegate sul telefono virtuale, senza passare da registrazioni Azure o consensi amministratore.
+- **Autenticazione**: `Authorization: Bearer <MCP_TOKEN>` (se `MCP_TOKEN` è impostato nell'ambiente del gateway) oppure `Authorization: Bearer <API_KEY>`. Le richieste con intestazione `Origin` (provenienti da un browser) sono rifiutate con 403.
+- **Come raccoglie i token**: `prepara_telefono.sh` estrae in `stato/chiave-outlook.bin` (permessi `0600`, utente `OUTLOOK_UID`) la chiave AES-256-GCM (`HxCoreSecureStringAES256Gcm`) dal keystore di Android (`persistent.sqlite`). A ogni giro del rilevatore, `supervisore` decifra i token OAuth da `acompliAcct.db` (`tokenStore` e `mailAccounts.directToken`) e scrive `stato/token-outlook.json`, che l'agente serve al gateway su `GET /api/token-posta`.
+
+Registrazione in Claude Code:
+```bash
+claude mcp add --scope user --transport http oe-copilot-mail https://<UI_HOST>/mcp --header "Authorization: Bearer <API_KEY>"
+```
+
+| Tool | Cosa fa |
+|---|---|
+| `list_accounts` | Caselle Outlook attive sul telefono, scadenza del token e stato di sincronizzazione |
+| `list_folders` | Cartelle e sottocartelle della casella con conteggio messaggi totali e non letti |
+| `list_emails` | Messaggi di una cartella (`Inbox`, `SentItems`, `Drafts`, `Archive`, `DeletedItems`, cartella specifica o `all`), dal più recente, con filtri `query`, `from_address`, `unread_only`, `has_attachments`, `flagged_only`, `start_date`, `end_date` |
+| `read_email` | Singola email completa: `From`, `To`, `Cc`, `Bcc`, corpo HTML convertito in Markdown (tabelle e link SafeLinks inclusi) ed elenco allegati |
+| `read_thread` | Intero thread di conversazione (`thread_id` = `ConversationId` o qualsiasi `message_id` del thread) ordinato dal più vecchio al più recente, con elenco partecipanti, corpi Markdown e allegati |
+| `search_emails` | Ricerca full-text su tutte le cartelle (o una cartella scelta) con filtri per mittente, date, non lette e allegati |
+| `send_email` | Nuova email, risposta (`reply_to_id`), risposta a tutti (`reply_all`), inoltro (`forward_to_id`) o salvataggio in bozza (`save_as_draft`). Supporta HTML ricco (`is_html` o tag HTML nel `body`) anche nelle risposte, destinatari selettivi (`to`, `cc`, `replace_cc`, `exclude_recipients`) e allegati (`attachments`) |
+| `forward_email` | Inoltra un messaggio esistente mantenendo allegati originali e storico citato, con commento HTML/testo, `to`, `cc`, `bcc` e allegati aggiuntivi |
+| `get_attachment` | Scarica gli allegati di un messaggio: immagini restituite inline, file di testo come testo, binari come risorse incorporate, ed email/eventi allegati (`ItemAttachment`) espansi in Markdown |
+| `manage_email` | Esegue `mark_read`, `mark_unread`, `flag`, `unflag`, `archive`, `delete` o `move` (verso `destination_folder`) su uno o più `message_id` |
+
 ---
 
 ## 5. Prove dal PC: tunnel verso l'agente

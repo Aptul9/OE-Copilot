@@ -2,7 +2,7 @@
 // Usa i token di aggiornamento in tokens.json (OAuth2 con client_id di Outlook Mobile per Microsoft, master token aas_et/ o refresh_token per Google)
 // e rinnova da sé gli access token quando scadono, salvando su disco il nuovo refresh_token.
 
-import { allowed, renewShared, hasSharedPermissions, SharedRefreshExpired, type SharedAccount } from "./shared-account.ts";
+import { allowed, clientFor, renewShared, hasSharedPermissions, SharedRefreshExpired, type SharedAccount } from "./shared-account.ts";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -278,10 +278,14 @@ export class GestoreToken {
     const entry = this.dati.accounts[key];
     if (!entry?.shared || entry.provider !== "microsoft" || !entry.refresh_token) throw new ErroreAccessoScaduto("shared account unavailable");
     allowed(entry.shared, resource);
+    const stored = entry.client_id || OUTLOOK_CLIENT_ID;
+    const client = clientFor(entry.shared, resource, stored);
     const hit = entry.resourceTokens?.[resource];
     if (!force && hit && hit.expiresAt > this.adessoS() + 120) {
       const claims = claimsJwt(hit.token);
-      if (hasSharedPermissions(entry.shared, resource, hit.token) && claims.tid === entry.shared.tenantId && claims.oid === entry.shared.objectId && allowed(entry.shared, resource).includes(String(claims.aud).replace(/\/$/, "")) && Number(claims.exp) > this.adessoS() + 120) return hit.token;
+      // a token cached before its resource was asked as Teams (another app) is asked again
+      const sameApp = client === stored || claims.appid === client;
+      if (sameApp && hasSharedPermissions(entry.shared, resource, hit.token) && claims.tid === entry.shared.tenantId && claims.oid === entry.shared.objectId && allowed(entry.shared, resource).includes(String(claims.aud).replace(/\/$/, "")) && Number(claims.exp) > this.adessoS() + 120) return hit.token;
     }
     const refresh = entry.refresh_token;
     const identity = JSON.stringify(entry.shared);
@@ -289,7 +293,8 @@ export class GestoreToken {
       let recoveredSession: SessioneMicrosoft | undefined;
       let fresh;
       try {
-        fresh = await renewShared(entry.shared!, resource, refresh, entry.client_id || OUTLOOK_CLIENT_ID, this.fetchFn, this.adessoS());
+        // the family refresh token that comes back serves Outlook Mobile too: it is stored like any other
+        fresh = await renewShared(entry.shared!, resource, refresh, client, this.fetchFn, this.adessoS());
       } catch (error) {
         if (!(error instanceof SharedRefreshExpired) || entry.shared!.origin !== "outlook-spa") throw error;
         const session = leggiSessione(entry.sessione);

@@ -1,6 +1,6 @@
 # OE Copilot
 
-OE Copilot unisce in un calendario solo i calendari di tutti gli account, aziendali e personali, con un colore per azienda. Li legge un agente sul server, da un telefono Android virtuale con Outlook e i servizi Google: niente registrazione su Azure, niente consenso dell'amministratore. Il calendario si apre nel browser, dietro HTTPS e una pagina di accesso (4.7), o nelle app per Windows e Android (sezione 3). C'è anche una sezione Timesheet con i gestionali delle aziende.
+OE Copilot unisce in un calendario solo i calendari di tutti gli account, aziendali e personali, con un colore per azienda. Li legge un agente sul server, con le API di Outlook e di Google e gli accessi fatti dal sito: niente registrazione su Azure, niente consenso dell'amministratore. Il calendario si apre nel browser, dietro HTTPS e una pagina di accesso (4.7), o nelle app per Windows e Android (sezione 3). C'è anche una sezione Timesheet con i gestionali delle aziende.
 
 Indice:
 1. [Perché è fatto così](#1-perché-è-fatto-così)
@@ -52,39 +52,23 @@ Il client in `app/` (Tauri v2) è una finestra sul sito, con i promemoria scelti
 ### Messa in servizio per un altro server
 
 La prima installazione è a mano, poi aggiorna la Action del proprio repository:
-1. Host con `binder_linux` (4.1), `ssh` e `gh` sul PC, un nome per il sito sulla 443 (4.7).
-2. L'APK di Outlook nella release `apk`, con la sua riga in `server/apk/SHA256SUMS` (4.4).
-3. Codice in `/opt/oe-copilot` (4.2), utente `oecopilot` (4.6), cartelle `stato/` (4.5) e `ui-dati/` (4.7).
-4. `.env` con `UI_HOST` e `agent/fonti.json`, senza i quali `aggiorna_server.sh` si ferma.
-5. Gli otto secret (4.6), poi un push su `main` o `gh workflow run Server --repo <proprietario>/<repository> --ref main`.
-6. Login nelle app del telefono (4.4), caselle in `agent/fonti.json`, `sudo docker compose restart agent`. Il PIN se una casella lo impone (4.5).
+1. Host Linux con Docker (4.1), `ssh` e `gh` sul PC, un nome per il sito sulla 443 (4.7).
+2. Codice in `/opt/oe-copilot` (4.2), utente `oecopilot` (4.6), cartelle `stato/` (4.5) e `ui-dati/` (4.7).
+3. `.env` con `UI_HOST` e `agent/fonti.json`, senza i quali `aggiorna_server.sh` si ferma.
+4. I secret dell'ambiente `calendar` (4.6), poi un push su `main` o `gh workflow run calendar.yml --repo <proprietario>/<repository> --ref main`.
+5. Le caselle dal sito, *Account > Aggiungi account* (4.4).
 
 ### 4.1 Requisiti dell'host
 
-- Linux ARM64 o x86_64 con Docker, il plugin `compose`, `rsync` e `curl`, e 2-4 GB di RAM. L'immagine del telefono prende i servizi Google dell'architettura della VM; l'APK di Outlook deve essere della stessa ABI del telefono (`arm64-v8a` o `x86_64`, 4.4).
-- Kernel con il meta `linux-image-generic` (non `linux-virtual`, che hanno alcune VPS): solo così `linux-modules-extra`, dove sta `binder_linux`, segue gli aggiornamenti del kernel.
-- **Trappola: il telefono spegne il caricamento automatico dei moduli dell'host.** Il container è `privileged` e all'avvio Android scrive `/proc/sys/kernel/modprobe` vuoto, che non è per namespace: da lì il kernel della VM non carica più moduli da solo. Docker allora non riesce a pubblicare le porte di un container nuovo (`Unable to enable DNAT rule`, `Extension udp revision 0 not supported`). Si caricano al boot i moduli netfilter di Docker (`xt_nat`, `xt_tcpudp`, `xt_addrtype`, `xt_conntrack`, `xt_MASQUERADE`, `xt_comment`, `xt_multiport`, `xt_set`, `br_netfilter`, `nf_nat` in `/etc/modules-load.d/`) e un timer di systemd rimette `sysctl -w kernel.modprobe=/sbin/modprobe` ogni 5 minuti.
+- Linux ARM64 o x86_64 con Docker, il plugin `compose`, `rsync` e `curl`, e circa 512 MB di RAM per i tre servizi.
 - `sslh` da apt porta con sé `apache2`, che prende la porta 80: `apt-get install --no-install-recommends sslh`, o `apache2` va tolto.
-- Il fuso `Europe/Rome` è fisso nel gateway (`server/web-ts/src/lib/core/fuso.ts`), nell'agente (`TZ` nel Dockerfile) e sul telefono (`prepara_telefono.sh`): non c'è una variabile. La pagina e l'avviso dell'app mostrano gli orari nel fuso del dispositivo; il testo delle notifiche del browser, scritto dal server, resta in ora di Roma.
-- Il modulo del kernel `binder_linux`. Su alcuni kernel cloud manca, e serve `linux-modules-extra`.
-  ```bash
-  grep -E 'CONFIG_ANDROID_BINDER_IPC|CONFIG_ANDROID_BINDERFS' "/boot/config-$(uname -r)"
-  # devono essere =y o =m
-  ```
-
-Il modulo si carica all'avvio così:
-```bash
-echo binder_linux | sudo tee /etc/modules-load.d/oe-copilot-telefono.conf
-echo 'options binder_linux devices=binder,hwbinder,vndbinder' | sudo tee /etc/modprobe.d/oe-copilot-telefono.conf
-sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
-lsmod | grep binder_linux   # deve comparire
-```
+- Il fuso `Europe/Rome` è fisso nel gateway (`server/web-ts/src/lib/core/fuso.ts`) e nell'agente (`TZ` nel Dockerfile): non c'è una variabile. La pagina e l'avviso dell'app mostrano gli orari nel fuso del dispositivo; il testo delle notifiche del browser, scritto dal server, resta in ora di Roma.
 
 ### 4.2 Prendere il codice
 
 ```bash
 git clone https://github.com/<proprietario>/OE-Copilot.git
-sudo cp -a OE-Copilot/server /opt/oe-copilot
+sudo cp -a OE-Copilot/calendar/server /opt/oe-copilot
 cd /opt/oe-copilot
 ```
 `/opt/oe-copilot` non deve esistere, altrimenti `cp -a` crea `/opt/oe-copilot/server`.
@@ -108,64 +92,24 @@ La riga `API_KEY` serve solo a un'installazione a mano: con la Action la chiave 
    "account": "mario.rossi@azienda.example", "calendari": ["Calendar", "Beta"]}
 ]
 ```
-`account` è l'indirizzo come compare in Outlook, `nome` l'etichetta, `id` un identificativo univoco. Senza `calendari` si legge solo il calendario principale; con `calendari` quelli elencati per nome, **principale compreso**. Un calendario condiviso diventa un'azienda a sé con `azienda_per_cartella` e `aziende_inoltrate` ([Personalizzazione](#personalizzazione)).
+`account` è l'indirizzo della casella, `nome` l'etichetta, `id` un identificativo univoco. Le caselle aggiunte dal sito (4.4) non passano da qui. Senza `calendari` si legge solo il calendario principale; con `calendari` quelli elencati per nome, **principale compreso**. Un calendario condiviso diventa un'azienda a sé con `azienda_per_cartella` e `aziende_inoltrate` ([Personalizzazione](#personalizzazione)).
 
 ### 4.3 Avviare lo stack
 
 Solo per una prima installazione a mano. Su un server con la Action i secret non stanno in `.env` (4.7).
 ```bash
-sudo docker compose up -d telefono          # avvia 'telefono' (redroid)
-sudo docker exec oe-copilot-telefono getprop sys.boot_completed    # ripeti finché risponde 1: il telefono è avviato
-sudo docker compose up -d agent             # avvia 'agent', solo a telefono avviato
-sudo docker ps                   # devono essere "Up" entrambi
-```
-L'agente va avviato a telefono pronto: altrimenti Docker crea vuota, e di root, la cartella del calendario di Android. Se il telefono non parte, quasi sempre manca `binder_linux`.
-
-### 4.4 Configurare il telefono virtuale
-
-**Impostazioni e app** (fuso, lingua, schermo acceso, Outlook, permessi) le mette lo script, a ogni aggiornamento: un telefono ricreato torna a posto, salvo i login.
-```bash
-sudo /opt/oe-copilot/strumenti/prepara_telefono.sh
+sudo install -d -o 10001 -g 10001 -m 700 stato      # i token degli accessi (4.5)
+sudo docker compose up -d
+sudo docker ps                   # agent, gateway e caddy "Up"
 ```
 
-**L'APK di Outlook** sta nella release `apk`: supera il limite di GitHub per un file. Il nome porta l'ABI, `Outlook-<abi>-<versione>.apk`, e `prepara_telefono.sh` prende quello di `ro.product.cpu.abi` del telefono (`arm64-v8a` o `x86_64`). Si installa solo quello elencato in `apk/SHA256SUMS`, con l'impronta giusta. A mano:
-```bash
-gh release download apk --repo <proprietario>/OE-Copilot --pattern 'Outlook-*.apk' --dir /opt/oe-copilot/apk
-```
-Versione nuova: `gh release upload apk <file>`, la riga di `sha256sum <file>` al posto della vecchia in `server/apk/SHA256SUMS`, push. Un telefono che ha già Outlook non lo reinstalla; si aggiorna a mano, e i login restano:
-```bash
-sudo docker cp /opt/oe-copilot/apk/<file> oe-copilot-telefono:/data/local/tmp/app.apk
-sudo docker exec oe-copilot-telefono pm install -r /data/local/tmp/app.apk
-```
+### 4.4 Le caselle
 
-**Schermo.** La pagina `/telefono/` (4.8), o [scrcpy](https://github.com/Genymobile/scrcpy) dal PC con un tunnel SSH verso `127.0.0.1:5555` e il file `/opt/oe-copilot/telefono/PAUSA` creato per la durata: senza, il supervisore riporta Outlook davanti.
+Si aggiungono dal sito: finestra *Account*, *Aggiungi account*. Microsoft entra con un codice (Device Code, client di Outlook Mobile), Google con OAuth2 PKCE; password e MFA le digita l'utente. *Accedi di nuovo* compare solo quando un accesso è scaduto. Una casella in `agent/fonti.json` (4.2) si legge con lo stesso accesso, fatto dal sito per il suo indirizzo. Dei calendari di una casella arrivano quelli elencati in `calendari`, o il principale.
 
-**Login**, sullo schermo del telefono. Password e MFA le digita l'utente.
-1. **Caselle Microsoft**, in Outlook: per ogni casella *Impostazioni > Calendario > Sincronizza calendari*. È per account, e le caselle nuove partono spente. Dei calendari secondari arrivano solo quelli spuntati in Outlook.
-2. **Calendari Google**, se manca il link iCal segreto: *Impostazioni > Password e account > Aggiungi account > Google*, poi la spunta in *Calendari da sincronizzare* dell'app Calendario. Un dispositivo "non certificato" si registra su https://www.google.com/android/uncertified/.
-3. Le caselle in `agent/fonti.json`, poi `sudo docker compose restart agent`.
+### 4.5 I token degli accessi
 
-### 4.5 Il servizio di sincronizzazione
-
-Il servizio `supervisore` (`server/supervisore/`) parla col telefono con adb su `telefono:5555`. A ogni giro, circa ogni 35 secondi (`OGNI`, 30, più il lavoro):
-- forza la sincronizzazione di Outlook, e di Google ogni 4 giri (`GOOGLE_OGNI`);
-- riaccende lo schermo se nessuna pagina del telefono è aperta, e riporta Outlook sulla sua schermata principale;
-- scrive `stato/battito.json`, e ogni 2 giri (`ACCESSI_OGNI`) lancia il rilevatore (sezione 6);
-- ogni 10 giri (`TOCCO_OGNI`) tocca la barra di stato e rimanda il blocco; `TOCCO_OGNI=0` in `docker-compose.yml` lo spegne.
-
-Con un file `PAUSA` fresco (`telefono/PAUSA`, o `stato/schermo/PAUSA` della pagina del telefono) non porta Outlook davanti.
-
-Gira come l'utente di Outlook sul telefono, l'unico oltre a root che ne legge database e log: 10080, o `OUTLOOK_UID` in `.env`. Il numero lo assegna Android all'installazione e su un telefono nuovo può cambiare (sul telefono x86_64 è 10090, e il calendario è del gruppo 10020): si legge con `sudo stat -c %u /opt/oe-copilot/telefono/data/data/com.microsoft.office.outlook`. Con un numero sbagliato il rilevatore scrive `EACCES, utente 10080`. `stato/` deve essere suo, `stato/schermo` dell'utente 10001:
-```bash
-cd /opt/oe-copilot
-sudo chown 10080:10080 stato
-sudo install -d -o 10001 -g 10001 -m 755 stato/schermo       # solo se manca (di solito c'è già)
-docker compose up -d --build --no-deps supervisore
-docker inspect -f '{{.State.Health.Status}}' oe-copilot-supervisore       # healthy entro circa un minuto
-cat stato/battito.json; stat -c '%y' stato/accessi.json                    # battito ogni 35 secondi, accessi ogni 70
-```
-
-**PIN.** Lo impone il criterio di sicurezza di un'azienda, che blocca anche il telefono 15 minuti dopo l'ultimo input (il tocco lo rimanda). Non si toglie, altrimenti Outlook rimuove la casella. Si imposta con `sudo docker exec oe-copilot-telefono cmd lock_settings set-pin <PIN>`: le schermate del PIN escono nere nella pagina del telefono. Lo sblocco lo digita l'utente.
+L'agente tiene tutti gli accessi in `stato/tokens.json` (utente 10001, permessi `0600`, montato in `/stato`) e li rinnova da sé: refresh token di Microsoft (client `27922004-5251-4030-b22d-91ecd9a37ea4`) e token di Google. Il file è l'unica copia dei login: va nei backup (sezione 7) e non si ricrea a mano. Il telefono virtuale che li raccoglieva prima, con i servizi `telefono`, `supervisore` e `schermo`, è stato tolto (PR 132); sul server può restare la sua cartella `telefono/`, esclusa dagli aggiornamenti.
 
 Verifica dell'agente, dal server:
 ```bash
@@ -175,12 +119,11 @@ curl -s -H "Authorization: Bearer $(sudo docker exec oe-copilot-agent printenv A
 
 ### 4.6 Aggiornamento automatico
 
-La Action `.github/workflows/server.yml` parte a ogni push su `main` che tocca `server/` o il workflow, o con `gh workflow run Server --repo danfortu/OE-Copilot --ref main`. Dopo i *Controlli* (sezione 7), *Aggiorna il server*:
+La Action `.github/workflows/calendar.yml` (alla radice del repository `Aptul9/OE-Copilot`) parte a ogni push su `main` che tocca `calendar/server/` o il workflow, o con `gh workflow run calendar.yml --repo Aptul9/OE-Copilot --ref main`. Non ci sono controlli nella Action: prima del push, `scripts/check.sh calendar --docker` dalla radice del repository (sezione 7). *Aggiorna il server*:
 1. salva il codice in esecuzione in `/var/tmp/oe-copilot-prima.tgz`;
-2. scarica l'APK di Outlook e ne controlla l'impronta;
-3. copia `server/` con rsync, senza toccare `.env`, `agent/fonti.json`, `telefono/`, `stato/`, `ui-dati/` e `.versione`;
-4. lancia `strumenti/aggiorna_server.sh avvia <sha>` con i secret sullo standard input: telefono (solo se cambia la sua configurazione), `prepara_telefono.sh`, agente, supervisore, poi la prova di agente e battito. Se qualcosa fallisce rimette la versione di prima;
-5. avvia interfaccia (con `UI_HOST`) e schermo: un loro guasto rende rossa la Action, senza tornare indietro.
+2. copia `calendar/server/` con rsync, senza toccare `.env`, `agent/fonti.json`, `telefono/`, `stato/`, `ui-dati/` e `.versione`;
+3. lancia `strumenti/aggiorna_server.sh avvia <sha>` con i secret sullo standard input: agente, poi la sua prova. Se qualcosa fallisce rimette la versione di prima;
+4. avvia interfaccia (con `UI_HOST`): un suo guasto rende rossa la Action, senza tornare indietro.
 
 **Trappola: il Caddy.** `docker compose up` dà 0 anche con un container che si riavvia in continuazione, quindi lo script vuole 200 da `curl -k --resolve <UI_HOST>:4445:127.0.0.1 https://<UI_HOST>:4445/login` e `RestartCount` 0. Alla prima installazione fallisce finché Caddy non ha il certificato: si rilancia dopo qualche minuto. Il Caddyfile di prima si rimette così:
 ```bash
@@ -193,11 +136,11 @@ cd /opt/oe-copilot && tar -xzf /var/tmp/oe-copilot-prima.tgz ./caddy-ui && docke
 **Utente della Action**, una volta:
 ```bash
 sudo useradd -m -s /bin/bash -G docker oecopilot
-# il codice è dell'utente della Action; telefono/ resta di root, stato/ del 10080 (4.5), ui-dati/ del 10001 (4.7)
+# il codice è dell'utente della Action; stato/ e ui-dati/ del 10001 (4.5, 4.7)
 sudo chown oecopilot:oecopilot /opt/oe-copilot /opt/oe-copilot/.env
-cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-ts apk caddy-ui immagine-telefono schermo-web strumenti supervisore web-ts docker-compose.yml .env.esempio personalizzazione.esempio.json
+cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-ts caddy-ui strumenti web-ts docker-compose.yml .env.esempio personalizzazione.esempio.json
 ```
-La sua chiave pubblica va in `/home/oecopilot/.ssh/authorized_keys`. I secret del repository (`gh secret set <NOME> --repo <proprietario>/<repository>`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (da `ssh-keyscan -t ed25519 <server>`), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `API_KEY` e `BETTER_AUTH_SECRET` (4.7).
+La sua chiave pubblica va in `/home/oecopilot/.ssh/authorized_keys`. I secret dell'ambiente `calendar` del repository (`gh secret set <NOME> --repo <proprietario>/<repository> --env calendar`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (le chiavi dell'host, `217.76.49.98 ssh-ed25519 ...`), `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `BETTER_AUTH_SECRET` (4.7). `API_KEY` è un secret del repository, senza ambiente: lo usa anche il deploy del MCP.
 
 ### 4.7 L'interfaccia nel browser
 
@@ -217,7 +160,7 @@ sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-
 
 **Accesso.** Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD`; con una email nuova il vecchio utente va tolto da `gateway.db` (tabelle `session`, `account`, `user`). Il cookie dura 30 giorni, e un cambio di `ADMIN_PASSWORD` chiude tutte le sessioni. Cinque password sbagliate bloccano l'account 15 minuti, per tutti: dietro sslh i client hanno lo stesso indirizzo.
 
-**Secret.** `ADMIN_EMAIL`, `ADMIN_PASSWORD` (almeno 12 caratteri, senza `$`), `API_KEY` e `BETTER_AUTH_SECRET` (almeno 32 caratteri, `openssl rand -hex 32`) stanno nei secret della Action, e compose li legge dall'ambiente prima che da `.env`. Si cambiano con `gh secret set` e un nuovo aggiornamento. Senza la Action stanno in `.env`.
+**Secret.** `ADMIN_EMAIL`, `ADMIN_PASSWORD` (almeno 12 caratteri, senza `$`), `API_KEY` e `BETTER_AUTH_SECRET` (almeno 32 caratteri, `openssl rand -hex 32`) stanno nei secret della Action (4.6), e compose li legge dall'ambiente prima che da `.env`. Si cambiano con `gh secret set` e un nuovo aggiornamento. Senza la Action stanno in `.env`.
 
 **Trappola: niente `docker compose up` a mano con la Action.** Ricrea l'agente con `API_KEY` vuota, e non parte. Ricrea il gateway senza `BETTER_AUTH_SECRET`, e si ferma con "BETTER_AUTH_SECRET deve essere impostata". Dopo una modifica a `.env` serve un nuovo aggiornamento: `docker restart` non rilegge l'ambiente.
 
@@ -235,7 +178,7 @@ e si riavvia sslh. Il certificato arriva col TLS-ALPN; il primo tentativo HTTP-0
 ```bash
 cd /opt/oe-copilot
 sudo sed -i 's/^AUTH_2FA=.*/AUTH_2FA=off/' .env
-# poi, dal PC: gh workflow run Server --repo danfortu/OE-Copilot --ref main   (senza la Action: sudo docker compose up -d gateway, con i secret in .env o nell'ambiente)
+# poi, dal PC: gh workflow run calendar.yml --repo Aptul9/OE-Copilot --ref main   (senza la Action: sudo docker compose up -d gateway, con i secret in .env o nell'ambiente)
 docker logs --tail 5 oe-copilot-gateway    # a deploy finito deve dire: secondo fattore dell'accesso (AUTH_2FA): off
 ```
 Per ripartire da zero col codice, a gateway fermo (le passkey restano):
@@ -262,7 +205,7 @@ docker start oe-copilot-gateway
 
 **Loghi.** Voce `interfaccia.loghi` di `personalizzazione.json`: un file in `ui-dati/logos/` (`"logos/alfa.png"`) o un indirizzo, che il gateway scarica e rinnova ogni 7 giorni. Il pulsante *Logo* nella pagina di una casella o di un calendario (*Account*) sceglie un logo per voce, e vince sul file. Il browser non carica mai loghi da altri siti.
 
-**Calendari da link.** *Account > Da link e personali*. Si rileggono ogni 30 minuti; una risposta 404 o 410 toglie la copia. Un calendario Google entra col suo link iCal segreto, che vale come una password e resta sul server; se l'amministratore l'ha disattivato, l'account si aggiunge nel telefono (4.4).
+**Calendari da link.** *Account > Da link e personali*. Si rileggono ogni 30 minuti; una risposta 404 o 410 toglie la copia. Un calendario Google entra col suo link iCal segreto, che vale come una password e resta sul server; se l'amministratore l'ha disattivato, l'account si aggiunge come casella Google (4.4).
 
 **Trappola: solo siti pubblici.** Il gateway scarica (`server/web-ts/src/lib/core/rete-sicura.ts`) solo `http` o `https` sulle porte 80 e 443, da nomi con soli indirizzi pubblici: niente loopback, reti private, link-local (`169.254.169.254`) o CGNAT, anche dopo un reindirizzamento. Un logo: al più 512 KB e 4096 pixel per lato, SVG senza script. Un calendario: al più 8 MiB, che comincia con `BEGIN:VCALENDAR`, con Content-Type assente o `text/calendar`, `text/plain`, `application/octet-stream` (`application/ics` è rifiutato). Vicino agli 8 MiB può superare gli 8.000.000 byte che l'agente accetta.
 
@@ -287,12 +230,7 @@ Nomi delle aziende, ordine dei calendari, sigle, loghi e schede del Timesheet st
 
 ### 4.8 Lo schermo del telefono nel browser
 
-Il servizio `schermo` (`server/schermo-web/`) mostra e comanda il telefono: pulsante *Telefono*, pagina `/telefono/`. È una copia potata di [ws-scrcpy](https://github.com/NetrisTV/ws-scrcpy) (commit `cd6cea6`, licenza MIT in `server/schermo-web/LICENSE`): la prima commit della cartella è la copia di upstream, le altre mostrano ogni modifica. Sul telefono gira il fork WebSocket di scrcpy 1.19 (`1.19-ws8`, licenza Apache-2.0), in `vendor/Genymobile/scrcpy/` con la sua impronta; il server di scrcpy 5 non costa meno e non parla il protocollo della pagina.
-- **Trappola: nessuna password.** Il servizio non ha porte pubblicate né password, e adb non chiede conferme (`ro.adb.secure=0`). L'unico cancello è Caddy, che prima di passare `/telefono/*` chiede `/api/verifica-sessione` al gateway (`forward_auth`).
-- Rispetto a upstream, `proxy-adb` raggiunge solo `tcp:8886`, il server di scrcpy, che ascolta solo sul localhost del telefono; la pagina prende il flusso solo dal proprio sito.
-- La tastiera arriva come caratteri, le accentate come accento morto più lettera, Ctrl+V incolla; €, £ ed emoji no. Il pannello del pulsante `?` (`GoogHelpBox.ts`) si cambia insieme a `KeyText.ts` e alla barra.
-- Una scheda aperta riscrive ogni 10 secondi `stato/schermo/PAUSA` e ferma il supervisore; dopo 60 secondi il file non conta più.
-- Il server scrcpy resta nel telefono anche a servizio fermo: *Kill server* nella pagina `/telefono/` lo ferma.
+Tolto con il telefono virtuale (PR 132). `/telefono/` porta alla pagina principale.
 
 ### 4.9 I promemoria
 
@@ -302,13 +240,13 @@ Si scelgono nel sito, *Impostazioni > Promemoria*, e stanno sul server (voce `pr
 - **Contenuto**, per tutti i canali: *Completo* (titolo e luogo) o *Solo ora e azienda* (l'avviso a comparsa mostra logo e ora).
 - **Suono**: solo l'app per Windows, tra i suoni di sistema. Lo fa l'avviso a comparsa; ad avviso spento, la notifica.
 
-Le voci degli avvisi le calcola il nucleo delle app (`app/src-tauri/src/promemoria.rs`): su Windows avvisa lo script della pagina, finché l'app è in esecuzione; su Android un lavoro in background programma un allarme per avviso, che parte anche ad app chiusa (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; i giorni interi e le riunioni eliminate dalla pagina non avvisano. Gli interruttori dei calendari nella barra laterale filtrano solo la vista: una riunione di un calendario spento avvisa lo stesso (le app chiedono `get_events` con un terzo argomento, `true`). Una cancellazione fatta in Outlook arriva a telefono sbloccato: prima la riunione può avvisare.
+Le voci degli avvisi le calcola il nucleo delle app (`app/src-tauri/src/promemoria.rs`): su Windows avvisa lo script della pagina, finché l'app è in esecuzione; su Android un lavoro in background programma un allarme per avviso, che parte anche ad app chiusa (`app/README.md`). Le notifiche del browser le manda il server, anche a pagina chiusa, con un giro ogni `PROMEMORIA_INTERVALLO_S` secondi (di norma 30). Un avviso per riunione e anticipo; i giorni interi e le riunioni eliminate dalla pagina non avvisano. Gli interruttori dei calendari nella barra laterale filtrano solo la vista: una riunione di un calendario spento avvisa lo stesso (le app chiedono `get_events` con un terzo argomento, `true`).
 
 **Notifiche del browser.** Il testo passa cifrato (RFC 8291) dal servizio di notifiche del browser. Le WebView delle app non hanno notifiche web, quindi nell'app questo interruttore non c'è. Servono le chiavi VAPID:
    ```bash
    node -e "const c=require('crypto');const j=c.generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({format:'jwk'});console.log('VAPID_PUBLIC_KEY='+Buffer.concat([Buffer.from([4]),Buffer.from(j.x,'base64url'),Buffer.from(j.y,'base64url')]).toString('base64url'));console.log('VAPID_PRIVATE_KEY='+j.d)"
    ```
-Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), poi un deploy con la Action `Server`. Senza i tre valori, o in un browser senza notifiche, l'interruttore non compare. La chiave privata e gli indirizzi delle iscrizioni (tabella `push_iscrizioni`, al più 20 browser) sono segreti e non finiscono nei log. Prove: `cd server/web-ts && npx vitest run test/promemoria`.
+Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), poi un deploy con la Action `calendar.yml` (4.6). Senza i tre valori, o in un browser senza notifiche, l'interruttore non compare. La chiave privata e gli indirizzi delle iscrizioni (tabella `push_iscrizioni`, al più 20 browser) sono segreti e non finiscono nei log. Prove: `cd server/web-ts && npx vitest run test/promemoria`.
 
 ### 4.10 Condividere il calendario con un altro OE Copilot
 
@@ -329,9 +267,9 @@ Un link ICS per persona, `https://<UI_HOST>/condividi/<testo segreto>.ics`. L'al
 
 ### 4.12 MCP per le email del telefono (`/mcp`)
 
-`https://<UI_HOST>/mcp` (Streamable HTTP, JSON-RPC `2025-06-18`) espone ai client AI tutte le caselle di posta Outlook collegate sul telefono virtuale, senza passare da registrazioni Azure o consensi amministratore.
+`https://<UI_HOST>/mcp` (Streamable HTTP, JSON-RPC `2025-06-18`) espone ai client AI tutte le caselle di posta Outlook collegate, senza passare da registrazioni Azure o consensi amministratore. Per posta, calendari e Teams insieme c'è il modulo `mcp/` alla radice del repository.
 - **Autenticazione**: `Authorization: Bearer <MCP_TOKEN>` (se `MCP_TOKEN` è impostato nell'ambiente del gateway) oppure `Authorization: Bearer <API_KEY>`. Le richieste con intestazione `Origin` (provenienti da un browser) sono rifiutate con 403.
-- **Come raccoglie i token**: `prepara_telefono.sh` estrae in `stato/chiave-outlook.bin` (permessi `0600`, utente `OUTLOOK_UID`) la chiave AES-256-GCM (`HxCoreSecureStringAES256Gcm`) dal keystore di Android (`persistent.sqlite`). A ogni giro del rilevatore, `supervisore` decifra i token OAuth da `acompliAcct.db` (`tokenStore` e `mailAccounts.directToken`) e scrive `stato/token-outlook.json`, che l'agente serve al gateway su `GET /api/token-posta`.
+- **Da dove vengono i token**: l'agente serve al gateway su `GET /api/token-posta` i token di posta degli accessi in `stato/tokens.json` (4.5), rinnovati da lui.
 
 Registrazione in Claude Code:
 ```bash
@@ -340,7 +278,7 @@ claude mcp add --scope user --transport http oe-copilot-mail https://<UI_HOST>/m
 
 | Tool | Cosa fa |
 |---|---|
-| `list_accounts` | Caselle Outlook attive sul telefono, scadenza del token e stato di sincronizzazione |
+| `list_accounts` | Caselle Outlook collegate, scadenza del token e stato |
 | `list_folders` | Cartelle e sottocartelle della casella con conteggio messaggi totali e non letti |
 | `list_emails` | Messaggi di una cartella (`Inbox`, `SentItems`, `Drafts`, `Archive`, `DeletedItems`, cartella specifica o `all`), dal più recente, con filtri `query`, `from_address`, `unread_only`, `has_attachments`, `flagged_only`, `start_date`, `end_date` |
 | `read_email` | Singola email completa: `From`, `To`, `Cc`, `Bcc`, corpo HTML convertito in Markdown (tabelle e link SafeLinks inclusi) ed elenco allegati |
@@ -373,9 +311,7 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker. Dal
 
 ### L'agente
 
-`server/agente-ts/` legge in sola lettura `agent/fonti.json` e il `calendar.db` del telefono, da una copia aperta con `PRAGMA query_only = ON` (Android tiene aperto l'originale). Gira come utente 10001, in sola lettura e senza capacità. L'API, con `Authorization: Bearer <API_KEY>` e una cache di 15 secondi: `GET /api/eventi?inizio=...&fine=...`, `GET /api/calendari`, `GET /api/salute`, `POST /api/ics`. `src/entita.ts` e `src/windows.ts` sono tabelle generate: non si correggono a mano.
-
-**Trappola: il gruppo dei file del calendario.** I file di `calendar.db` sono del gruppo 10019, che entra nel container con `group_add`. Se Android cambia il numero, le caselle danno "Permission denied". Il numero lo dà `sudo stat -c %g /opt/oe-copilot/telefono/data/data/com.android.providers.calendar/databases/calendar.db`; va in `.env` come `CALENDARIO_GID=<numero>`, poi un nuovo aggiornamento.
+`server/agente-ts/` legge le caselle con le API di Outlook e di Google (`src/diretto.ts`, accessi in `stato/tokens.json`) e `agent/fonti.json` in sola lettura. Il ramo che leggeva il `calendar.db` del telefono (`src/android.ts`) resta per le prove dell'immagine. Gira come utente 10001, in sola lettura e senza capacità. L'API, con `Authorization: Bearer <API_KEY>` e una cache di 15 secondi: `GET /api/eventi?inizio=...&fine=...`, `GET /api/calendari`, `GET /api/salute`, `POST /api/ics`. `src/entita.ts` e `src/windows.ts` sono tabelle generate: non si correggono a mano.
 
 **Trappola: le occorrenze annullate** (`annullata()` in `server/agente-ts/src/android.ts`). Una riga di una serie con `eventStatus` 2 annulla l'occorrenza, tranne nelle serie copiate da un flusso (`isOrganizer` 1, `hasAttendeeData` 0): Outlook le segna così anche se sono riunioni normali, e quelle righe prendono la durata della serie. Un annullamento vero ha un invitato, o il titolo "Canceled:" o "Annullato:", che il gateway nasconde.
 
@@ -383,23 +319,18 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker. Dal
 
 ## 6. Il rilevatore degli accessi scaduti
 
-Il rilevatore (`server/supervisore/src/rilevatore/`) scrive ogni 2 giri in `stato/accessi.json` il pallino di ogni casella, senza leggere token.
-- **Rosso** con la bandierina `needsReauth` di Outlook ("Accesso scaduto sul telefono").
-- Outlook che non conferma la sincronizzazione in `calendarSync.log`: **giallo** oltre `OUTLOOK_GIALLO_S` (600 secondi), **rosso** oltre `OUTLOOK_ROSSO_S` (1800).
-- **Giallo** a telefono bloccato, e senza push FCM con Outlook non in primo piano.
-- Calendari Google, da `dumpsys content`: senza successi **giallo** oltre `GOOGLE_GIALLO_S` (900 secondi), **rosso** oltre `GOOGLE_ROSSO_S` (2700). `OTHER FAILURE internal-error` dell'adattatore dei contatti non conta.
+Il rilevatore che leggeva i log del telefono è stato tolto con il telefono (PR 132). Il pallino di una casella viene dall'esito delle letture dell'agente via API: rosso con un accesso scaduto, che si rifà da *Account > Accedi di nuovo* (4.4).
 
 ---
 
 ## 7. Manutenzione e diagnostica
 
-- **Login scaduto**: dalla pagina `/telefono/`, poi si chiude la scheda.
-- **Log**: `docker logs oe-copilot-<servizio>`. Segni di vita in `stato/battito.json` e `stato/accessi.json`.
-- **Senza la Action**: ricopiare `server/` lasciando `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/`, poi `sudo docker compose up -d --build --remove-orphans`, con i secret in `.env`.
-- **Prove della Action** (job *Controlli*, solo per `server/` e il workflow): sintassi, `docker compose config` (l'elenco dei servizi è scritto nel workflow), Caddyfile, tipi, `npm test` e immagini dei servizi, poi *Gateway, accesso e cancello* sui container veri.
-- **Prove a mano**: in `server/agente-ts`, `server/supervisore`, `server/schermo-web` e `server/web-ts` `npm ci --ignore-scripts`, `npm run typecheck` e `npm test`; in `schermo-web`, prima di `npm test`, anche `npm run dist` e `npm run smoke`, che vanno senza telefono. `app/` ha le sue ([`app/README.md`](app/README.md#prove)). Prima di un push, `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>` fallisce se trova i dati della personalizzazione nei file del repository.
-- **Risposte registrate** (`server/strumenti/golden/`, `server/supervisore/test/golden/`): dati fissi, mai rigenerati. Una differenza è un comportamento cambiato. I casi nuovi del rilevatore vanno in `server/supervisore/test/rilevatore.test.ts`: il confronto vuole i nomi dei casi registrati.
-- **Backup**: `ui-dati/` e `/opt/oe-copilot/telefono/data`, che contiene i login. Lo snapshot del telefono si fa in `docker pause`, per pochi secondi.
+- **Login scaduto**: *Account > Accedi di nuovo* sulla casella (4.4).
+- **Log**: `docker logs oe-copilot-<servizio>`.
+- **Senza la Action**: ricopiare `calendar/server/` lasciando `.env`, `agent/fonti.json`, `telefono/`, `stato/` e `ui-dati/`, poi `sudo docker compose up -d --build --remove-orphans`, con i secret in `.env`.
+- **Prove prima del push** (non c'è CI): dalla radice del repository `scripts/check.sh calendar`, con `--docker` anche `docker compose config` (l'elenco dei servizi è scritto nello script), Caddyfile, immagini e *Gateway, accesso e cancello* sui container veri (`calendar/scripts/integrazione.sh`). In Git Bash su Windows. `app/` ha le sue ([`app/README.md`](app/README.md#prove)). Prima di un push, `python server/strumenti/controlla_dati_personali.py <personalizzazione.json>` fallisce se trova i dati della personalizzazione nei file del repository.
+- **Risposte registrate** (`server/strumenti/golden/`): dati fissi, mai rigenerati. Una differenza è un comportamento cambiato.
+- **Backup**: `ui-dati/` e `stato/tokens.json`, che contiene i login (4.5).
 - **Reimportare `config.json` e `local_events.json`** (dopo un ripristino o una correzione a mano), a gateway fermo. I link di condivisione restano.
   ```bash
   docker stop oe-copilot-gateway
@@ -412,20 +343,19 @@ Il rilevatore (`server/supervisore/src/rilevatore/`) scrive ogni 2 giri in `stat
 
 | Sintomo | Diagnosi, sul server | Cosa fare |
 |---|---|---|
-| Pallino giallo *Telefono bloccato* | `cat /opt/oe-copilot/stato/battito.json` e `docker logs --tail 20 oe-copilot-supervisore` | Sbloccare dalla pagina `/telefono/` |
 | *Il server dei calendari non risponde* | `docker logs oe-copilot-agent` e `docker logs oe-copilot-gateway` | Il suggerimento del pallino giallo o rosso dice cosa è fermo |
-| Un calendario nuovo non compare | La chiamata all'agente di 4.5, su `/api/calendari` | finestra *Account*, freccia in alto a sinistra (rilegge le caselle); in Outlook sul telefono la spunta e *Sincronizza calendari* (4.4); la casella in `agent/fonti.json`, poi `sudo docker compose restart agent` |
+| Un calendario nuovo non compare | La chiamata all'agente di 4.5, su `/api/calendari` | finestra *Account*, freccia in alto a sinistra (rilegge le caselle); per una casella di `agent/fonti.json` il calendario in `calendari`, poi `sudo docker compose restart agent` |
 | La Action dice *il servizio oe-copilot-caddy non serve il sito* | `docker logs --tail 40 oe-copilot-caddy` e `docker inspect -f '{{.RestartCount}}' oe-copilot-caddy` | `docker compose up -d --force-recreate --no-deps caddy-ui`, o il Caddyfile di prima (4.6) |
 | Un link di condivisione risponde 503 | `docker logs oe-copilot-gateway 2>&1 \| grep condivisione` e `curl -s -H "Authorization: Bearer $(sudo docker exec oe-copilot-agent printenv API_KEY)" http://127.0.0.1:3180/api/salute` | Casella in `errore`: lo dice il suo pallino. Più di 5000 eventi: meno giorni nel link |
 | *Non riesco a salvare il logo sul server* | `ls -ld /opt/oe-copilot/ui-dati/logos` | `sudo chown 10001:10001 /opt/oe-copilot/ui-dati/logos` |
-| Un passo dell'aggiornamento è rosso | Lo stderr del passo *Ricostruisci e riavvia*, `cat /opt/oe-copilot/.versione` e `docker ps --filter name=oe-copilot- --format '{{.Names}}: {{.Status}}'` | Guasto in telefono, agente o supervisore: lo script è già tornato indietro. In gateway, Caddy o schermo no (4.6) |
+| Un passo dell'aggiornamento è rosso | Lo stderr del passo *Ricostruisci e riavvia*, `cat /opt/oe-copilot/.versione` e `docker ps --filter name=oe-copilot- --format '{{.Names}}: {{.Status}}'` | Guasto nell'agente: lo script è già tornato indietro. In gateway o Caddy no (4.6) |
 
 ---
 
 ## 8. Sicurezza e privacy
 
-- **Un solo cancello: l'accesso al sito.** Il telefono resta sbloccato (4.5), `schermo` non ha password e adb non chiede conferme: chi entra nel sito comanda il telefono. La password va lunga e casuale; il secondo fattore (4.7) aggiunge un codice.
+- **Un solo cancello: l'accesso al sito.** Chi entra nel sito legge i calendari e, dal MCP, la posta. La password va lunga e casuale; il secondo fattore (4.7) aggiunge un codice.
 - **Nessun segreto nel repository.** Le credenziali stanno nei secret della Action, o in `.env` (permessi 600) con le chiavi VAPID. `personalizzazione.json` e `agent/fonti.json` sono esclusi da `.gitignore`.
-- **I login stanno nel telefono**: `/opt/oe-copilot/telefono/data` contiene i token degli accessi.
-- **Su internet c'è solo l'interfaccia web.** Agente e adb ascoltano solo sul localhost.
+- **I login stanno in `stato/tokens.json`** (4.5): refresh token di tutte le caselle. La vecchia cartella `telefono/data`, se c'è ancora, contiene quelli del telefono.
+- **Su internet c'è solo l'interfaccia web.** L'agente ascolta solo sul localhost.
 - Non si estraggono token o cookie dai browser e non si usano client ID di altre app per aggirare un consenso.

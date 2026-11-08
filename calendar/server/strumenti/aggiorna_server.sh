@@ -11,19 +11,9 @@ cd "$DIR"
 
 # Gira dentro `if avvia && sano`: lì errexit è spento, quindi ogni passo che può fallire ha il suo `|| return 1`.
 avvia() {
-    # Se i token diretti non sono ancora stati esportati ma ci sono i dati del telefono virtuale, li esporta una volta sola.
-    if [ ! -s "$DIR/stato/tokens.json" ] && [ -d "$DIR/telefono/data" ] && [ -f "$DIR/strumenti/esporta_token_telefono.py" ]; then
-        python3 "$DIR/strumenti/esporta_token_telefono.py" "$DIR" "$DIR/stato/tokens.json" || true
-    fi
     # Il codice dell'agente è nell'immagine, niente file montati: compose lo ricrea da sé quando l'immagine o la configurazione cambiano.
     docker compose up -d --build agent \
         || { echo "docker compose non ha avviato l'agente" >&2; return 1; }
-    # I container del vecchio emulatore Android (telefono, supervisore, schermo) non servono più: se presenti si fermano e si tolgono.
-    for vecchio in oe-copilot-supervisore oe-copilot-schermo oe-copilot-telefono; do
-        if docker container inspect "$vecchio" >/dev/null 2>&1; then
-            docker rm -f "$vecchio" >/dev/null && echo "tolto il container $vecchio: l'agente legge i calendari direttamente via API"
-        fi
-    done
 }
 
 # Email e password del proprietario, chiave dell'API e segreto dei cookie possono arrivare dalla Action sullo standard
@@ -112,7 +102,7 @@ case "${1:-}" in
         # tutto tranne i dati che vivono solo sul server
         tar -czf "$COPIA" --exclude=./.env --exclude=./agent/fonti.json \
             --exclude=./telefono --exclude=./stato --exclude=./ui-dati --exclude=./.versione \
-            --exclude='./apk/*.apk' . 2>/dev/null || true
+            . 2>/dev/null || true
         echo "copia: $COPIA"
         ;;
     avvia)

@@ -1,7 +1,0 @@
-node_modules
-dist
-test
-.git
-Dockerfile
-.dockerignore
-vitest.config.ts

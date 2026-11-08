@@ -33,9 +33,6 @@ web/personale/
 server/web-ts/logos-predefiniti/*
 !server/web-ts/logos-predefiniti/personale.png
 
-# APK delle app del telefono: stanno fra i file della release "apk", non nel repository
-server/apk/*.apk
-
 # Dati e segreti del server: restano sul server (README.md, sezioni 4.2 e 4.7), mai nel repository
 server/.env
 server/agent/fonti.json

@@ -564,7 +564,8 @@ export class Agente {
 
   private async get(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const { percorso, query } = analizzaTarget(req.url ?? "");
-    if (!this.autorizzato(req) && !this.autorizzatoTeams(req, "GET", percorso, query)) return this.invia(req, res, 401, { errore: "non autorizzato" });
+    const piena = this.autorizzato(req);
+    if (!piena && !this.autorizzatoTeams(req, "GET", percorso, query)) return this.invia(req, res, 401, { errore: "non autorizzato" });
     const q = parseQs(query);
     if (percorso === "/api/salute") return this.invia(req, res, 200, { fonti: this.fontiStato(), servizio: this.servizio() });
     if (percorso === "/api/communication/accounts") return this.invia(req, res, 200, { accounts: this.comunicazione?.caselle() ?? [] });
@@ -595,9 +596,12 @@ export class Agente {
     if (percorso === '/api/token-resource') {
  res.setHeader('Cache-Control', 'no-store');
  const query = new URL(req.url!, 'http://localhost').searchParams;
+ const risorsa = query.get('resource') || '';
+ // la chiave di TeamsRelay solo per la chat, controllato di nuovo sul valore che si usa davvero
+ if (!piena && !RISORSE_CHAT.has(risorsa)) return this.invia(req, res, 401, { errore: 'non autorizzato' });
  try {
  if (!this.o.tokens) throw new Error('broker unavailable');
- const token = await this.o.tokens.ottieniRisorsa(query.get('account') || '', query.get('resource') || '');
+ const token = await this.o.tokens.ottieniRisorsa(query.get('account') || '', risorsa);
  return this.invia(req, res, 200, { token });
  } catch { return this.invia(req, res, 403, { errore: 'shared token unavailable' }); }
  }

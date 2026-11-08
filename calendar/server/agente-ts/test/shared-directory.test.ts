@@ -84,7 +84,18 @@ describe("chiave di TeamsRelay", () => {
     expect((await chiama("/api/auth/shared", "stretta", { account: "legacy@example.com", enabled: false })).status).toBe(200);
     // la richiesta passa l'autorizzazione: il rifiuto viene dal broker (Microsoft finto), non dalla chiave
     expect((await chiama("/api/token-resource?account=on@example.com&resource=csa", "stretta")).status).toBe(403);
-    for (const p of ["/api/token-resource?account=on@example.com&resource=outlook", "/api/token-posta", "/api/communication/accounts", "/api/auth/stato", "/api/calendari", "/api/salute"]) {
+    for (const p of [
+      "/api/token-resource?account=on@example.com&resource=outlook",
+      // the same parameter twice, a fragment, a percent-encoded name: two parsers never disagree in favour of outlook
+      "/api/token-resource?account=on@example.com&resource=outlook&resource=csa",
+      "/api/token-resource?account=on@example.com&resource=outlook#&resource=csa",
+      "/api/token-resource?account=on@example.com&resource=%6Futlook",
+      "/api/token-posta",
+      "/api/communication/accounts",
+      "/api/auth/stato",
+      "/api/calendari",
+      "/api/salute",
+    ]) {
       expect((await chiama(p, "stretta")).status, p).toBe(401);
     }
     for (const p of ["/api/communication/read", "/api/auth/rimuovi", "/api/auth/inizio", "/api/communication/gmail/read"]) {

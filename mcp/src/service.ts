@@ -3,6 +3,15 @@ import { execFile } from "node:child_process";
 import { Outlook, ApiError, type Obj } from "./api.ts";
 import { Tokens, selectAccount, type Account } from "./tokens.ts";
 import { backendUrl } from "./url.ts";
+const ENDPOINTS = [
+  "/api/communication/accounts",
+  "/api/communication/read",
+  "/api/communication/google/accounts",
+  "/api/communication/gmail/read",
+  "/api/communication/gmail/write",
+  "/api/communication/gchat/read",
+  "/api/communication/gchat/write",
+];
 export type GatewayCall = (path: string, body?: unknown) => Promise<Obj>;
 
 export function httpGateway(
@@ -14,7 +23,7 @@ export function httpGateway(
   if (!u || u.pathname !== "/")
     throw new Error("Invalid communication service URL");
   return async (p, body) => {
-    if (!["/api/communication/accounts", "/api/communication/read"].includes(p))
+    if (!ENDPOINTS.includes(p))
       throw new ApiError("Unknown communication endpoint");
     const r = await fetchFn(new URL(p, u), {
       method: body === undefined ? "GET" : "POST",
@@ -57,9 +66,7 @@ export function sshGateway(
     throw new Error("Invalid communication SSH configuration");
   return (p, body) =>
     new Promise((resolve, reject) => {
-      if (
-        !["/api/communication/accounts", "/api/communication/read"].includes(p)
-      )
+      if (!ENDPOINTS.includes(p))
         return reject(new ApiError("Unknown communication endpoint"));
       const input = JSON.stringify({ path: p, body });
       const script = `let s='';for await(const c of process.stdin)s+=c;const i=JSON.parse(s);const r=await fetch('http://127.0.0.1:${port}'+i.path,{method:i.body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+process.env.API_KEY,'Content-Type':'application/json'},body:i.body===undefined?undefined:JSON.stringify(i.body),redirect:'error',signal:AbortSignal.timeout(30000)});process.stdout.write(JSON.stringify({status:r.status,body:await r.text()}));`;

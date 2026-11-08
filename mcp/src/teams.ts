@@ -125,6 +125,7 @@ interface Discovered {
 export interface TeamsBridge {
   /** Tool names currently offered, prefix included */
   readonly tools: string[];
+  call?(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<CallToolResult>;
   /** Configuration error or last discovery failure; never carries relay text */
   readonly error?: string;
   /**
@@ -317,6 +318,7 @@ export async function connectTeams(options: BridgeOptions = {}): Promise<TeamsBr
   await refresh();
 
   return {
+    call: (name, args, signal) => call(name, args, signal ?? new AbortController().signal),
     get tools() {
       return discovered.map((d) => d.name);
     },

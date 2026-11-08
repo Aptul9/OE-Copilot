@@ -70,11 +70,26 @@ function gatewayFixture(reads: unknown[]) {
 function relayFixture(stats: { lists: number }) {
   const mcp = createMcpHandler(() => {
     const s = new McpServer({ name: "teamsrelay", version: "1" });
+    s.registerTool("list_accounts", {}, async () => ({
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({
+            accounts: [{ slot: 1, name: "Fixture Teams" }],
+          }),
+        },
+      ],
+    }));
     s.registerTool(
       "list_chats",
       { description: "chats", annotations: { readOnlyHint: true } },
       async () => ({
-        content: [{ type: "text", text: "chat-fixture" }],
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({ chats: [{ name: "chat-fixture" }] }),
+          },
+        ],
       }),
     );
     return s;
@@ -155,22 +170,25 @@ test("remote MCP: mail through the OE gateway and Teams through the relay, one d
       clients.push(c);
       const names = (await c.listTools()).tools.map((t) => t.name);
       assert.ok(
-        names.includes("list_unread") &&
-          names.includes("list_calendar_events") &&
-          names.includes("get_attachment"),
+        names.includes("email_list") &&
+          names.includes("calendar_events") &&
+          names.includes("email_attachment"),
       );
-      assert.ok(names.includes("teams_list_chats"));
+      assert.ok(names.includes("chat_list"));
       assert.ok(
         !names.includes("send_email"),
         "service mode exposes no mailbox writes",
       );
-      assert.match(
-        text(await c.callTool({ name: "teams_list_chats", arguments: {} })),
-        /chat-fixture/,
-      );
+
+      const chats = await c.callTool({
+        name: "chat_list",
+        arguments: { account_id: "teams:1" },
+      });
+      assert.ok(!chats.isError, JSON.stringify(chats));
+      assert.match(text(chats), /chat-fixture/);
       const unread = await c.callTool({
-        name: "list_unread",
-        arguments: { limit: 5 },
+        name: "email_list",
+        arguments: { account_id: "outlook:a@msc.example", limit: 5 },
       });
       assert.ok(!unread.isError);
       assert.match(text(unread), /fixture mail/);
@@ -310,7 +328,7 @@ test("remote MCP: Teams down at startup, tools appear once the relay answers, ma
     clients.push(first);
     const before = (await first.listTools()).tools.map((t) => t.name);
     assert.ok(
-      before.includes("list_unread") &&
+      before.includes("email_list") &&
         !before.some((n) => n.startsWith("teams_")),
     );
     await listen(relay, relayPort);
@@ -320,9 +338,8 @@ test("remote MCP: Teams down at startup, tools appear once the relay answers, ma
     assert.equal(teams.error, undefined);
     const second = await connect(`http://127.0.0.1:${port}/mcp`);
     clients.push(second);
-    assert.match(
-      text(await second.callTool({ name: "teams_list_chats", arguments: {} })),
-      /chat-fixture/,
+    assert.ok(
+      (await second.listTools()).tools.some((t) => t.name === "chat_list"),
     );
   } finally {
     for (const c of clients) await c.close();

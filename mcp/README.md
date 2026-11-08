@@ -117,3 +117,12 @@ Set `OUTLOOK_MCP_TEAMS_URL` to the existing TeamsRelay `/mcp` endpoint and `OUTL
 List/search follows same-collection Outlook pagination links. Unknown folder names now fail instead of quietly searching the whole mailbox. Folder lists recurse into child folders and follow pages, with explicit safety errors rather than silent truncation.
 
 The cross-mailbox MCP unread tool defaults to 20 summaries per mailbox to bound tool output; an explicit limit can request up to 1000. Summary output is compact and full bodies remain on demand. The core API can be used independently of MCP through the package `./core` export. Dependency pins are SDK client/server 2.4.0 and zod 4.6.7; audit after upgrade reports no known vulnerabilities.
+
+
+## Unified contract
+
+MCP registrations use communication_accounts, mail_*, chat_*, calendar_list and calendar_events. Previous tool names are removed. Every data operation requires exact ccount_id from inventory. Resource IDs are signed account-bound handles. Native IDs cannot be substituted. Production compose supplies a stable signing key from its existing MCP credential.
+
+Slack uses checksum-pinned slackcli 0.19.1, explicit stored workspace profile and bounded subprocess calls. Provision /opt/communication-mcp-state/slackcli/workspaces.json owned by uid 1000, mode 0600, directory mode 0700. Compose mounts profile read-only; never place credentials in source. The image currently carries Linux amd64 CLI.
+
+Provider limits remain explicit: Teams reads its saved chat window and does not expose full-history search or thread reads; Google Chat search scans recent topics. Unsupported operations return UNSUPPORTED_CAPABILITY. Outlook service mode remains read-only. No write retries occur after ambiguous transport failures.

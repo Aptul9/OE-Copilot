@@ -62,7 +62,20 @@ The calendar and teams-relay deploy jobs are the old ones with the module folder
 - mcp: the image rebuilds once (LF checkout instead of the CRLF copy), so the container restarts once; `tools/list` returns 24 tools.
 - `https://calendar.everbright.it/login` 200, `https://teams.everbright.it/healthz` 200, TeamsRelay accounts green.
 
-## Phase 2 (own spec)
+## Phase 2 outcome (2026-11-08)
+
+Done:
+- Calendar Gmail and Chat backend (PR 7) deployed: only the agent restarted.
+- Retired phone stack removed from `calendar/` (194 files): `server/schermo-web`, `server/supervisore`, `server/immagine-telefono`, `server/apk`, the phone scripts of `server/strumenti`, their README sections reduced to one line with the numbers kept.
+- TeamsRelay status-green fix (PR 9) and docs with the MCP-only accounts spec (PR 10) in one deploy, one restart of `teams-browsers`.
+
+Decided against, for now:
+- **npm workspaces and shared `packages/`.** The duplication is small and already diverges: the 14 shadcn components both apps carry differ per app (`cn` import, `scroll-thin`); the two auth configs share about 15 lines of options and have different plugin sets; the Microsoft web-session code runs in two runtimes (calendar agent: plain Node, no bundler; TeamsRelay light agent: esbuild bundle) with different clients and redirects; web push is an own RFC 8291 implementation in calendar and the `web-push` library in TeamsRelay. Sharing them means widening the build contexts of `calendar/server/web-ts` and `teams-relay/app` to the repository root, changing the deploy rsync scopes and compose contexts, and one hoisted lockfile for both apps: the first such deploy restarts every container, `teams-browsers` included. Worth it once a change has to be made twice.
+- **Removing auth plugins.** Calendar `twoFactor` and `passkey` are the `AUTH_2FA` switch (off today, not dead). TeamsRelay `admin` multi-user and MCP OAuth are features of TeamsRelay with no second user or client today. Removing them is a scope decision, not cleanup.
+
+Held by the owner: PR 8, `/communication` route of the MCP (go-live).
+
+## Phase 2 (as planned before)
 
 - npm workspaces and `packages/`: the 14 shadcn components both apps carry, the email and password auth core, the Microsoft web session module (`agente-ts/src/sessione-web.ts`, `app/src/agent/light/session-auth.ts`), web push.
 - Remove the retired phone stack of calendar (`server/schermo-web`, `supervisore`, `immagine-telefono`, `apk`, `strumenti` leftovers).

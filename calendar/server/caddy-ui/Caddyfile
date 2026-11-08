@@ -1,0 +1,51 @@
+# HTTPS davanti al gateway dell'interfaccia web, che chiede l'accesso (pagina /login). L'indirizzo
+# arriva da .env (UI_HOST): non sta nel repository.
+#
+# Sulla VM la porta 443 è di sslh, che gira il TLS per nome (SNI) a questo Caddy sulla
+# 4445 del localhost, e la porta 80 è di un altro Caddy: il certificato arriva col
+# TLS-ALPN, passando da sslh. Il tentativo HTTP-01 fallisce prima: è previsto.
+{
+	# Caddy non scrive un log di accesso, ma un errore di inoltro (gateway fermo o in riavvio: 502) scrive la richiesta intera, indirizzo e intestazioni
+	# comprese, e /condividi/<testo segreto>.ics (README.md, 4.10) ha il testo segreto nell'indirizzo (e in Referer, se la richiesta parte da lì): nei log
+	# resta un nome fisso. Il filtro non dipende da come è scritto il percorso (//condividi/, /x/../condividi/, /CONDIVIDI/, l'indirizzo intero di una
+	# richiesta fatta a un proxy): da /condividi/ in poi, fino al punto interrogativo, è tutto testo segreto; e dove che sia, una sequenza di 32 o più
+	# caratteri base64url, com'è fatto il testo segreto (43). Le intestazioni non si scrivono.
+	log {
+		format filter {
+			request>uri regexp (?i)/condividi/[^?]*|[A-Za-z0-9_-]{32,} /condividi/REDATTO
+			request>headers delete
+		}
+	}
+	servers {
+		# UDP non è pubblicato: niente HTTP/3 da annunciare ai browser
+		protocols h1 h2
+	}
+}
+
+{$UI_HOST} {$MEET_HOST} {
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+	}
+
+	# Nome a parte per la disponibilità pubblica (MEET_HOST, facoltativo): la radice è /disponibilita e del resto del sito
+	# passa solo quello che serve alla pagina. Con MEET_HOST vuoto il confronto è con "" e non
+	# scatta mai: un matcher host vuoto, invece, prenderebbe ogni richiesta.
+	@meet expression `{host} == "{$MEET_HOST}"`
+	handle @meet {
+		rewrite / /disponibilita
+		@pagina path /disponibilita /api/disponibilita /api/prenota /_next/* /icon.png /apple-icon.png /favicon.ico /sw.js /badge.png
+		handle @pagina {
+			reverse_proxy gateway:3000
+		}
+		handle {
+			# il * serve: con "redir / 302" Caddy prende / come matcher e il resto risponde 200 vuoto
+			redir * / 302
+		}
+	}
+
+	handle {
+		reverse_proxy gateway:3000
+	}
+}

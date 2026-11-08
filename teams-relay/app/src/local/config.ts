@@ -1,0 +1,131 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { z } from "zod";
+import { ConfigError, NtfyUrl, parseEnv, VapidSubject } from "@/shared/env";
+import type { AgentSettings } from "@/agent/context";
+
+// Environment of the local relay, from relay.env next to package.json or from the process (pm2). Checked once at
+// start: a wrong value stops the relay with the reason, instead of a failure later on the Teams page.
+const Env = z.object({
+  // browser profile, database, images, push keys, API token: everything the relay keeps
+  STATE_DIR: z.string().default("state"),
+  // installed browser Playwright drives: Google Chrome or Microsoft Edge
+  BROWSER_CHANNEL: z.enum(["chrome", "msedge"]).default("chrome"),
+  TEAMS_URL: z.url({ protocol: /^https$/ }).default("https://teams.cloud.microsoft/"),
+  // address of the API: loopback unless the phone reaches it some other way (docs/setup.md, Local relay)
+  RELAY_BIND: z.union([z.ipv4(), z.ipv6()]).default("127.0.0.1"),
+  RELAY_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+  // run a second relay on this machine: shifts RELAY_PORT by N and, unless STATE_DIR is set, keeps its own state under
+  // state-N, so one number stands up another relay instead of a hand-picked port and directory
+  INSTANCE: z.coerce.number().int().min(0).max(65535).default(0),
+  // HTTPS on the API itself, for a phone that reaches it without a proxy that terminates TLS
+  RELAY_TLS_CERT: z.string().optional(),
+  RELAY_TLS_KEY: z.string().optional(),
+  VAPID_SUBJECT: VapidSubject,
+  NTFY_URL: NtfyUrl,
+  NTFY_TOPIC: z.string().default(""),
+  // name of this machine in the alerts ("sign in again in the relay window on <HOST_LABEL>")
+  HOST_LABEL: z.string().default(os.hostname()),
+  // a TeamsRelay server this relay joins, as an account on another computer: the address of its web app and the token
+  // the app showed when the account was added (docs/design/2026-09-27-relay-joins-server.md)
+  SERVER_URL: z.url({ protocol: /^https?$/ }).optional(),
+  SERVER_TOKEN: z.string().min(32, "must be the token the web app showed").optional(),
+  // tests only: more command-line switches of the browser, separated by spaces (a fake microphone, for one)
+  BROWSER_ARGS: z.string().default(""),
+  // 1: a browser of its own on this computer, driven by the MCP clients of the owner through the server joined
+  // (docs/design/2026-10-01-relay-browser-mcp.md); off unless set here
+  RELAY_BROWSER: z.enum(["0", "1"]).default("0"),
+  // seconds without a tool call after which that browser closes; the next call opens it again
+  RELAY_BROWSER_IDLE: z.coerce.number().int().min(1).max(86_400).default(900),
+});
+
+// The token goes in every request: plain HTTP only to a server on this machine
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+export type Config = AgentSettings & {
+  stateDir: string;
+  profileDir: string;
+  dbPath: string;
+  mediaDir: string;
+  filesDir: string;
+  tokenFile: string;
+  lockFile: string;
+  channel: "chrome" | "msedge";
+  teamsUrl: string;
+  api: { bind: string; port: number; tls: { cert: string; key: string } | null };
+  vapid: { privateKeyFile: string; appKeyFile: string; subject: string };
+  ntfy: { url: string; topic: string } | null;
+  hostLabel: string;
+  // the server joined, null for a relay on its own
+  server: { url: string; token: string } | null;
+  browserArgs: string[];
+  // the browser for MCP clients: its profile, the folder its screenshots go to, its idle time; null when off
+  browser: { profileDir: string; outputDir: string; idleMs: number } | null;
+};
+
+export function loadConfig(env: Record<string, string | undefined> = process.env, cwd = process.cwd()): Config {
+  const e = parseEnv(Env, env);
+  if (!!e.RELAY_TLS_CERT !== !!e.RELAY_TLS_KEY) throw new ConfigError("RELAY_TLS_CERT and RELAY_TLS_KEY go together");
+  if (!!e.SERVER_URL !== !!e.SERVER_TOKEN) throw new ConfigError("SERVER_URL and SERVER_TOKEN go together");
+  if (e.RELAY_BROWSER === "1" && !e.SERVER_URL) throw new ConfigError("RELAY_BROWSER=1 needs SERVER_URL and SERVER_TOKEN: the browser is driven through the server joined");
+  if (e.SERVER_URL && new URL(e.SERVER_URL).protocol === "http:" && !LOOPBACK.has(new URL(e.SERVER_URL).hostname)) {
+    throw new ConfigError("SERVER_URL: https:// needed, the token must not travel in clear (http:// only for localhost)");
+  }
+  const server = e.SERVER_URL && e.SERVER_TOKEN ? { url: e.SERVER_URL.replace(/\/+$/, ""), token: e.SERVER_TOKEN } : null;
+  const port = e.RELAY_PORT + e.INSTANCE;
+  if (port > 65535) throw new ConfigError(`RELAY_PORT + INSTANCE is ${port}, over 65535 (port ${e.RELAY_PORT}, instance ${e.INSTANCE})`);
+  // an explicit STATE_DIR is the user's to own; otherwise a non-zero instance gets state-N so two relays never share a db
+  const rawStateDir = env.STATE_DIR && env.STATE_DIR.length > 0 ? env.STATE_DIR : undefined;
+  const stateDir = path.resolve(cwd, rawStateDir ?? (e.INSTANCE > 0 ? `state-${e.INSTANCE}` : e.STATE_DIR));
+  const vapidDir = path.join(stateDir, "vapid");
+  return {
+    stateDir,
+    profileDir: path.join(stateDir, "profile"),
+    dbPath: path.join(stateDir, "relay.db"),
+    mediaDir: path.join(stateDir, "media"),
+    filesDir: path.join(stateDir, "files"),
+    tokenFile: path.join(stateDir, "token"),
+    lockFile: path.join(stateDir, "relay.lock"),
+    channel: e.BROWSER_CHANNEL,
+    browserArgs: e.BROWSER_ARGS.split(/\s+/).filter(Boolean),
+    browser:
+      e.RELAY_BROWSER === "1" && server
+        ? { profileDir: path.join(stateDir, "ai-profile"), outputDir: path.join(stateDir, "ai-output"), idleMs: e.RELAY_BROWSER_IDLE * 1000 }
+        : null,
+    teamsUrl: e.TEAMS_URL,
+    api: {
+      bind: e.RELAY_BIND,
+      port,
+      tls: e.RELAY_TLS_CERT && e.RELAY_TLS_KEY ? { cert: path.resolve(cwd, e.RELAY_TLS_CERT), key: path.resolve(cwd, e.RELAY_TLS_KEY) } : null,
+    },
+    vapid: { privateKeyFile: path.join(vapidDir, "private_key.pem"), appKeyFile: path.join(vapidDir, "appkey.txt"), subject: e.VAPID_SUBJECT },
+    ntfy: e.NTFY_TOPIC ? { url: e.NTFY_URL, topic: e.NTFY_TOPIC } : null,
+    hostLabel: e.HOST_LABEL,
+    server,
+    // the app of the relay sends text only, and shows neither the Activity feed nor "Read by"; the web app of a server
+    // joined does all three
+    uploadsDir: path.join(stateDir, "uploads"),
+    activity: !!server,
+    readBy: !!server,
+    // a call is answered on the computer of the relay, where its sound is: by hand in its window, and from the app of the
+    // server joined, whose commands (answer, hang up, mute) the call watch then runs in that window
+    answerCalls: !!server,
+    alerts: {
+      signIn: `Sign in again in the relay window on ${e.HOST_LABEL}`,
+      browserDown: `The browser of the relay on ${e.HOST_LABEL} does not start`,
+    },
+  };
+}
+
+// The token the app sends with every call, written by scripts/relay-setup.mjs
+export function readToken(file: string): string {
+  let token = "";
+  try {
+    token = fs.readFileSync(file, "utf8").trim();
+  } catch {
+    // reported below
+  }
+  if (token.length < 24) throw new ConfigError(`no API token in ${file}: run npm run relay:setup`);
+  return token;
+}

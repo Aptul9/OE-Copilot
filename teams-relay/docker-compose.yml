@@ -1,0 +1,138 @@
+# TeamsRelay: Docker Compose stack. Configuration in .env (copy .env.example), see docs/setup.md.
+#
+# Three containers. "browsers" runs every Teams account: one Chromium (profile in ./config/N) and one agent
+# per account, started and stopped by its supervisor on request of the web app; one remote desktop shows the
+# window of every browser. "webapp" serves the app and the API, "caddy" HTTPS.
+
+# what the agents (browsers) and the web app (accounts on another computer) both read: how a notification goes out
+x-notify-env: &notify-env
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+  NTFY_ENABLED: ${NTFY_ENABLED:-0}
+  NTFY_URL: ${NTFY_URL:-https://ntfy.sh}
+  NTFY_TOPIC: ${NTFY_TOPIC:-}
+
+services:
+  browsers:
+    build:
+      context: ./app
+      target: browsers
+    image: teamsrelay-browsers
+    container_name: teams-browsers
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: ${TZ:-UTC}
+      # the supervisor opens the browser windows in the labwc (Wayland) session of the desktop
+      PIXELFLUX_WAYLAND: "true"
+      CUSTOM_USER: ${DESKTOP_USER:-}
+      PASSWORD: ${DESKTOP_PASS:-}
+      # published by Caddy on https://<DOMAIN>/desktop/, only to users with a Teams account
+      SUBFOLDER: /desktop/
+      # Without a GPU (ARM VMs) Selkies encodes H.264 in software and the browser decoder gets no frame
+      # ("decoder produced no output"): JPEG frames work in every browser and are enough for the login
+      SELKIES_ENCODER: jpeg
+      # a call answered from the app: the microphone of the viewer of the desktop goes to Teams, asked for only
+      # while Teams records (docs/design/2026-09-28-answer-calls.md)
+      SELKIES_MICROPHONE_ENABLED: "true"
+      SELKIES_MICROPHONE_ON_START: demand
+      <<: *notify-env
+      # time for the supervisor to close the browsers when the container stops
+      S6_SERVICES_GRACETIME: "35000"
+      NATIVE_CALLS: ${NATIVE_CALLS:-0}
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      # browser profiles, one directory per account: the signed-in Microsoft sessions
+      - ./config:/profiles
+      # under /root (mode 700): the agents and the supervisor (root) reach them, the browsers (abc) do not
+      - ./data:/root/data
+      - ./vapid:/root/vapid:ro
+      # service-account.json of the Firebase project, for the Android app; FCM is off while it is missing
+      - ./fcm:/root/fcm:ro
+      - control:/root/run
+    security_opt:
+      - seccomp:unconfined
+    shm_size: "1gb"
+    stop_grace_period: 40s
+    healthcheck:
+      # the supervisor answers on its socket
+      test: ["CMD", "node", "/app/supervisor.cjs", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks: [desktop]
+    restart: unless-stopped
+
+  webapp:
+    # Installable web app (PWA), API and user management; starts and stops the accounts through the supervisor
+    build:
+      context: ./app
+      target: web
+    image: teamsrelay
+    container_name: teams-webapp
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      APP_URL: ${APP_URL:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      # variable of the single-user release, still accepted as the session key
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # bearer token of /mcp (AI clients, read only); empty turns the endpoint off
+      MCP_TOKEN: ${MCP_TOKEN:-}
+      ACCOUNTS_PER_USER: ${ACCOUNTS_PER_USER:-}
+      DESKTOP_URL: ${DESKTOP_URL:-}
+      APP_DB: /data/app.db
+      # days and clock times of the status pages (src/lib/status-pages.ts), as in the browsers container
+      TZ: ${TZ:-UTC}
+      CONTROL_SOCKET: /run/teamsrelay/control.sock
+      VAPID_APPKEY: /vapid/appkey.txt
+      # the web app sends the notifications of the accounts on another computer (their relay joined this server)
+      VAPID_PRIVATE: /vapid/private_key.pem
+      FCM_CREDENTIALS: /fcm/service-account.json
+      <<: *notify-env
+    volumes:
+      - ./vapid:/vapid:ro
+      # the service account key of the Firebase project too, for their phones of the Android app
+      - ./fcm:/fcm:ro
+      - ./data:/data
+      # socket of the supervisor; the browser profiles are not mounted here
+      - control:/run/teamsrelay
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # the web app starts the accounts as soon as it starts: the supervisor must answer by then
+    depends_on:
+      browsers:
+        condition: service_healthy
+    networks: [default]
+    restart: unless-stopped
+
+  caddy:
+    # Reverse proxy with automatic HTTPS certificates (Let's Encrypt)
+    image: caddy:2.11.4-alpine
+    container_name: teams-caddy
+    environment:
+      - DOMAIN=${DOMAIN:?set DOMAIN in .env}
+      - HTTPS_PORT=${HTTPS_PORT:-443}
+    ports:
+      - "80:80"
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [default, desktop]
+    restart: unless-stopped
+
+networks:
+  # browsers and Caddy only: the browsers reach the web app only through Caddy, like any client
+  desktop:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  # unix socket of the supervisor, shared by the browsers container and the web app
+  control:

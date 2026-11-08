@@ -1,0 +1,34 @@
+# ---- Runtime data and secrets: never in git ----
+.env
+# Chromium profiles: the signed-in Teams sessions (whoever has them is in those accounts)
+config/
+# Databases, images and files of the accounts
+data/
+# Web Push private key
+vapid/
+# Firebase service account key (push to the Android app); anchored: app/src/app/api/push/fcm is source
+/fcm/
+# Local relay: browser profile, database, images, push keys and API token (app/state), and its settings
+/app/state/
+/app/relay.env
+# Fleet control-plane inventory: hosts, VM ports and cmdapi tokens of the relay fleet
+/app/fleet.hosts.json
+# Fleet agent config on a host: its cmdapi token and ssh authorized keys
+/app/fleet.config.json
+caddy_data/
+caddy_config/
+
+# Web app build
+node_modules/
+.next/
+# Agent bundle (npm run build:agent)
+dist/
+next-env.d.ts
+*.tsbuildinfo
+
+# Code graph of graphify, rebuilt with: graphify update .
+graphify-out/
+
+*.bak
+.DS_Store
+Thumbs.db

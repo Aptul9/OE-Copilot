@@ -1,0 +1,140 @@
+import type { LightSignIn } from "@/shared/slot-db/state";
+import { askRefresh, beginRefresh, endRefresh, listSlots, REFRESH_ASKED, slotRow, type CheckResult, type Slot } from "./appdb";
+import { SIGN_IN_WAIT, SIGNED_OUT, type CheckDeps } from "./checks";
+import { exclusive, slotUp } from "./slots";
+
+// Direct Microsoft sessions renew over HTTP. MCAS and refused sessions use a bounded browser run with the existing
+// profile, one account at a time like checks (src/lib/checks.ts).
+
+// Seconds a run waits for the new sign-in: Teams starting, then renewing its tokens
+export const REFRESH_WAIT = 360;
+// A sign-in that holds less than this many seconds is not the new one
+export const MIN_LIFE = 600;
+// A run is not tried again before this many seconds: after one that worked (a sign-in refused right away would start
+// the browser again and again), and after one that did not
+const AFTER_OK = 600;
+const AFTER_FAILED = 1800;
+
+const report = (n: number) => (e: Error) => console.error(`sign-in run of account ${n}: ${e.message}`);
+
+// Direct sessions renew over HTTP. Proxied or refused sessions fall back to their persistent browser profile.
+export function refreshDue(s: Slot, sign: LightSignIn | null, now: number): boolean {
+  if (!s.light || s.stopped || s.relay || s.refreshing) return false;
+  if (s.refresh_result === REFRESH_ASKED) return true;
+  if (sign?.session && !sign.browser && !sign.refused) return false;
+  if (s.refresh_result === "login" && (sign?.at ?? 0) <= s.refreshed) return false;
+  if (s.refreshed && now - s.refreshed < (s.refresh_result === "ok" ? AFTER_OK : AFTER_FAILED)) return false;
+  if (!sign?.at || sign.refused) return true;
+  return sign.expiresOn - now < 60;
+}
+
+const usable = (sign: LightSignIn | null, now: number) => !!sign?.at && !sign.refused && ((!!sign.session && !sign.browser) || sign.expiresOn - now >= MIN_LIFE);
+
+// The browser of the account until a sign-in it captured holds MIN_LIFE: ok; Teams signed out SIGNED_OUT seconds:
+// login; nothing in REFRESH_WAIT: failed. A run its owner asked for, before or while it runs, waits for the sign-in in
+// the remote desktop instead, as long as the owner was on it SIGN_IN_WAIT seconds ago or less. The light agent runs
+// again after it, whatever the outcome. null: the account was stopped, removed or set to another mode meanwhile,
+// nothing recorded.
+export async function runRefresh(n: number, d: CheckDeps): Promise<CheckResult | null> {
+  const now = () => Math.floor((d.now ?? Date.now)() / 1000);
+  const sleep = d.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const begun = now();
+  const started = await exclusive(async () => {
+    const s = slotRow(d.db, n);
+    if (!s || s.stopped || !s.light || d.slot.busy?.(n)) return false;
+    beginRefresh(d.db, n, begun);
+    try {
+      await slotUp(d.ctl, n);
+    } catch (e) {
+      report(n)(e as Error);
+      await d.ctl.light(n).catch(report(n));
+      endRefresh(d.db, n, { now: now(), result: "failed" });
+      return "failed" as const;
+    }
+    return true;
+  });
+  if (started !== true) return started || null;
+
+  const current = () => {
+    const s = slotRow(d.db, n);
+    return !!s && !s.stopped && !!s.light;
+  };
+  const asked = () => slotRow(d.db, n)?.refresh_result === REFRESH_ASKED;
+  let result: CheckResult | null = "failed";
+  try {
+    let signedOutSince = 0;
+    let ownerSeen = begun;
+    for (;;) {
+      if (!current()) {
+        result = null;
+        break;
+      }
+      const sign = d.slot.lightSignIn(n);
+      if (usable(sign, now()) && (sign?.at ?? 0) >= begun) {
+        result = "ok";
+        break;
+      }
+      const h = d.slot.health(n);
+      if (h && h.ts >= begun && h.teams === "login") signedOutSince ||= now();
+      else signedOutSince = 0;
+      if (h && h.ts >= begun && h.inUse) ownerSeen = now();
+      const waitSignIn = asked();
+      if (!waitSignIn && signedOutSince && now() - signedOutSince >= SIGNED_OUT) {
+        result = "login";
+        break;
+      }
+      if (waitSignIn ? now() - ownerSeen >= SIGN_IN_WAIT : now() - begun >= REFRESH_WAIT) {
+        if (waitSignIn && signedOutSince) result = "login";
+        break;
+      }
+      await sleep(2000);
+    }
+  } finally {
+    for (;;) {
+      const ended = await exclusive(async () => {
+        const s = slotRow(d.db, n);
+        if (s && !s.stopped && s.light) {
+          if (d.slot.busy?.(n)) return false;
+          await d.ctl.light(n).catch(report(n));
+        }
+        if (s) endRefresh(d.db, n, { now: now(), result });
+        return true;
+      });
+      if (ended) break;
+      // A call can start during renewal or while another slot operation holds the queue.
+      await sleep(2000);
+    }
+  }
+  return result;
+}
+
+// Seconds a desktop link waits for the browser it started for a light account
+export const BROWSER_WAIT = 90;
+
+// The browser of a light account, started on demand for its owner on the remote desktop: with none running, a sign-in
+// run is asked (it waits for the sign-in there) and this waits until it runs. False when it did not start in
+// BROWSER_WAIT seconds. Any other account: true at once.
+export async function browserOnDemand(
+  db: CheckDeps["db"],
+  n: number,
+  o: { now?: () => number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<boolean> {
+  const now = () => Math.floor((o.now ?? Date.now)() / 1000);
+  const sleep = o.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const s = slotRow(db, n);
+  if (!s?.light || s.stopped) return true;
+  if (!s.refreshing) askRefresh(db, n);
+  for (const until = now() + BROWSER_WAIT; now() < until; await sleep(1000)) {
+    const r = slotRow(db, n);
+    if (!r?.light || r.stopped || r.refreshing) return true;
+  }
+  return false;
+}
+
+// Every light account whose browser is due, one after the other
+export async function runDueRefreshes(d: CheckDeps) {
+  const now = Math.floor((d.now ?? Date.now)() / 1000);
+  for (const s of listSlots(d.db)) {
+    if (refreshDue(s, d.slot.lightSignIn(s.slot), now)) await runRefresh(s.slot, d);
+  }
+}

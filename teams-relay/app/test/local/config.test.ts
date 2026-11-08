@@ -1,0 +1,157 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { ConfigError } from "@/shared/env";
+import { loadConfig, readToken } from "@/local/config";
+import { tempDir } from "../helpers";
+
+const CWD = path.resolve("/work/relay");
+
+describe("relay configuration", () => {
+  it("keeps everything under state/ next to the relay, API on loopback", () => {
+    const c = loadConfig({}, CWD);
+    const state = path.join(CWD, "state");
+    expect(c).toMatchObject({
+      stateDir: state,
+      profileDir: path.join(state, "profile"),
+      dbPath: path.join(state, "relay.db"),
+      mediaDir: path.join(state, "media"),
+      tokenFile: path.join(state, "token"),
+      lockFile: path.join(state, "relay.lock"),
+      channel: "chrome",
+      teamsUrl: "https://teams.cloud.microsoft/",
+      api: { bind: "127.0.0.1", port: 8787, tls: null },
+      ntfy: null,
+      hostLabel: os.hostname(),
+      activity: false,
+      readBy: false,
+      answerCalls: false,
+    });
+    expect(c.vapid).toEqual({
+      privateKeyFile: path.join(state, "vapid", "private_key.pem"),
+      appKeyFile: path.join(state, "vapid", "appkey.txt"),
+      subject: "mailto:admin@example.com",
+    });
+    expect(c.alerts).toEqual({
+      signIn: `Sign in again in the relay window on ${os.hostname()}`,
+      browserDown: `The browser of the relay on ${os.hostname()} does not start`,
+    });
+  });
+
+  it("reads the environment", () => {
+    const c = loadConfig(
+      { STATE_DIR: "/srv/relay", BROWSER_CHANNEL: "msedge", RELAY_BIND: "100.64.1.2", RELAY_PORT: "9443", RELAY_TLS_CERT: "c.pem", RELAY_TLS_KEY: "k.pem", NTFY_TOPIC: "relay", HOST_LABEL: "mini-pc" },
+      CWD,
+    );
+    expect(c).toMatchObject({ stateDir: path.resolve("/srv/relay"), channel: "msedge", hostLabel: "mini-pc", ntfy: { url: "https://ntfy.sh", topic: "relay" } });
+    expect(c.api).toEqual({ bind: "100.64.1.2", port: 9443, tls: { cert: path.join(CWD, "c.pem"), key: path.join(CWD, "k.pem") } });
+    expect(c.alerts.signIn).toBe("Sign in again in the relay window on mini-pc");
+  });
+
+  it("treats an empty variable as unset", () => {
+    expect(loadConfig({ VAPID_SUBJECT: "", RELAY_PORT: "", NTFY_TOPIC: "" }, CWD)).toMatchObject({ api: { port: 8787 }, vapid: { subject: "mailto:admin@example.com" }, ntfy: null });
+  });
+
+  it("runs a second relay from one number: shifts the port and keeps its own state", () => {
+    const c = loadConfig({ INSTANCE: "1" }, CWD);
+    expect(c.api.port).toBe(8788);
+    expect(c.stateDir).toBe(path.join(CWD, "state-1"));
+    expect(c.dbPath).toBe(path.join(CWD, "state-1", "relay.db"));
+  });
+
+  it("adds the instance to a custom RELAY_PORT, and leaves an explicit STATE_DIR alone", () => {
+    const c = loadConfig({ RELAY_PORT: "9000", INSTANCE: "5", STATE_DIR: "/srv/relay" }, CWD);
+    expect(c.api.port).toBe(9005);
+    expect(c.stateDir).toBe(path.resolve("/srv/relay"));
+  });
+
+  it("instance 0 is the bases untouched", () => {
+    const c = loadConfig({ INSTANCE: "0" }, CWD);
+    expect(c.api.port).toBe(8787);
+    expect(c.stateDir).toBe(path.join(CWD, "state"));
+  });
+
+  it("refuses an instance that pushes the port past 65535", () => {
+    expect(() => loadConfig({ RELAY_PORT: "65535", INSTANCE: "1" }, CWD)).toThrow(/over 65535/);
+  });
+
+  it("stops on a wrong value and says which", () => {
+    expect(() => loadConfig({ RELAY_PORT: "http" }, CWD)).toThrow(ConfigError);
+    expect(() => loadConfig({ RELAY_PORT: "http" }, CWD)).toThrow(/RELAY_PORT/);
+    expect(() => loadConfig({ RELAY_BIND: "localhost" }, CWD)).toThrow(/RELAY_BIND/);
+    expect(() => loadConfig({ BROWSER_CHANNEL: "firefox" }, CWD)).toThrow(/BROWSER_CHANNEL/);
+    expect(() => loadConfig({ TEAMS_URL: "http://teams.cloud.microsoft/" }, CWD)).toThrow(/TEAMS_URL/);
+    expect(() => loadConfig({ VAPID_SUBJECT: "admin@example.com" }, CWD)).toThrow(/VAPID_SUBJECT/);
+    expect(() => loadConfig({ RELAY_TLS_CERT: "c.pem" }, CWD)).toThrow(/go together/);
+  });
+});
+
+describe("a server to join", () => {
+  const TOKEN = "t".repeat(43);
+
+  it("is none by default", () => {
+    expect(loadConfig({}, CWD).server).toBeNull();
+  });
+
+  it("takes its address and token, and turns on what its web app shows", () => {
+    const c = loadConfig({ SERVER_URL: "https://teams.example.com/", SERVER_TOKEN: TOKEN }, CWD);
+    expect(c).toMatchObject({ server: { url: "https://teams.example.com", token: TOKEN }, activity: true, readBy: true, filesDir: path.join(CWD, "state", "files") });
+  });
+
+  it("takes the calls the app asks for (answer, hang up, mute), which a relay on its own does not", () => {
+    expect(loadConfig({}, CWD).answerCalls).toBe(false);
+    expect(loadConfig({ SERVER_URL: "https://teams.example.com/", SERVER_TOKEN: TOKEN }, CWD).answerCalls).toBe(true);
+  });
+
+  it("wants both, a real token, and HTTPS unless the server is on this machine", () => {
+    expect(() => loadConfig({ SERVER_URL: "https://teams.example.com" }, CWD)).toThrow(/go together/);
+    expect(() => loadConfig({ SERVER_TOKEN: TOKEN }, CWD)).toThrow(/go together/);
+    expect(() => loadConfig({ SERVER_URL: "https://teams.example.com", SERVER_TOKEN: "short" }, CWD)).toThrow(/SERVER_TOKEN/);
+    expect(() => loadConfig({ SERVER_URL: "http://teams.example.com", SERVER_TOKEN: TOKEN }, CWD)).toThrow(/https:\/\/ needed/);
+    expect(() => loadConfig({ SERVER_URL: "http://192.168.1.10:8090", SERVER_TOKEN: TOKEN }, CWD)).toThrow(/https:\/\/ needed/);
+    for (const url of ["http://localhost:8090", "http://127.0.0.1:8090", "http://[::1]:8090"]) {
+      expect(loadConfig({ SERVER_URL: url, SERVER_TOKEN: TOKEN }, CWD).server?.url).toBe(url);
+    }
+  });
+});
+
+describe("browser for MCP clients", () => {
+  const SERVER = { SERVER_URL: "https://teams.example.com", SERVER_TOKEN: "t".repeat(43) };
+
+  it("is off unless RELAY_BROWSER=1", () => {
+    expect(loadConfig(SERVER, CWD).browser).toBeNull();
+    expect(loadConfig({ ...SERVER, RELAY_BROWSER: "0" }, CWD).browser).toBeNull();
+    expect(loadConfig({ ...SERVER, RELAY_BROWSER: "" }, CWD).browser).toBeNull();
+  });
+
+  it("has a profile and an output folder of its own under state/, closed after 15 minutes unused", () => {
+    expect(loadConfig({ ...SERVER, RELAY_BROWSER: "1" }, CWD).browser).toEqual({
+      profileDir: path.join(CWD, "state", "ai-profile"),
+      outputDir: path.join(CWD, "state", "ai-output"),
+      idleMs: 900_000,
+    });
+    expect(loadConfig({ ...SERVER, RELAY_BROWSER: "1", RELAY_BROWSER_IDLE: "5" }, CWD).browser?.idleMs).toBe(5000);
+  });
+
+  it("needs a server joined, and a known value", () => {
+    expect(() => loadConfig({ RELAY_BROWSER: "1" }, CWD)).toThrow(/RELAY_BROWSER=1 needs SERVER_URL and SERVER_TOKEN/);
+    expect(() => loadConfig({ ...SERVER, RELAY_BROWSER: "yes" }, CWD)).toThrow(/RELAY_BROWSER/);
+    expect(() => loadConfig({ ...SERVER, RELAY_BROWSER: "1", RELAY_BROWSER_IDLE: "0" }, CWD)).toThrow(/RELAY_BROWSER_IDLE/);
+  });
+});
+
+describe("API token", () => {
+  it("is read from its file, without the line end", () => {
+    const file = path.join(tempDir(), "token");
+    fs.writeFileSync(file, "x".repeat(32) + "\n");
+    expect(readToken(file)).toBe("x".repeat(32));
+  });
+
+  it("stops the relay when missing or short", () => {
+    const file = path.join(tempDir(), "token");
+    expect(() => readToken(file)).toThrow(/npm run relay:setup/);
+    fs.writeFileSync(file, "short");
+    expect(() => readToken(file)).toThrow(ConfigError);
+  });
+});

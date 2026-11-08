@@ -1,0 +1,99 @@
+# Oe Copilot sulla VM: i calendari si leggono direttamente via API (Outlook REST v2.0 e Google Calendar v3), senza emulatore Android.
+# agent = rinnova i token OAuth in stato/tokens.json, legge i calendari e li serve con un'API a chiave.
+name: oe-copilot
+services:
+  # agent = legge i calendari (agente-ts/, TypeScript) e li serve con un'API a chiave
+  # al gateway (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (README.md, sezione 5).
+  # Gira senza privilegi come utente 10001: legge /app/fonti.json e aggiorna i token in /stato/tokens.json.
+  agent:
+    build: ./agente-ts
+    container_name: oe-copilot-agent
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - API_KEY=${API_KEY}
+    volumes:
+      - ./agent/fonti.json:/app/fonti.json:ro
+      - ./stato:/stato
+    # Solo localhost: dal PC ci si arriva con un tunnel SSH e il gateway dalla rete di
+    # compose, niente è esposto su internet.
+    ports:
+      - "127.0.0.1:3180:8180"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8180/api/salute').then((r) => process.exit(r.status === 401 ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Interfaccia web (README.md 4.7). Gateway (web-ts/, Next.js e Better Auth): pagina di
+  # accesso, sessioni, pagina in TypeScript, metodi dell'API e loghi. Senza sessione una pagina rimanda
+  # a /login e l'API risponde 401; con la sessione risponde da sé (POST /api/<metodo>, GET /logos/<file>)
+  # e il resto è 404. Il proprietario nasce da ADMIN_EMAIL e ADMIN_PASSWORD di .env, le sessioni, il
+  # blocco per account e lo stato dell'app stanno in ui-dati/gateway.db. La porta è solo su localhost
+  # (per le prove dal server): ci arriva caddy-ui dalla rete di compose.
+  gateway:
+    build: ./web-ts
+    container_name: oe-copilot-gateway
+    user: "10001:10001"
+    environment:
+      - GATEWAY_DB=/dati/gateway.db
+      # i metodi dell'API (lib/core) leggono e scrivono la cartella dei dati e chiedono all'agente; i loghi stanno in /dati/logos
+      - OE_DATI=/dati
+      # l'agente (servizio agent, in TypeScript) sulla rete di compose
+      - AGENTE_URL=${AGENTE_URL:-http://agent:8180}
+      - AGENTE_CHIAVE=${API_KEY}
+      - APP_URL=https://${UI_HOST:-localhost}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      # secondo fattore dell'accesso (README.md 4.7): off (predefinito), totp o passkey; un altro valore ferma l'avvio
+      - AUTH_2FA=${AUTH_2FA:-off}
+      # promemoria dal server (README.md 4.9): il giro è ogni PROMEMORIA_INTERVALLO_S secondi (da 5 a 3600)
+      - PROMEMORIA_INTERVALLO_S=${PROMEMORIA_INTERVALLO_S:-30}
+      # notifiche del browser (README.md 4.9): la coppia di chiavi VAPID e un contatto (mailto: o https:); vuoti, il canale non è configurato
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+    volumes:
+      - ./ui-dati:/dati
+    ports:
+      - "127.0.0.1:3190:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/salute').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # HTTPS davanti al gateway. L'indirizzo viene da .env (UI_HOST). Solo localhost: sslh
+  # della VM gli gira il TLS del suo nome (SNI) sulla 4445, e da lì passa anche il
+  # certificato (TLS-ALPN).
+  caddy-ui:
+    build: ./caddy-ui
+    container_name: oe-copilot-caddy
+    environment:
+      - UI_HOST=${UI_HOST:-}
+      - MEET_HOST=${MEET_HOST:-}
+    depends_on:
+      gateway:
+        condition: service_healthy
+    volumes:
+      # certificati e account ACME: non si perdono ricreando il container
+      - caddy_dati:/data
+      - caddy_config:/config
+    ports:
+      - "127.0.0.1:4445:443"
+    restart: unless-stopped
+
+volumes:
+  caddy_dati:
+  caddy_config:

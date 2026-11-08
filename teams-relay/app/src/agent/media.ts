@@ -1,0 +1,188 @@
+import fs from "node:fs";
+import path from "node:path";
+import type { Page } from "playwright-core";
+import { avatarFile, behindMcas, downloadFile, downloadUrl, isPlaceholderImage, isSharePointUrl, MAX_DOWNLOAD, MEDIA_EXT, mcasUrl, pruneMedia } from "./logic/files";
+import { errorText, log } from "./log";
+import { copyImage, fetchImage, squareLogo } from "./teams/scripts/media";
+
+// Maximum size of an image fetched from a message
+const MAX_IMAGE = 8e6;
+
+// The logo of the company of an account: largest file taken (the square logo of a sign-in page is 240x240 px, a few
+// KB), and how often it is asked for again (ms)
+const MAX_LOGO = 256_000;
+const LOGO_EVERY = 86_400_000;
+// Where Microsoft keeps the images of the sign-in branding of organizations (aadcdn.msauthimages.net,
+// aadcdn.msftauthimages.net)
+const BRANDING_HOST = /^https:\/\/[a-z0-9-]+\.(msauthimages|msftauthimages)\.net\//;
+// Where chatsvc messages point their images (AMS): eu-api.asm.skype.com...
+const AMS_HOST = /^https:\/\/[a-z0-9-]+\.asm\.skype\.com\//;
+const PNG_MAGIC = Buffer.from("89504e470d0a1a0a", "hex");
+// PNG or JPEG by the first bytes: the formats of a sign-in logo
+const logoExt = (d: Buffer) => (d.subarray(0, 8).equals(PNG_MAGIC) ? "png" : d[0] === 0xff && d[1] === 0xd8 && d[2] === 0xff ? "jpg" : null);
+
+// Images, profile pictures, the logo of the company of the account (data/N/media) and attachments (data/N/files). A
+// file is written once and kept while a row names it: images and pictures no row names any more leave the media
+// folder (prune).
+export class Media {
+  // addresses the page could not fetch (Giphy GIFs without CORS...), per image: their public link stays, no new
+  // attempt; another address of the same image (Teams loaded it meanwhile) is tried
+  private readonly failed = new Set<string>();
+  private logoAsked = { tenant: "", at: 0 };
+
+  constructor(
+    private readonly mediaDir: string,
+    private readonly filesDir: string,
+    private readonly get: typeof fetch = fetch,
+  ) {}
+
+  // The logo of the company of the account: the square logo (TileLogo) of the Microsoft sign-in branding of its
+  // organization, which the sign-in page shows once the address is typed, asked for the same way. Where the
+  // organization set only a banner, the page makes that square (squareLogo): without a page there is none. File name;
+  // "" when the organization has no logo to take, null when Microsoft or the page could not be reached.
+  async logo(email: string, page: Page | null = null): Promise<string | null> {
+    try {
+      const r = await this.get("https://login.microsoftonline.com/common/GetCredentialType", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: email }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!r.ok) return null;
+      const answer = (await r.json()) as { EstsProperties?: { UserTenantBranding?: { TileLogo?: unknown; BannerLogo?: unknown }[] } };
+      const branding = answer.EstsProperties?.UserTenantBranding?.[0];
+      const tile = String(branding?.TileLogo ?? "");
+      const url = tile || String(branding?.BannerLogo ?? "");
+      if (!BRANDING_HOST.test(url) || (!tile && !page)) return "";
+      const img = await this.get(url, { signal: AbortSignal.timeout(15_000) });
+      if (!img.ok) return null;
+      let data = Buffer.from(await img.arrayBuffer());
+      let ext = data.length <= MAX_LOGO ? logoExt(data) : null;
+      if (!ext) return "";
+      if (!tile) {
+        data = Buffer.from((await page!.evaluate(squareLogo, data.toString("base64"))) ?? "", "base64");
+        ext = data.length > 0 && data.length <= MAX_LOGO ? "png" : null;
+        if (!ext) return "";
+      }
+      const file = `${avatarFile(url).slice(0, 16)}.${ext}`;
+      fs.mkdirSync(this.mediaDir, { recursive: true });
+      fs.writeFileSync(path.join(this.mediaDir, file), data);
+      return file;
+    } catch (e) {
+      log.warn("media", `logo: ${errorText(e)}`);
+      return null;
+    }
+  }
+
+  // The logo of the company in the identity of the account, asked for once a day and at once for another
+  // organization: saved, the one known, stays while Microsoft or the page cannot be reached, and the next round of the
+  // identity job asks again
+  async companyLogo(me: { email: string; tenant: string }, saved: string, page: Page | null = null): Promise<string> {
+    if (!me.email || (this.logoAsked.tenant === me.tenant && Date.now() - this.logoAsked.at < LOGO_EVERY)) return saved;
+    this.logoAsked = { tenant: me.tenant, at: Date.now() };
+    const logo = await this.logo(me.email, page);
+    if (logo === null) this.logoAsked = { tenant: "", at: 0 };
+    return logo ?? saved;
+  }
+
+  // File of the image `key` of a message, fetched by the page, or, for an AMS image and a chatsvc token, by the agent
+  // itself (AMS takes the token, no longer the cookie of the session: prod, 2026-11-05); null when it cannot be read
+  async image(page: Page | null, key: string, src: string, token = ""): Promise<string | null> {
+    for (const ext of Object.values(MEDIA_EXT)) {
+      const file = path.join(this.mediaDir, `${key}.${ext}`);
+      const st = fs.statSync(file, { throwIfNoEntry: false });
+      if (!st) continue;
+      if (st.size > 1000 || !isPlaceholderImage(fs.readFileSync(file))) return `${key}.${ext}`;
+      fs.rmSync(file);
+      log.info("media", "placeholder removed", { file: `${key}.${ext}` });
+    }
+    if (!src || this.failed.has(`${key} ${src}`)) return null;
+    let r: { type: string; data: Buffer } | null = null;
+    try {
+      if (token && AMS_HOST.test(src)) r = await this.amsImage(src, token);
+      else if (page) {
+        const got = await page.evaluate(fetchImage, { src, max: MAX_IMAGE });
+        r = got && { type: got.type, data: Buffer.from(got.data, "base64") };
+      }
+    } catch (e) {
+      log.warn("media", errorText(e), { src: src.slice(0, 60) });
+    }
+    const ext = r ? MEDIA_EXT[r.type] : undefined;
+    if (!r || !ext) {
+      this.failed.add(`${key} ${src}`);
+      return null;
+    }
+    const { data } = r;
+    // still loading in Teams: the next read gets the image
+    if (isPlaceholderImage(data)) return null;
+    fs.mkdirSync(this.mediaDir, { recursive: true });
+    fs.writeFileSync(path.join(this.mediaDir, `${key}.${ext}`), data);
+    return `${key}.${ext}`;
+  }
+
+  private async amsImage(src: string, token: string): Promise<{ type: string; data: Buffer } | null> {
+    const r = await this.get(src, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000) });
+    if (!r.ok) return null;
+    const data = Buffer.from(await r.arrayBuffer());
+    return data.length <= MAX_IMAGE ? { type: (r.headers.get("content-type") ?? "").split(";")[0].trim(), data } : null;
+  }
+
+  // File of a profile picture already drawn in the page, copied once. `budget` caps the copies of one round
+  // and goes down with each copy.
+  async avatar(page: Page, src: string, budget: { left: number }): Promise<string> {
+    if (!src) return "";
+    const file = avatarFile(src);
+    if (fs.existsSync(path.join(this.mediaDir, file))) return file;
+    if (budget.left <= 0) return "";
+    budget.left--;
+    const data = await page.evaluate(copyImage, src).catch(() => null);
+    if (!data) return "";
+    fs.mkdirSync(this.mediaDir, { recursive: true });
+    fs.writeFileSync(path.join(this.mediaDir, file), Buffer.from(data, "base64"));
+    return file;
+  }
+
+  // Pictures of a list of items (chats, messages, feed entries): avsrc becomes the file name av
+  async avatars<T extends { avsrc: string }>(page: Page, items: readonly T[], limit = 8): Promise<(Omit<T, "avsrc"> & { av: string })[]> {
+    const budget = { left: limit };
+    const out: (Omit<T, "avsrc"> & { av: string })[] = [];
+    for (const { avsrc, ...rest } of items) out.push({ ...rest, av: await this.avatar(page, avsrc, budget) });
+    return out;
+  }
+
+  // Removes the files of the media folder no row names any more (`named`: SlotStore.mediaFiles), such as the picture of
+  // a chat that left the list; one that shows again is copied again under its name. Number of files removed.
+  prune(named: ReadonlySet<string>): number {
+    return pruneMedia(this.mediaDir, named);
+  }
+
+  // SharePoint or OneDrive attachment downloaded with the browser session (from the phone the link would ask
+  // for a sign-in). File name, or null.
+  async download(page: Page, url: string, name: string): Promise<string | null> {
+    if (!isSharePointUrl(url)) return null;
+    const file = downloadFile(url, name);
+    const target = path.join(this.filesDir, file);
+    if (fs.existsSync(target)) return file;
+    fs.mkdirSync(this.filesDir, { recursive: true });
+    try {
+      const ctx = page.context();
+      const sources = behindMcas(page.url()) ? [mcasUrl(url), url] : [url];
+      for (const source of sources) {
+        const r = await ctx.request.get(downloadUrl(source), { maxRedirects: 10, timeout: 60_000 });
+        const type = r.headers()["content-type"] ?? "";
+        if (r.status() !== 200 || type.startsWith("text/html")) {
+          log.warn("download", "refused", { status: r.status(), type, mcas: source !== url });
+          continue;
+        }
+        const body = await r.body();
+        if (body.length > MAX_DOWNLOAD) return null;
+        fs.writeFileSync(target, body);
+        return file;
+      }
+      return null;
+    } catch (e) {
+      log.warn("download", errorText(e));
+      return null;
+    }
+  }
+}

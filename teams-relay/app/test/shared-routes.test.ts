@@ -107,6 +107,30 @@ describe("a slot on a shared account in Settings", () => {
     expect(open.status).toBe(409);
     expect(calls).toEqual([]);
   });
+
+  it("an administrator who is not the owner of the shared accounts neither switches nor removes it", async () => {
+    user = { id: "u2", email: "admin2@contoso.example", name: "Admin 2" };
+    expect((await patch(shared, { running: false })).status).toBe(403);
+    const res = await DELETE(new Request(`http://localhost/api/accounts/${shared}`, { method: "DELETE" }), ctx(shared));
+    expect(res.status).toBe(403);
+    expect(sets).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(slotRow(appDb(), shared)).not.toBeNull();
+  });
+
+  it("an account gone from the calendar: its slot still stops and is removed, with nothing to turn off", async () => {
+    const gone = claimSlot(appDb(), "u1", { perUser: null });
+    bindShared(appDb(), gone, "gone@example.com", "emea");
+    expect(await (await patch(gone, { running: false })).json()).toEqual({ ok: true, running: false, shared: "gone@example.com" });
+    expect(calls).toEqual([`stop ${gone}`]);
+    expect(slotRow(appDb(), gone)?.stopped).toBe(1);
+    // and a server whose browsers container has no broker any more
+    vi.mocked(directoryClient).mockReturnValue({ list: async () => null, set: async () => null, report: async () => null });
+    const res = await DELETE(new Request(`http://localhost/api/accounts/${gone}`, { method: "DELETE" }), ctx(gone));
+    expect(res.status).toBe(200);
+    expect(slotRow(appDb(), gone)).toBeNull();
+    expect(sets).toEqual([]);
+  });
 });
 
 describe("one list of accounts", () => {
@@ -129,12 +153,14 @@ describe("one list of accounts", () => {
   it("anyone else sees nothing and changes nothing", async () => {
     user = { id: "u2", email: "other@contoso.example", name: "Other" };
     expect(await (await sharedList(new Request("http://localhost/api/shared-accounts"), undefined)).json()).toEqual({ enabled: false, addUrl: "", accounts: [], teamsOnly: [] });
-    expect((await post({ account: "mario@example.com", capabilities: ["chat"] })).status).toBe(404);
+    expect((await post({ account: "mario@example.com", capability: "chat", on: false })).status).toBe(404);
     expect(sets).toEqual([]);
   });
 
   it("the owner switches Teams on for a mailbox: a new slot runs on it", async () => {
-    const r = (await (await post({ account: "legacy@example.com", capabilities: ["mail", "calendar", "chat"] })).json()) as { accounts: { account: string; slot: number }[] };
+    const r = (await (await post({ account: "legacy@example.com", capability: "chat", on: true })).json()) as { accounts: { account: string; slot: number }[] };
+    // a mailbox that never chose keeps mail and calendar
+    expect(sets).toEqual([{ account: "legacy@example.com", capabilities: ["mail", "calendar", "chat"] }]);
     const slot = r.accounts.find((a) => a.account === "legacy@example.com")!.slot;
     expect(slot).toBeGreaterThan(own);
     expect(slotRow(appDb(), slot)).toMatchObject({ shared_account: "legacy@example.com", light: 1, owner_id: "u1" });
@@ -142,8 +168,10 @@ describe("one list of accounts", () => {
   });
 
   it("refuses capabilities it does not know", async () => {
-    expect((await post({ account: "mario@example.com", capabilities: ["admin"] })).status).toBe(400);
-    expect((await post({ account: "x", capabilities: [] })).status).toBe(400);
+    expect((await post({ account: "mario@example.com", capability: "admin", on: true })).status).toBe(400);
+    expect((await post({ account: "mario@example.com", capability: "chat", on: "yes" })).status).toBe(400);
+    expect((await post({ account: "mario@example.com", capabilities: ["chat"] })).status).toBe(400);
+    expect((await post({ account: "x", capability: "chat", on: true })).status).toBe(400);
     expect(sets).toEqual([]);
   });
 

@@ -211,6 +211,9 @@ export class Accounts {
     return this.queued(n, async () => {
       const a = this.accounts.get(n);
       if (a && (a.browser.active || a.agent.active || a.light.active)) throw new AccountError(409, `Account ${n} is running: stop it first`);
+      // the slot is free for anyone: a shared account it ran on goes with its data (every reuse wipes first, and a slot
+      // bound again gets its binding back with its light start)
+      this.bindings.delete(n);
       const dir = profileDir(n, this.cfg);
       if (!fs.existsSync(dir)) return;
       for (const entry of fs.readdirSync(dir)) {

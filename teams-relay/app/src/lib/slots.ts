@@ -133,6 +133,8 @@ export function setAccountRunning(n: number, running: boolean, ctl: ControlClien
     const s = slotRow(db, n);
     if (!s) throw new HttpError(404, "Account not found");
     if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    // bound to a shared account while this request waited: started only by Teams on (src/lib/shared-accounts.ts)
+    if (running && s.shared_account) throw new HttpError(409, SHARED_NO_BROWSER);
     if (!running) await slotDown(ctl, n);
     // a light account: its light agent; its browser runs when its sign-in needs it (src/lib/light.ts)
     else if (s.light) await ctl.light(n);
@@ -154,6 +156,7 @@ export function setCheckMode(n: number, every: number, ctl: ControlClient, db: D
     const s = slotRow(db, n);
     if (!s) throw new HttpError(404, "Account not found");
     if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    if (s.shared_account) throw new HttpError(409, SHARED_NO_BROWSER);
     // the browser first: a start or stop that fails leaves the mode as it was
     if (!every) await startOrUndo(ctl, n);
     else if (!s.stopped && !s.checking) await slotDown(ctl, n);
@@ -174,6 +177,7 @@ export function setLightMode(n: number, ctl: ControlClient, db: Database.Databas
     const s = slotRow(db, n);
     if (!s) throw new HttpError(404, "Account not found");
     if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    if (s.shared_account) throw new HttpError(409, SHARED_NO_BROWSER);
     if (s.light && !s.stopped) return;
     setLight(db, n, true);
     if (s.stopped) setSlotStopped(db, n, false);

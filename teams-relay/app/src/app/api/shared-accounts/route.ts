@@ -4,14 +4,15 @@ import { config } from "@/lib/config";
 import { controlClient, directoryClient } from "@/lib/control";
 import { body, HttpError, route } from "@/lib/http";
 import { requireUser } from "@/lib/session";
-import { parseDirectory, setSharedCapabilities, sharedOwnerId, syncSharedAccounts, type Capability } from "@/lib/shared-accounts";
+import { parseDirectory, setSharedCapability, sharedOwnerId, syncSharedAccounts, type Capability } from "@/lib/shared-accounts";
 
 // The one list of accounts, as the calendar shows it: each Microsoft account signed in once in the calendar with mail,
 // calendar and Teams on or off, the Teams account running on it, and the owner's Teams accounts with only their own
 // browser sign-in. Only the owner of the shared accounts (SHARED_ACCOUNTS_OWNER, by default ADMIN_EMAIL) sees it; for
 // anyone else, and without a broker in the browsers container, it is off.
 //   GET  /api/shared-accounts                                  {enabled, addUrl, accounts, teamsOnly}
-//   POST /api/shared-accounts {account, capabilities}          the same, after the change and the pass that follows it
+//   POST /api/shared-accounts {account, capability, on}        the same, after the change and the pass that follows it;
+//                                                              one service per change, applied to the list as it is now
 
 const OFF = { enabled: false, addUrl: "", accounts: [], teamsOnly: [] };
 
@@ -45,13 +46,12 @@ export const POST = route(async (req) => {
   const db = appDb();
   const owner = sharedOwnerId(db);
   if (owner !== user.id) throw new HttpError(404, "Not found");
-  const { account, capabilities } = await body(req);
+  const { account, capability, on } = await body(req);
   if (typeof account !== "string" || !account.includes("@")) throw new HttpError(400, "account must be an address");
-  if (!Array.isArray(capabilities) || !capabilities.every((c) => c === "mail" || c === "calendar" || c === "chat")) {
-    throw new HttpError(400, "capabilities must be a list of mail, calendar, chat");
-  }
+  if (capability !== "mail" && capability !== "calendar" && capability !== "chat") throw new HttpError(400, "capability must be mail, calendar or chat");
+  if (typeof on !== "boolean") throw new HttpError(400, "on must be true or false");
   const dir = directoryClient();
-  await setSharedCapabilities(dir, account, capabilities as Capability[]);
+  await setSharedCapability(dir, account, capability as Capability, on);
   const r = await syncSharedAccounts({ ctl: controlClient(), db, dir, dataDir: config.dataDir, perUser: config.accountsPerUser, owner });
   const error = r.errors[account.toLowerCase()];
   return Response.json({ ...(await listFor(user.id)), ...(error ? { error } : {}) });

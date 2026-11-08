@@ -84,15 +84,27 @@ export type SyncResult = { enabled: boolean; accounts: SharedAccount[]; errors: 
 const identityOf = (s: Slot) => accountSummary(s).email.toLowerCase();
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+// A slot stopped for good: marked stopped only once its stop worked, so a failed one is tried again at the next pass
+async function stopSlot(d: SyncDeps, n: number, errors: Record<string, string>, account: string) {
+  try {
+    await slotDown(d.ctl, n);
+    setSlotStopped(d.db, n, true);
+  } catch (e) {
+    errors[account] = message(e);
+  }
+}
+
 // One pass: every account with Teams on has a running slot of the owner, every slot of an account with Teams off (or
-// gone from the list) is stopped. Nothing changes when the list cannot be read. Runs in the queue of the slots.
+// gone from the list) is stopped. Nothing changes when the list cannot be read. Runs in the queue of the slots, the list
+// read there too: a pass that waited behind a change made from a page reads the list after it, never the one before.
 export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
-  const raw = await d.dir.list();
-  if (raw === null || !d.owner) return { enabled: false, accounts: [], errors: {} };
-  const accounts = parseDirectory(raw);
+  if (!d.owner) return { enabled: false, accounts: [], errors: {} };
   const owner = d.owner;
-  const errors: Record<string, string> = {};
-  await exclusive(async () => {
+  return exclusive(async (): Promise<SyncResult> => {
+    const raw = await d.dir.list();
+    if (raw === null) return { enabled: false, accounts: [], errors: {} };
+    const accounts = parseDirectory(raw);
+    const errors: Record<string, string> = {};
     const slots = listSlots(d.db);
     // each slot's address read once per pass, only when an account needs it
     const known = new Map<number, string>();
@@ -103,10 +115,7 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
     for (const a of accounts) {
       const bound = slots.find((s) => s.shared_account === a.account);
       if (!a.capabilities.includes("chat")) {
-        if (bound && !bound.stopped) {
-          await slotDown(d.ctl, bound.slot).catch((e: Error) => void (errors[a.account] = e.message));
-          setSlotStopped(d.db, bound.slot, true);
-        }
+        if (bound && !bound.stopped) await stopSlot(d, bound.slot, errors, a.account);
         continue;
       }
       try {
@@ -146,11 +155,10 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
     // a slot whose account left the list of the calendar (removed there): stopped, its data kept until its owner removes it
     for (const s of slots) {
       if (!s.shared_account || s.stopped || accounts.some((a) => a.account === s.shared_account)) continue;
-      await slotDown(d.ctl, s.slot).catch((e: Error) => void (errors[s.shared_account] = e.message));
-      setSlotStopped(d.db, s.slot, true);
+      await stopSlot(d, s.slot, errors, s.shared_account);
     }
+    return { enabled: true, accounts, errors };
   });
-  return { enabled: true, accounts, errors };
 }
 
 // The state of a slot as one word for the calendar: stopped, or what its agent says of Teams (ok, starting, login, ...)
@@ -173,13 +181,22 @@ export function sharedReport(db: Database.Database, owner: string, identity: (s:
   return { accounts, others };
 }
 
-// Teams on or off for one account, from this app: the agent keeps the choice, the next pass follows it. A mailbox that
-// never chose keeps mail and calendar.
-export async function setSharedChat(dir: DirectoryClient, account: string, on: boolean): Promise<Capability[]> {
-  const a = parseDirectory(await dir.list()).find((x) => x.account === account.toLowerCase());
-  if (!a) throw new HttpError(404, `${account} is not in the shared accounts of the calendar`);
-  return setSharedCapabilities(dir, a.account, on ? [...new Set([...a.capabilities, "chat" as const])] : a.capabilities.filter((c) => c !== "chat"));
+export const NOT_SHARED = "not in the shared accounts of the calendar";
+
+// One of mail, calendar and Teams on or off for one account, from this app: applied to the list as the agent has it now,
+// not as a page showed it, so a change made meanwhile in the calendar stays. The agent keeps the choice, the pass
+// follows it. A mailbox that never chose keeps mail and calendar. 404: the account is not in the list, or this server
+// has no shared accounts.
+export async function setSharedCapability(dir: DirectoryClient, account: string, capability: Capability, on: boolean): Promise<Capability[]> {
+  const raw = await dir.list();
+  if (raw === null) throw new HttpError(404, "No shared Microsoft accounts on this server");
+  const a = parseDirectory(raw).find((x) => x.account === account.toLowerCase());
+  if (!a) throw new HttpError(404, `${account} is ${NOT_SHARED}`);
+  if (a.capabilities.includes(capability) === on) return a.capabilities;
+  return setSharedCapabilities(dir, a.account, on ? [...a.capabilities, capability] : a.capabilities.filter((c) => c !== capability));
 }
+
+export const setSharedChat = (dir: DirectoryClient, account: string, on: boolean) => setSharedCapability(dir, account, "chat", on);
 
 export async function setSharedCapabilities(dir: DirectoryClient, account: string, capabilities: Capability[]): Promise<Capability[]> {
   const caps = CAPABILITIES.filter((c) => capabilities.includes(c));

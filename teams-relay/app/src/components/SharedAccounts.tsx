@@ -52,11 +52,11 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
     return () => clearInterval(timer);
   }, []);
 
+  // one service at a time: the server applies it to the list as it is then, a change made in the calendar meanwhile stays
   async function toggle(row: SharedRow, cap: Capability, on: boolean) {
-    const capabilities = on ? [...new Set([...row.capabilities, cap])] : row.capabilities.filter((c) => c !== cap);
     setSaving(row.account);
     try {
-      const r = await post<SharedList>("/api/shared-accounts", { account: row.account, capabilities }, 0);
+      const r = await post<SharedList>("/api/shared-accounts", { account: row.account, capability: cap, on }, 0);
       setList(r);
       onChange?.();
       const name = SWITCHES.find((s) => s.cap === cap)!.label;

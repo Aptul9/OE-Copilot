@@ -106,6 +106,24 @@ describe("a bound slot in the supervisor", () => {
     expect(calls).toContain("start browser-2");
   });
 
+  it("a wipe drops the binding: the next account on that slot number starts its browser", async () => {
+    const { accounts, calls } = make();
+    await accounts.light(2, MARIO);
+    await accounts.stop(2);
+    await expect(accounts.start(2)).rejects.toMatchObject({ status: 409 });
+    await accounts.wipe(2);
+    await accounts.start(2);
+    expect(calls.slice(-2)).toEqual(["start browser-2", "start agent-2"]);
+  });
+
+  it("a wipe refused because the slot runs keeps the binding", async () => {
+    const { accounts } = make();
+    await accounts.light(2, MARIO);
+    await expect(accounts.wipe(2)).rejects.toMatchObject({ status: 409 });
+    await accounts.stop(2);
+    await expect(accounts.start(2)).rejects.toMatchObject({ status: 409 });
+  });
+
   it("refuses a binding when this container has no broker", async () => {
     const { accounts, calls } = make(cfg({}));
     await expect(accounts.light(2, MARIO)).rejects.toMatchObject({ status: 409 });

@@ -6,7 +6,8 @@ import type Database from "better-sqlite3";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { askRefresh, beginCheck, claimSlot, migrateAppSchema, openAppDb, setCheckEvery, setSlotStopped, slotRow, type Slot } from "@/lib/appdb";
 import type { ControlClient, DirectoryClient } from "@/lib/control";
-import { parseDirectory, setSharedChat, sharedOwnerId, sharedReport, syncSharedAccounts, type SyncDeps } from "@/lib/shared-accounts";
+import { parseDirectory, setSharedCapability, setSharedChat, sharedOwnerId, sharedReport, syncSharedAccounts, type SyncDeps } from "@/lib/shared-accounts";
+import { exclusive } from "@/lib/slots";
 import { tempDir } from "./helpers";
 
 const OWNER = "owner-id";
@@ -76,6 +77,40 @@ describe("a pass over the shared accounts", () => {
     await syncSharedAccounts(deps());
     expect(calls).toEqual(["light 1"]);
     expect(slotRow(db, 1)?.stopped).toBe(0);
+  });
+
+  it("reads the list inside the queue: a pass that waited behind a change applies the change, not the list before it", async () => {
+    accounts = [shared("mario@example.com", ["chat"])];
+    let release: (() => void) | undefined;
+    const held = exclusive(() => new Promise<void>((r) => (release = r)));
+    await vi.waitFor(() => expect(release).toBeDefined());
+    const pass = syncSharedAccounts(deps());
+    // Teams turned off from a page while the pass waits
+    accounts = [shared("mario@example.com", ["mail"])];
+    release!();
+    await held;
+    await pass;
+    expect(calls).toEqual([]);
+    expect(slotRow(db, 1)).toBeNull();
+  });
+
+  it("a stop that failed is not recorded: the next pass tries it again", async () => {
+    accounts = [shared("mario@example.com", ["chat"])];
+    await syncSharedAccounts(deps());
+    accounts = [shared("mario@example.com", ["mail"])];
+    const busy: ControlClient = {
+      ...ctl,
+      stop: async () => {
+        throw new Error("supervisor busy");
+      },
+    };
+    const r = await syncSharedAccounts(deps({ ctl: busy }));
+    expect(r.errors["mario@example.com"]).toMatch(/busy/);
+    expect(slotRow(db, 1)?.stopped).toBe(0);
+    calls = [];
+    await syncSharedAccounts(deps());
+    expect(calls).toEqual(["stop 1"]);
+    expect(slotRow(db, 1)?.stopped).toBe(1);
   });
 
   it("an account removed from the calendar stops its slot", async () => {
@@ -179,6 +214,16 @@ describe("Teams on or off from this app", () => {
       { account: "mario@example.com", capabilities: ["mail"] },
     ]);
     await expect(setSharedChat(d, "nobody@example.com", true)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("one service at a time, on the list as the agent has it now; nothing sent when it is already so; 404 without a list", async () => {
+    accounts = [shared("mario@example.com", ["mail", "chat"])];
+    const d = dir();
+    expect(await setSharedCapability(d, "Mario@Example.com", "calendar", true)).toEqual(["mail", "calendar", "chat"]);
+    expect(d.set.mock.calls.map((c) => c[0])).toEqual([{ account: "mario@example.com", capabilities: ["mail", "calendar", "chat"] }]);
+    expect(await setSharedCapability(d, "mario@example.com", "mail", true)).toEqual(["mail", "chat"]);
+    expect(d.set).toHaveBeenCalledTimes(1);
+    await expect(setSharedCapability(dir({ list: async () => null }), "mario@example.com", "chat", false)).rejects.toMatchObject({ status: 404 });
   });
 
   it("a refusal of the agent is a 409 with its reason", async () => {

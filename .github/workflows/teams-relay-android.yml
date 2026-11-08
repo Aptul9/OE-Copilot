@@ -1,0 +1,115 @@
+name: TeamsRelay Android app
+
+# Built on request only (gh workflow run teams-relay-android.yml): checks run locally, scripts/check.sh teams-relay
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Debug APK
+    runs-on: ubuntu-latest
+    environment: teams-relay
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: teams-relay/mobile
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: teams-relay/mobile/package-lock.json
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # start page tests run in the Google Chrome of the runner; the shared Rust of the app (core/: what the server
+      # sends opened and turned into notifications, the requests to the server) against a stand-in server
+      - name: Tests
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+          cargo test --manifest-path core/Cargo.toml
+
+      # the runner image carries the Android SDK and NDK; Tauri reads the NDK from NDK_HOME. The launcher icons go
+      # into the Android project only once it exists, so they are made again after init.
+      - name: Android project
+        run: |
+          echo "NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+          rustup target add aarch64-linux-android
+          NDK_HOME="$ANDROID_NDK_HOME" npx tauri android init --ci --skip-targets-install
+          npx tauri icon ../app/public/static/icon-512.png
+
+      # Firebase settings of the app, from the repository secret GOOGLE_SERVICES_JSON (the google-services.json of the
+      # Firebase console): string resources of the push plugin. Without the secret the APK receives no notifications.
+      - name: Firebase settings
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::warning::secret GOOGLE_SERVICES_JSON not set: the APK receives no notifications"
+            exit 0
+          fi
+          printf '%s' "$GOOGLE_SERVICES_JSON" > "$RUNNER_TEMP/google-services.json"
+          node scripts/firebase-values.mjs "$RUNNER_TEMP/google-services.json" plugin/android/src/main/res/values/google-services.xml
+
+      # One debug key for every run: the repository secret ANDROID_DEBUG_KEYSTORE (base64 of a debug.keystore, alias
+      # androiddebugkey, passwords android) goes where the Android Gradle plugin takes its debug key from, so the APK of
+      # a later run installs over the app, which keeps its server and session. Without it the build makes a key of its
+      # own, and an APK of another run needs the app removed first.
+      - name: Signing key
+        env:
+          ANDROID_DEBUG_KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE }}
+        run: |
+          if [ -z "$ANDROID_DEBUG_KEYSTORE" ]; then
+            echo "::warning::secret ANDROID_DEBUG_KEYSTORE not set: the APK is signed with a key made for this run"
+            exit 0
+          fi
+          mkdir -p "$HOME/.android"
+          printf '%s' "$ANDROID_DEBUG_KEYSTORE" | base64 -d > "$HOME/.android/debug.keystore"
+          sha=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f')
+          [ -n "$sha" ] || { echo "::error::ANDROID_DEBUG_KEYSTORE is no keystore with the key androiddebugkey (password android)"; exit 1; }
+          echo "DEBUG_KEY_SHA256=$sha" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: npx tauri android build --debug --apk --target aarch64
+
+      # the certificate the APK is signed with, which must be the one of the secret when it is set
+      - name: Signature
+        run: |
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -1)
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          # the label of a signer depends on apksigner and on the signature: "Signer #1", "V2 Signer:", "Signer
+          # (minSdkVersion=...)"; every SHA-256 digest counts
+          certs=$("$apksigner" verify --print-certs "$apk")
+          echo "$certs"
+          got=$(echo "$certs" | sed -n 's/.*certificate SHA-256 digest: //p' | sort -u)
+          echo "$apk signed by certificate SHA-256 $got"
+          if [ -n "$DEBUG_KEY_SHA256" ] && [ "$got" != "$DEBUG_KEY_SHA256" ]; then
+            echo "::error::the APK is not signed with the key of ANDROID_DEBUG_KEYSTORE ($DEBUG_KEY_SHA256)"
+            exit 1
+          fi
+
+      # the Kotlin calls the shared Rust through JNI: every function Core.kt declares must be in the library of the app
+      - name: JNI functions
+        run: |
+          lib=$(find src-tauri/gen/android/app/src/main/jniLibs -name libteamsrelay_mobile_lib.so | head -1)
+          nm=$(find "$ANDROID_NDK_HOME" -name llvm-nm | head -1)
+          exported=$("$nm" -D --defined-only "$lib" | sed -n 's/.* T \(Java_io_github_aptul9_teamsrelay_push_Core_.*\)/\1/p' | sort)
+          declared=$(sed -n 's/.*external fun \([A-Za-z]*\)(.*/Java_io_github_aptul9_teamsrelay_push_Core_\1/p' plugin/android/src/main/java/io/github/aptul9/teamsrelay/push/Core.kt | sort)
+          echo "$exported"
+          [ -n "$declared" ] && [ "$exported" = "$declared" ] || { echo "::error::JNI functions of $lib differ from those Core.kt declares"; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: teamsrelay-android-debug
+          path: teams-relay/mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,24 @@
+# Local test overlay (Docker Desktop). Not for production.
+#   docker compose --env-file compose.local.env -f docker-compose.yml -f compose.local.yml up -d --build
+# App on http://localhost:8090, sign in with ADMIN_EMAIL / ADMIN_PASSWORD of compose.local.env.
+# Caddy serves plain HTTP on 127.0.0.1 only: localhost is already a secure context, so the service
+# worker and Web Push work without a certificate.
+# SQLite and the Chromium profiles live in named volumes instead of bind mounts on the Windows
+# filesystem, where file locking and symlinks are unreliable. tr_profiles holds one directory per
+# account, as config/ does on a server. Stacks of earlier releases kept one volume per account
+# (tr_config, tr_config_N): docs/setup.md moves them.
+services:
+  browsers:
+    volumes:
+      - tr_profiles:/profiles
+      - tr_data:/root/data
+  webapp:
+    volumes:
+      - tr_data:/data
+  caddy:
+    ports: !override
+      - "127.0.0.1:8090:8090"
+
+volumes:
+  tr_profiles:
+  tr_data:

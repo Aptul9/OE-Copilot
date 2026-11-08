@@ -1,0 +1,111 @@
+name: TeamsRelay
+
+# teams-relay/ goes to the server on every push to main. Checks run locally before the push
+# (scripts/check.sh teams-relay), not here. The Android app does not deploy: teams-relay-android.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "teams-relay/**"
+      - "!teams-relay/mobile/**"
+      - ".github/workflows/teams-relay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: teams-relay
+      url: https://${{ vars.DEPLOY_DOMAIN }}
+    # one deploy at a time, never interrupting the running one
+    concurrency:
+      group: deploy-teams-relay
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+      TR_DIR: /opt/teamsrelay
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: SSH setup
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          # pinned host key: no StrictHostKeyChecking=no
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Backup of the running version
+        run: ssh "$TARGET" "test ! -x $TR_DIR/deploy/remote-deploy.sh || $TR_DIR/deploy/remote-deploy.sh backup"
+
+      # The service account key of the Firebase project, for the phones of the Android app (mobile/README.md, Firebase),
+      # from the secret FCM_SERVICE_ACCOUNT_JSON; without the secret fcm/ stays as it is. The agents and the web app read
+      # it only at their start: remote-deploy.sh up recreates browsers and webapp when it changed
+      - name: Write the Firebase key
+        env:
+          FCM_KEY: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+        run: |
+          [ -n "$FCM_KEY" ] || { echo "no secret FCM_SERVICE_ACCOUNT_JSON: fcm/ left as it is"; exit 0; }
+          # what loadServiceAccount (app/src/agent/push/fcm.ts) takes, or the agents stop at their start; checked before
+          # the upload, stderr dropped since a JSON.parse error quotes the text
+          node -e 'const k = JSON.parse(process.env.FCM_KEY); process.exit(k?.type === "service_account" && ["project_id", "client_email", "private_key"].every((f) => typeof k[f] === "string" && k[f] !== "") ? 0 : 1)' 2>/dev/null \
+            || { echo "FCM_SERVICE_ACCOUNT_JSON is not the JSON key of a service account (type, project_id, client_email, private_key)" >&2; exit 1; }
+          # an fcm/ that Docker made (root) when it mounted the missing directory is replaced while empty: the deploy user
+          # owns TR_DIR, not fcm/, and has no sudo
+          printf '%s\n' "$FCM_KEY" | ssh "$TARGET" "cd $TR_DIR && { test -w fcm || { rm -df fcm && mkdir fcm; }; } && umask 077 && cat > fcm/service-account.json.new && mv fcm/service-account.json.new fcm/service-account.json"
+
+      - name: Upload code
+        run: |
+          # runtime data (.env, Chromium profiles, databases, VAPID keys, Firebase key) stays on the server
+          rsync -az --delete \
+            --exclude .git/ --exclude .github/ --exclude .env --exclude node_modules/ --exclude .next/ \
+            --exclude /config/ --exclude /data/ --exclude /vapid/ --exclude /fcm/ --exclude .deployed-sha --exclude .caddyfile-sum --exclude .fcm-sum \
+            teams-relay/ "$TARGET:$TR_DIR/"
+
+      # .env is rendered from the secrets and variables of the environment (Settings > Environments > teams-relay), so a
+      # value is changed there and applied by the next deploy; the file on the server is never edited by hand
+      - name: Write .env
+        env:
+          TR_DOMAIN: ${{ vars.DEPLOY_DOMAIN }}
+          TR_APP_URL: ${{ vars.APP_URL }}
+          TR_BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          TR_SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          TR_ADMIN_EMAIL: ${{ vars.ADMIN_EMAIL }}
+          TR_ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          TR_MCP_TOKEN: ${{ secrets.MCP_TOKEN }}
+          TR_ACCOUNTS_PER_USER: ${{ vars.ACCOUNTS_PER_USER }}
+          TR_DESKTOP_USER: ${{ vars.DESKTOP_USER }}
+          TR_DESKTOP_PASS: ${{ secrets.DESKTOP_PASS }}
+          TR_DESKTOP_URL: ${{ vars.DESKTOP_URL }}
+          TR_VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
+          TR_TZ: ${{ vars.TZ }}
+          TR_HTTPS_PORT: ${{ vars.HTTPS_PORT }}
+          TR_HTTPS_BIND: ${{ vars.HTTPS_BIND }}
+          TR_NTFY_ENABLED: ${{ vars.NTFY_ENABLED }}
+          TR_NTFY_URL: ${{ vars.NTFY_URL }}
+          TR_NTFY_TOPIC: ${{ vars.NTFY_TOPIC }}
+          TR_NATIVE_CALLS: ${{ vars.NATIVE_CALLS }}
+        run: |
+          teams-relay/deploy/render-env.sh > /tmp/tr.env
+          grep -Eq '^(BETTER_AUTH_SECRET|SESSION_SECRET)=.{32,}' /tmp/tr.env || { echo "no session key of at least 32 characters in the pipeline variables" >&2; exit 1; }
+          # previous .env kept outside TR_DIR (rsync --delete and the code rollback do not touch it)
+          ssh "$TARGET" "umask 077; test ! -f $TR_DIR/.env || cp -p $TR_DIR/.env /var/tmp/teamsrelay-env.prev"
+          ssh "$TARGET" "umask 077; cat > $TR_DIR/.env.new && mv $TR_DIR/.env.new $TR_DIR/.env" < /tmp/tr.env
+          rm -f /tmp/tr.env
+
+      - name: Build and restart
+        run: ssh "$TARGET" "$TR_DIR/deploy/remote-deploy.sh up ${{ github.sha }}"
+
+      - name: Public HTTPS check
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 10 "https://${{ vars.DEPLOY_DOMAIN }}/healthz"; then echo; exit 0; fi
+            sleep 6
+          done
+          echo "https://${{ vars.DEPLOY_DOMAIN }}/healthz does not answer" >&2; exit 1

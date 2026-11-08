@@ -1,0 +1,28 @@
+# TeamsRelay: Caddy with automatic HTTPS. DOMAIN and HTTPS_PORT come from .env through docker-compose.yml.
+{
+	http_port 80
+	https_port {$HTTPS_PORT:443}
+}
+
+{$DOMAIN} {
+	# Remote desktop of the browsers container on /desktop/: the browser window of every Teams account.
+	# Caddy asks the web app whether the session cookie belongs to a user with an account before letting a
+	# request through.
+	redir /desktop /desktop/ 302
+	# desktop of one account, the address of the releases with one desktop per account
+	@deskslot path_regexp deskslot ^/desktop/([0-9]+)/?$
+	redir @deskslot /api/desktop/{re.deskslot.1} 302
+	handle /desktop/* {
+		forward_auth webapp:8090 {
+			uri /api/authcheck
+			# the check is a plain HTTP request even when the original one is a websocket (the desktop
+			# stream): with Upgrade the web app would answer 403
+			header_up -Upgrade
+			header_up -Connection
+		}
+		reverse_proxy browsers:3000
+	}
+	handle {
+		reverse_proxy webapp:8090
+	}
+}

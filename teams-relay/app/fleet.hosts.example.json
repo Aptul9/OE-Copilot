@@ -1,0 +1,17 @@
+{
+  "_span_note": "span = the host's agent vmPortSpan, default 6: the CLI tries port .. port+span-1 with the host's token and uses the one that answers. Space the hosts' ports at least a span apart; span 1 pins a host to its port.",
+  "hosts": {
+    "zurich": {
+      "vm": "oracle-vm",
+      "port": 8766,
+      "token": "the cmdapi token of this host, from its relay.env CMDAPI_TOKEN",
+      "appDir": "C:/Users/you/teamsrelay/app"
+    },
+    "office": {
+      "vm": "oracle-vm",
+      "port": 8772,
+      "token": "a different token, this host's own",
+      "appDir": "/home/you/teamsrelay/app"
+    }
+  }
+}

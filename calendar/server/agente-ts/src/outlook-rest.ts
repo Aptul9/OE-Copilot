@@ -31,7 +31,7 @@ export function upnDi(claims: Record<string, unknown>): string {
  * calendari: vale per l'importazione della sessione, per ogni rinnovo col refresh_token del client web e per ogni nuovo accesso dalla
  * sessione del browser. Restituisce il motivo del rifiuto, o null se il token va bene.
  */
-export function motivoTokenWebNonValido(accessToken: unknown, casella: string, adessoS: number): string | null {
+export function motivoTokenWebNonValido(accessToken: unknown, casella: string, adessoS: number, required: readonly ("mail" | "calendar")[] = ["calendar"]): string | null {
   if (typeof accessToken !== "string" || !accessToken) return "Risposta token Microsoft senza access_token";
   const claims = claimsJwt(accessToken);
   if (upnDi(claims) !== casella.trim().toLowerCase()) return "Microsoft ha restituito un'altra casella";
@@ -39,7 +39,8 @@ export function motivoTokenWebNonValido(accessToken: unknown, casella: string, a
   const exp = Number(claims.exp);
   if (!Number.isFinite(exp) || exp <= adessoS) return "Microsoft ha restituito un token già scaduto";
   const scp = typeof claims.scp === "string" ? claims.scp.split(" ") : [];
-  if (!scp.includes("Calendars.Read") && !scp.includes("Calendars.ReadWrite")) return "Il token non ha il permesso sui calendari";
+  if (required.includes("calendar") && !scp.some(s => /^Calendars\.(Read|ReadWrite)(\.Shared)?$/.test(s))) return "Il token non ha il permesso sui calendari";
+  if (required.includes("mail") && !scp.some(s => /^Mail\.(Read|ReadWrite)(\.Shared)?$/.test(s))) return "Il token non ha il permesso sulla posta";
   return null;
 }
 

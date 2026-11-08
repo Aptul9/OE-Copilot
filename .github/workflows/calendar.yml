@@ -7,6 +7,7 @@ on:
     branches: [main]
     paths:
       - "shared/**"
+      - "teams-relay/app/scripts/mcas-auth-forms.mjs"
       - "calendar/server/**"
       - ".github/workflows/calendar.yml"
   workflow_dispatch:

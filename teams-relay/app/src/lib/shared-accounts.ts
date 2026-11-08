@@ -15,6 +15,7 @@ import { config } from "./config";
 import type { ControlClient, DirectoryClient } from "./control";
 import { HttpError } from "./http";
 import { exclusive, slotDown, wipeSlot } from "./slots";
+import { syncSignIns } from "./shared-signin";
 
 // Shared Microsoft accounts: one sign-in, in the OE calendar agent (the Account window of the calendar), for mail,
 // calendar and Teams. The agent keeps the list and, per account, which of the three are on; this server follows it. An
@@ -153,6 +154,16 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
     const raw = await d.dir.list();
     if (raw === null) return { enabled: false, accounts: [], errors: {} };
     const directoryAccounts = parseDirectory(raw);
+    const signins = (raw as { signins?: { account: string; phase: string }[] }).signins;
+    if (Array.isArray(signins)) {
+      for (const a of directoryAccounts.filter(a => a.status === "error" && a.capabilities.some(c => c !== "chat") && /Sessione del browser|Accesso scaduto/.test(a.message))) {
+        if (signins.some(j => j.account === a.account && j.phase !== "complete")) continue;
+        const browser = listSlots(d.db).find(s => s.owner_id === owner && !s.relay && !s.shared_account && (d.identity ?? identityOf)(s).trim().toLowerCase() === a.account);
+        const capabilities = [...new Set([...a.capabilities, ...(browser && !browser.stopped ? ["chat"] : [])])];
+        await d.dir.set({ operation: "connect", account: a.account, capabilities }).catch(() => null);
+      }
+    }
+    await syncSignIns(d, (raw as { signins?: unknown }).signins);
     const commands =
       (
         raw as {

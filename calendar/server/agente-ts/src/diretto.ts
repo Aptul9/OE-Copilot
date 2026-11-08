@@ -14,6 +14,7 @@ import { contieneEvento } from "./serie.ts";
 import { ErroreAltro, ora, testoNaive } from "./tempo.ts";
 import { MS_LOGIN, OUTLOOK_REST, claimsJwt, jsonRest, leggiTesto, motivoTokenWebNonValido, upnDi, type FetchFn } from "./outlook-rest.ts";
 import { OUTLOOK_WEB_CLIENT_ID, OUTLOOK_WEB_REDIRECT_URI, OUTLOOK_WEB_SCOPES, SessioneScaduta, autorizzaDaSessione, leggiSessione, type SessioneMicrosoft } from "./sessione-web.ts";
+import { ProxyBrowserRequired } from "./mcas-outlook.ts";
 
 export type { FetchFn } from "./outlook-rest.ts";
 
@@ -276,7 +277,7 @@ export class GestoreToken {
     while (this.inCorso.has(key)) await this.inCorso.get(key)!.catch(() => undefined);
     this.caricaSeCambiato();
     const entry = this.dati.accounts[key];
-    if (!entry?.shared || entry.provider !== "microsoft" || !entry.refresh_token) throw new ErroreAccessoScaduto("shared account unavailable");
+    if (!entry?.shared || entry.provider !== "microsoft") throw new ErroreAccessoScaduto("shared account unavailable");
     allowed(entry.shared, resource);
     const stored = entry.client_id || OUTLOOK_CLIENT_ID;
     const client = clientFor(entry.shared, resource, stored);
@@ -294,6 +295,7 @@ export class GestoreToken {
       let fresh;
       try {
         // the family refresh token that comes back serves Outlook Mobile too: it is stored like any other
+        if (!refresh) throw new SharedRefreshExpired("shared refresh missing");
         fresh = await renewShared(entry.shared!, resource, refresh, client, this.fetchFn, this.adessoS());
       } catch (error) {
         if (!(error instanceof SharedRefreshExpired) || entry.shared!.origin !== "outlook-spa") throw error;
@@ -303,7 +305,7 @@ export class GestoreToken {
         const token = String(json.access_token || "");
         if (upnDi(claimsJwt(token)) !== key) throw new ErroreAccessoScaduto("shared session account mismatch");
         this.preserveShared(key, token, entry.shared!.origin);
-        const reason = motivoTokenWebNonValido(token, key, this.adessoS());
+        const reason = motivoTokenWebNonValido(token, key, this.adessoS(), entry.shared?.capabilities.filter((c): c is "mail" | "calendar" => c !== "chat"));
         if (reason || typeof json.refresh_token !== "string" || !json.refresh_token) throw new ErroreAccessoScaduto(reason || "shared session refresh missing");
         recoveredSession = session;
         fresh = resource === "outlook" ? { token, expiresAt: Number(claimsJwt(token).exp), refresh: json.refresh_token } : await renewShared(entry.shared!, resource, json.refresh_token, OUTLOOK_WEB_CLIENT_ID, this.fetchFn, this.adessoS());
@@ -314,6 +316,7 @@ export class GestoreToken {
       const current = this.dati.accounts[key];
       if (!current || current.refresh_token !== refresh || JSON.stringify(current.shared) !== identity || current.client_id !== entry.client_id) throw new ErroreAccessoScaduto("shared credential changed during renewal");
       const next = { ...current, ...(recoveredSession ? { sessione: recoveredSession, client_id: OUTLOOK_WEB_CLIENT_ID } : {}), refresh_token: fresh.refresh, resourceTokens: { ...(recoveredSession ? {} : current.resourceTokens), [resource]: { token: fresh.token, expiresAt: fresh.expiresAt } } };
+      delete next.errore;
       if (resource === "outlook") { next.access_token = fresh.token; next.expires_at = fresh.expiresAt; }
       const data = { ...this.dati, accounts: { ...this.dati.accounts, [key]: next } };
       scriviJsonAtomico(this.percorso, data);
@@ -323,7 +326,18 @@ export class GestoreToken {
       return fresh.token;
     })();
     this.inCorso.set(key, job);
-    try { return await job; } finally { if (this.inCorso.get(key) === job) this.inCorso.delete(key); }
+    try { return await job; }
+    catch (error) {
+      if (error instanceof SharedRefreshExpired || error instanceof SessioneScaduta || error instanceof ProxyBrowserRequired || error instanceof ErroreAccessoScaduto) {
+        this.mtimeMs = -1; this.caricaSeCambiato();
+        const current = this.dati.accounts[key];
+        if (current && current.refresh_token === refresh && JSON.stringify(current.shared) === identity) {
+          current.errore = error instanceof SessioneScaduta || error instanceof ProxyBrowserRequired ? "Sessione del browser scaduta: apri Connect services negli Account" : "Accesso scaduto: apri Connect services negli Account";
+          this.salva();
+        }
+      }
+      throw error;
+    } finally { if (this.inCorso.get(key) === job) this.inCorso.delete(key); }
   }
 
   private async rinnovaMicrosoft(chiave: string, voce: VoceToken): Promise<string> {
@@ -361,6 +375,7 @@ export class GestoreToken {
     }
     if (!resp.ok || typeof json.access_token !== "string") {
       const code = String(json.error ?? "");
+      if (code === "temporarily_unavailable" || code === "server_error") throw new Error("Microsoft refresh temporarily unavailable");
       if (resp.status === 400 || resp.status === 401 || code === "invalid_grant" || code === "interaction_required") {
         // Il refresh_token SPA dura 24 ore al massimo: la sessione del browser ne dà uno nuovo.
         if (voce.sessione) return this.rinnovaDaSessione(chiave, voce);
@@ -373,7 +388,7 @@ export class GestoreToken {
     if (web) {
       // Il token del client web vale solo se è della stessa casella, per Outlook, non scaduto e con i calendari, come all'importazione.
       // Uno che non torna non si salva, nemmeno il suo refresh_token: si riprova dalla sessione del browser, se c'è.
-      const motivo = motivoTokenWebNonValido(json.access_token, chiave, this.adessoS());
+      const motivo = motivoTokenWebNonValido(json.access_token, chiave, this.adessoS(), voce.shared?.capabilities.filter((c): c is "mail" | "calendar" => c !== "chat"));
       if (motivo) {
         if (voce.sessione) return this.rinnovaDaSessione(chiave, voce);
         voce.errore = `Rinnovo di Outlook web rifiutato: ${motivo}`;
@@ -396,11 +411,20 @@ export class GestoreToken {
     }
     // autorizzaDaSessione ruota i cookie su questo oggetto: sta già nella voce, così ogni salvataggio da qui in poi li tiene
     voce.sessione = sessione;
+    let recoveredWeb = false;
     let json: Record<string, unknown>;
     try {
-      json = await autorizzaDaSessione(sessione, voce.tenant_id || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS() });
+      if (voce.client_id !== OUTLOOK_WEB_CLIENT_ID) {
+        try {
+          json = await autorizzaDaSessione(sessione, voce.tenant_id || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS(), client: { id: OUTLOOK_CLIENT_ID, redirect: decodeURIComponent(OUTLOOK_REDIRECT_URI) } });
+        } catch (e) {
+          if (!(e instanceof SessioneScaduta)) throw e;
+          json = await autorizzaDaSessione(sessione, voce.tenant_id || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS() });
+          recoveredWeb = true;
+        }
+      } else json = await autorizzaDaSessione(sessione, voce.tenant_id || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS() });
     } catch (e) {
-      if (e instanceof SessioneScaduta) {
+      if (e instanceof SessioneScaduta || e instanceof ProxyBrowserRequired) {
         voce.errore = "Sessione del browser scaduta: accedi di nuovo da Outlook web e importa la sessione";
         this.salva();
         throw new ErroreAccessoScaduto(voce.errore);
@@ -408,11 +432,16 @@ export class GestoreToken {
       this.salva();
       throw e;
     }
-    const motivo = motivoTokenWebNonValido(json.access_token, chiave, this.adessoS());
+    const motivo = motivoTokenWebNonValido(json.access_token, chiave, this.adessoS(), voce.shared?.capabilities.filter((c): c is "mail" | "calendar" => c !== "chat"));
     if (motivo) {
       voce.errore = `Accesso dalla sessione del browser rifiutato: ${motivo}`;
       this.salva();
       throw new ErroreAccessoScaduto(voce.errore);
+    }
+    if (recoveredWeb) {
+      voce.client_id = OUTLOOK_WEB_CLIENT_ID;
+      if (voce.shared) voce.shared = { ...voce.shared, origin: "outlook-spa" };
+      voce.resourceTokens = {};
     }
     return this.applicaTokenMicrosoft(voce, json);
   }
@@ -655,7 +684,7 @@ export class GestoreToken {
     const shared = this.dati.accounts[upn]?.shared;
     if (!shared) return undefined;
     const claims = claimsJwt(token);
-    if (!hasSharedPermissions(shared, "outlook", token) || !Number.isFinite(Number(claims.exp)) || claims.tid !== shared.tenantId || claims.oid !== shared.objectId || !allowed(shared, "outlook").includes(String(claims.aud).replace(/\/$/, "")) || Number(claims.exp) <= this.adessoS() + 120) throw new Error("shared identity mismatch");
+    if (!hasSharedPermissions(shared, "outlook", token) || !Number.isFinite(Number(claims.exp)) || claims.tid !== shared.tenantId || claims.oid !== shared.objectId || !allowed({ ...shared, capabilities: ["mail"] }, "outlook").includes(String(claims.aud).replace(/\/$/, "")) || Number(claims.exp) <= this.adessoS() + 120) throw new Error("shared identity mismatch");
     return { ...shared, origin };
   }
 
@@ -693,7 +722,7 @@ export class GestoreToken {
    * Importa la sessione del browser (formato teamsrelay session.json) per le caselle dove Outlook Mobile è respinto dall'accesso
    * condizionale. Prima di salvare prova l'autorizzazione: casella, risorsa Outlook e permesso di posta devono tornare.
    */
-  async importaSessione(dati: unknown, tenant: string): Promise<{ account: string; tenant_id: string }> {
+  async importaSessione(dati: unknown, tenant: string, validate?: (token: string) => void, required: ("mail" | "calendar")[] = ["calendar"]): Promise<{ account: string; tenant_id: string }> {
     const sessione = leggiSessione(dati);
     if (!sessione) throw new Error("Sessione del browser non valida (servono userAgent, loginHint e cookies)");
     const atteso = sessione.loginHint.trim().toLowerCase();
@@ -702,12 +731,14 @@ export class GestoreToken {
     try {
       json = await autorizzaDaSessione(sessione, tenant.trim() || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS() });
     } catch (e) {
-      if (e instanceof SessioneScaduta) throw new Error(`Accesso Microsoft non riuscito: ${e.message}`);
+      if (e instanceof SessioneScaduta) throw new SessioneScaduta(`Accesso Microsoft non riuscito: ${e.message}`);
       throw e;
     }
     // stesso controllo di ogni rinnovo del client web: casella, risorsa Outlook, scadenza, calendari
-    const motivo = motivoTokenWebNonValido(json.access_token, atteso, this.adessoS());
+    const motivo = motivoTokenWebNonValido(json.access_token, atteso, this.adessoS(), required);
     if (motivo) throw new Error(motivo);
+    if (typeof json.refresh_token !== "string" || !json.refresh_token) throw new Error("Microsoft did not issue a renewable mailbox grant");
+    validate?.(String(json.access_token));
     const claims = claimsJwt(String(json.access_token));
     const upn = upnDi(claims);
     const tid = String(claims.tid || tenant);
@@ -717,6 +748,33 @@ export class GestoreToken {
     this.dati.accounts[upn] = voce;
     this.applicaTokenMicrosoft(voce, json);
     return { account: upn, tenant_id: tid };
+  }
+
+  async importaGuidata(dati: unknown, tenant: string, validate?: (token: string) => void, required: ("mail" | "calendar")[] = ["calendar"]): Promise<{ account: string; route: string }> {
+    const sessione = leggiSessione(dati);
+    if (!sessione || !/^[^\s@]+@[^\s@]+$/.test(sessione.loginHint)) throw new Error("Valid Microsoft session required");
+    const account = sessione.loginHint.trim().toLowerCase();
+    const previous = this.voceAccount(account);
+    if (previous?.client_id !== OUTLOOK_WEB_CLIENT_ID) {
+      try {
+        const json = await autorizzaDaSessione(sessione, tenant || "organizations", {
+          fetchFn: this.fetchFn, adessoS: this.adessoS(),
+          client: { id: OUTLOOK_CLIENT_ID, redirect: decodeURIComponent(OUTLOOK_REDIRECT_URI) },
+        });
+        const motivo = motivoTokenWebNonValido(json.access_token, account, this.adessoS(), required);
+        if (motivo) throw new Error(motivo);
+        if (typeof json.refresh_token !== "string" || !json.refresh_token) throw new SessioneScaduta("Microsoft did not issue a renewable mobile grant");
+        validate?.(String(json.access_token));
+        const result = this.salvaRispostaTokenMicrosoft(json);
+        this.dati.accounts[result.account]!.sessione = sessione;
+        this.salva();
+        return { account: result.account, route: "outlook-mobile" };
+      } catch (e) {
+        if (!(e instanceof SessioneScaduta)) throw e;
+      }
+    }
+    await this.importaSessione(sessione, tenant, validate, required);
+    return { account, route: "outlook-web" };
   }
 
   /** Completa il login OAuth2 PKCE di Outlook Mobile con l'indirizzo msauth://... o il codice ricevuto. */

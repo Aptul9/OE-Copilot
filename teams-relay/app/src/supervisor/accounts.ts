@@ -173,6 +173,15 @@ export class Accounts {
     });
   }
 
+  signin(n: number) {
+    return this.queued(n, async () => {
+      if (this.bindings.has(n)) throw new AccountError(409, "Shared accounts have no local browser profile");
+      const a = this.account(n);
+      if (!a.browser.active) this.prepareProfile(n);
+      a.browser.start();
+    });
+  }
+
   // The light agent alone: browser and agent stop first. binding: the shared account of a bound slot (every light
   // start of the web app sends it again, so a restarted supervisor has it back within a minute); a light agent already
   // running on another binding starts again on the new one.

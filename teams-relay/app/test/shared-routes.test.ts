@@ -88,7 +88,7 @@ beforeEach(() => {
       sets.push(b);
       const a = accounts.find((x) => x.account === b.account)!;
       a.shared = {
-        capabilities: "capabilities" in b ? b.capabilities : [],
+        capabilities: "capabilities" in b ? b.capabilities ?? [] : [],
         origin: "mobile",
       };
       return { ok: true, account: b.account, shared: a.shared };
@@ -117,6 +117,10 @@ const post = (body: object) =>
     }),
     undefined,
   );
+it("never forwards onboarding to an older agent that would interpret it as a capability change", async () => {
+  expect((await post({operation:"connect",account:"legacy@example.com",capabilities:["mail"]})).status).toBe(503);
+  expect(sets).toEqual([]);
+});
 
 describe("a slot on a shared account in Settings", () => {
   it("is listed with its account", async () => {

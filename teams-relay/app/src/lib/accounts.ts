@@ -1,8 +1,24 @@
 import { healthOf, STATE } from "@/shared/slot-db/state";
+import fs from "node:fs";
+import path from "node:path";
 import { appDb, countPushSubscriptions, slotsOf, type Slot } from "./appdb";
 import { config, desktopUrlOf } from "./config";
 import { HttpError } from "./http";
 import { withSlotOr, type Health } from "./slotdb";
+
+export function saveMailboxIdentity(dataDir: string, slot: number, account: string) {
+  const folder = path.join(dataDir, String(slot));
+  const file = path.join(folder, "mailbox-identity.json");
+  fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file + ".new", JSON.stringify(account), { mode: 0o600 });
+  fs.renameSync(file + ".new", file);
+}
+function mailboxIdentity(slot: number): string {
+  try {
+    const email = JSON.parse(fs.readFileSync(path.join(config.dataDir, String(slot), "mailbox-identity.json"), "utf8")) as unknown;
+    return typeof email === "string" && /^[^\s@]+@[^\s@]+$/.test(email) ? email.toLowerCase() : "";
+  } catch { return ""; }
+}
 
 export type AccountSummary = {
   slot: number;
@@ -84,7 +100,7 @@ export function accountSummary(s: Slot): AccountSummary {
   return {
     slot: s.slot,
     name: me?.name ?? "",
-    email: me?.email ?? "",
+    email: me?.email || mailboxIdentity(s.slot),
     tenant: me?.tenant ?? "",
     av: me?.av ?? "",
     presence: d?.presence ?? "",

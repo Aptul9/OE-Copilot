@@ -128,6 +128,34 @@ describe("shared regression boundaries", () => {
 });
 
 describe("shared SPA recovery", () => {
+  it("reauthenticates a disabled account without enabling its services implicitly", () => {
+    const s=setup(fetch);
+    fs.writeFileSync(s.file,JSON.stringify({accounts:{user:{...s.entry,shared:{...s.entry.shared,capabilities:[]}}}}));
+    const token="x."+Buffer.from(JSON.stringify({upn:"user",tid:"tenant",oid:"object",aud:"https://outlook.office.com",exp:9000,scp:"Mail.ReadWrite Calendars.ReadWrite"})).toString("base64url")+".x";
+    try {
+      (s.manager as unknown as {salvaRispostaTokenMicrosoft(value:unknown):unknown}).salvaRispostaTokenMicrosoft({access_token:token,refresh_token:"new"});
+      expect(s.manager.voceAccount("user")?.shared?.capabilities).toEqual([]);
+    } finally{s.cleanup();}
+  });
+  it("marks an expired shared browser session so the guide can repair it", async () => {
+    const s = setup(async () => Response.json({ error: "invalid_grant" }, { status: 400 }));
+    const entry = { ...s.entry, shared: { ...s.entry.shared, origin: "outlook-spa" }, sessione: { userAgent: "test", loginHint: "user@example.com", cookies: [] } };
+    fs.writeFileSync(s.file, JSON.stringify({ accounts: { "user@example.com": entry } }));
+    try {
+      await expect(s.manager.ottieniRisorsa("user@example.com", "outlook")).rejects.toThrow();
+      expect(s.manager.voceAccount("user@example.com")?.errore).toContain("Sessione del browser");
+    } finally { s.cleanup(); }
+  });
+  it("recovers a missing shared refresh token from the saved session", async () => {
+    const token = "x." + Buffer.from(JSON.stringify({upn:"user@example.com",tid:"tenant",oid:"object",aud:"https://outlook.office.com",exp:9000,scp:"Mail.ReadWrite Calendars.ReadWrite"})).toString("base64url")+".x";
+    const s = setup(async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/authorize")) return new Response(null,{status:302,headers:{Location:"https://outlook.cloud.microsoft/mail/?code=fixture&state="+url.searchParams.get("state")}});
+      return Response.json({access_token:token,refresh_token:"recovered"});
+    });
+    fs.writeFileSync(s.file,JSON.stringify({accounts:{"user@example.com":{...s.entry,refresh_token:undefined,shared:{...s.entry.shared,origin:"outlook-spa"},sessione:{userAgent:"test",loginHint:"user@example.com",cookies:[{name:"ESTSAUTH",value:"cookie",domain:"login.microsoftonline.com",path:"/",expires:-1}]}}}}));
+    try { expect(await s.manager.ottieniRisorsa("user@example.com","outlook")).toBe(token); } finally {s.cleanup();}
+  });
  it.each([["object", false], ["other", false], ["object", true], ["other", true]] as const)("validates identity %s during import=%s", async (oid, importing) => {
  const token = "x." + Buffer.from(JSON.stringify({upn: "user@example.com", tid: "tenant", oid, aud: "https://outlook.office.com", exp: 9000, scp: "Mail.ReadWrite Calendars.ReadWrite"})).toString("base64url") + ".x";
  const calls: string[] = [];

@@ -14,6 +14,7 @@ function bindingOfSlot(n: number): Binding {
 // reaches it only through its unix socket, in the volume shared by the two containers: no Docker access.
 export interface ControlClient {
   start(n: number): Promise<void>;
+  signin?(n: number): Promise<void>;
   // the light agent alone, browser and agent stopped (a light account between the runs of its browser)
   light(n: number): Promise<void>;
   stop(n: number): Promise<void>;
@@ -23,9 +24,9 @@ export interface ControlClient {
   show(n: number): Promise<boolean>;
 }
 
-type Action = "start" | "light" | "stop" | "wipe" | "show";
+type Action = "start" | "signin" | "light" | "stop" | "wipe" | "show";
 
-const VERB: Record<Action, string> = { start: "Start", light: "Start without browser", stop: "Stop", wipe: "Wipe", show: "Show" };
+const VERB: Record<Action, string> = { start: "Start", signin: "Open sign-in browser", light: "Start without browser", stop: "Stop", wipe: "Wipe", show: "Show" };
 
 export function controlClient(socket = config.controlSocket, binding: (n: number) => Binding = bindingOfSlot): ControlClient {
   function post(action: Action, n: number): Promise<string> {
@@ -52,6 +53,7 @@ export function controlClient(socket = config.controlSocket, binding: (n: number
 
   return {
     start: async (n) => void (await post("start", n)),
+    signin: async (n) => void (await post("signin", n)),
     light: async (n) => void (await post("light", n)),
     stop: async (n) => void (await post("stop", n)),
     wipe: async (n) => void (await post("wipe", n)),
@@ -64,7 +66,8 @@ export function controlClient(socket = config.controlSocket, binding: (n: number
 // release; the feature is off.
 export interface DirectoryClient {
   list(): Promise<unknown | null>;
-  set(body: { account: string; capabilities: string[] } | { account: string; enabled: false } | { account: string; operation: "remove" | "chat"; on?: boolean }): Promise<unknown | null>;
+  set(body: { account: string; capabilities: string[] } | { account: string; enabled: false } | { account: string; operation: "remove" | "chat"; on?: boolean } | { account: string; operation: "connect" | "signin-progress"; capabilities?: string[]; id?: string; phase?: string; slot?: number; url?: string; error?: string }): Promise<unknown | null>;
+  connect?(body: { id: string; account: string; slot: number }): Promise<{ ok: boolean; interaction?: boolean; errore?: string; route?: string }>;
   report(body: { accounts: unknown[]; others: unknown[]; results?: { id: string; error?: string }[] }): Promise<unknown | null>;
 }
 
@@ -73,7 +76,7 @@ export function directoryClient(socket = config.controlSocket): DirectoryClient 
     return new Promise((resolve, reject) => {
       const data = body === undefined ? undefined : JSON.stringify(body);
       const req = http.request(
-        { socketPath: socket, method, path, timeout: 50_000, headers: data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {} },
+        { socketPath: socket, method, path, timeout: path === "/directory/connect" ? 180_000 : 50_000, headers: data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {} },
         (res) => {
           let text = "";
           res.on("data", (d) => (text += d));
@@ -97,6 +100,7 @@ export function directoryClient(socket = config.controlSocket): DirectoryClient 
     list: () => call("GET", "/directory"),
     set: (body) => call("POST", "/directory", body),
     report: (body) => call("POST", "/directory/teams", body),
+    connect: async body => await call("POST", "/directory/connect", body) as { ok: boolean; interaction?: boolean; errore?: string; route?: string },
   };
 }
 

@@ -1,8 +1,16 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccountPanel } from "@/shared/accounts/AccountPanel";
+import { ConnectForm } from "@/shared/accounts/ConnectForm";
 import { describe, expect, it } from "vitest";
 import { buildAccountRows } from "@/shared/accounts/model";
+it("guided form offers services and browser progress without device-code or credential copy instructions", () => {
+  const html = renderToStaticMarkup(createElement(ConnectForm, { onConnect: () => {}, signins: [{ id: "j", account: "a@b", capabilities: ["mail"], phase: "browser", url: "https://teams.example/api/desktop/3" }] }));
+  expect(html).toContain('type="email"');
+  expect(html).toContain("Open Microsoft sign-in");
+  expect(html).toContain("Teams");
+  expect(html).not.toContain("device code");
+});
 describe("shared account identities", () => {
   it("merges case-folded mailbox and browser identity, preserving browser Teams control", () => {
     const rows = buildAccountRows(

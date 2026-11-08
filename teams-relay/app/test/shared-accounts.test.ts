@@ -26,7 +26,9 @@ import {
   type SyncDeps,
 } from "@/lib/shared-accounts";
 import { exclusive } from "@/lib/slots";
-import { tempDir } from "./helpers";
+import { tempDir, createSlotDb } from "./helpers";
+import { STATE } from "@/shared/slot-db/state";
+import { accountSummary } from "@/lib/accounts";
 
 const OWNER = "owner-id";
 let db: Database.Database;
@@ -88,6 +90,81 @@ beforeEach(() => {
 });
 
 describe("a pass over the shared accounts", () => {
+  it("re-adds an account whose earlier sign-in slot was removed", async () => {
+    const job={id:"retry",account:"new@example.com",capabilities:["mail"],phase:"queued",slot:9};
+    const directory=dir({list:async()=>({ok:true,accounts:[],signins:[job]})});
+    await syncSharedAccounts(deps({dir:{...directory,connect:async()=>({ok:false,interaction:true})}}));
+    expect(slotRow(db,1)?.owner_id).toBe(OWNER);
+    expect(directory.set).toHaveBeenCalledWith(expect.objectContaining({operation:"signin-progress",slot:1,phase:"browser"}));
+  });
+  it("resumes an unfinished mail-only profile without wiping it or enabling Teams", async () => {
+    const slot=claimSlot(db,OWNER,{perUser:null}); setSlotStopped(db,slot,true);
+    const job={id:"retry",account:"new@example.com",capabilities:["mail"],phase:"queued",slot};
+    const directory=dir({list:async()=>({ok:true,accounts:[],signins:[job]})});
+    await syncSharedAccounts(deps({ctl:{...ctl,signin:async n=>void calls.push(`signin ${n}`)},dir:{...directory,connect:async()=>({ok:false,interaction:true})}}));
+    expect(calls).toEqual([`signin ${slot}`]);
+    expect(slotRow(db,slot)?.stopped).toBe(1);
+  });
+  it("does not let cleanup of an old blocked job stop a new profile on the same slot", async () => {
+    const slot=claimSlot(db,OWNER,{perUser:null}); setSlotStopped(db,slot,true);
+    const jobs=[{id:"old",account:"old@example.com",phase:"blocked",slot,capabilities:["mail"]},{id:"new",account:"new@example.com",phase:"browser",slot,capabilities:["mail"]}];
+    const directory=dir({list:async()=>({ok:true,accounts:[],signins:jobs})});
+    await syncSharedAccounts(deps({dir:{...directory,connect:async()=>({ok:false,interaction:true})}}));
+    expect(calls).not.toContain(`stop ${slot}`);
+  });
+  it("queues one automatic session repair without enabling services the owner left off", async () => {
+    accounts = [{ account: "expired@example.com", shared: { capabilities: ["mail"], origin: "outlook-spa" }, status: "errore", message: "Sessione del browser scaduta" }];
+    let signins: { account: string; phase: string }[] = [];
+    const directory = dir({ list: async () => ({ ok: true, accounts, signins }) });
+    await syncSharedAccounts(deps({ dir: directory }));
+    expect(directory.set).toHaveBeenCalledWith({ operation: "connect", account: "expired@example.com", capabilities: ["mail"] });
+    directory.set.mockClear(); signins = [{ account: "expired@example.com", phase: "blocked" }];
+    await syncSharedAccounts(deps({ dir: directory }));
+    expect(directory.set).not.toHaveBeenCalled();
+  });
+  it("mail-only sign-in opens only a browser while Teams remains stopped", async () => {
+    const signin = { id: "job", account: "new@example.com", capabilities: ["mail"], phase: "queued" };
+    const directory = dir({ list: async () => ({ ok: true, accounts: [], signins: [signin] }) });
+    await syncSharedAccounts(deps({ ctl: { ...ctl, signin: async n => void calls.push(`signin ${n}`) }, dir: { ...directory, connect: async () => ({ ok: false, interaction: true }) } }));
+    expect(calls).toContain("signin 1");
+    expect(calls).not.toContain("start 1");
+    expect(slotRow(db, 1)?.stopped).toBe(1);
+  });
+  it("keeps one verified identity for a mail-only browser profile without a Teams agent", async () => {
+    process.env.APP_DB = path.join(dataDir,"app.db");
+    const signin={id:"mail-job",account:"mail@example.com",capabilities:["mail"],phase:"queued"};
+    const directory=dir({list:async()=>({ok:true,accounts:[],signins:[signin]})});
+    await syncSharedAccounts(deps({ctl:{...ctl,signin:async()=>{}},dir:{...directory,connect:async()=>({ok:true,route:"outlook-web"})}}));
+    expect(accountSummary(slotRow(db,1)!).email).toBe("mail@example.com");
+    expect(sharedReport(db,OWNER).others).toEqual([expect.objectContaining({email:"mail@example.com",slot:1,state:"stopped"})]);
+  });
+  it("guided sign-in reuses only the owner's matching browser and imports server-side without takeover", async () => {
+    const foreign = claimSlot(db, "other", { perUser: null });
+    const own = claimSlot(db, OWNER, { perUser: null });
+    identities[foreign] = identities[own] = "new@example.com";
+    process.env.APP_DB = path.join(dataDir, "app.db");
+    const health = createSlotDb(path.join(dataDir, String(own), "messages.db"));
+    health.prepare("INSERT INTO state(k,v) VALUES(?,?)").run(STATE.health, JSON.stringify({ ts: Math.floor(Date.now()/1000), teams: "ok", overall: "green" }));
+    health.close();
+    const signin = { id: "job", account: "new@example.com", capabilities: ["mail", "chat"], phase: "queued" };
+    const directory = dir({ list: async () => ({ ok: true, accounts: [], signins: [signin] }) });
+    const connect = vi.fn(async () => ({ ok: true, route: "outlook-web" }));
+    await syncSharedAccounts(deps({ dir: { ...directory, connect } }));
+    expect(connect).toHaveBeenCalledWith({ id: "job", account: signin.account, slot: own });
+    expect(directory.set).toHaveBeenCalledWith(expect.objectContaining({ operation: "signin-progress", slot: own, phase: "complete" }));
+    expect(slotRow(db, own)?.shared_account).toBe("");
+    expect(calls).not.toContain(`stop ${foreign}`);
+  });
+
+  it("guided sign-in allocates one browser, exposes interaction progress, never wipes an existing session", async () => {
+    const signin = { id: "job", account: "new@example.com", capabilities: ["mail"], phase: "queued" };
+    const directory = dir({ list: async () => ({ ok: true, accounts: [], signins: [signin] }) });
+    const connect = vi.fn(async () => ({ ok: false, interaction: true }));
+    await syncSharedAccounts(deps({ dir: { ...directory, connect } }));
+    expect(calls).toContain("start 1");
+    expect(directory.set).toHaveBeenCalledWith(expect.objectContaining({ operation: "signin-progress", slot: 1, phase: "browser" }));
+    expect(calls.filter(c => c.startsWith("wipe"))).toHaveLength(1);
+  });
   it("an account with Teams on gets a new slot of the owner, wiped, bound, its light agent started", async () => {
     accounts = [
       shared("Mario@Example.com", ["mail", "chat"]),

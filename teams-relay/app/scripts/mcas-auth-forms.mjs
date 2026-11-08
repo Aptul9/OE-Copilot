@@ -44,12 +44,14 @@ export function mcasRestore(value, gateway, contextData = "") {
   return { action: target.href, fields: { contextData } };
 }
 
-export function mcasMoved(html) {
+export function mcasMoved(html, appOrigin = "") {
   assert(/<title>\s*Object Moved\s*<\/title>/i.test(html), "unexpected MCAS moved response");
   const matches = [...html.matchAll(/window\.location\.replace\(\s*("(?:\\.|[^"\\])*")\s*\)/g)];
   assert.equal(matches.length, 1, "one literal MCAS redirect required");
   const url = new URL(JSON.parse(matches[0][1]));
-  assert(url.protocol === "https:" && !url.username && !url.password && !url.port && ["teams.cloud.microsoft.mcas.ms", "teams.microsoft.com.mcas.ms"].includes(url.hostname) && url.pathname === "/", "unexpected MCAS moved destination");
+  const outlook = appOrigin === "https://outlook.cloud.microsoft";
+  const hosts = outlook ? ["outlook.cloud.microsoft.mcas.ms"] : ["teams.cloud.microsoft.mcas.ms", "teams.microsoft.com.mcas.ms"];
+  assert(url.protocol === "https:" && !url.username && !url.password && !url.port && hosts.includes(url.hostname) && (url.pathname === "/" || (outlook && url.pathname === "/mail/")), "unexpected MCAS moved destination");
   return url.href;
 }
 

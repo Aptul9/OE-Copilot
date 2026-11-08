@@ -24,6 +24,7 @@ export function clientFor(s: SharedAccount, r: string, stored: string): string {
  return s.origin === 'mobile' && r !== 'outlook' ? TEAMS_APP_CLIENT_ID : stored;
 }
 export class SharedRefreshExpired extends Error {}
+export class SharedAuthorizationRefused extends Error {}
 export async function renewShared(s: SharedAccount, r: string, refresh: string, client: string, fetchFn: FetchFn, now: number) {
  const aud = allowed(s, r);
  const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
@@ -34,6 +35,7 @@ export async function renewShared(s: SharedAccount, r: string, refresh: string, 
  });
  const j = await response.json() as Record<string, unknown>;
  if (!response.ok && (j.error === 'invalid_grant' || j.error === 'interaction_required')) throw new SharedRefreshExpired('shared refresh expired');
+ if (!response.ok && response.status >= 400 && response.status < 500 && response.status !== 429 && j.error !== 'temporarily_unavailable' && j.error !== 'server_error') throw new SharedAuthorizationRefused('Microsoft refused this client for the requested service');
  if (!response.ok || typeof j.access_token !== 'string') throw new Error('shared renewal refused');
  const c = claimsJwt(j.access_token);
  const exp = Number(c.exp);

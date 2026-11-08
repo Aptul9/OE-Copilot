@@ -13,6 +13,7 @@ import { directory } from "./broker";
 import { ConfigError } from "@/shared/env";
 import { loadConfig } from "./config";
 import { controlServer, listen } from "./server";
+import { microsoftSession, outlookProxySession } from "./microsoft-session";
 
 const say = (message: string) => console.log(format("supervisor", message));
 
@@ -53,7 +54,7 @@ async function main() {
   const accounts = new Accounts(cfg.accounts, { log: (line) => console.log(line) });
   const { XDG_RUNTIME_DIR, WAYLAND_DISPLAY } = cfg.accounts.session;
   const broker = cfg.accounts.sharedBroker;
-  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say, directory: broker ? directory(broker) : undefined });
+  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say, directory: broker ? directory(broker, fetch, cfg.accounts.dataDir, (slot, account) => microsoftSession(cfg.accounts.cdpBasePort + slot, account), slot => outlookProxySession(cfg.accounts.cdpBasePort + slot)) : undefined });
   if (broker) say(`shared Microsoft accounts from ${new URL(broker.url).host}`);
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {

@@ -60,6 +60,7 @@ async function listFor(userId: string) {
     accounts,
     teamsOnly,
     commands: (raw as { commands?: unknown[] }).commands ?? [],
+    signins: (raw as { signins?: unknown[] }).signins ?? [],
   };
 }
 
@@ -73,9 +74,17 @@ export const POST = route(async (req) => {
   const db = appDb();
   const owner = sharedOwnerId(db);
   if (owner !== user.id) throw new HttpError(404, "Not found");
-  const { account, capability, on, operation } = await body(req);
+  const { account, capability, on, operation, capabilities } = await body(req);
   if (typeof account !== "string" || !account.includes("@"))
     throw new HttpError(400, "account must be an address");
+  if (operation === "connect") {
+    if (!Array.isArray(capabilities) || capabilities.some(c => !["mail", "calendar", "chat"].includes(c))) throw new HttpError(400, "Invalid services");
+    const current = await directoryClient().list();
+    if (!Array.isArray((current as { signins?: unknown } | null)?.signins)) throw new HttpError(503, "Microsoft sign-in service is upgrading or unavailable");
+    const result = await directoryClient().set({ operation: "connect", account, capabilities });
+    if (!(result as { ok?: boolean })?.ok) throw new HttpError(409, String((result as { errore?: string })?.errore || "Sign-in unavailable"));
+    return Response.json(await listFor(user.id));
+  }
   const browser = listSlots(db).find(
     (s) =>
       s.owner_id === owner &&

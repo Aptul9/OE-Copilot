@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import type { ReactNode } from "react";
 export type Capability = "mail" | "calendar" | "chat";
 export type AccountRow = {
   account: string;
@@ -17,6 +18,9 @@ export function AccountPanel({
   onAdd,
   loading,
   feedback,
+  children,
+  onReconnect,
+  busyAccounts = [],
 }: {
   rows: AccountRow[];
   pending?: string;
@@ -26,6 +30,9 @@ export function AccountPanel({
   onAdd?: () => void;
   loading?: boolean;
   feedback?: string;
+  children?: ReactNode;
+  onReconnect?: (account: string) => void;
+  busyAccounts?: string[];
 }) {
   const [confirm, setConfirm] = useState("");
   return (
@@ -50,6 +57,7 @@ export function AccountPanel({
           Mail, calendar and Teams. Same accounts in both apps.
         </p>
       </header>
+      {children}
       {error && (
         <p role="alert" className="p-4 text-sm text-destructive">
           {error}
@@ -81,10 +89,23 @@ export function AccountPanel({
             <div className="min-w-0 flex-1 basis-56">
               <p className="break-all text-sm font-medium">{row.account}</p>
               <p role="status" className="mt-1 text-xs text-muted-foreground">
-                {pending === row.account ? "Saving..." : row.status}
+                {pending === row.account
+                  ? "Saving..."
+                  : busyAccounts.includes(row.account)
+                    ? "Connecting services..."
+                    : row.status}
               </p>
               {row.message && (
                 <p className="mt-1 text-xs text-destructive">{row.message}</p>
+              )}
+              {onReconnect && (
+                <button
+                  type="button"
+                  className="mt-1 min-h-11 text-xs text-primary underline underline-offset-4"
+                  onClick={() => onReconnect(row.account)}
+                >
+                  Connect services / sign in again
+                </button>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -105,7 +126,11 @@ export function AccountPanel({
                       aria-checked={on}
                       aria-label={`${label} of ${row.account}`}
                       title={reason}
-                      disabled={!!pending || !!reason}
+                      disabled={
+                        !!pending ||
+                        !!reason ||
+                        (busyAccounts.includes(row.account) && !on)
+                      }
                       onClick={() => onToggle(row.account, cap, !on)}
                       className="flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50"
                     >

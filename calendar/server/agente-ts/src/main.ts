@@ -5,6 +5,8 @@
 //   TZ        Europe/Rome
 
 import { GestoreToken } from "./diretto.ts";
+import path from "node:path";
+import { GoogleCommunication } from "./google-communication.ts";
 import { pyRepr } from "./pyfmt.ts";
 import { caricaFonti, contestoDi, creaServer, registroSuStderr } from "./server.ts";
 
@@ -36,6 +38,7 @@ try {
     tokenPosta: tokenPostaPath,
     accessi: accessiPath,
     tokens,
+    google: new GoogleCommunication(process.env.GOOGLE_STATE ?? path.dirname(tokensPath)),
     zona,
     registro,
   });

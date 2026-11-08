@@ -1,3 +1,6 @@
 node_modules/
 .env
 __pycache__/
+
+/calendar/server/web-ts/src/shared/accounts/
+/teams-relay/app/src/shared/accounts/

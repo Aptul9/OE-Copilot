@@ -210,7 +210,8 @@ export type Metodi = {
   remove_logo: [[string], Esito];
   get_stato_caselle: [[], Esito & { caselle: CasellaAccesso[] }];
   rimuovi_casella: [[string], Esito & { account?: string }];
-  get_condivisione_microsoft: [[], Esito & { accounts: AccountCondiviso[]; teamsOnly: SoloTeams[]; teamsAt: number }];
+  manage_microsoft: [[string, "remove" | "chat", boolean?], Esito & {pending?:boolean}];
+  get_condivisione_microsoft: [[], Esito & { accounts: AccountCondiviso[]; teamsOnly: SoloTeams[]; teamsAt: number; commands?: {id:string;account:string;operation:string;error?:string}[] }];
   set_condivisione_microsoft: [[string, CapacitaCondivisa[] | null], Esito & { account?: string; shared?: Condivisione }];
   inizia_accesso_microsoft: [
     [string?, ("microsoft" | "google")?, ("device" | "pkce")?],

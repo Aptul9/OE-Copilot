@@ -407,7 +407,7 @@ export function Settings({ user, passwordManaged }: { user: { name: string; emai
         </Card>
 
         <SharedAccounts />
-        <TeamsAccounts />
+        <details><summary className="cursor-pointer text-sm text-muted-foreground">Advanced Teams settings</summary><TeamsAccounts /></details>
         <AiClients />
 
         <Card>

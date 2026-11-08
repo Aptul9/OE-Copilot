@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "shared/**"
       - "teams-relay/**"
       - "!teams-relay/mobile/**"
       - ".github/workflows/teams-relay.yml"
@@ -30,6 +31,9 @@ jobs:
       TR_DIR: /opt/teamsrelay
     steps:
       - uses: actions/checkout@v7
+
+      - name: Generate shared account UI
+        run: node shared/sync.mjs
 
       - name: SSH setup
         env:

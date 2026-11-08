@@ -2,7 +2,15 @@ import fs from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { accountSummary } from "./accounts";
-import { bindShared, claimSlot, endRefresh, listSlots, releaseSlot, setSlotStopped, type Slot } from "./appdb";
+import {
+  bindShared,
+  claimSlot,
+  endRefresh,
+  listSlots,
+  releaseSlot,
+  setSlotStopped,
+  type Slot,
+} from "./appdb";
 import { config } from "./config";
 import type { ControlClient, DirectoryClient } from "./control";
 import { HttpError } from "./http";
@@ -33,12 +41,29 @@ export type SharedAccount = {
 // The list of the agent (GET /api/auth/shared), checked: an answer of another shape is an error, never an empty list
 // that would stop every slot
 export function parseDirectory(raw: unknown): SharedAccount[] {
-  const r = (raw ?? {}) as { ok?: unknown; accounts?: unknown; errore?: unknown };
-  if (r.ok !== true || !Array.isArray(r.accounts)) throw new HttpError(502, `Shared accounts not read: ${typeof r.errore === "string" ? r.errore : "unexpected answer"}`);
+  const r = (raw ?? {}) as {
+    ok?: unknown;
+    accounts?: unknown;
+    errore?: unknown;
+  };
+  if (r.ok !== true || !Array.isArray(r.accounts))
+    throw new HttpError(
+      502,
+      `Shared accounts not read: ${typeof r.errore === "string" ? r.errore : "unexpected answer"}`,
+    );
   const out: SharedAccount[] = [];
-  for (const a of r.accounts as { account?: unknown; shared?: { capabilities?: unknown } | null; status?: unknown; message?: unknown }[]) {
+  for (const a of r.accounts as {
+    account?: unknown;
+    shared?: { capabilities?: unknown } | null;
+    status?: unknown;
+    message?: unknown;
+  }[]) {
     if (typeof a?.account !== "string" || !a.account.includes("@")) continue;
-    const caps = Array.isArray(a.shared?.capabilities) ? (a.shared.capabilities as unknown[]).filter((c): c is Capability => CAPABILITIES.includes(c as Capability)) : null;
+    const caps = Array.isArray(a.shared?.capabilities)
+      ? (a.shared.capabilities as unknown[]).filter((c): c is Capability =>
+          CAPABILITIES.includes(c as Capability),
+        )
+      : null;
     out.push({
       account: a.account.toLowerCase(),
       capabilities: caps ?? LEGACY,
@@ -51,9 +76,15 @@ export function parseDirectory(raw: unknown): SharedAccount[] {
 }
 
 // The user the shared accounts belong to, null when SHARED_ACCOUNTS_OWNER (or ADMIN_EMAIL) names nobody
-export function sharedOwnerId(db: Database.Database, email = config.sharedAccountsOwner): string | null {
+export function sharedOwnerId(
+  db: Database.Database,
+  email = config.sharedAccountsOwner,
+): string | null {
   if (!email) return null;
-  const id = db.prepare('SELECT id FROM "user" WHERE lower(email) = lower(?)').pluck().get(email.trim()) as string | undefined;
+  const id = db
+    .prepare('SELECT id FROM "user" WHERE lower(email) = lower(?)')
+    .pluck()
+    .get(email.trim()) as string | undefined;
   return id ?? null;
 }
 
@@ -61,8 +92,17 @@ export function sharedOwnerId(db: Database.Database, email = config.sharedAccoun
 // the Teams gateway routes for every region (2026-11-08: the region lookup of authsvc answers 410 ApiRestricted)
 function capturedRegion(dataDir: string, n: number): string {
   try {
-    const region = (JSON.parse(fs.readFileSync(path.join(dataDir, String(n), "light-token.json"), "utf8")) as { region?: unknown }).region;
-    return typeof region === "string" && /^[a-z][a-z0-9]{1,15}$/.test(region) ? region : "emea";
+    const region = (
+      JSON.parse(
+        fs.readFileSync(
+          path.join(dataDir, String(n), "light-token.json"),
+          "utf8",
+        ),
+      ) as { region?: unknown }
+    ).region;
+    return typeof region === "string" && /^[a-z][a-z0-9]{1,15}$/.test(region)
+      ? region
+      : "emea";
   } catch {
     return "emea";
   }
@@ -79,13 +119,22 @@ export type SyncDeps = {
   identity?: (s: Slot) => string;
 };
 
-export type SyncResult = { enabled: boolean; accounts: SharedAccount[]; errors: Record<string, string> };
+export type SyncResult = {
+  enabled: boolean;
+  accounts: SharedAccount[];
+  errors: Record<string, string>;
+};
 
 const identityOf = (s: Slot) => accountSummary(s).email.toLowerCase();
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 // A slot stopped for good: marked stopped only once its stop worked, so a failed one is tried again at the next pass
-async function stopSlot(d: SyncDeps, n: number, errors: Record<string, string>, account: string) {
+async function stopSlot(
+  d: SyncDeps,
+  n: number,
+  errors: Record<string, string>,
+  account: string,
+) {
   try {
     await slotDown(d.ctl, n);
     setSlotStopped(d.db, n, true);
@@ -103,25 +152,90 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
   return exclusive(async (): Promise<SyncResult> => {
     const raw = await d.dir.list();
     if (raw === null) return { enabled: false, accounts: [], errors: {} };
-    const accounts = parseDirectory(raw);
+    const directoryAccounts = parseDirectory(raw);
+    const commands =
+      (
+        raw as {
+          commands?: {
+            id: string;
+            account: string;
+            operation: string;
+            on?: boolean;
+          }[];
+        }
+      ).commands ?? [];
+    const results: { id: string; error?: string }[] = [];
+    for (const c of commands) {
+      try {
+        const matching = listSlots(d.db).filter(
+          (s) =>
+            s.owner_id === owner &&
+            !s.relay &&
+            (s.shared_account === c.account ||
+              (d.identity ?? identityOf)(s).trim().toLowerCase() === c.account),
+        );
+        for (const slot of matching) {
+          if (c.operation === "remove") {
+            if (
+              slot.shared_account !== c.account &&
+              (d.identity ?? identityOf)(slot).trim().toLowerCase() !==
+                c.account
+            )
+              throw new Error("Identity changed");
+            await slotDown(d.ctl, slot.slot);
+            await wipeSlot(d.ctl, slot.slot, d);
+            releaseSlot(d.db, slot.slot);
+          } else if (
+            c.operation === "chat" &&
+            !slot.shared_account &&
+            typeof c.on === "boolean"
+          ) {
+            if (!c.on) await slotDown(d.ctl, slot.slot);
+            else if (slot.light) await d.ctl.light(slot.slot);
+            else await d.ctl.start(slot.slot);
+            setSlotStopped(d.db, slot.slot, !c.on);
+          } else throw new Error("Unsupported account command");
+        }
+        results.push({ id: c.id });
+      } catch (e) {
+        results.push({ id: c.id, error: message(e) });
+      }
+    }
+    if (commands.length)
+      await d.dir.report({ ...sharedReport(d.db, owner, d.identity), results });
+    const accounts = directoryAccounts.filter(
+      (a) =>
+        !commands.some(
+          (c) => c.operation === "remove" && c.account === a.account,
+        ),
+    );
     const errors: Record<string, string> = {};
     const slots = listSlots(d.db);
     // each slot's address read once per pass, only when an account needs it
     const known = new Map<number, string>();
     const identity = (s: Slot) => {
-      if (!known.has(s.slot)) known.set(s.slot, (d.identity ?? identityOf)(s).toLowerCase());
+      if (!known.has(s.slot))
+        known.set(s.slot, (d.identity ?? identityOf)(s).toLowerCase());
       return known.get(s.slot)!;
     };
     for (const a of accounts) {
-      const bound = slots.find((s) => s.shared_account === a.account);
+      const bound = slots.find(
+        (s) => s.owner_id === owner && s.shared_account === a.account,
+      );
       if (!a.capabilities.includes("chat")) {
-        if (bound && !bound.stopped) await stopSlot(d, bound.slot, errors, a.account);
+        if (bound && !bound.stopped)
+          await stopSlot(d, bound.slot, errors, a.account);
         continue;
       }
       try {
-        if (bound) {
+        if (bound && bound.owner_id === owner) {
           if (bound.stopped || !bound.light) {
-            bindShared(d.db, bound.slot, a.account, bound.shared_region || "emea");
+            bindShared(
+              d.db,
+              bound.slot,
+              a.account,
+              bound.shared_region || "emea",
+            );
             await d.ctl.light(bound.slot);
             setSlotStopped(d.db, bound.slot, false);
           }
@@ -129,13 +243,17 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
         }
         // a slot of the owner already signed in to this account in its own browser: taken over, not doubled (both would
         // push the same messages). One busy with a check or a sign-in run waits for the next pass.
-        const own = slots.find((s) => s.owner_id === owner && !s.shared_account && !s.relay && identity(s) === a.account);
+        const own = slots.find(
+          (s) =>
+            s.owner_id === owner &&
+            !s.shared_account &&
+            !s.relay &&
+            identity(s) === a.account,
+        );
         if (own) {
           if (own.checking || own.refreshing) continue;
-          bindShared(d.db, own.slot, a.account, capturedRegion(d.dataDir, own.slot));
-          endRefresh(d.db, own.slot, { now: 0, result: null });
-          await d.ctl.light(own.slot);
-          setSlotStopped(d.db, own.slot, false);
+          errors[a.account] =
+            "Existing browser sign-in preserved. Shared Teams cannot take over this slot.";
           continue;
         }
         const n = claimSlot(d.db, owner, { perUser: d.perUser });
@@ -154,7 +272,13 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
     }
     // a slot whose account left the list of the calendar (removed there): stopped, its data kept until its owner removes it
     for (const s of slots) {
-      if (!s.shared_account || s.stopped || accounts.some((a) => a.account === s.shared_account)) continue;
+      if (
+        s.owner_id !== owner ||
+        !s.shared_account ||
+        s.stopped ||
+        accounts.some((a) => a.account === s.shared_account)
+      )
+        continue;
       await stopSlot(d, s.slot, errors, s.shared_account);
     }
     return { enabled: true, accounts, errors };
@@ -165,18 +289,38 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
 function stateOf(s: Slot): { state: string; detail: string } {
   if (s.stopped) return { state: "stopped", detail: "" };
   const a = accountSummary(s);
-  const word = a.teams.toLowerCase().replace(/[^a-z-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+  const word = a.teams
+    .toLowerCase()
+    .replace(/[^a-z-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
   return { state: /^[a-z]/.test(word) ? word : "unknown", detail: a.overall };
 }
 
 // What the calendar shows next to each account: the slot on it and its state, and the owner's slots with only their own
 // browser sign-in (the calendar has no mailbox for them)
-export function sharedReport(db: Database.Database, owner: string, identity: (s: Slot) => string = identityOf) {
-  const accounts: { account: string; slot: number; state: string; detail: string }[] = [];
-  const others: { email: string; slot: number; state: string; detail: string }[] = [];
+export function sharedReport(
+  db: Database.Database,
+  owner: string,
+  identity: (s: Slot) => string = identityOf,
+) {
+  const accounts: {
+    account: string;
+    slot: number;
+    state: string;
+    detail: string;
+  }[] = [];
+  const others: {
+    email: string;
+    slot: number;
+    state: string;
+    detail: string;
+  }[] = [];
   for (const s of listSlots(db)) {
-    if (s.shared_account) accounts.push({ account: s.shared_account, slot: s.slot, ...stateOf(s) });
-    else if (s.owner_id === owner && !s.relay) others.push({ email: identity(s), slot: s.slot, ...stateOf(s) });
+    if (s.owner_id === owner && s.shared_account)
+      accounts.push({ account: s.shared_account, slot: s.slot, ...stateOf(s) });
+    else if (s.owner_id === owner && !s.relay)
+      others.push({ email: identity(s), slot: s.slot, ...stateOf(s) });
   }
   return { accounts, others };
 }
@@ -187,27 +331,68 @@ export const NOT_SHARED = "not in the shared accounts of the calendar";
 // not as a page showed it, so a change made meanwhile in the calendar stays. The agent keeps the choice, the pass
 // follows it. A mailbox that never chose keeps mail and calendar. 404: the account is not in the list, or this server
 // has no shared accounts.
-export async function setSharedCapability(dir: DirectoryClient, account: string, capability: Capability, on: boolean): Promise<Capability[]> {
+export async function setSharedCapability(
+  dir: DirectoryClient,
+  account: string,
+  capability: Capability,
+  on: boolean,
+): Promise<Capability[]> {
   const raw = await dir.list();
-  if (raw === null) throw new HttpError(404, "No shared Microsoft accounts on this server");
-  const a = parseDirectory(raw).find((x) => x.account === account.toLowerCase());
+  if (raw === null)
+    throw new HttpError(404, "No shared Microsoft accounts on this server");
+  const a = parseDirectory(raw).find(
+    (x) => x.account === account.toLowerCase(),
+  );
   if (!a) throw new HttpError(404, `${account} is ${NOT_SHARED}`);
+  if (on && a.status === "error")
+    throw new HttpError(409, "Sign in again before enabling a service");
   if (a.capabilities.includes(capability) === on) return a.capabilities;
-  return setSharedCapabilities(dir, a.account, on ? [...a.capabilities, capability] : a.capabilities.filter((c) => c !== capability));
+  return setSharedCapabilities(
+    dir,
+    a.account,
+    on
+      ? [...a.capabilities, capability]
+      : a.capabilities.filter((c) => c !== capability),
+  );
 }
 
-export const setSharedChat = (dir: DirectoryClient, account: string, on: boolean) => setSharedCapability(dir, account, "chat", on);
+export const setSharedChat = (
+  dir: DirectoryClient,
+  account: string,
+  on: boolean,
+) => setSharedCapability(dir, account, "chat", on);
 
-export async function setSharedCapabilities(dir: DirectoryClient, account: string, capabilities: Capability[]): Promise<Capability[]> {
+export async function setSharedCapabilities(
+  dir: DirectoryClient,
+  account: string,
+  capabilities: Capability[],
+): Promise<Capability[]> {
   const caps = CAPABILITIES.filter((c) => capabilities.includes(c));
-  const r = (await dir.set({ account: account.toLowerCase(), capabilities: caps })) as { ok?: unknown; errore?: unknown; shared?: { capabilities?: unknown } } | null;
-  if (r === null) throw new HttpError(404, "No shared Microsoft accounts on this server");
-  if (r.ok !== true) throw new HttpError(409, typeof r.errore === "string" ? r.errore : "Capabilities not changed");
-  return Array.isArray(r.shared?.capabilities) ? (r.shared.capabilities as Capability[]) : caps;
+  const r = (await dir.set({
+    account: account.toLowerCase(),
+    capabilities: caps,
+  })) as {
+    ok?: unknown;
+    errore?: unknown;
+    shared?: { capabilities?: unknown };
+  } | null;
+  if (r === null)
+    throw new HttpError(404, "No shared Microsoft accounts on this server");
+  if (r.ok !== true)
+    throw new HttpError(
+      409,
+      typeof r.errore === "string" ? r.errore : "Capabilities not changed",
+    );
+  return Array.isArray(r.shared?.capabilities)
+    ? (r.shared.capabilities as Capability[])
+    : caps;
 }
 
 // Every minute: the pass, then the report to the agent. A failure is logged when it changes, not every minute.
-export function keepSharedAccountsInSync(d: Omit<SyncDeps, "owner">, everyMs = 60_000) {
+export function keepSharedAccountsInSync(
+  d: Omit<SyncDeps, "owner">,
+  everyMs = 60_000,
+) {
   let last = "";
   const say = (line: string) => {
     if (line !== last) console.log(line);
@@ -217,10 +402,19 @@ export function keepSharedAccountsInSync(d: Omit<SyncDeps, "owner">, everyMs = 6
     try {
       const owner = sharedOwnerId(d.db);
       const r = await syncSharedAccounts({ ...d, owner });
-      if (!r.enabled || !owner) return say(owner ? "shared accounts: off (no broker in the browsers container)" : "shared accounts: off (no owner)");
+      if (!r.enabled || !owner)
+        return say(
+          owner
+            ? "shared accounts: off (no broker in the browsers container)"
+            : "shared accounts: off (no owner)",
+        );
       await d.dir.report(sharedReport(d.db, owner, d.identity));
       const failed = Object.entries(r.errors);
-      say(failed.length ? `shared accounts: ${failed.map(([a, e]) => `${a}: ${e}`).join("; ")}` : `shared accounts: ${r.accounts.filter((a) => a.capabilities.includes("chat")).length} with Teams on`);
+      say(
+        failed.length
+          ? `shared accounts: ${failed.map(([a, e]) => `${a}: ${e}`).join("; ")}`
+          : `shared accounts: ${r.accounts.filter((a) => a.capabilities.includes("chat")).length} with Teams on`,
+      );
     } catch (e) {
       say(`shared accounts: ${message(e)}`);
     }

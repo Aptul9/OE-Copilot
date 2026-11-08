@@ -10,6 +10,7 @@
 //   POST /api/communication/read         {"account", "path"[, "prefer"]}: il JSON di Outlook, o {"errore"} con il codice HTTP
 
 import crypto from "node:crypto";
+import { readCommands, saveCommands } from "./shared-commands.ts";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -360,21 +361,121 @@ export class Agente {
     if (percorso === "/api/communication/read") return this.leggiComunicazione(req, res, corpo);
     if (percorso === "/api/auth/shared") {
       let dati: unknown;
-      try { dati = leggiJson(corpo); } catch { return this.invia(req, res, 400, { errore: "invalid JSON" }); }
+      try {
+        dati = leggiJson(corpo);
+      } catch {
+        return this.invia(req, res, 400, { errore: "invalid JSON" });
+      }
+      const data = dati as Record<string, unknown>;
+      if (data && (data.operation === "remove" || data.operation === "chat")) {
+        if (!this.o.tokens || typeof data.account !== "string")
+          return this.invia(req, res, 400, {
+            ok: false,
+            errore: "account required",
+          });
+        const account = data.account.trim().toLowerCase();
+        const teams = rapportoValido(
+          this.rapportoTeams,
+          Math.floor(this.o.adesso() / 1000),
+        );
+        if (!teams)
+          return this.invia(req, res, 409, {
+            ok: false,
+            errore: "Teams report unavailable",
+          });
+        const mailbox = this.o.tokens.voceAccount(account);
+        if (mailbox && mailbox.provider !== "microsoft")
+          return this.invia(req, res, 400, {
+            ok: false,
+            errore: "Microsoft account required",
+          });
+        const browser = teams.others.some((t) => t.email === account);
+        if (!mailbox && !browser && !teams.accounts.has(account))
+          return this.invia(req, res, 404, {
+            ok: false,
+            errore: "Account not found",
+          });
+        if (
+          data.operation === "chat" &&
+          (typeof data.on !== "boolean" || !browser)
+        )
+          return this.invia(req, res, 400, {
+            ok: false,
+            errore: "Browser Teams account required",
+          });
+        const file = this.o.tokens.percorso + ".commands.json";
+        const commands = readCommands(file);
+        if (commands.some((c) => c.account === account))
+          return this.invia(req, res, 409, {
+            ok: false,
+            errore: "Account operation already pending",
+          });
+        commands.push({
+          id: crypto.randomUUID(),
+          account,
+          operation: data.operation,
+          ...(data.operation === "chat" ? { on: data.on as boolean } : {}),
+        });
+        saveCommands(file, commands);
+        if (data.operation === "remove" && mailbox) {
+          for (const f of this.o.fonti.filter(
+            (f) => f.account.toLowerCase() === account,
+          ))
+            this.sposta(f, this.o.fonti, this.ferme);
+          this.o.tokens.rimuovi(account);
+          this.cache.clear();
+        }
+        return this.invia(req, res, 200, { ok: true, account, pending: true });
+      }
       const esito = await richiestaCondivisione(this.o.tokens, "POST", dati);
       if (esito.ok === true) {
         this.cache.clear();
-        this.o.registro("INFO", `condivisione casella aggiornata: ${String(esito.account ?? "")}`);
+        this.o.registro(
+          "INFO",
+          `condivisione casella aggiornata: ${String(esito.account ?? "")}`,
+        );
       }
       return this.invia(req, res, 200, esito);
     }
     if (percorso === "/api/auth/shared/teams") {
       let dati: unknown;
-      try { dati = leggiJson(corpo); } catch { return this.invia(req, res, 400, { errore: "invalid JSON" }); }
       try {
-        this.rapportoTeams = leggiRapportoTeams(dati, Math.floor(this.o.adesso() / 1000));
+        dati = leggiJson(corpo);
+      } catch {
+        return this.invia(req, res, 400, { errore: "invalid JSON" });
+      }
+      try {
+        const input = dati as Record<string, unknown>;
+        if (
+          !input ||
+          typeof input !== "object" ||
+          Object.keys(input).some(
+            (k) => !["accounts", "others", "results"].includes(k),
+          )
+        )
+          throw new ErroreRapportoTeams("Invalid report fields");
+        this.rapportoTeams = leggiRapportoTeams(
+          { accounts: input.accounts, others: input.others },
+          Math.floor(this.o.adesso() / 1000),
+        );
+        if (this.o.tokens && Array.isArray(input.results)) {
+          const file = this.o.tokens.percorso + ".commands.json";
+          const results = input.results as { id: string; error?: string }[];
+          saveCommands(
+            file,
+            readCommands(file).flatMap((c) => {
+              const result = results.find((r) => r.id === c.id);
+              return !result
+                ? [c]
+                : result.error
+                  ? [{ ...c, error: String(result.error).slice(0, 300) }]
+                  : [];
+            }),
+          );
+        }
       } catch (e) {
-        if (e instanceof ErroreRapportoTeams) return this.invia(req, res, 400, { errore: e.message });
+        if (e instanceof ErroreRapportoTeams)
+          return this.invia(req, res, 400, { errore: e.message });
         throw e;
       }
       return this.invia(req, res, 200, { ok: true });
@@ -571,8 +672,16 @@ export class Agente {
     if (percorso === "/api/communication/accounts") return this.invia(req, res, 200, { accounts: this.comunicazione?.caselle() ?? [] });
     if (percorso === "/api/communication/google/accounts") return this.invia(req, res, 200, { accounts: this.google?.accounts() ?? [] });
     if (percorso === "/api/auth/shared") {
-      const teams = rapportoValido(this.rapportoTeams, Math.floor(this.o.adesso() / 1000));
-      return this.invia(req, res, 200, await richiestaCondivisione(this.o.tokens, "GET", null, teams));
+      const teams = rapportoValido(
+        this.rapportoTeams,
+        Math.floor(this.o.adesso() / 1000),
+      );
+      return this.invia(req, res, 200, {
+        ...(await richiestaCondivisione(this.o.tokens, "GET", null, teams)),
+        commands: this.o.tokens
+          ? readCommands(this.o.tokens.percorso + ".commands.json")
+          : [],
+      });
     }
     if (percorso === "/api/auth/stato") {
       const caselle = this.o.fonti.map((f) => {

@@ -65,6 +65,7 @@ function Guscio({ accesso2fa }: { accesso2fa: Modo2fa }) {
   const [menu, setMenu] = useState(false);
   const [railLarga, setRailLarga] = useState(false);
   const [dialogo, setDialogo] = useState<null | "account" | "impostazioni" | "evento">(null);
+  useEffect(() => { if (new URLSearchParams(window.location.search).has("add-account")) setDialogo("account"); }, []);
   const [scheda, setScheda] = useState<Scheda | null>(null);
   const [titolo, setTitolo] = useState("");
   const [campoRicerca, setCampoRicerca] = useState("");

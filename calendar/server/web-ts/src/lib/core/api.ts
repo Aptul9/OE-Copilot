@@ -420,6 +420,14 @@ export const apiTs = {
    * L'elenco unico degli account (agente, /api/auth/shared): ogni casella Microsoft con capacità e origine (null se non ha mai scelto),
    * accesso e account Teams che la usa; poi gli account Teams con il solo accesso del loro browser e quando TeamsRelay li ha mandati.
    */
+  async manage_microsoft(account: unknown, operation: unknown, on?: unknown) {
+    try {
+      if (typeof account !== "string" || !["remove", "chat"].includes(String(operation))) throw new ErroreValore("Invalid operation");
+      const r = await invia("/api/auth/shared", {account, operation, on});
+      if (!r.ok) return {ok:false,error:String(r.errore || "Operation failed")};
+      azzeraMemoria(); return {ok:true,pending:true};
+    } catch(e) { return {ok:false,error:messaggio(e)}; }
+  },
   async get_condivisione_microsoft() {
     try {
       const r = await chiedi("/api/auth/shared");
@@ -428,6 +436,7 @@ export const apiTs = {
         ok: true,
         accounts: Array.isArray(r.accounts) ? r.accounts : [],
         teamsOnly: Array.isArray(r.teamsOnly) ? r.teamsOnly : [],
+        commands: Array.isArray(r.commands) ? r.commands : [],
         teamsAt: typeof r.teamsAt === "number" ? r.teamsAt : 0,
       };
     } catch (e) {
@@ -443,6 +452,18 @@ export const apiTs = {
     try {
       const casella = pyStr(account);
       if (capacita !== null && !Array.isArray(capacita)) throw new ErroreValore("capacità: un elenco, o null per spegnere");
+      if (Array.isArray(capacita) && capacita.includes("chat")) {
+        const latest = await chiedi("/api/auth/shared");
+        if (!latest.ok) throw new ErroreValore("Teams report unavailable");
+        const key = casella.trim().toLowerCase();
+        const current = (latest.accounts as {account: string; shared?: {capabilities: string[]}}[]).find(a => a.account.trim().toLowerCase() === key);
+        if (!current?.shared?.capabilities.includes("chat")) {
+          const at = Number(latest.teamsAt);
+          if (!at || Date.now() / 1000 - at > 600 || at > Date.now() / 1000) throw new ErroreValore("Teams report unavailable. Cannot enable safely.");
+          const others = latest.teamsOnly as {email: string}[];
+          if (others.some(t => t.email.trim().toLowerCase() === key)) throw new ErroreValore("Existing browser sign-in preserved. Shared Teams cannot take over this slot.");
+        }
+      }
       const r = await invia("/api/auth/shared", capacita === null ? { account: casella, enabled: false } : { account: casella, capabilities: capacita });
       if (!r.ok) return { ok: false, error: String(r.errore || "Condivisione non cambiata") };
       azzeraMemoria();

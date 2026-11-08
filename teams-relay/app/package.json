@@ -2,6 +2,10 @@
   "name": "teamsrelay-webapp",
   "private": true,
   "scripts": {
+    "predev": "node ../../shared/sync.mjs",
+    "pretest": "node ../../shared/sync.mjs",
+    "pretypecheck": "node ../../shared/sync.mjs",
+    "prebuild": "node ../../shared/sync.mjs",
     "dev": "next dev -p 8090",
     "build": "next build && node scripts/bundles.mjs",
     "start": "next start -p 8090",

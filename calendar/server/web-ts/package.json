@@ -2,6 +2,10 @@
   "name": "oe-copilot-gateway",
   "private": true,
   "scripts": {
+    "predev": "node ../../../shared/sync.mjs",
+    "pretest": "node ../../../shared/sync.mjs",
+    "pretypecheck": "node ../../../shared/sync.mjs",
+    "prebuild": "node ../../../shared/sync.mjs",
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",

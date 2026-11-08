@@ -166,6 +166,11 @@ export type CasellaAccesso = {
 export type CapacitaCondivisa = "mail" | "calendar" | "chat";
 /** La condivisione di una casella: null se non è condivisa. L'origine dice con quale client Microsoft rinnova l'accesso. */
 export type Condivisione = { capabilities: CapacitaCondivisa[]; origin: "mobile" | "outlook-spa" | "teams-spa" } | null;
+/** L'account Teams che TeamsRelay fa girare su una casella, o uno con il solo accesso del suo browser (agente, shared-teams.ts). */
+export type StatoTeams = { slot: number; state: string; detail: string };
+export type SoloTeams = StatoTeams & { email: string };
+/** Una casella Microsoft nell'elenco unico degli account: capacità, accesso, account Teams. */
+export type AccountCondiviso = { account: string; shared: Condivisione; status: "ok" | "errore"; message: string; teams: StatoTeams | null };
 
 /** I metodi dell'API che il gateway serve (apiTs in lib/core/api.ts): argomenti e risposta. */
 export type Metodi = {
@@ -205,7 +210,7 @@ export type Metodi = {
   remove_logo: [[string], Esito];
   get_stato_caselle: [[], Esito & { caselle: CasellaAccesso[] }];
   rimuovi_casella: [[string], Esito & { account?: string }];
-  get_condivisione_microsoft: [[], Esito & { accounts: { account: string; shared: Condivisione }[] }];
+  get_condivisione_microsoft: [[], Esito & { accounts: AccountCondiviso[]; teamsOnly: SoloTeams[]; teamsAt: number }];
   set_condivisione_microsoft: [[string, CapacitaCondivisa[] | null], Esito & { account?: string; shared?: Condivisione }];
   inizia_accesso_microsoft: [
     [string?, ("microsoft" | "google")?, ("device" | "pkce")?],

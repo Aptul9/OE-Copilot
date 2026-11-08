@@ -95,8 +95,18 @@ describe("attivazione dell'account condiviso", () => {
     expect(origineDi(undefined)).toBe("mobile");
   });
 
-  it("accetta solo capacità note, almeno una", () => {
-    for (const v of [[], ["admin"], "mail", null, [1]]) expect(() => capacitaValide(v)).toThrow();
+  it("accetta solo capacità note, anche nessuna", () => {
+    for (const v of [["admin"], "mail", null, [1]]) expect(() => capacitaValide(v)).toThrow();
+    expect(capacitaValide([])).toEqual([]);
+  });
+
+  it("nessuna capacità: la casella resta condivisa e collegata, senza prove con Microsoft", async () => {
+    const prima: SharedAccount = { tenantId: TID, objectId: OID, capabilities: ["mail", "chat"], origin: "mobile" };
+    const voci: Record<string, Voce> = { "mario@example.com": { provider: "microsoft", refresh_token: "r", shared: prima } };
+    const s = archivio(voci);
+    expect(await richiestaCondivisione(s.a, "POST", { account: "mario@example.com", capabilities: [] })).toEqual({ ok: true, account: "mario@example.com", shared: { capabilities: [], origin: "mobile" } });
+    expect(voci["mario@example.com"]!.shared).toEqual({ ...prima, capabilities: [] });
+    expect(s.richieste).toEqual([]);
   });
 });
 
@@ -108,8 +118,31 @@ describe("stato e spegnimento", () => {
       "g@example.com": { provider: "google" },
     };
     const r = await richiestaCondivisione(archivio(voci).a, "GET", null);
-    expect(r).toEqual({ ok: true, accounts: [{ account: "a@example.com", shared: { capabilities: ["chat"], origin: "mobile" } }, { account: "b@example.com", shared: null }] });
+    expect(r).toEqual({
+      ok: true,
+      accounts: [
+        { account: "a@example.com", shared: { capabilities: ["chat"], origin: "mobile" }, status: "ok", message: "", teams: null },
+        { account: "b@example.com", shared: null, status: "ok", message: "", teams: null },
+      ],
+      teamsOnly: [],
+      teamsAt: 0,
+    });
     expect(JSON.stringify(r)).not.toContain(OID);
+  });
+
+  it("GET unisce lo stato degli account Teams e l'accesso da rifare", async () => {
+    const voci: Record<string, Voce> = {
+      "a@example.com": { provider: "microsoft", shared: { tenantId: TID, objectId: OID, capabilities: ["chat"], origin: "mobile" } },
+      "b@example.com": { provider: "microsoft", errore: "Accesso scaduto" },
+    };
+    const teams = { at: 100, accounts: new Map([["a@example.com", { slot: 3, state: "running", detail: "" }]]), others: [{ email: "c@example.com", slot: 5, state: "running", detail: "" }] };
+    const r = await richiestaCondivisione(archivio(voci).a, "GET", null, teams);
+    expect(r.accounts).toEqual([
+      { account: "a@example.com", shared: { capabilities: ["chat"], origin: "mobile" }, status: "ok", message: "", teams: { slot: 3, state: "running", detail: "" } },
+      { account: "b@example.com", shared: null, status: "errore", message: "Accesso scaduto", teams: null },
+    ]);
+    expect(r.teamsOnly).toEqual([{ email: "c@example.com", slot: 5, state: "running", detail: "" }]);
+    expect(r.teamsAt).toBe(100);
   });
 
   it("enabled false toglie i metadati e lascia la casella", async () => {

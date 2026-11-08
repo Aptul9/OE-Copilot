@@ -18,6 +18,9 @@ services:
       - no-new-privileges:true
     environment:
       - API_KEY=${API_KEY}
+      # la chiave stretta di TeamsRelay (agente-ts/src/server.ts, chiaveTeams): l'elenco degli account condivisi e i token della chat,
+      # niente altro; vuota, TeamsRelay non entra
+      - TEAMS_BROKER_KEY=${TEAMS_BROKER_KEY:-}
     volumes:
       - ./agent/fonti.json:/app/fonti.json:ro
       - ./stato:/stato

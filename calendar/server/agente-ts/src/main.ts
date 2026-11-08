@@ -33,6 +33,8 @@ try {
   }
   const { server } = creaServer({
     chiave,
+    // TEAMS_BROKER_KEY: la chiave stretta di TeamsRelay (elenco degli account condivisi, token della chat); vuota, TeamsRelay non entra
+    chiaveTeams: process.env.TEAMS_BROKER_KEY ?? "",
     fonti,
     battito: process.env.BATTITO ?? "/stato/battito.json",
     tokenPosta: tokenPostaPath,

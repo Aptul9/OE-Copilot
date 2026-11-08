@@ -24,7 +24,7 @@ credenziali_da_stdin() {
     local riga nome valore
     while IFS= read -r riga || [ -n "$riga" ]; do
         nome=${riga%%=*}; valore=${riga#*=}
-        case "$nome" in ADMIN_EMAIL|ADMIN_PASSWORD|API_KEY|BETTER_AUTH_SECRET) [ -z "$valore" ] || export "$nome=$valore" ;; esac
+        case "$nome" in ADMIN_EMAIL|ADMIN_PASSWORD|API_KEY|BETTER_AUTH_SECRET|TEAMS_BROKER_KEY) [ -z "$valore" ] || export "$nome=$valore" ;; esac
     done
 }
 

@@ -41,6 +41,13 @@ function refused(l: Light, e: unknown): boolean {
 // Renew captured sessions over HTTP; legacy accounts keep their access tokens until the one-time session capture.
 export async function renewSignIn(l: Light, renewed: { for: number; retryAt: number }) {
   const previous = parseState(LightSignIn, l.store.getState(STATE.lightToken));
+  // A shared Microsoft account: the broker renews, nothing is stored here. The state tells the web app never to start
+  // the browser of this slot; a refusal ends once the broker gives tokens again (readList cleared signedOut).
+  if (l.token.brokerBacked) {
+    if (!previous.broker) l.store.setState(STATE.lightToken, JSON.stringify({ at: nowSeconds(), expiresOn: 0, refused: false, broker: true } satisfies LightSignIn));
+    else if (previous.refused && !l.signedOut) l.store.setState(STATE.lightToken, JSON.stringify({ ...previous, refused: false } satisfies LightSignIn));
+    return;
+  }
   const file = l.config.lightTokenFile;
   if (previous.browser) return;
   if (file && (previous.session || previous.mcas || fs.existsSync(sessionFile(file)))) {
@@ -80,6 +87,13 @@ async function identify(l: Light) {
   const auth = await l.api.auth({});
   if (!auth.oid) throw new Error("no object id in the access token");
   const saved = parseState(Identity, l.store.getState(STATE.me));
+  // a slot mapped to a shared account reads that account only, and never the chats of a slot signed in as someone else
+  const broker = l.config.sharedBroker?.account.toLowerCase();
+  if (broker) {
+    const upn = (auth.upn ?? "").toLowerCase();
+    if (upn !== broker) throw new SignedOut(`the shared broker gave a token of ${upn || "an unknown account"}, not of ${broker}`);
+    if (saved.email && saved.email.toLowerCase() !== broker) throw new SignedOut(`slot signed in as ${saved.email}, not the shared account ${broker}: remove it and map a new slot`);
+  }
   l.me = { oid: auth.oid, name: saved.name || auth.name || "" };
   if (!l.store.getState(STATE.me)) l.store.setState(STATE.me, JSON.stringify({ ...saved, name: auth.name ?? "", email: auth.upn ?? "" }));
 }

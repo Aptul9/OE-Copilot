@@ -7,6 +7,7 @@ import {
   askRefresh,
   CHECK_INTERVALS,
   claimSlot,
+  endRefresh,
   listSlots,
   REFRESH_ASKED,
   releaseSlot,
@@ -16,7 +17,7 @@ import {
   setSlotStopped,
   slotRow,
 } from "./appdb";
-import type { ControlClient } from "./control";
+import { brokerSlots, type ControlClient } from "./control";
 import { HttpError } from "./http";
 import { createRelaySlot, forgetRelay, newRelayToken, ON_ANOTHER_COMPUTER, relayDigest } from "./relay";
 import { withSlotOr } from "./slotdb";
@@ -182,6 +183,40 @@ export function setLightMode(n: number, ctl: ControlClient, db: Database.Databas
     // needs one
     if (s.stopped || s.check_every) await ctl.light(n);
     else askRefresh(db, n);
+  });
+}
+
+// Shown when a browser mode is asked for a slot that runs on a shared Microsoft account
+export const SHARED_NO_BROWSER =
+  "This Teams account uses a shared Microsoft account: it runs without a browser. Its sign-in is renewed from the Account window of the calendar";
+
+// The shared Microsoft account the operator mapped to slot n in the browsers container, "" for none
+export async function sharedAccountOf(n: number, lookup: () => Promise<Record<string, { account: string }>> = brokerSlots): Promise<string> {
+  return (await lookup())[String(n)]?.account ?? "";
+}
+
+// The owner's opt-in: a slot the operator mapped to a shared Microsoft account (SHARED_BROKER_SLOTS of the supervisor)
+// runs its light agent on that account's resource tokens, never a browser. Without a mapping nothing changes: the
+// slot keeps its own sign-in. A stopped account is back in service; an ask for a browser run is forgotten.
+export function setSharedMode(
+  n: number,
+  ctl: ControlClient,
+  db: Database.Database,
+  lookup: () => Promise<Record<string, { account: string }>> = brokerSlots,
+): Promise<string> {
+  return exclusive(async () => {
+    const s = slotRow(db, n);
+    if (!s) throw new HttpError(404, "Account not found");
+    if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    const account = await sharedAccountOf(n, lookup);
+    if (!account) throw new HttpError(409, "This Teams account is not mapped to a shared Microsoft account: the server administrator maps it first");
+    // the supervisor stops browser and agent before the light agent starts
+    await ctl.light(n);
+    setLight(db, n, true);
+    endRefresh(db, n, { now: nowSeconds(), result: null });
+    if (s.stopped) setSlotStopped(db, n, false);
+    if (!s.light) forgetLastCheck(n);
+    return account;
   });
 }
 

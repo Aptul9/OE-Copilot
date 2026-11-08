@@ -20,12 +20,21 @@ export class SignedOut extends Error {}
 const MARGIN_MS = 5 * 60_000;
 
 export class LightToken {
+  readonly brokerBacked: boolean;
   private readonly cache = new Map<string, { token: string; expiresAt: number }>();
 
   constructor(
     private readonly file: string,
     private readonly now: () => number = Date.now,
-  ) {}
+    private readonly broker?: { url: string; key: string; account: string; region: string },
+  ) { this.brokerBacked = !!broker; }
+
+  // Region of the chat service: a shared account has no browser cookie to read it from, the supervisor maps it with
+  // the slot (src/supervisor/broker.ts); otherwise the one the browser run captured
+  region(): string {
+    if (this.broker) return this.broker.region;
+    return this.stored()?.region || "emea";
+  }
 
   // a credential: readable by its owner only
   static save(file: string, stored: StoredToken) {
@@ -44,6 +53,7 @@ export class LightToken {
   }
 
   stored(): StoredToken | null {
+    if (this.broker) return null;
     return LightToken.load(this.file);
   }
 
@@ -54,6 +64,16 @@ export class LightToken {
   }
 
   async accessToken(scope: string): Promise<string> {
+    if (this.broker) {
+      const resource = new Map([[CHATSVCAGG, 'csa'], [IC3, 'ic3'], [SPACES, 'spaces'], [PRESENCE, 'presence']]).get(scope);
+      if (!resource) throw new SignedOut('unsupported broker resource');
+      const url = new URL('/api/token-resource', this.broker.url);
+      url.searchParams.set('account', this.broker.account); url.searchParams.set('resource', resource);
+      const response = await fetch(url, { headers: { Authorization: 'Bearer ' + this.broker.key }, redirect: 'error', signal: AbortSignal.timeout(20000) });
+      const data = await response.json().catch(() => ({})) as { token?: string };
+      if (!response.ok || typeof data.token !== 'string' || !data.token) throw new SignedOut('shared broker unavailable');
+      return data.token;
+    }
     const hit = this.cache.get(scope);
     if (hit && this.now() < hit.expiresAt - MARGIN_MS) return hit.token;
     const stored = this.stored();

@@ -51,7 +51,9 @@ async function main() {
   if (process.argv[2] === "status") process.exit(await status(cfg.socket));
   const accounts = new Accounts(cfg.accounts, { log: (line) => console.log(line) });
   const { XDG_RUNTIME_DIR, WAYLAND_DISPLAY } = cfg.accounts.session;
-  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say });
+  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say, broker: () => accounts.broker() });
+  const mapped = Object.entries(accounts.broker());
+  if (mapped.length) say(`shared Microsoft broker for ${mapped.map(([slot, { account }]) => `slot ${slot} (${account})`).join(", ")}`);
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
       server.close();

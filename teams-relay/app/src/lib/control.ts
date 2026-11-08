@@ -46,6 +46,37 @@ export function controlClient(socket = config.controlSocket): ControlClient {
   };
 }
 
+// The slots the operator mapped to a shared Microsoft account in the browsers container (SHARED_BROKER_SLOTS of the
+// supervisor), with their account. A supervisor of an earlier release has no such route: none.
+export function brokerSlots(socket = config.controlSocket): Promise<Record<string, { account: string }>> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: socket, method: "GET", path: "/broker", timeout: 10_000 }, (res) => {
+      let body = "";
+      res.on("data", (d) => (body += d));
+      res.on("end", () => {
+        if (res.statusCode === 404) return resolve({});
+        if (res.statusCode !== 200) return reject(new HttpError(502, `Shared accounts of the browsers container not read: status ${res.statusCode}`));
+        try {
+          const slots = (JSON.parse(body) as { slots?: unknown }).slots;
+          const out: Record<string, { account: string }> = {};
+          if (slots && typeof slots === "object") {
+            for (const [slot, v] of Object.entries(slots)) {
+              const account = (v as { account?: unknown })?.account;
+              if (/^[1-9][0-9]*$/.test(slot) && typeof account === "string" && account) out[slot] = { account };
+            }
+          }
+          resolve(out);
+        } catch {
+          reject(new HttpError(502, "Shared accounts of the browsers container not read: not JSON"));
+        }
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("no answer within 10 s")));
+    req.on("error", (e) => reject(new HttpError(503, `Browsers container not reachable: ${e.message}`)));
+    req.end();
+  });
+}
+
 function detail(body: string): string | null {
   try {
     const d = (JSON.parse(body) as { detail?: unknown }).detail;

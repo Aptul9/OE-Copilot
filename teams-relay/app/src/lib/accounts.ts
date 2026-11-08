@@ -45,6 +45,9 @@ export type AccountSummary = {
   // calls of an account with no browser switched on in Settings; absent: on
   calls?: boolean;
   refreshing: boolean;
+  // the shared Microsoft account the server maps this slot to (src/supervisor/broker.ts), "" or absent for none: set by
+  // GET /api/accounts from the supervisor
+  shared?: string;
 };
 
 // The grace for a browser still starting runs from the last start, not from the day the account was added: a start

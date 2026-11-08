@@ -37,8 +37,8 @@ async function main() {
   const devices = new AppStore(config.appDb, config.slot);
   const sa = loadServiceAccount(config.fcmCredentials);
   const notifier = new Notifier({ store, devices, vapid, subject: config.vapid.subject, ntfy: config.ntfy, fcm: sa ? new FcmSender(sa) : null, answerable: process.env.NATIVE_CALLS === "1" });
-  const token = new LightToken(config.lightTokenFile);
-  const api = new LightApi(token, () => token.stored()?.region || "emea");
+  const token = new LightToken(config.lightTokenFile, Date.now, config.sharedBroker);
+  const api = new LightApi(token, () => token.region());
   const l: Light = {
     config,
     store,

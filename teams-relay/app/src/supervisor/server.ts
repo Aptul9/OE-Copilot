@@ -8,6 +8,8 @@ type Options = {
   // the desktop session is up: a browser started before it would find no display
   desktop: Promise<void>;
   log: (line: string) => void;
+  // slots the operator mapped to a shared Microsoft account, with that account: never the broker URL or key
+  broker?: () => Record<string, { account: string }>;
 };
 
 type Reply = { status: number; body?: unknown };
@@ -15,11 +17,12 @@ type Reply = { status: number; body?: unknown };
 const ACTION = /^\/accounts\/([^/]+)\/(start|light|stop|wipe|show)$/;
 
 // Control API for the web app, HTTP on a unix socket that only root opens:
-//   POST /accounts/N/start | light | stop | wipe | show        GET /accounts
-export function controlServer(accounts: AccountControl, { desktop, log }: Options): http.Server {
+//   POST /accounts/N/start | light | stop | wipe | show        GET /accounts        GET /broker
+export function controlServer(accounts: AccountControl, { desktop, log, broker }: Options): http.Server {
   async function handle(method: string, url: string): Promise<Reply> {
     const path = url.split("?")[0];
     if (path === "/accounts") return method === "GET" ? { status: 200, body: accounts.status() } : notAllowed;
+    if (path === "/broker") return method === "GET" ? { status: 200, body: { slots: broker?.() ?? {} } } : notAllowed;
     const m = ACTION.exec(path);
     if (!m) return { status: 404, body: { detail: "Not found" } };
     if (method !== "POST") return notAllowed;

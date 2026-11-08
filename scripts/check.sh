@@ -21,6 +21,8 @@ done
 [ ${#mods[@]} -gt 0 ] || usage
 
 step() { printf '\n== %s\n' "$*"; }
+# Git Bash: paths inside docker arguments belong to the container and must not become Windows paths
+docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
 # no install scripts: better-sqlite3 would run node-gyp, and Windows has no compiler (the package ships its binaries)
 install() { npm ci --ignore-scripts --no-audit --no-fund; }
 

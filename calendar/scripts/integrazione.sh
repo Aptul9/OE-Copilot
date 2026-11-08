@@ -3,8 +3,9 @@
 # compose, su dati inventati. Sono i passi che faceva la CI di OE Copilot. Serve Docker; gira anche in Git Bash su Windows.
 #   bash calendar/scripts/integrazione.sh      (lo lancia scripts/check.sh calendar --docker)
 set -euo pipefail
-# Git Bash: i percorsi passano a docker e node come sono (C:/...), senza conversioni
-export MSYS_NO_PATHCONV=1
+# Git Bash: i percorsi negli argomenti di docker sono quelli del container e non diventano percorsi di Windows; il resto
+# (curl -o /dev/null) resta convertito
+docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
 cal=$(cd "$(dirname "$0")/.." && { pwd -W 2>/dev/null || pwd; })
 # una cartella temporanea che docker e node capiscono anche su Windows
 cartella() { local d; d=$(mktemp -d); chmod 755 "$d"; if command -v cygpath >/dev/null; then cygpath -m "$d"; else echo "$d"; fi; }
@@ -40,7 +41,7 @@ echo "== Gateway, accesso e cancello"
   docker build -q -t oe-copilot-gateway "$cal/server/web-ts"
   docker network rm prova >/dev/null 2>&1 || true
   docker network create prova >/dev/null
-  pw=$(openssl rand -hex 16)
+  pw=$(openssl rand -hex 16 | tr -d '\r')
   gw=$(docker run -d --network prova --network-alias gateway -p 3190:3000 -e GATEWAY_DB=/tmp/gw.db \
     -e OE_DATI=/tmp/dati -e AGENTE_URL=http://agent:8180 -e AGENTE_CHIAVE=prova \
     -e APP_URL=http://localhost:3190 -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
@@ -201,7 +202,7 @@ JS
   for i in 1 2 3 4 5; do codice -X POST "${json[@]}" -d '{"email":"prova@example.com","password":"sbagliata-sbagliata"}' $G/api/auth/sign-in/email >/dev/null; done
   test "$(codice -X POST "${json[@]}" -d "{\"email\":\"prova@example.com\",\"password\":\"$pw\"}" $G/api/auth/sign-in/email)" = 429
   # un valore di AUTH_2FA che non è off, totp o passkey ferma l'avvio, col motivo nel log
-  if out=$(timeout 90 docker run --rm -e AUTH_2FA=pippo -e GATEWAY_DB=/tmp/x.db -e OE_DATI=/tmp/x -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
+  if out=$(MSYS_NO_PATHCONV=1 timeout 90 docker run --rm -e AUTH_2FA=pippo -e GATEWAY_DB=/tmp/x.db -e OE_DATI=/tmp/x -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
     -e ADMIN_EMAIL=prova@example.com -e ADMIN_PASSWORD="$pw" oe-copilot-gateway 2>&1); then echo "AUTH_2FA=pippo non ha fermato l'avvio"; exit 1; fi
   grep -q 'AUTH_2FA non valido' <<<"$out"
   # con AUTH_2FA=passkey il gateway parte dall'immagine (il plugin è nel pacchetto), le strade delle passkey ci sono e il sito è quello di APP_URL
@@ -215,7 +216,7 @@ JS
   # Caddy con il gateway fermo (502): l'errore di inoltro scrive la richiesta, e il testo segreto di un link di condivisione non deve starci, comunque sia
   # scritto l'indirizzo (// davanti, segmenti col punto, maiuscole, indirizzo intero, ovunque) né in Referer
   docker stop "$gw" >/dev/null
-  tok=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n')
+  tok=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\r\n')
   for p in "/condividi/$tok.ics" "//condividi/$tok.ics" "/x/../condividi/$tok.ics" "/CONDIVIDI/$tok.ics" "/condividi/./$tok.ics" "/api/x?t=$tok"; do
     test "$(codice --path-as-is "$C$p")" = 502
   done

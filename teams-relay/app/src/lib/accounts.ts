@@ -45,8 +45,8 @@ export type AccountSummary = {
   // calls of an account with no browser switched on in Settings; absent: on
   calls?: boolean;
   refreshing: boolean;
-  // the shared Microsoft account the server maps this slot to (src/supervisor/broker.ts), "" or absent for none: set by
-  // GET /api/accounts from the supervisor
+  // the shared Microsoft account of the OE calendar agent this slot runs on (src/lib/shared-accounts.ts), "" for a slot
+  // with its own sign-in (absent in the answers of a server of an earlier release)
   shared?: string;
 };
 
@@ -111,6 +111,7 @@ export function accountSummary(s: Slot): AccountSummary {
     light: !!s.light,
     calls: s.calls !== 0,
     refreshing: !!s.refreshing,
+    shared: s.shared_account ?? "",
   };
 }
 

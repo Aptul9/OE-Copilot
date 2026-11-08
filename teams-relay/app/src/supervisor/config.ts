@@ -1,16 +1,14 @@
 import { z } from "zod";
 import { ConfigError, parseEnv } from "@/shared/env";
 import type { AccountsConfig } from "./accounts";
-import { parseBrokerSlots } from "./broker";
 
 // Environment of the supervisor: the container environment (s6 with-contenv), set by the image and by
 // docker-compose.yml. Checked once at start, like the agent's.
 const Env = z.object({
-  // shared Microsoft broker (OE calendar agent, /api/token-resource): all three or none. SHARED_BROKER_SLOTS is JSON
-  // {"<slot>": {"account": "<upn>", "region": "<chat service region>"}}: only the slots listed use it
+  // the OE calendar agent of the shared Microsoft accounts (src/supervisor/broker.ts) and its key for this container
+  // (TEAMS_BROKER_KEY of the agent): both or none. Which slot runs on which account the web app decides.
   SHARED_BROKER_URL: z.url({ protocol: /^https?$/ }).optional(),
   SHARED_BROKER_KEY: z.string().min(1).optional(),
-  SHARED_BROKER_SLOTS: z.string().optional(),
   CONTROL_SOCKET: z.string().default("/root/run/control.sock"),
   PROFILES_DIR: z.string().default("/profiles"),
   DATA_DIR: z.string().default("/root/data"),
@@ -33,9 +31,8 @@ type SupervisorConfig = { socket: string; accounts: AccountsConfig };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): SupervisorConfig {
   const e = parseEnv(Env, env);
-  const broker = [e.SHARED_BROKER_URL, e.SHARED_BROKER_KEY, e.SHARED_BROKER_SLOTS];
-  if (broker.some(Boolean) && !broker.every(Boolean)) throw new ConfigError("SHARED_BROKER_URL, SHARED_BROKER_KEY and SHARED_BROKER_SLOTS go together");
-  const sharedBroker = e.SHARED_BROKER_URL ? { url: e.SHARED_BROKER_URL, key: e.SHARED_BROKER_KEY!, slots: parseBrokerSlots(e.SHARED_BROKER_SLOTS!) } : undefined;
+  if (Boolean(e.SHARED_BROKER_URL) !== Boolean(e.SHARED_BROKER_KEY)) throw new ConfigError("SHARED_BROKER_URL and SHARED_BROKER_KEY go together");
+  const sharedBroker = e.SHARED_BROKER_URL ? { url: e.SHARED_BROKER_URL, key: e.SHARED_BROKER_KEY! } : undefined;
   const pick = (names: string[]) => Object.fromEntries(names.flatMap((k) => (env[k] ? [[k, env[k]]] : [])));
   return {
     socket: e.CONTROL_SOCKET,

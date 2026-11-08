@@ -13,7 +13,7 @@ export const POST = route<Ctx>(async (req, { params }) => {
   const s = slotRow(appDb(), n);
   if (s?.stopped) throw new HttpError(409, "This Teams account is stopped: start it from its page or from Settings");
   if (s?.light) {
-    if (await sharedAccountOf(n).catch(() => "")) throw new HttpError(409, SHARED_NO_BROWSER);
+    if (sharedAccountOf(n, appDb())) throw new HttpError(409, SHARED_NO_BROWSER);
     askRefresh(appDb(), n);
     return Response.json({ ok: true });
   }

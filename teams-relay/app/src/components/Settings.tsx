@@ -10,6 +10,7 @@ import { AiClients } from "./AiClients";
 import { Avatar } from "./Avatar";
 import { PageHeader } from "./PageHeader";
 import { relayHost, RelayTokenDialog } from "./RelayToken";
+import { SharedAccounts } from "./SharedAccounts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -78,20 +79,21 @@ function TeamsAccounts() {
     return () => clearInterval(timer);
   }, []);
 
-  // one status: stopped (session kept), always on, checked every N, light (no browser of its own), or the shared
-  // Microsoft account the server maps the slot to
+  // one status: stopped (session kept), always on, checked every N, light (no browser of its own); a slot on a shared
+  // Microsoft account is on or off only, the Teams switch of that account in the calendar too
   async function setStatus(a: Account, value: string) {
     const checkEvery = Number(value);
     setSaving(a.slot);
     try {
-      const change = value === "stopped" ? { running: false } : value === "shared" ? { shared: true } : value === "light" ? { light: true } : { checkEvery };
+      const change = value === "stopped" ? { running: false } : value === "shared" ? { running: true } : value === "light" ? { light: true } : { checkEvery };
       await patch(`/api/accounts/${a.slot}`, change, 0);
       const list = await fetchAccounts();
       if (list) setAccounts(list);
-      if (value === "stopped") toast.success(`${accName(a)}: stopped`, { description: "Still signed in: no messages or notifications until you choose another status." });
+      if (a.shared && value === "stopped") toast.success(`${accName(a)}: Teams off for ${a.shared}`, { description: "Its chats stay here. Mail and calendar of the account do not change." });
+      else if (value === "stopped") toast.success(`${accName(a)}: stopped`, { description: "Still signed in: no messages or notifications until you choose another status." });
       else if (value === "shared")
-        toast.success(`${accName(a)}: shared account ${a.shared}`, {
-          description: "Messages, notifications and replies run on the shared Microsoft account, without a browser. Its sign-in is renewed from the Account window of the calendar.",
+        toast.success(`${accName(a)}: Teams on for ${a.shared}`, {
+          description: "Messages, notifications and replies run on the Microsoft account signed in in the calendar, without a browser.",
         });
       else if (value === "light")
         toast.success(`${accName(a)}: no browser`, {
@@ -187,19 +189,14 @@ function TeamsAccounts() {
                 ) : (
                   <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
                     {a.shared ? (
-                      // a slot the server maps to a shared Microsoft account has no browser: stopped, or running on it
-                      <Select value={a.stopped ? "stopped" : a.light ? "shared" : "waiting"} onValueChange={(v) => void setStatus(a, v)} disabled={saving === a.slot}>
+                      // a slot on a shared Microsoft account has no browser: Teams on or off for that account
+                      <Select value={a.stopped ? "stopped" : "shared"} onValueChange={(v) => void setStatus(a, v)} disabled={saving === a.slot}>
                         <SelectTrigger className="h-10 w-full sm:w-52 md:h-9" aria-label={`Status of ${accName(a)}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="stopped">Stopped</SelectItem>
-                          <SelectItem value="shared">Shared Microsoft account</SelectItem>
-                          {!a.stopped && !a.light && (
-                            <SelectItem value="waiting" disabled>
-                              Not running: choose the shared account
-                            </SelectItem>
-                          )}
+                          <SelectItem value="shared">On, shared account</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
@@ -219,7 +216,7 @@ function TeamsAccounts() {
                         </SelectContent>
                       </Select>
                     )}
-                    {a.shared && <span className="w-full text-xs text-muted-foreground sm:w-auto">Shared account {a.shared}</span>}
+                    {a.shared && <span className="w-full text-xs text-muted-foreground sm:w-auto">Signed in once in the calendar as {a.shared}</span>}
                     {a.light && (
                       <label className="flex items-center gap-2 text-sm">
                         <Switch checked={a.calls !== false} onCheckedChange={(on) => void setCalls(a, on)} disabled={saving === a.slot} aria-label={`Calls of ${accName(a)}`} />
@@ -409,6 +406,7 @@ export function Settings({ user, passwordManaged }: { user: { name: string; emai
           </CardContent>
         </Card>
 
+        <SharedAccounts />
         <TeamsAccounts />
         <AiClients />
 

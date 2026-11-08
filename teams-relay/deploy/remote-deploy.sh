@@ -11,6 +11,22 @@ cd "$TR_DIR"
 # profile active, a rollback to one of them creates those containers again. No service of this release uses it.
 export COMPOSE_PROFILES=accounts
 
+# The shared Microsoft accounts of the OE calendar agent (docker-compose.oe.yml): the browsers container joins its network
+# when .env sets the broker and that network exists on this host. Evaluated again after a rollback, whose code may not
+# have the file.
+oe_network() {
+  local net
+  net="$(sed -n 's/^OE_NETWORK=//p' .env 2>/dev/null | tail -n 1)"
+  net="${net:-oe-copilot_default}"
+  if [ -f docker-compose.oe.yml ] && grep -q '^SHARED_BROKER_URL=.' .env 2>/dev/null && docker network inspect "$net" >/dev/null 2>&1; then
+    export COMPOSE_FILE=docker-compose.yml:docker-compose.oe.yml
+    echo "shared Microsoft accounts: browsers joins $net"
+  else
+    unset COMPOSE_FILE
+  fi
+}
+oe_network
+
 code_files() {
   # everything but the runtime data
   find . -mindepth 1 -maxdepth 1 ! -name .env ! -name config ! -name data ! -name vapid ! -name fcm ! -name .caddyfile-sum ! -name .fcm-sum -printf '%P\n'
@@ -116,6 +132,7 @@ case "${1:-}" in
       code_files | xargs -r rm -rf
       tar -xzf "$BACKUP"
       rm -f .caddyfile-sum
+      oe_network
       start
       healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
     fi

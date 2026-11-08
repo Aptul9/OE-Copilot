@@ -9,6 +9,7 @@ import http from "node:http";
 import path from "node:path";
 import { errorText, format } from "../agent/log";
 import { Accounts } from "./accounts";
+import { directory } from "./broker";
 import { ConfigError } from "@/shared/env";
 import { loadConfig } from "./config";
 import { controlServer, listen } from "./server";
@@ -51,9 +52,9 @@ async function main() {
   if (process.argv[2] === "status") process.exit(await status(cfg.socket));
   const accounts = new Accounts(cfg.accounts, { log: (line) => console.log(line) });
   const { XDG_RUNTIME_DIR, WAYLAND_DISPLAY } = cfg.accounts.session;
-  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say, broker: () => accounts.broker() });
-  const mapped = Object.entries(accounts.broker());
-  if (mapped.length) say(`shared Microsoft broker for ${mapped.map(([slot, { account }]) => `slot ${slot} (${account})`).join(", ")}`);
+  const broker = cfg.accounts.sharedBroker;
+  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say, directory: broker ? directory(broker) : undefined });
+  if (broker) say(`shared Microsoft accounts from ${new URL(broker.url).host}`);
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {
       server.close();

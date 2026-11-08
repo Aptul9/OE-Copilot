@@ -1,17 +1,15 @@
 import { accountsOf } from "@/lib/accounts";
 import { appDb } from "@/lib/appdb";
 import { config, desktopUrlOf } from "@/lib/config";
-import { brokerSlots, controlClient } from "@/lib/control";
+import { controlClient } from "@/lib/control";
 import { route } from "@/lib/http";
 import { requireUser } from "@/lib/session";
 import { addAccount, addRelayAccount } from "@/lib/slots";
 
-// shared: the shared Microsoft account the server maps the slot to; a supervisor not reachable maps none
+// shared: the shared Microsoft account a slot runs on (src/lib/shared-accounts.ts), "" for one with its own sign-in
 export const GET = route(async (req) => {
   const user = await requireUser(req);
-  const list = accountsOf(user.id);
-  const mapped = await brokerSlots().catch(() => ({}) as Record<string, { account: string }>);
-  return Response.json({ ...list, accounts: list.accounts.map((a) => ({ ...a, shared: mapped[String(a.slot)]?.account ?? "" })) });
+  return Response.json(accountsOf(user.id));
 });
 
 // New Teams account: first free slot, wiped, browser and agent started. The Microsoft login happens

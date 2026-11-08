@@ -22,7 +22,7 @@ const redirect = (location: string) => new Response(null, { status: 302, headers
 async function ownAccount(userId: string, slot: string): Promise<{ n: number; light: boolean }> {
   const row = ownedSlot(userId, slot);
   if (row.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
-  if (await sharedAccountOf(row.slot).catch(() => "")) throw new HttpError(409, SHARED_NO_BROWSER);
+  if (sharedAccountOf(row.slot, appDb())) throw new HttpError(409, SHARED_NO_BROWSER);
   if (!(await browserOnDemand(appDb(), row.slot))) throw new HttpError(503, NOT_STARTED);
   return { n: row.slot, light: !!row.light };
 }

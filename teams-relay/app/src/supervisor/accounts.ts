@@ -2,12 +2,12 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { format } from "../agent/log";
-import { brokerEnv, type SharedBroker } from "./broker";
+import { brokerEnv, type BrokerBinding, type SharedBroker } from "./broker";
 import { Supervised, type Command } from "./process";
 
 export type AccountsConfig = {
-  // per-slot shared Microsoft broker (src/supervisor/broker.ts): a slot listed here runs only its light agent, on
-  // resource tokens of its own unified account, never a browser or a local credential
+  // the OE calendar agent of the shared Microsoft accounts (src/supervisor/broker.ts): a slot the web app binds to one
+  // runs only its light agent, on resource tokens of that account, never a browser or a local credential
   sharedBroker?: SharedBroker;
   profilesDir: string;
   dataDir: string;
@@ -122,11 +122,12 @@ export function agentCommand(n: number, cfg: AccountsConfig): Command {
   };
 }
 
-// The light agent of a light account: the environment of the agent, without its browser and its desktop
-export function lightCommand(n: number, cfg: AccountsConfig): Command {
+// The light agent of a light account: the environment of the agent, without its browser and its desktop; bound to a
+// shared Microsoft account, the broker of that account
+export function lightCommand(n: number, cfg: AccountsConfig, binding?: BrokerBinding | null): Command {
   const agent = agentCommand(n, cfg);
   const env = Object.fromEntries(Object.entries(agent.env ?? {}).filter(([k]) => !["CDP", "DESKTOP_PORT", "DESKTOP_UID", "DESKTOP_GID", "DESKTOP_APP_ID", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY"].includes(k)));
-  Object.assign(env, brokerEnv(n, cfg.sharedBroker));
+  Object.assign(env, brokerEnv(binding, cfg.sharedBroker));
   if (env.NATIVE_CALLS && env.NATIVE_CALLS !== "1") env.NATIVE_CALLS = env.NATIVE_CALLS.split(",").includes(String(n)) ? "1" : "0";
   return { file: cfg.node, args: [cfg.lightScript], env };
 }
@@ -144,6 +145,8 @@ type Account = { browser: ProcessLike; agent: ProcessLike; light: ProcessLike };
 // for a light account, between the runs of its browser. The two never run together: both would push the same messages.
 export class Accounts {
   private readonly accounts = new Map<number, Account>();
+  // the shared account each bound slot runs on, as the web app sent it with its last light start
+  private readonly bindings = new Map<number, BrokerBinding>();
   private readonly queues = new Map<number, Promise<unknown>>();
   private readonly makeProcess: NonNullable<Deps["process"]>;
   private readonly focus: NonNullable<Deps["focus"]>;
@@ -158,8 +161,8 @@ export class Accounts {
 
   start(n: number) {
     return this.queued(n, async () => {
-      // a broker-backed slot has no browser sign-in: its session lives in the unified account (OE calendar agent)
-      if (this.cfg.sharedBroker?.slots[String(n)]) throw new AccountError(409, `Account ${n} uses a shared Microsoft account: it runs without a browser, choose Shared Microsoft account in Settings`);
+      // a slot bound to a shared account has no browser sign-in: its session lives in the OE calendar agent
+      if (this.bindings.has(n)) throw new AccountError(409, `Account ${n} uses a shared Microsoft account: it runs without a browser`);
       const a = this.account(n);
       if (a.light.active) await a.light.stop();
       const running = a.browser.active && a.agent.active;
@@ -170,15 +173,23 @@ export class Accounts {
     });
   }
 
-  // The light agent alone: browser and agent stop first
-  light(n: number) {
+  // The light agent alone: browser and agent stop first. binding: the shared account of a bound slot (every light
+  // start of the web app sends it again, so a restarted supervisor has it back within a minute); a light agent already
+  // running on another binding starts again on the new one.
+  light(n: number, binding: BrokerBinding | null = null) {
     return this.queued(n, async () => {
+      if (binding && !this.cfg.sharedBroker) throw new AccountError(409, `Account ${n} uses a shared Microsoft account, but this container has no SHARED_BROKER_URL and SHARED_BROKER_KEY`);
       const a = this.account(n);
-      if (a.light.active) return;
+      const before = this.bindings.get(n) ?? null;
+      const same = before?.account === binding?.account && before?.region === binding?.region;
+      if (binding) this.bindings.set(n, binding);
+      else this.bindings.delete(n);
+      if (a.light.active && same) return;
+      if (a.light.active) await a.light.stop();
       if (a.agent.active) await a.agent.stop();
       if (a.browser.active) await a.browser.stop();
       a.light.start();
-      this.say(`account ${n} started without its browser`);
+      this.say(`account ${n} started without its browser${binding ? ` on the shared account ${binding.account}` : ""}`);
     });
   }
 
@@ -227,11 +238,6 @@ export class Accounts {
     return this.focus(n);
   }
 
-  // the slots mapped to a shared Microsoft account and their account, for the web app: no URL, key or region
-  broker(): Record<string, { account: string }> {
-    return Object.fromEntries(Object.entries(this.cfg.sharedBroker?.slots ?? {}).map(([slot, { account }]) => [slot, { account }]));
-  }
-
   status(): AccountStatus[] {
     const state = (p: ProcessLike): ProcessState => ({ running: p.running, pid: p.pid, restarts: p.restarts, lastExit: p.lastExit });
     return [...this.accounts.entries()].sort(([x], [y]) => x - y).map(([account, a]) => ({ account, browser: state(a.browser), agent: state(a.agent), light: state(a.light) }));
@@ -269,7 +275,7 @@ export class Accounts {
     if (!a) {
       const browser = this.makeProcess(`browser-${n}`, () => browserCommand(n, this.cfg));
       const agent = this.makeProcess(`agent-${n}`, () => agentCommand(n, this.cfg), (line) => this.deps.log(`[${n}] ${line}`));
-      const light = this.makeProcess(`light-${n}`, () => lightCommand(n, this.cfg), (line) => this.deps.log(`[${n}] ${line}`));
+      const light = this.makeProcess(`light-${n}`, () => lightCommand(n, this.cfg, this.bindings.get(n)), (line) => this.deps.log(`[${n}] ${line}`));
       a = { browser, agent, light };
       this.accounts.set(n, a);
     }

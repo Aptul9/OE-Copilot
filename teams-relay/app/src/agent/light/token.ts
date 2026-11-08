@@ -19,6 +19,16 @@ export class SignedOut extends Error {}
 // a token renewed this long before it expires
 const MARGIN_MS = 5 * 60_000;
 
+// When an access token ends, from its exp claim (ms); unreadable, it is not kept
+function expiryOf(token: string, now: number): number {
+  try {
+    const exp = Number((JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as { exp?: unknown }).exp);
+    return Number.isFinite(exp) ? exp * 1000 : now;
+  } catch {
+    return now;
+  }
+}
+
 export class LightToken {
   readonly brokerBacked: boolean;
   private readonly cache = new Map<string, { token: string; expiresAt: number }>();
@@ -64,17 +74,27 @@ export class LightToken {
   }
 
   async accessToken(scope: string): Promise<string> {
+    const hit = this.cache.get(scope);
     if (this.broker) {
+      if (hit && this.now() < hit.expiresAt - MARGIN_MS) return hit.token;
       const resource = new Map([[CHATSVCAGG, 'csa'], [IC3, 'ic3'], [SPACES, 'spaces'], [PRESENCE, 'presence']]).get(scope);
       if (!resource) throw new SignedOut('unsupported broker resource');
       const url = new URL('/api/token-resource', this.broker.url);
       url.searchParams.set('account', this.broker.account); url.searchParams.set('resource', resource);
-      const response = await fetch(url, { headers: { Authorization: 'Bearer ' + this.broker.key }, redirect: 'error', signal: AbortSignal.timeout(20000) });
+      let response: Response;
+      try {
+        response = await fetch(url, { headers: { Authorization: 'Bearer ' + this.broker.key }, redirect: 'error', signal: AbortSignal.timeout(20000) });
+      } catch {
+        // the calendar agent restarting: a token still cached keeps working until it ends
+        if (hit && this.now() < hit.expiresAt) return hit.token;
+        throw new Error('shared broker not reachable');
+      }
       const data = await response.json().catch(() => ({})) as { token?: string };
       if (!response.ok || typeof data.token !== 'string' || !data.token) throw new SignedOut('shared broker unavailable');
+      // reused until shortly before it ends: the agent caches it too, this saves a call per request
+      this.cache.set(scope, { token: data.token, expiresAt: expiryOf(data.token, this.now()) });
       return data.token;
     }
-    const hit = this.cache.get(scope);
     if (hit && this.now() < hit.expiresAt - MARGIN_MS) return hit.token;
     const stored = this.stored();
     if (!stored) throw new SignedOut("no refresh token stored");

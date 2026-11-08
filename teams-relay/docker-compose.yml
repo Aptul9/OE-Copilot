@@ -40,10 +40,10 @@ services:
       S6_SERVICES_GRACETIME: "35000"
       NATIVE_CALLS: ${NATIVE_CALLS:-0}
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
-      # shared Microsoft accounts of the OE calendar agent, per slot (app/src/supervisor/broker.ts); empty: none
+      # shared Microsoft accounts of the OE calendar agent (app/src/supervisor/broker.ts): its address and the key it gives
+      # this container (its TEAMS_BROKER_KEY); empty: none. The agent is reached on the network of docker-compose.oe.yml.
       SHARED_BROKER_URL: ${SHARED_BROKER_URL:-}
       SHARED_BROKER_KEY: ${SHARED_BROKER_KEY:-}
-      SHARED_BROKER_SLOTS: ${SHARED_BROKER_SLOTS:-}
     volumes:
       # browser profiles, one directory per account: the signed-in Microsoft sessions
       - ./config:/profiles
@@ -85,6 +85,10 @@ services:
       # bearer token of /mcp (AI clients, read only); empty turns the endpoint off
       MCP_TOKEN: ${MCP_TOKEN:-}
       ACCOUNTS_PER_USER: ${ACCOUNTS_PER_USER:-}
+      # the user the shared Microsoft accounts of the calendar belong to (app/src/lib/shared-accounts.ts), by default
+      # ADMIN_EMAIL; where a new one is signed in (the calendar)
+      SHARED_ACCOUNTS_OWNER: ${SHARED_ACCOUNTS_OWNER:-}
+      SHARED_ACCOUNTS_URL: ${SHARED_ACCOUNTS_URL:-}
       DESKTOP_URL: ${DESKTOP_URL:-}
       APP_DB: /data/app.db
       # days and clock times of the status pages (src/lib/status-pages.ts), as in the browsers container

@@ -1,0 +1,90 @@
+name: MCP
+
+# mcp/ goes to the server on every push to main. Checks run locally before the push (scripts/check.sh mcp), not here.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "mcp/**"
+      - ".github/workflows/mcp.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: mcp
+    concurrency:
+      group: deploy-mcp
+      cancel-in-progress: false
+    env:
+      TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+      MCP_DIR: /opt/communication-mcp
+      BACKUP: /var/tmp/communication-mcp-prev.tgz
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH setup
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Backup of the running version
+        run: ssh "$TARGET" "cd $MCP_DIR && tar -czf $BACKUP --exclude=./.env --exclude=./.deployed-sha ."
+
+      - name: Upload code
+        run: rsync -rlptz --delete --exclude /.env --exclude /.deployed-sha --exclude node_modules/ mcp/ "$TARGET:$MCP_DIR/"
+
+      # .env comes from the environment mcp; the OE Copilot agent key and the TeamsRelay MCP token are the same
+      # repository secrets those two deploys use, so a rotation reaches all three
+      - name: Write .env
+        env:
+          MCP_HTTP_TOKEN: ${{ secrets.MCP_HTTP_TOKEN }}
+          MCP_HTTP_HOSTS: ${{ vars.MCP_HTTP_HOSTS }}
+          OUTLOOK_MCP_BROKER_URL: ${{ vars.OUTLOOK_MCP_BROKER_URL }}
+          OUTLOOK_MCP_BROKER_KEY: ${{ secrets.API_KEY }}
+          OUTLOOK_MCP_TEAMS_URL: ${{ vars.OUTLOOK_MCP_TEAMS_URL }}
+          OUTLOOK_MCP_TEAMS_TOKEN: ${{ secrets.MCP_TOKEN }}
+        run: |
+          for k in MCP_HTTP_TOKEN MCP_HTTP_HOSTS OUTLOOK_MCP_BROKER_URL OUTLOOK_MCP_BROKER_KEY OUTLOOK_MCP_TEAMS_URL OUTLOOK_MCP_TEAMS_TOKEN; do
+            [ -n "${!k}" ] || { echo "$k is empty in the environment mcp" >&2; exit 1; }
+            printf '%s=%s\n' "$k" "${!k}"
+          done > /tmp/mcp.env
+          ssh "$TARGET" "umask 077; cat > $MCP_DIR/.env.new && mv $MCP_DIR/.env.new $MCP_DIR/.env" < /tmp/mcp.env
+          rm -f /tmp/mcp.env
+
+      - name: Build and restart
+        run: |
+          ssh "$TARGET" bash -s -- "$MCP_DIR" "$BACKUP" "${{ github.sha }}" <<'SH'
+          set -euo pipefail
+          dir=$1 backup=$2 sha=$3
+          cd "$dir"
+          healthy() {
+            for _ in $(seq 1 20); do
+              curl -fsS --max-time 3 http://127.0.0.1:8190/healthz >/dev/null 2>&1 && return 0
+              sleep 3
+            done
+            return 1
+          }
+          docker compose up -d --build
+          if healthy; then
+            echo "$sha" > .deployed-sha
+            docker image prune -f >/dev/null
+            echo "ok: $sha running"
+            exit 0
+          fi
+          echo "communication-mcp does not answer after the deploy of $sha: rollback" >&2
+          docker compose logs --tail 40 >&2 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .env ! -name .deployed-sha -exec rm -rf {} +
+          tar -xzf "$backup"
+          docker compose up -d --build
+          healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
+          exit 1
+          SH

@@ -1,10 +1,7 @@
-name: Android app
+name: TeamsRelay Android app
 
+# Built on request only (gh workflow run teams-relay-android.yml): checks run locally, scripts/check.sh teams-relay
 on:
-  pull_request:
-    paths:
-      - "mobile/**"
-      - ".github/workflows/android.yml"
   workflow_dispatch:
 
 permissions:
@@ -14,10 +11,11 @@ jobs:
   apk:
     name: Debug APK
     runs-on: ubuntu-latest
+    environment: teams-relay
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: mobile
+        working-directory: teams-relay/mobile
     steps:
       - uses: actions/checkout@v7
 
@@ -25,7 +23,7 @@ jobs:
         with:
           node-version: "26"
           cache: npm
-          cache-dependency-path: mobile/package-lock.json
+          cache-dependency-path: teams-relay/mobile/package-lock.json
 
       - uses: actions/setup-java@v6
         with:
@@ -112,6 +110,6 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: teamsrelay-android-debug
-          path: mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+          path: teams-relay/mobile/src-tauri/gen/android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
           retention-days: 14

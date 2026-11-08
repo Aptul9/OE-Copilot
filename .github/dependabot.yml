@@ -5,15 +5,15 @@ updates:
     schedule:
       interval: weekly
   - package-ecosystem: docker-compose
-    directory: /
+    directory: /teams-relay
     schedule:
       interval: weekly
   - package-ecosystem: docker
-    directory: /app
+    directory: /teams-relay/app
     schedule:
       interval: weekly
   - package-ecosystem: npm
-    directory: /app
+    directory: /teams-relay/app
     schedule:
       interval: weekly
     groups:

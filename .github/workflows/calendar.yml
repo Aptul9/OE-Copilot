@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths:
+      - "shared/**"
       - "calendar/server/**"
       - ".github/workflows/calendar.yml"
   workflow_dispatch:
@@ -27,6 +28,9 @@ jobs:
       OE_DIR: /opt/oe-copilot
     steps:
       - uses: actions/checkout@v7
+
+      - name: Generate shared account UI
+        run: node shared/sync.mjs
 
       - name: Chiave SSH
         env:

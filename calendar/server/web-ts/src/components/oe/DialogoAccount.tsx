@@ -42,9 +42,10 @@ import {
   mappaLoghi,
   rinominaGruppo,
 } from "@/lib/oe/logic";
-import type { Calendario, CasellaAccesso, SoloTeams, TemaConfig, VoceLogo } from "@/lib/oe/types";
+import type { Calendario, CasellaAccesso, TemaConfig, VoceLogo } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
-import { CondivisioneMicrosoft, PannelloSoloTeams } from "./CondivisioneMicrosoft";
+
+import { MicrosoftAccounts } from "./MicrosoftAccounts";
 import { AvatarLogo, CerchioLogo } from "./ControlloLogo";
 import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
 import { ImpostazioniPromemoria } from "./ImpostazioniPromemoria";
@@ -117,13 +118,12 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
   // vuota: la prima casella
   const [sezione, setSezione] = useState("");
   // schermo stretto: false = l'elenco, true = la sezione scelta
-  const [dettaglio, setDettaglio] = useState(false);
+  const [dettaglio, setDettaglio] = useState(true);
   const [loghi, setLoghi] = useState<Record<string, VoceLogo>>({});
   const [appenaEntrato, setAppenaEntrato] = useState("");
   // le voci con la freccia aperta: "casella:<indirizzo>" e "link"
   const [aperteNav, setAperteNav] = useState<ReadonlySet<string>>(new Set());
-  // gli account Teams con il solo accesso del loro browser, come TeamsRelay li ha mandati all'agente
-  const [soloTeams, setSoloTeams] = useState<SoloTeams[]>([]);
+
 
   const caricaCaselle = useCallback(async () => {
     try {
@@ -144,18 +144,14 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
   }, []);
   useEffect(() => {
     if (!aperto) return;
-    setSezione("");
-    setDettaglio(false);
+    setSezione(new URLSearchParams(window.location.search).has("add-account") ? "aggiungi" : "");
+    setDettaglio(true);
     setAppenaEntrato("");
     setAperteNav(new Set());
     if (!conAccount) return;
     void caricaCaselle();
     void caricaLoghi();
-    // senza l'elenco degli account la voce Solo in Teams non c'è: il resto funziona uguale
-    void api("get_condivisione_microsoft").then(
-      (r) => setSoloTeams(r.ok ? r.teamsOnly : []),
-      () => setSoloTeams([]),
-    );
+
   }, [aperto, conAccount, caricaCaselle, caricaLoghi]);
 
   const dopoAccesso = async (account: string) => {
@@ -163,7 +159,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
     await oe.aggiornaCalendari();
     oe.ricarica();
     setAppenaEntrato(account.toLowerCase());
-    setSezione("casella:" + account.toLowerCase());
+    setSezione("microsoft");
   };
   const acc = useAccesso(aperto, dopoAccesso);
 
@@ -191,7 +187,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
     return m;
   }, [ordinate, oe.calendari]);
 
-  const attiva = sezione || (!conAccount ? "aspetto" : ordinate[0] ? "casella:" + ordinate[0].account.toLowerCase() : caselle ? "aggiungi" : "");
+  const attiva = sezione || (!conAccount ? "aspetto" : "microsoft");
   const casellaAttiva = attiva.startsWith("casella:") ? ordinate.find((c) => "casella:" + c.account.toLowerCase() === attiva) : undefined;
   const calendarioAttivo = attiva.startsWith("calendario:") ? oe.calendari.find((c) => "calendario:" + c.id === attiva) : undefined;
   const nEliminati = eliminatiRecenti(oe.config.eventi_eliminati, Date.now()).length;
@@ -267,7 +263,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
         }}
       />
     );
-  else if (attiva === "solo-teams") pannello = <PannelloSoloTeams voci={soloTeams} />;
+  else if (attiva === "microsoft") pannello = <MicrosoftAccounts onAdd={() => scegli("aggiungi")} />;
   else if (attiva === "gruppi") pannello = <PannelloGruppi />;
   else if (attiva === "eliminati") pannello = <PannelloEliminati />;
   else if (attiva === "aspetto") pannello = <PannelloAspetto />;
@@ -291,8 +287,9 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
           <DialogTitle>{conAccount ? "Account" : "Impostazioni"}</DialogTitle>
           <DialogDescription className="sr-only">{conAccount ? "Caselle, calendari da link, gruppi ed eventi eliminati" : "Aspetto, promemoria, condivisione e generale"}</DialogDescription>
         </DialogHeader>
+        {conAccount && <button type="button" className="self-end px-5 py-2 text-xs text-muted-foreground" onClick={() => scegli(attiva === "microsoft" ? "link" : "microsoft")}>{attiva === "microsoft" ? "Calendar settings" : "Microsoft accounts"}</button>}
         <div className="flex min-h-0 flex-1">
-          <nav id="account-nav" aria-label="Sezioni" className={cn("scroll-thin w-full flex-none overflow-y-auto bg-sidebar p-2 md:w-72 md:border-r", dettaglio && "max-md:hidden")}>
+          {(!conAccount || attiva !== "microsoft") && <nav id="account-nav" aria-label="Sezioni" className={cn("scroll-thin w-full flex-none overflow-y-auto bg-sidebar p-2 md:w-72 md:border-r", dettaglio && "max-md:hidden")}>
             {!conAccount &&
               IMPOSTAZIONI.map(({ chiave, testo, icona: Icona }) => (
                 <VoceNav key={chiave} chiave={chiave} attiva={attiva} onScegli={scegli} id={`nav-${chiave}`}>
@@ -334,11 +331,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
                     </Ramo>
                   );
                 })}
-                {soloTeams.length > 0 && (
-                  <VoceNav chiave="solo-teams" attiva={attiva} onScegli={scegli} conteggio={soloTeams.length} id="nav-solo-teams" className="pl-8">
-                    <MessagesSquareIcon className="mx-1 size-4 text-muted-foreground" /> Solo in Teams
-                  </VoceNav>
-                )}
+                <VoceNav chiave="microsoft" attiva={attiva} onScegli={scegli} id="nav-microsoft-accounts" className="pl-8"><UsersIcon className="mx-1 size-4" /> Microsoft accounts</VoceNav>
                 <VoceNav chiave="aggiungi" attiva={attiva} onScegli={scegli} id="nav-aggiungi-account" className="pl-8 text-primary">
                   <PlusIcon className="mx-1 size-4" /> Aggiungi account
                 </VoceNav>
@@ -357,7 +350,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
                 </VoceNav>
               </>
             )}
-          </nav>
+          </nav>}
           <section id="account-pannello" className={cn("scroll-thin min-w-0 flex-1 overflow-y-auto px-5 py-4 text-sm", !dettaglio && "max-md:hidden")}>
             <button type="button" className="mb-3 flex items-center gap-1.5 text-[13px] font-medium text-primary md:hidden" onClick={() => setDettaglio(false)}>
               <ArrowLeftIcon className="size-4" /> Indietro
@@ -738,7 +731,7 @@ function PannelloCasella({
     setRimuovendo(true);
     setErrore("");
     try {
-      const r = await api("rimuovi_casella", casella.account);
+      const r = casella.provider === "microsoft" ? await api("manage_microsoft", casella.account, "remove") : await api("rimuovi_casella", casella.account);
       if (!r.ok) throw new Error(r.error ?? "Casella non rimossa");
       await onRimossa();
     } catch (e) {
@@ -813,7 +806,7 @@ function PannelloCasella({
         </Riga>
         {casella.provider === "microsoft" && casella.configurato && (
           <Riga etichetta="Usata per">
-            <CondivisioneMicrosoft account={casella.account} />
+            <Button variant="outline" onClick={() => onApri("microsoft")}>Gestisci account Microsoft</Button>
           </Riga>
         )}
         <OpzioniNome nome={nome} />

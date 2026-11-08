@@ -19,15 +19,25 @@ export function bindingOf(query: URLSearchParams): BrokerBinding | null {
   const account = (query.get("shared") ?? "").trim().toLowerCase();
   if (!account) return null;
   const region = query.get("region") || "emea";
-  if (!EMAIL.test(account)) throw new AccountError(400, "shared: not an account address");
-  if (!REGION.test(region)) throw new AccountError(400, "region: not a chat service region");
+  if (!EMAIL.test(account))
+    throw new AccountError(400, "shared: not an account address");
+  if (!REGION.test(region))
+    throw new AccountError(400, "region: not a chat service region");
   return { account, region };
 }
 
 // The broker variables of a light agent bound to a shared account: all four, none for a slot of its own
-export function brokerEnv(binding: BrokerBinding | null | undefined, broker: SharedBroker | undefined): Record<string, string> {
+export function brokerEnv(
+  binding: BrokerBinding | null | undefined,
+  broker: SharedBroker | undefined,
+): Record<string, string> {
   if (!broker || !binding) return {};
-  return { SHARED_BROKER_URL: broker.url, SHARED_BROKER_KEY: broker.key, SHARED_BROKER_ACCOUNT: binding.account, SHARED_BROKER_REGION: binding.region };
+  return {
+    SHARED_BROKER_URL: broker.url,
+    SHARED_BROKER_KEY: broker.key,
+    SHARED_BROKER_ACCOUNT: binding.account,
+    SHARED_BROKER_REGION: binding.region,
+  };
 }
 
 export interface Directory {
@@ -39,25 +49,46 @@ export interface Directory {
 // Only the fields the agent's routes take go through: an account and its capabilities, or the report of the slots
 function setBody(body: unknown) {
   const b = (body ?? {}) as Record<string, unknown>;
-  if (typeof b.account !== "string") throw new AccountError(400, "account: an address");
+  if (typeof b.account !== "string")
+    throw new AccountError(400, "account: an address");
+  if (
+    (b.operation === "remove" || b.operation === "chat") &&
+    EMAIL.test(b.account)
+  )
+    return {
+      account: b.account,
+      operation: b.operation,
+      ...(b.operation === "chat" ? { on: b.on } : {}),
+    };
   if (b.enabled === false) return { account: b.account, enabled: false };
-  if (!Array.isArray(b.capabilities)) throw new AccountError(400, "capabilities: a list of mail, calendar, chat");
+  if (!Array.isArray(b.capabilities))
+    throw new AccountError(400, "capabilities: a list of mail, calendar, chat");
   return { account: b.account, capabilities: b.capabilities };
 }
 
 function reportBody(body: unknown) {
   const b = (body ?? {}) as Record<string, unknown>;
-  return { accounts: Array.isArray(b.accounts) ? b.accounts : [], others: Array.isArray(b.others) ? b.others : [] };
+  return {
+    accounts: Array.isArray(b.accounts) ? b.accounts : [],
+    others: Array.isArray(b.others) ? b.others : [],
+    ...(Array.isArray(b.results) ? { results: b.results } : {}),
+  };
 }
 
 // The list of accounts of the OE calendar agent, with the key of this container: the web app never holds it
-export function directory(broker: SharedBroker, fetchFn: typeof fetch = fetch): Directory {
+export function directory(
+  broker: SharedBroker,
+  fetchFn: typeof fetch = fetch,
+): Directory {
   const call = async (path: string, body?: unknown) => {
     let r: Response;
     try {
       r = await fetchFn(new URL(path, broker.url), {
         method: body === undefined ? "GET" : "POST",
-        headers: { Authorization: `Bearer ${broker.key}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${broker.key}`,
+          "Content-Type": "application/json",
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: "error",
         signal: AbortSignal.timeout(45_000),
@@ -66,8 +97,13 @@ export function directory(broker: SharedBroker, fetchFn: typeof fetch = fetch): 
       throw new AccountError(502, "OE calendar agent not reachable");
     }
     const j = (await r.json().catch(() => null)) as unknown;
-    if (r.status === 401) throw new AccountError(502, "OE calendar agent refused the key of the browsers container (TEAMS_BROKER_KEY)");
-    if (!r.ok || j === null || typeof j !== "object") throw new AccountError(502, `OE calendar agent answered ${r.status}`);
+    if (r.status === 401)
+      throw new AccountError(
+        502,
+        "OE calendar agent refused the key of the browsers container (TEAMS_BROKER_KEY)",
+      );
+    if (!r.ok || j === null || typeof j !== "object")
+      throw new AccountError(502, `OE calendar agent answered ${r.status}`);
     return j;
   };
   return {

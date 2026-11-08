@@ -4,7 +4,13 @@ import { config } from "@/lib/config";
 import { controlClient, directoryClient } from "@/lib/control";
 import { body, HttpError, route } from "@/lib/http";
 import { requireUser } from "@/lib/session";
-import { parseDirectory, setSharedCapability, sharedOwnerId, syncSharedAccounts, type Capability } from "@/lib/shared-accounts";
+import {
+  parseDirectory,
+  setSharedCapability,
+  sharedOwnerId,
+  syncSharedAccounts,
+  type Capability,
+} from "@/lib/shared-accounts";
 
 // The one list of accounts, as the calendar shows it: each Microsoft account signed in once in the calendar with mail,
 // calendar and Teams on or off, the Teams account running on it, and the owner's Teams accounts with only their own
@@ -23,17 +29,38 @@ async function listFor(userId: string) {
   if (raw === null) return OFF;
   const slots = listSlots(db);
   const accounts = parseDirectory(raw).map((a) => {
-    const s = slots.find((x) => x.shared_account === a.account);
+    const s = slots.find(
+      (x) => x.owner_id === userId && x.shared_account === a.account,
+    );
     const summary = s ? accountSummary(s) : null;
-    return { ...a, slot: s?.slot ?? 0, running: !!s && !s.stopped, teams: summary?.teams ?? "", overall: summary?.overall ?? "" };
+    return {
+      ...a,
+      slot: s?.slot ?? 0,
+      running: !!s && !s.stopped,
+      teams: summary?.teams ?? "",
+      overall: summary?.overall ?? "",
+    };
   });
   const teamsOnly = slots
     .filter((s) => s.owner_id === userId && !s.shared_account && !s.relay)
     .map((s) => {
       const summary = accountSummary(s);
-      return { slot: s.slot, email: summary.email, name: summary.name, running: !s.stopped, teams: summary.teams, overall: summary.overall };
+      return {
+        slot: s.slot,
+        email: summary.email,
+        name: summary.name,
+        running: !s.stopped,
+        teams: summary.teams,
+        overall: summary.overall,
+      };
     });
-  return { enabled: true, addUrl: config.sharedAccountsUrl, accounts, teamsOnly };
+  return {
+    enabled: true,
+    addUrl: config.sharedAccountsUrl,
+    accounts,
+    teamsOnly,
+    commands: (raw as { commands?: unknown[] }).commands ?? [],
+  };
 }
 
 export const GET = route(async (req) => {
@@ -46,13 +73,76 @@ export const POST = route(async (req) => {
   const db = appDb();
   const owner = sharedOwnerId(db);
   if (owner !== user.id) throw new HttpError(404, "Not found");
-  const { account, capability, on } = await body(req);
-  if (typeof account !== "string" || !account.includes("@")) throw new HttpError(400, "account must be an address");
-  if (capability !== "mail" && capability !== "calendar" && capability !== "chat") throw new HttpError(400, "capability must be mail, calendar or chat");
-  if (typeof on !== "boolean") throw new HttpError(400, "on must be true or false");
+  const { account, capability, on, operation } = await body(req);
+  if (typeof account !== "string" || !account.includes("@"))
+    throw new HttpError(400, "account must be an address");
+  const browser = listSlots(db).find(
+    (s) =>
+      s.owner_id === owner &&
+      !s.shared_account &&
+      !s.relay &&
+      accountSummary(s).email.trim().toLowerCase() ===
+        account.trim().toLowerCase(),
+  );
+  if (operation === "remove" || (capability === "chat" && browser)) {
+    if (operation !== "remove" && typeof on !== "boolean")
+      throw new HttpError(400, "on must be true or false");
+    const result = await directoryClient().set({
+      account,
+      operation: operation === "remove" ? "remove" : "chat",
+      on: typeof on === "boolean" ? on : undefined,
+    });
+    if (!(result as { ok?: boolean })?.ok)
+      throw new HttpError(
+        409,
+        String((result as { errore?: string })?.errore || "Operation failed"),
+      );
+    await syncSharedAccounts({
+      ctl: controlClient(),
+      db,
+      dir: directoryClient(),
+      dataDir: config.dataDir,
+      perUser: config.accountsPerUser,
+      owner,
+    });
+    return Response.json(await listFor(user.id));
+  }
+  if (
+    capability !== "mail" &&
+    capability !== "calendar" &&
+    capability !== "chat"
+  )
+    throw new HttpError(400, "capability must be mail, calendar or chat");
+  if (typeof on !== "boolean")
+    throw new HttpError(400, "on must be true or false");
+  if (on && capability === "chat") {
+    const browser = listSlots(db).find(
+      (s) =>
+        s.owner_id === owner &&
+        !s.shared_account &&
+        !s.relay &&
+        accountSummary(s).email.trim().toLowerCase() ===
+          account.trim().toLowerCase(),
+    );
+    if (browser)
+      throw new HttpError(
+        409,
+        "Existing browser sign-in preserved. Shared Teams cannot take over this slot.",
+      );
+  }
   const dir = directoryClient();
   await setSharedCapability(dir, account, capability as Capability, on);
-  const r = await syncSharedAccounts({ ctl: controlClient(), db, dir, dataDir: config.dataDir, perUser: config.accountsPerUser, owner });
+  const r = await syncSharedAccounts({
+    ctl: controlClient(),
+    db,
+    dir,
+    dataDir: config.dataDir,
+    perUser: config.accountsPerUser,
+    owner,
+  });
   const error = r.errors[account.toLowerCase()];
-  return Response.json({ ...(await listFor(user.id)), ...(error ? { error } : {}) });
+  return Response.json({
+    ...(await listFor(user.id)),
+    ...(error ? { error } : {}),
+  });
 });

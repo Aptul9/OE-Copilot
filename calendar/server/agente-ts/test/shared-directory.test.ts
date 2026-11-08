@@ -9,7 +9,12 @@ import { STANTIO_S, leggiRapportoTeams } from "../src/shared-teams.ts";
 
 const TID = "22222222-2222-4222-8222-222222222222";
 const OID = "11111111-1111-4111-8111-111111111111";
-const shared = (capabilities: string[]) => ({ tenantId: TID, objectId: OID, capabilities, origin: "mobile" });
+const shared = (capabilities: string[]) => ({
+  tenantId: TID,
+  objectId: OID,
+  capabilities,
+  origin: "mobile",
+});
 
 function fonte(account: string, letture: string[]): FonteCalendario {
   return {
@@ -43,18 +48,30 @@ async function avvia(o: { chiaveTeams?: string; adesso?: () => number } = {}) {
     file,
     JSON.stringify({
       accounts: {
-        "on@example.com": { provider: "microsoft", refresh_token: "r", shared: shared(["mail", "calendar", "chat"]) },
-        "off@example.com": { provider: "microsoft", refresh_token: "r", shared: shared(["chat"]) },
+        "on@example.com": {
+          provider: "microsoft",
+          refresh_token: "r",
+          shared: shared(["mail", "calendar", "chat"]),
+        },
+        "off@example.com": {
+          provider: "microsoft",
+          refresh_token: "r",
+          shared: shared(["chat"]),
+        },
         "legacy@example.com": { provider: "microsoft", refresh_token: "r" },
       },
     }),
   );
   const letture: string[] = [];
-  const tokens = new GestoreToken(file, { fetchFn: (async () => Response.json({}, { status: 400 })) as typeof fetch });
+  const tokens = new GestoreToken(file, {
+    fetchFn: (async () => Response.json({}, { status: 400 })) as typeof fetch,
+  });
   const { server } = creaServer({
     chiave: "piena",
     chiaveTeams: o.chiaveTeams ?? "stretta",
-    fonti: ["on@example.com", "off@example.com", "legacy@example.com"].map((a) => fonte(a, letture)),
+    fonti: ["on@example.com", "off@example.com", "legacy@example.com"].map(
+      (a) => fonte(a, letture),
+    ),
     battito: path.join(dir, "battito.json"),
     tokens,
     zona: "Europe/Rome",
@@ -70,7 +87,10 @@ async function avvia(o: { chiaveTeams?: string; adesso?: () => number } = {}) {
   const chiama = (p: string, chiave: string, corpo?: unknown) =>
     fetch(base + p, {
       method: corpo === undefined ? "GET" : "POST",
-      headers: { Authorization: `Bearer ${chiave}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${chiave}`,
+        "Content-Type": "application/json",
+      },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
     });
   return { chiama, letture };
@@ -80,10 +100,31 @@ describe("chiave di TeamsRelay", () => {
   it("apre solo l'elenco degli account condivisi, il rapporto Teams e i token della chat", async () => {
     const { chiama } = await avvia();
     expect((await chiama("/api/auth/shared", "stretta")).status).toBe(200);
-    expect((await chiama("/api/auth/shared/teams", "stretta", { accounts: [], others: [] })).status).toBe(200);
-    expect((await chiama("/api/auth/shared", "stretta", { account: "legacy@example.com", enabled: false })).status).toBe(200);
+    expect(
+      (
+        await chiama("/api/auth/shared/teams", "stretta", {
+          accounts: [],
+          others: [],
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await chiama("/api/auth/shared", "stretta", {
+          account: "legacy@example.com",
+          enabled: false,
+        })
+      ).status,
+    ).toBe(200);
     // la richiesta passa l'autorizzazione: il rifiuto viene dal broker (Microsoft finto), non dalla chiave
-    expect((await chiama("/api/token-resource?account=on@example.com&resource=csa", "stretta")).status).toBe(403);
+    expect(
+      (
+        await chiama(
+          "/api/token-resource?account=on@example.com&resource=csa",
+          "stretta",
+        )
+      ).status,
+    ).toBe(403);
     for (const p of [
       "/api/token-resource?account=on@example.com&resource=outlook",
       // the same parameter twice, a fragment, a percent-encoded name: two parsers never disagree in favour of outlook
@@ -98,8 +139,16 @@ describe("chiave di TeamsRelay", () => {
     ]) {
       expect((await chiama(p, "stretta")).status, p).toBe(401);
     }
-    for (const p of ["/api/communication/read", "/api/auth/rimuovi", "/api/auth/inizio", "/api/communication/gmail/read"]) {
-      expect((await chiama(p, "stretta", { account: "on@example.com" })).status, p).toBe(401);
+    for (const p of [
+      "/api/communication/read",
+      "/api/auth/rimuovi",
+      "/api/auth/inizio",
+      "/api/communication/gmail/read",
+    ]) {
+      expect(
+        (await chiama(p, "stretta", { account: "on@example.com" })).status,
+        p,
+      ).toBe(401);
     }
   });
 
@@ -117,36 +166,86 @@ describe("rapporto degli account Teams", () => {
     let ora = 1_000_000_000_000;
     const { chiama } = await avvia({ adesso: () => ora });
     const rapporto = {
-      accounts: [{ account: "ON@example.com", slot: 3, state: "running", detail: "ok" }],
-      others: [{ email: "browser@example.com", slot: 4, state: "running", detail: "" }, { email: "", slot: 5, state: "starting", detail: "" }],
+      accounts: [
+        { account: "ON@example.com", slot: 3, state: "running", detail: "ok" },
+      ],
+      others: [
+        { email: "browser@example.com", slot: 4, state: "running", detail: "" },
+        { email: "", slot: 5, state: "starting", detail: "" },
+      ],
     };
-    expect((await chiama("/api/auth/shared/teams", "stretta", rapporto)).status).toBe(200);
-    const elenco = (await (await chiama("/api/auth/shared", "piena")).json()) as Record<string, unknown> & { accounts: { account: string; teams: unknown }[] };
-    expect(elenco.accounts.find((a) => a.account === "on@example.com")?.teams).toEqual({ slot: 3, state: "running", detail: "ok" });
-    expect(elenco.accounts.find((a) => a.account === "legacy@example.com")?.teams).toBeNull();
+    expect(
+      (await chiama("/api/auth/shared/teams", "stretta", rapporto)).status,
+    ).toBe(200);
+    const elenco = (await (
+      await chiama("/api/auth/shared", "piena")
+    ).json()) as Record<string, unknown> & {
+      accounts: { account: string; teams: unknown }[];
+    };
+    expect(
+      elenco.accounts.find((a) => a.account === "on@example.com")?.teams,
+    ).toEqual({ slot: 3, state: "running", detail: "ok" });
+    expect(
+      elenco.accounts.find((a) => a.account === "legacy@example.com")?.teams,
+    ).toBeNull();
     expect(elenco.teamsOnly).toEqual([
       { email: "browser@example.com", slot: 4, state: "running", detail: "" },
       { email: "", slot: 5, state: "starting", detail: "" },
     ]);
     ora += (STANTIO_S + 1) * 1000;
-    const vecchio = (await (await chiama("/api/auth/shared", "piena")).json()) as Record<string, unknown> & { accounts: { teams: unknown }[] };
+    const vecchio = (await (
+      await chiama("/api/auth/shared", "piena")
+    ).json()) as Record<string, unknown> & { accounts: { teams: unknown }[] };
     expect(vecchio.accounts.every((a) => a.teams === null)).toBe(true);
     expect(vecchio.teamsOnly).toEqual([]);
   });
 
   it.each([
     ["un campo in più", { accounts: [], others: [], extra: 1 }],
-    ["un indirizzo non valido", { accounts: [{ account: "nope", slot: 1, state: "running" }] }],
-    ["uno slot non intero", { accounts: [{ account: "a@example.com", slot: 1.5, state: "running" }] }],
-    ["uno stato che non è una parola", { accounts: [{ account: "a@example.com", slot: 1, state: "<b>" }] }],
-    ["un account senza indirizzo", { accounts: [{ account: "", slot: 1, state: "running" }] }],
-    ["troppe voci", { others: Array.from({ length: 65 }, (_, i) => ({ email: "", slot: i + 1, state: "running" })) }],
+    [
+      "un indirizzo non valido",
+      { accounts: [{ account: "nope", slot: 1, state: "running" }] },
+    ],
+    [
+      "uno slot non intero",
+      { accounts: [{ account: "a@example.com", slot: 1.5, state: "running" }] },
+    ],
+    [
+      "uno stato che non è una parola",
+      { accounts: [{ account: "a@example.com", slot: 1, state: "<b>" }] },
+    ],
+    [
+      "un account senza indirizzo",
+      { accounts: [{ account: "", slot: 1, state: "running" }] },
+    ],
+    [
+      "troppe voci",
+      {
+        others: Array.from({ length: 65 }, (_, i) => ({
+          email: "",
+          slot: i + 1,
+          state: "running",
+        })),
+      },
+    ],
   ])("rifiuta %s", (_n, corpo) => {
     expect(() => leggiRapportoTeams(corpo, 0)).toThrow();
   });
 
   it("toglie i caratteri di controllo dal dettaglio e lo accorcia", () => {
-    const r = leggiRapportoTeams({ accounts: [{ account: "a@example.com", slot: 1, state: "signed-out", detail: "a\nb" + "x".repeat(300) }] }, 0);
+    const r = leggiRapportoTeams(
+      {
+        accounts: [
+          {
+            account: "a@example.com",
+            slot: 1,
+            state: "signed-out",
+            detail: "a\nb" + "x".repeat(300),
+          },
+        ],
+      },
+      0,
+    );
     const d = r.accounts.get("a@example.com")!.detail;
     expect(d.startsWith("a b")).toBe(true);
     expect(d).toHaveLength(200);
@@ -156,10 +255,127 @@ describe("rapporto degli account Teams", () => {
 describe("capacità calendario spenta", () => {
   it("il calendario non legge né mostra la casella, senza errori; le altre restano, anche quelle non condivise", async () => {
     const { chiama, letture } = await avvia();
-    const eventi = (await (await chiama("/api/eventi?inizio=2026-11-09T00:00:00&fine=2026-11-10T00:00:00", "piena")).json()) as { errori: string[] };
+    const eventi = (await (
+      await chiama(
+        "/api/eventi?inizio=2026-11-09T00:00:00&fine=2026-11-10T00:00:00",
+        "piena",
+      )
+    ).json()) as { errori: string[] };
     expect(eventi.errori).toEqual([]);
-    const calendari = (await (await chiama("/api/calendari", "piena")).json()) as { caselle: { account: string }[] };
-    expect(calendari.caselle.map((c) => c.account)).toEqual(["on@example.com", "legacy@example.com"]);
-    expect(letture).toEqual(["eventi on@example.com", "eventi legacy@example.com", "riepilogo on@example.com", "riepilogo legacy@example.com"]);
+    const calendari = (await (
+      await chiama("/api/calendari", "piena")
+    ).json()) as { caselle: { account: string }[] };
+    expect(calendari.caselle.map((c) => c.account)).toEqual([
+      "on@example.com",
+      "legacy@example.com",
+    ]);
+    expect(letture).toEqual([
+      "eventi on@example.com",
+      "eventi legacy@example.com",
+      "riepilogo on@example.com",
+      "riepilogo legacy@example.com",
+    ]);
+  });
+});
+
+describe("shared management commands", () => {
+  it("queues removal with narrow key, removes mailbox, retains command until report acknowledgement", async () => {
+    const { chiama } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", {
+      accounts: [{ account: "on@example.com", slot: 1, state: "ok" }],
+      others: [],
+    });
+    expect(
+      (
+        await chiama("/api/auth/rimuovi", "stretta", {
+          account: "on@example.com",
+        })
+      ).status,
+    ).toBe(401);
+    const remove = await chiama("/api/auth/shared", "stretta", {
+      account: "ON@example.com",
+      operation: "remove",
+    });
+    expect(await remove.json()).toMatchObject({ ok: true, pending: true });
+    let state = (await (
+      await chiama("/api/auth/shared", "stretta")
+    ).json()) as {
+      accounts: { account: string }[];
+      commands: {
+        id: string;
+        account: string;
+        operation: string;
+        on?: boolean;
+      }[];
+    };
+    expect(
+      state.accounts.some(
+        (a: { account: string }) => a.account === "on@example.com",
+      ),
+    ).toBe(false);
+    expect(state.commands).toHaveLength(1);
+    await chiama("/api/auth/shared/teams", "stretta", {
+      accounts: [],
+      others: [],
+      results: [{ id: state.commands[0]!.id }],
+    });
+    state = (await (await chiama("/api/auth/shared", "stretta")).json()) as {
+      accounts: { account: string }[];
+      commands: {
+        id: string;
+        account: string;
+        operation: string;
+        on?: boolean;
+      }[];
+    };
+    expect(state.commands).toEqual([]);
+  });
+  it("supports browser-only stop/resume and remove, rejects unknown identity and stale reports", async () => {
+    const { chiama } = await avvia();
+    expect(
+      (
+        await chiama("/api/auth/shared", "stretta", {
+          account: "browser@example.com",
+          operation: "remove",
+        })
+      ).status,
+    ).toBe(409);
+    await chiama("/api/auth/shared/teams", "stretta", {
+      accounts: [],
+      others: [{ email: "browser@example.com", slot: 4, state: "ok" }],
+    });
+    expect(
+      (
+        await chiama("/api/auth/shared", "stretta", {
+          account: "other@example.com",
+          operation: "remove",
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      await (
+        await chiama("/api/auth/shared", "stretta", {
+          account: "browser@example.com",
+          operation: "chat",
+          on: false,
+        })
+      ).json(),
+    ).toMatchObject({ ok: true, pending: true });
+    const state = (await (
+      await chiama("/api/auth/shared", "stretta")
+    ).json()) as {
+      accounts: { account: string }[];
+      commands: {
+        id: string;
+        account: string;
+        operation: string;
+        on?: boolean;
+      }[];
+    };
+    expect(state.commands[0]).toMatchObject({
+      account: "browser@example.com",
+      operation: "chat",
+      on: false,
+    });
   });
 });

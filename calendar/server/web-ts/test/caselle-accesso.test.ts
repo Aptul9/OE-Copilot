@@ -15,10 +15,14 @@ const NASCOSTA = "collega@serco.example";
 let dati: string;
 let server: http.Server;
 let ricevuti: unknown[];
+let reportAt = 1_790_000_000;
+let browserEmail = "anna@contoso.example";
 
 beforeEach(async () => {
   dati = cartellaDati();
   ricevuti = [];
+  reportAt = 1_790_000_000;
+  browserEmail = "anna@contoso.example";
   fs.writeFileSync(
     `${dati}/personalizzazione.json`,
     JSON.stringify({
@@ -41,8 +45,8 @@ beforeEach(async () => {
           { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" }, status: "ok", message: "", teams: { slot: 3, state: "ok", detail: "green" } },
           { account: BANDPEY, shared: null, status: "ok", message: "", teams: null },
         ],
-        teamsOnly: [{ email: "anna@contoso.example", slot: 4, state: "ok", detail: "green" }],
-        teamsAt: 1_790_000_000,
+        teamsOnly: [{ email: browserEmail, slot: 4, state: "ok", detail: "green" }],
+        teamsAt: reportAt,
       });
     }
     if (req.method === "POST" && req.url === "/api/auth/shared") {
@@ -103,13 +107,13 @@ describe("finestra Account", () => {
 
   it("get_condivisione_microsoft: l'elenco unico, con capacità, origine, account Teams di ogni casella e gli account solo Teams", async () => {
     expect(await chiama("get_condivisione_microsoft", [])).toEqual({
-      ok: true,
+      ok: true, commands: [],
       accounts: [
         { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" }, status: "ok", message: "", teams: { slot: 3, state: "ok", detail: "green" } },
         { account: BANDPEY, shared: null, status: "ok", message: "", teams: null },
       ],
-      teamsOnly: [{ email: "anna@contoso.example", slot: 4, state: "ok", detail: "green" }],
-      teamsAt: 1_790_000_000,
+      teamsOnly: [{ email: browserEmail, slot: 4, state: "ok", detail: "green" }],
+      teamsAt: reportAt,
     });
   });
 
@@ -130,3 +134,17 @@ describe("finestra Account", () => {
     ]);
   });
 });
+
+it("blocks chat enable without a fresh report before directory write", async () => {
+  expect(await chiama("set_condivisione_microsoft", [BANDPEY, ["chat"]])).toMatchObject({ok:false});
+  expect(ricevuti).toEqual([]);
+});
+
+it("blocks browser identity takeover with a fresh report before directory write", async () => {
+  reportAt = Date.now() / 1000;
+  browserEmail = BANDPEY.toUpperCase();
+  expect(await chiama("set_condivisione_microsoft", [BANDPEY, ["chat"]])).toMatchObject({ok:false});
+  expect(ricevuti).toEqual([]);
+});
+
+it("management uses narrow shared endpoint for remove and browser toggle",async()=>{expect(await chiama("manage_microsoft",[SERCO,"remove"])).toMatchObject({ok:true,pending:true});expect(ricevuti.at(-1)).toEqual({account:SERCO,operation:"remove"});expect(await chiama("manage_microsoft",[SERCO,"chat",false])).toMatchObject({ok:true,pending:true});expect(ricevuti.at(-1)).toEqual({account:SERCO,operation:"chat",on:false});expect(await chiama("manage_microsoft",[SERCO,"wipe"])).toMatchObject({ok:false});});

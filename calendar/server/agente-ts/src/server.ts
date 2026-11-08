@@ -4,12 +4,21 @@
 //   GET /api/calendari                   le caselle, con stato e numero di appuntamenti
 //   GET /api/salute                      stato delle caselle, senza rileggere
 //   POST /api/ics                        {"testo": ICS[, "inizio": ISO, "fine": ISO]}: il nome del calendario, o i suoi eventi nel periodo
+// e, solo dell'agente TypeScript, gli accessi alle caselle (/api/auth/*), il broker dei token della posta (GET /api/token-posta) e il gateway
+// di sola lettura su posta e calendari che non fa uscire i token (comunicazione.ts):
+//   GET /api/communication/accounts      {"accounts": [{"upn", "status", "message"}]}
+//   POST /api/communication/read         {"account", "path"[, "prefer"]}: il JSON di Outlook, o {"errore"} con il codice HTTP
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { ErroreComunicazione, GatewayComunicazione } from "./comunicazione.ts";
 import { CalendarioDiretto, GestoreToken } from "./diretto.ts";
+import { GoogleCommunication } from "./google-communication.ts";
+import { GoogleChatError } from "./gchat.ts";
+import { GmailError } from "./gmail.ts";
+import { ErroreSessioneGoogle } from "./google-web.ts";
 import { CalendarioAndroid, DB, leggiUtf8, testoErrore, type Contesto, type Evento, type FonteCalendario } from "./fonte.ts";
 import { espandiIcs, validaIcs } from "./ics.ts";
 import { isoNaive, oraLocaleDa } from "./iso.ts";
@@ -32,6 +41,8 @@ export interface OpzioniAgente {
   accessi?: string;
   /** Gestore dei token OAuth per la lettura diretta senza emulatore (tokens.json). */
   tokens?: GestoreToken;
+  /** Credential-owned Gmail and Google Chat, independent from calendar grants. */
+  google?: GoogleCommunication;
   /** Il testo di un calendario ICS da espandere (POST /api/ics): oltre questi byte la richiesta è rifiutata. */
   maxCorpo?: number;
   /** Letture ravvicinate dello stesso periodo: una sola. */
@@ -129,10 +140,12 @@ export function pyFloat(v: unknown): number {
 }
 
 export class Agente {
-  private readonly o: Required<Omit<OpzioniAgente, "registro" | "tokens">> & { registro: Registro; tokens: GestoreToken | undefined };
+  private readonly o: Required<Omit<OpzioniAgente, "registro" | "tokens" | "google">> & { registro: Registro; tokens: GestoreToken | undefined };
+  private readonly google: GoogleCommunication | undefined;
   private readonly cache = new Map<string, { t: number; risposta: Record<string, unknown> }>();
   /** Le caselle rimosse dalla pagina: ferme qui, così un nuovo accesso le riprende come fonti.json le descrive (id, calendari). */
   private readonly ferme: FonteCalendario[] = [];
+  private readonly comunicazione: GatewayComunicazione | undefined;
 
   constructor(o: OpzioniAgente) {
     const adesso = o.adesso ?? Date.now;
@@ -147,6 +160,8 @@ export class Agente {
       registro: o.registro ?? registroSuStderr(o.zona, adesso),
     };
     if (this.o.tokens) for (const f of [...this.o.fonti]) if (this.o.tokens.rimosso(f.account)) this.sposta(f, this.o.fonti, this.ferme);
+    this.comunicazione = this.o.tokens ? new GatewayComunicazione(this.o.tokens, this.o.tokens.fetchFn) : undefined;
+    this.google = o.google;
   }
 
   private sposta(f: FonteCalendario, da: FonteCalendario[], a: FonteCalendario[]): void {
@@ -227,12 +242,17 @@ export class Agente {
     return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 
-  private invia(req: http.IncomingMessage, res: http.ServerResponse, codice: number, dati: unknown, scartaCorpo = false): void {
-    const corpo = Buffer.from(jsonPy(dati), "utf-8");
+  private invia(req: http.IncomingMessage, res: http.ServerResponse, codice: number, dati: unknown, scartaCorpo = false, intestazioni: Record<string, string> = {}): void {
+    this.inviaJson(req, res, codice, Buffer.from(jsonPy(dati), "utf-8"), scartaCorpo, intestazioni);
+  }
+
+  /** Un corpo JSON già pronto (la risposta di Outlook del gateway passa così com'è). */
+  private inviaJson(req: http.IncomingMessage, res: http.ServerResponse, codice: number, corpo: Buffer, scartaCorpo = false, intestazioni: Record<string, string> = {}): void {
     res.statusCode = codice;
-    res.statusMessage = ERRORI_HTTP[codice] ?? "";
+    res.statusMessage = ERRORI_HTTP[codice] ?? http.STATUS_CODES[codice] ?? "";
     res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Content-Length", String(corpo.length));
+    for (const [k, v] of Object.entries(intestazioni)) res.setHeader(k, v);
     // Python risponde in HTTP/1.0: una richiesta, una connessione. Se il corpo non è stato letto Node lo scarta da sé mentre il cliente
     // lo manda e poi chiude: chiudere subito azzererebbe la connessione e la risposta potrebbe non arrivare
     if (scartaCorpo) {
@@ -286,7 +306,7 @@ export class Agente {
   private async post(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (!this.autorizzato(req)) return this.invia(req, res, 401, { errore: "non autorizzato" });
     const percorso = analizzaTarget(req.url ?? "").percorso;
-    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi"].includes(percorso)) {
+    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
       return this.invia(req, res, 404, { errore: "sconosciuto" });
     }
     const dichiarata = req.headers["content-length"] || "0";
@@ -294,6 +314,16 @@ export class Agente {
     if (!(lunghezza > 0 && lunghezza <= this.o.maxCorpo)) return this.invia(req, res, lunghezza > this.o.maxCorpo ? 413 : 400, { errore: "lunghezza della richiesta non valida" }, true);
     const corpo = await leggiCorpo(req);
     if (corpo === null) return;
+    if (percorso.startsWith("/api/communication/gmail/") || percorso.startsWith("/api/communication/gchat/")) return this.googleRequest(req, res, percorso, corpo);
+    if (["/api/auth/inizio", "/api/auth/completa", "/api/auth/rimuovi"].includes(percorso)) {
+      let parsed: unknown;
+      try { parsed = leggiJson(corpo); } catch { return this.invia(req, res, 400, { errore: "invalid JSON" }); }
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const data = parsed as Record<string, unknown>;
+        if (["gmail", "gchat", "google-web"].includes(String(data.provider))) return this.googleAuth(req, res, percorso, data);
+      }
+    }
+    if (percorso === "/api/communication/read") return this.leggiComunicazione(req, res, corpo);
     if (percorso === "/api/auth/inizio") {
       if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "gestore token non configurato" });
       try {
@@ -374,6 +404,9 @@ export class Agente {
           } else {
             ({ account } = await this.o.tokens.salvaGoogle(email, token));
           }
+        } else if (r.sessione !== undefined) {
+          // Sessione del browser (formato teamsrelay session.json) per le caselle dove Outlook Mobile è respinto
+          ({ account } = await this.o.tokens.importaSessione(r.sessione, typeof r.tenant === "string" ? r.tenant : ""));
         } else {
           const codice = typeof r.codice === "string" ? r.codice : "";
           ({ account } = await this.o.tokens.completaPkce(codice, state));
@@ -418,11 +451,69 @@ export class Agente {
     }
   }
 
+  private googleFailure(req: http.IncomingMessage, res: http.ServerResponse, error: unknown): void {
+    if (error instanceof GmailError || error instanceof GoogleChatError) return this.invia(req, res, error.status, { errore: error.message });
+    if (error instanceof ErroreSessioneGoogle) return this.invia(req, res, 400, { errore: error.message });
+    // Network, filesystem and parsing errors can contain credentials or upstream content.
+    return this.invia(req, res, 502, { errore: "Google operation failed" });
+  }
+
+  private async googleRequest(req: http.IncomingMessage, res: http.ServerResponse, route: string, body: Buffer): Promise<void> {
+    try {
+      if (!this.google) throw new GoogleChatError("Google service not configured", 404);
+      let data: unknown;
+      try { data = leggiJson(body); } catch { throw new GoogleChatError("invalid JSON", 400); }
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new GoogleChatError("JSON object required", 400);
+      const input = data as Record<string, unknown>;
+      const result = route === "/api/communication/gmail/read" ? await this.google.gmail.read(input)
+        : route === "/api/communication/gmail/write" ? await this.google.gmail.write(input)
+        : route === "/api/communication/gchat/read" ? await this.google.readChat(input) : await this.google.writeChat(input);
+      return this.invia(req, res, 200, result);
+    } catch (e) { return this.googleFailure(req, res, e); }
+  }
+
+  private async googleAuth(req: http.IncomingMessage, res: http.ServerResponse, route: string, data: Record<string, unknown>): Promise<void> {
+    try {
+      if (!this.google) throw new GoogleChatError("Google service not configured", 404);
+      const provider = data.provider === "gmail" ? "gmail" : "gchat";
+      if (route === "/api/auth/rimuovi") return this.invia(req, res, 200, { ok: this.google.remove(provider, data.account) });
+      if (route === "/api/auth/inizio") {
+        if (provider !== "gmail") throw new GoogleChatError("import a signed-in PC session for Google Chat", 400);
+        return this.invia(req, res, 200, { ok: true, modo: "pkce", ...this.google.gmail.begin(typeof data.email === "string" ? data.email : undefined) });
+      }
+      const result = provider === "gchat" ? await this.google.importChat(data)
+        : data.credentials ? await this.google.gmail.import(data)
+        : await this.google.gmail.complete({ code: typeof data.codice === "string" ? data.codice : "", state: typeof data.state === "string" ? data.state : undefined });
+      return this.invia(req, res, 200, { ok: true, ...result });
+    } catch (e) { return this.googleFailure(req, res, e); }
+  }
+
+  /** POST /api/communication/read: una lettura di posta o calendario con le credenziali dell'agente; il token non esce. */
+  private async leggiComunicazione(req: http.IncomingMessage, res: http.ServerResponse, corpo: Buffer): Promise<void> {
+    try {
+      if (!this.comunicazione) throw new ErroreComunicazione(404, "casella non trovata");
+      let dati: unknown;
+      try {
+        dati = leggiJson(corpo);
+      } catch {
+        throw new ErroreComunicazione(400, "il corpo non è JSON");
+      }
+      return this.inviaJson(req, res, 200, Buffer.from(await this.comunicazione.leggi(dati), "utf-8"));
+    } catch (e) {
+      if (e instanceof ErroreComunicazione) return this.invia(req, res, e.codice, { errore: e.message }, false, e.intestazioni);
+      if (e instanceof ErroreSenzaRisposta) throw e;
+      this.o.registro("ERROR", `lettura posta e calendari fallita: ${testoErrore(e)}`);
+      return this.invia(req, res, 502, { errore: "lettura non riuscita" });
+    }
+  }
+
   private async get(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (!this.autorizzato(req)) return this.invia(req, res, 401, { errore: "non autorizzato" });
     const { percorso, query } = analizzaTarget(req.url ?? "");
     const q = parseQs(query);
     if (percorso === "/api/salute") return this.invia(req, res, 200, { fonti: this.fontiStato(), servizio: this.servizio() });
+    if (percorso === "/api/communication/accounts") return this.invia(req, res, 200, { accounts: this.comunicazione?.caselle() ?? [] });
+    if (percorso === "/api/communication/google/accounts") return this.invia(req, res, 200, { accounts: this.google?.accounts() ?? [] });
     if (percorso === "/api/auth/stato") {
       const caselle = this.o.fonti.map((f) => {
         const voce = this.o.tokens?.voceAccount(f.account);

@@ -18,6 +18,7 @@ Indice:
 
 - **Niente registrazioni su Azure né consensi amministratore.** I tenant aziendali bloccano il consenso alle app di terze parti.
 - **Niente scraping di OWA né emulatore Android.** L'agente usa direttamente le API REST di Outlook (`https://outlook.office.com/api/v2.0`) con il client OAuth2 di prima parte di Outlook Mobile (`27922004-5251-4030-b22d-91ecd9a37ea4`) e l'API Google Calendar v3, rinnovando in automatico i token in `stato/tokens.json`.
+- **Caselle dove Outlook Mobile è respinto** (accesso condizionale, `AADSTS53003`). L'agente usa il client web di Outlook (`9199bf20-a13f-4107-85dc-02114787ef48`) con la sessione Microsoft di un browser già entrato (cookie ESTS, formato `session.json` di teamsrelay): autorizzazione silenziosa `prompt=none` con PKCE, refresh token di 24 ore, poi di nuovo dalla sessione. Si importa una volta con `POST /api/auth/completa` `{"provider": "microsoft", "sessione": <session.json>, "tenant": "<tenant id>"}` (dal gateway: `completa_accesso_casella` con gli stessi campi); prima di salvare l'agente controlla che tornino la stessa casella, la risorsa Outlook e il permesso sui calendari. Quando anche la sessione finisce la casella va in errore: si rientra da Outlook web e si importa di nuovo.
 - **Caselle dal browser.** La finestra *Account* (pulsante in fondo alla barra a sinistra, o *Gestisci calendari*) elenca a sinistra le caselle con il loro stato; la freccia accanto a una casella mostra le aziende inoltrate lì, e quella accanto a *Da link e personali* i suoi calendari. Ogni casella e ogni calendario ha la sua pagina: il logo (si tocca il cerchio per cambiarlo, o ci si trascina un'immagine), l'interruttore per questo dispositivo, il posto nella barra e i gruppi. *Aggiungi account* fa l'accesso Microsoft (codice) o Google; *Accedi di nuovo* compare solo quando un accesso è scaduto; *Rimuovi account* smette di leggere la casella e cancella l'accesso salvato (`rimossi` in `stato/tokens.json`, vale anche per le caselle di `fonti.json`, finché non si rifà l'accesso).
 - **Tunnel SSH.** L'agente ascolta solo sul localhost. Da internet si raggiunge solo l'interfaccia web.
 
@@ -34,6 +35,7 @@ Indice:
 
 - **agent** (`server/agente-ts/`): rinnova i token in `stato/tokens.json`, legge i calendari Microsoft e Google via API, li serve con un'API a chiave solo su `127.0.0.1:3180`, ed espande i calendari da link (`POST /api/ics`).
 - **gateway** e **caddy-ui** (4.7): accesso, pagina e logica dell'app, con lo stato in `ui-dati/gateway.db`, più l'endpoint MCP `/mcp` per leggere e inviare le email delle caselle Outlook.
+- **Google communication**: native TypeScript Gmail and Google Chat APIs in the agent, with separate credential storage and confirmed writes. API contract and PC import: [`server/agente-ts/GOOGLE.md`](server/agente-ts/GOOGLE.md). No additional UI screens or MCP tools are included.
 
 Tutti e tre i servizi stanno in `server/docker-compose.yml`, senza profili.
 

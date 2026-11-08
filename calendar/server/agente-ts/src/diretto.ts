@@ -11,6 +11,10 @@ import { MEETING_URL } from "./ics.ts";
 import { confrontaPy, pyStrip } from "./pyfmt.ts";
 import { contieneEvento } from "./serie.ts";
 import { ErroreAltro, ora, testoNaive } from "./tempo.ts";
+import { MS_LOGIN, OUTLOOK_REST, claimsJwt, jsonRest, leggiTesto, motivoTokenWebNonValido, upnDi, type FetchFn } from "./outlook-rest.ts";
+import { OUTLOOK_WEB_CLIENT_ID, OUTLOOK_WEB_REDIRECT_URI, OUTLOOK_WEB_SCOPES, SessioneScaduta, autorizzaDaSessione, leggiSessione, type SessioneMicrosoft } from "./sessione-web.ts";
+
+export type { FetchFn } from "./outlook-rest.ts";
 
 // Client ID e redirect URI estratti da com.microsoft.office.outlook 5.2641.2 (TokenRestApi.AAD_CLIENT_ID e AuthUtil.getOneAuthRedirectUri)
 export const OUTLOOK_CLIENT_ID = "27922004-5251-4030-b22d-91ecd9a37ea4";
@@ -27,6 +31,7 @@ export const GOOGLE_OAUTH_CLIENT_ID = "406964657835-aq8lmia8j95dhl1a2bvharmfk3t1
 export const GOOGLE_OAUTH_CLIENT_SECRET = "kSmqreRr0qwBWJgbf5Y-PjSU";
 export const GOOGLE_OAUTH_REDIRECT_URI = "http://localhost";
 export const GOOGLE_OAUTH_SCOPES = "https://www.googleapis.com/auth/calendar openid email";
+export const GOOGLE_TOKEN_MAX_BYTES = 64 * 1024;
 
 const MARGINE_SCADENZA_S = 120;
 const TTL_CALENDARI_S = 300;
@@ -46,6 +51,8 @@ export interface VoceToken {
   expires_at?: number;
   scopes?: string;
   errore?: string;
+  /** Accesso da sessione del browser (client web di Outlook): i cookie ESTS per riautorizzare quando il refresh_token non basta più. */
+  sessione?: SessioneMicrosoft;
 }
 
 export interface ArchivioToken {
@@ -65,18 +72,18 @@ export interface TokenPostaInfo {
   phone_msg: string;
 }
 
-export type FetchFn = typeof fetch;
-
-function decodificaJwtClaims(jwt: string): Record<string, unknown> {
-  const parti = jwt.split(".");
-  if (parti.length < 2 || !parti[1]) return {};
-  try {
-    const b64 = parti[1].replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - (parti[1].length % 4)) % 4);
-    const parsed = JSON.parse(Buffer.from(b64, "base64").toString("utf-8")) as unknown;
-    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
+/** Una riga di token-outlook.json e di GET /api/token-posta (il broker dei token di prima, che resta). */
+function infoPosta(upn: string, voce: VoceToken, token: string, exp: number, errore: boolean, msg: string): TokenPostaInfo {
+  return {
+    upn,
+    token,
+    exp: Math.trunc(exp),
+    endpoint_type: "outlook_rest",
+    base_url: OUTLOOK_REST,
+    scopes: voce.scopes ?? OUTLOOK_SCOPES,
+    phone_status: errore ? "errore" : "ok",
+    phone_msg: msg,
+  };
 }
 
 function scriviJsonAtomico(percorso: string, dati: unknown): void {
@@ -113,17 +120,20 @@ export class GestoreToken {
   readonly percorso: string;
   readonly tokenPostaPath: string | null;
   private readonly adesso: () => number;
-  private readonly fetchFn: FetchFn;
+  private readonly strictPersistence: boolean;
+  /** Lo stesso fetch per i rinnovi e per il gateway di posta e calendari (comunicazione.ts). */
+  readonly fetchFn: FetchFn;
   private mtimeMs = -1;
   private dati: ArchivioToken = { accounts: {} };
   private readonly inCorso = new Map<string, Promise<string>>();
   private readonly pkceInAttesa = new Map<string, { verifier: string; provider: "microsoft" | "google"; email?: string; quandoS: number }>();
   private readonly deviceInAttesa = new Map<string, { deviceCode: string; quandoS: number }>();
 
-  constructor(percorso: string, opzioni: { tokenPostaPath?: string | null; adesso?: () => number; fetchFn?: FetchFn } = {}) {
+  constructor(percorso: string, opzioni: { tokenPostaPath?: string | null; adesso?: () => number; fetchFn?: FetchFn; strictPersistence?: boolean } = {}) {
     this.percorso = percorso;
     this.tokenPostaPath = opzioni.tokenPostaPath ?? null;
     this.adesso = opzioni.adesso ?? Date.now;
+    this.strictPersistence = opzioni.strictPersistence ?? false;
     this.fetchFn = opzioni.fetchFn ?? fetch;
   }
 
@@ -154,8 +164,9 @@ export class GestoreToken {
         this.dati = rimossi.length ? { accounts: normalizzati, rimossi } : { accounts: normalizzati };
       }
       this.mtimeMs = st.mtimeMs;
-    } catch {
+    } catch (error) {
       // Mantiene i dati in memoria se il file è in corso di scrittura
+      if (this.strictPersistence) throw error;
     }
   }
 
@@ -163,8 +174,9 @@ export class GestoreToken {
     try {
       scriviJsonAtomico(this.percorso, this.dati);
       this.mtimeMs = fs.statSync(this.percorso).mtimeMs;
-    } catch {
+    } catch (error) {
       // In ambiente a sola lettura i token rinnovati restano in memoria
+      if (this.strictPersistence) throw error;
     }
     this.scriviTokenPosta();
   }
@@ -176,16 +188,7 @@ export class GestoreToken {
       const account: TokenPostaInfo[] = [];
       for (const [upn, v] of Object.entries(this.dati.accounts)) {
         if (v.provider !== "microsoft" || !v.access_token || (v.expires_at ?? 0) <= adessoS) continue;
-        account.push({
-          upn,
-          token: v.access_token,
-          exp: Math.trunc(v.expires_at ?? 0),
-          endpoint_type: "outlook_rest",
-          base_url: "https://outlook.office.com/api/v2.0",
-          scopes: v.scopes ?? OUTLOOK_SCOPES,
-          phone_status: v.errore ? "errore" : "ok",
-          phone_msg: v.errore ?? "",
-        });
+        account.push(infoPosta(upn, v, v.access_token, v.expires_at ?? 0, Boolean(v.errore), v.errore ?? ""));
       }
       scriviJsonAtomico(this.tokenPostaPath, { generato: adessoS, account });
     } catch {
@@ -256,22 +259,27 @@ export class GestoreToken {
 
   private async rinnovaMicrosoft(chiave: string, voce: VoceToken): Promise<string> {
     if (!voce.refresh_token) {
+      if (voce.sessione) return this.rinnovaDaSessione(chiave, voce);
       voce.errore = "Accesso scaduto: Accedi di nuovo nella finestra Account";
       this.salva();
       throw new ErroreAccessoScaduto(voce.errore);
     }
+    const web = voce.client_id === OUTLOOK_WEB_CLIENT_ID;
     const tenant = voce.tenant_id || "common";
-    const url = `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`;
+    const url = `${MS_LOGIN}/${encodeURIComponent(tenant)}/oauth2/v2.0/token`;
     const body = new URLSearchParams({
       client_id: voce.client_id || OUTLOOK_CLIENT_ID,
       grant_type: "refresh_token",
       refresh_token: voce.refresh_token,
-      scope: OUTLOOK_SCOPES,
+      scope: web ? OUTLOOK_WEB_SCOPES : OUTLOOK_SCOPES,
     }).toString();
 
+    // Il refresh_token del client web (SPA) si riscatta solo da una richiesta cross-origin: serve l'Origin di Outlook web.
+    const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" };
+    if (web) headers.Origin = new URL(OUTLOOK_WEB_REDIRECT_URI).origin;
     const resp = await this.fetchFn(url, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      headers,
       body,
       signal: AbortSignal.timeout(15_000),
     });
@@ -285,14 +293,65 @@ export class GestoreToken {
     if (!resp.ok || typeof json.access_token !== "string") {
       const code = String(json.error ?? "");
       if (resp.status === 400 || resp.status === 401 || code === "invalid_grant" || code === "interaction_required") {
+        // Il refresh_token SPA dura 24 ore al massimo: la sessione del browser ne dà uno nuovo.
+        if (voce.sessione) return this.rinnovaDaSessione(chiave, voce);
         voce.errore = "Accesso scaduto: Accedi di nuovo nella finestra Account";
         this.salva();
         throw new ErroreAccessoScaduto(voce.errore);
       }
       throw new Error(`Rinnovo token Microsoft fallito (HTTP ${resp.status}: ${String(json.error_description || json.error || testo).slice(0, 160)})`);
     }
+    if (web) {
+      // Il token del client web vale solo se è della stessa casella, per Outlook, non scaduto e con i calendari, come all'importazione.
+      // Uno che non torna non si salva, nemmeno il suo refresh_token: si riprova dalla sessione del browser, se c'è.
+      const motivo = motivoTokenWebNonValido(json.access_token, chiave, this.adessoS());
+      if (motivo) {
+        if (voce.sessione) return this.rinnovaDaSessione(chiave, voce);
+        voce.errore = `Rinnovo di Outlook web rifiutato: ${motivo}`;
+        this.salva();
+        throw new ErroreAccessoScaduto(voce.errore);
+      }
+    }
+    return this.applicaTokenMicrosoft(voce, json);
+  }
+
+  /** Riautorizza con i cookie della sessione del browser. I cookie ruotati si salvano anche quando Microsoft rifiuta o non risponde. */
+  private async rinnovaDaSessione(chiave: string, voce: VoceToken): Promise<string> {
+    // La sessione salvata ripassa dal filtro dell'importazione prima che un cookie esca: solo i cookie di login.microsoftonline.com, e
+    // solo per la casella a cui appartiene.
+    const sessione = leggiSessione(voce.sessione);
+    if (!sessione || sessione.loginHint.trim().toLowerCase() !== chiave) {
+      voce.errore = "Sessione del browser non valida: accedi di nuovo da Outlook web e importa la sessione";
+      this.salva();
+      throw new ErroreAccessoScaduto(voce.errore);
+    }
+    // autorizzaDaSessione ruota i cookie su questo oggetto: sta già nella voce, così ogni salvataggio da qui in poi li tiene
+    voce.sessione = sessione;
+    let json: Record<string, unknown>;
+    try {
+      json = await autorizzaDaSessione(sessione, voce.tenant_id || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS() });
+    } catch (e) {
+      if (e instanceof SessioneScaduta) {
+        voce.errore = "Sessione del browser scaduta: accedi di nuovo da Outlook web e importa la sessione";
+        this.salva();
+        throw new ErroreAccessoScaduto(voce.errore);
+      }
+      this.salva();
+      throw e;
+    }
+    const motivo = motivoTokenWebNonValido(json.access_token, chiave, this.adessoS());
+    if (motivo) {
+      voce.errore = `Accesso dalla sessione del browser rifiutato: ${motivo}`;
+      this.salva();
+      throw new ErroreAccessoScaduto(voce.errore);
+    }
+    return this.applicaTokenMicrosoft(voce, json);
+  }
+
+  private applicaTokenMicrosoft(voce: VoceToken, json: Record<string, unknown>): string {
+    if (typeof json.access_token !== "string") throw new Error("Risposta token Microsoft senza access_token");
     const adessoS = this.adessoS();
-    const claims = decodificaJwtClaims(json.access_token);
+    const claims = claimsJwt(json.access_token);
     const expClaim = Number(claims.exp ?? 0);
     const expIn = Number(json.expires_in ?? 3600);
     voce.access_token = json.access_token;
@@ -374,9 +433,16 @@ export class GestoreToken {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body: new URLSearchParams(params).toString(),
+        redirect: "manual",
         signal: AbortSignal.timeout(15_000),
       });
-      const json = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+      const json = (this.strictPersistence
+        ? JSON.parse(await leggiTesto(resp, GOOGLE_TOKEN_MAX_BYTES))
+        : await resp.json().catch(() => ({}))) as Record<string, unknown>;
+      if (this.strictPersistence) {
+        this.caricaSeCambiato();
+        if (this.dati.accounts[chiave] !== voce) throw new ErroreAccessoScaduto("Google access changed during refresh; retry request");
+      }
       if (!resp.ok || typeof json.access_token !== "string") {
         voce.errore = "Accesso Google scaduto: Accedi di nuovo nella finestra Account";
         this.salva();
@@ -386,6 +452,7 @@ export class GestoreToken {
       const durata = Number(json.expires_in ?? 3600);
       voce.access_token = json.access_token;
       voce.expires_at = adessoS + (Number.isFinite(durata) && durata > 0 ? durata : 3600);
+      if (typeof json.refresh_token === "string" && json.refresh_token) voce.refresh_token = json.refresh_token;
       delete voce.errore;
       this.salva();
       return voce.access_token;
@@ -403,28 +470,10 @@ export class GestoreToken {
       if (voce.provider !== "microsoft") continue;
       try {
         const tok = await this.ottieniAccessToken(upn);
-        out.push({
-          upn,
-          token: tok,
-          exp: Math.trunc(voce.expires_at ?? this.adessoS() + 3600),
-          endpoint_type: "outlook_rest",
-          base_url: "https://outlook.office.com/api/v2.0",
-          scopes: voce.scopes ?? OUTLOOK_SCOPES,
-          phone_status: "ok",
-          phone_msg: "",
-        });
+        out.push(infoPosta(upn, voce, tok, voce.expires_at ?? this.adessoS() + 3600, false, ""));
       } catch (e) {
         if (voce.access_token && (voce.expires_at ?? 0) > this.adessoS()) {
-          out.push({
-            upn,
-            token: voce.access_token,
-            exp: Math.trunc(voce.expires_at ?? 0),
-            endpoint_type: "outlook_rest",
-            base_url: "https://outlook.office.com/api/v2.0",
-            scopes: voce.scopes ?? OUTLOOK_SCOPES,
-            phone_status: "errore",
-            phone_msg: e instanceof Error ? e.message : String(e),
-          });
+          out.push(infoPosta(upn, voce, voce.access_token, voce.expires_at ?? 0, true, e instanceof Error ? e.message : String(e)));
         }
       }
     }
@@ -467,7 +516,7 @@ export class GestoreToken {
       params.set("login_hint", email.trim());
     }
     return {
-      url: `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`,
+      url: `${MS_LOGIN}/common/oauth2/v2.0/authorize?${params.toString()}`,
       state,
     };
   }
@@ -479,7 +528,7 @@ export class GestoreToken {
     for (const [k, v] of this.deviceInAttesa.entries()) {
       if (adessoS - v.quandoS > TTL_PKCE_S) this.deviceInAttesa.delete(k);
     }
-    const resp = await this.fetchFn("https://login.microsoftonline.com/common/oauth2/v2.0/devicecode", {
+    const resp = await this.fetchFn(`${MS_LOGIN}/common/oauth2/v2.0/devicecode`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: new URLSearchParams({
@@ -510,7 +559,7 @@ export class GestoreToken {
     if (!attesa) {
       throw new Error("Sessione di accesso scaduta o non trovata: clicca di nuovo su 'Accedi'");
     }
-    const resp = await this.fetchFn("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    const resp = await this.fetchFn(`${MS_LOGIN}/common/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body: new URLSearchParams({
@@ -535,8 +584,8 @@ export class GestoreToken {
 
   private salvaRispostaTokenMicrosoft(json: Record<string, unknown>): { stato: "completato"; account: string; tenant_id: string } {
     const claims = {
-      ...decodificaJwtClaims(typeof json.id_token === "string" ? json.id_token : ""),
-      ...decodificaJwtClaims(String(json.access_token ?? "")),
+      ...claimsJwt(typeof json.id_token === "string" ? json.id_token : ""),
+      ...claimsJwt(String(json.access_token ?? "")),
     };
     const upn = String(claims.upn || claims.preferred_username || claims.unique_name || claims.email || "").trim().toLowerCase();
     if (!upn) {
@@ -561,6 +610,35 @@ export class GestoreToken {
     return { stato: "completato", account: upn, tenant_id: tid };
   }
 
+  /**
+   * Importa la sessione del browser (formato teamsrelay session.json) per le caselle dove Outlook Mobile è respinto dall'accesso
+   * condizionale. Prima di salvare prova l'autorizzazione: casella, risorsa Outlook e permesso di posta devono tornare.
+   */
+  async importaSessione(dati: unknown, tenant: string): Promise<{ account: string; tenant_id: string }> {
+    const sessione = leggiSessione(dati);
+    if (!sessione) throw new Error("Sessione del browser non valida (servono userAgent, loginHint e cookies)");
+    const atteso = sessione.loginHint.trim().toLowerCase();
+    if (!atteso.includes("@")) throw new Error("Nella sessione manca loginHint con l'indirizzo della casella");
+    let json: Record<string, unknown>;
+    try {
+      json = await autorizzaDaSessione(sessione, tenant.trim() || "organizations", { fetchFn: this.fetchFn, adessoS: this.adessoS() });
+    } catch (e) {
+      if (e instanceof SessioneScaduta) throw new Error(`Accesso Microsoft non riuscito: ${e.message}`);
+      throw e;
+    }
+    // stesso controllo di ogni rinnovo del client web: casella, risorsa Outlook, scadenza, calendari
+    const motivo = motivoTokenWebNonValido(json.access_token, atteso, this.adessoS());
+    if (motivo) throw new Error(motivo);
+    const claims = claimsJwt(String(json.access_token));
+    const upn = upnDi(claims);
+    const tid = String(claims.tid || tenant);
+    this.caricaSeCambiato();
+    const voce: VoceToken = { provider: "microsoft", client_id: OUTLOOK_WEB_CLIENT_ID, tenant_id: tid, sessione };
+    this.dati.accounts[upn] = voce;
+    this.applicaTokenMicrosoft(voce, json);
+    return { account: upn, tenant_id: tid };
+  }
+
   /** Completa il login OAuth2 PKCE di Outlook Mobile con l'indirizzo msauth://... o il codice ricevuto. */
   async completaPkce(codiceOUrl: string, stateDato?: string): Promise<{ account: string; tenant_id: string }> {
     const { code, state } = estraiCodiceDaInput(codiceOUrl);
@@ -582,7 +660,7 @@ export class GestoreToken {
       scope: OUTLOOK_SCOPES,
     }).toString();
 
-    const resp = await this.fetchFn("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+    const resp = await this.fetchFn(`${MS_LOGIN}/common/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body,
@@ -650,7 +728,7 @@ export class GestoreToken {
       throw new Error(`Scambio codice Google fallito: ${String(json.error_description || json.error || `HTTP ${resp.status}`)}`);
     }
 
-    const claims = decodificaJwtClaims(typeof json.id_token === "string" ? json.id_token : "");
+    const claims = claimsJwt(typeof json.id_token === "string" ? json.id_token : "");
     let email = String(claims.email || emailDato || attesa.email || "").trim().toLowerCase();
     if (!email) {
       const uResp = await this.fetchFn("https://openidconnect.googleapis.com/v1/userinfo", {
@@ -749,20 +827,9 @@ export class CalendarioDiretto {
     this.cacheCalendari = null;
   }
 
-  private async richiestaJson(url: string, headers: Record<string, string>, riprova = true): Promise<Record<string, unknown>> {
-    const token = await this.tokens.ottieniAccessToken(this.account, !riprova);
-    const resp = await this.fetchFn(url, {
-      headers: { ...headers, Authorization: `Bearer ${token}`, Accept: "application/json" },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (resp.status === 401 && riprova) {
-      return this.richiestaJson(url, headers, false);
-    }
-    if (!resp.ok) {
-      const txt = await resp.text().catch(() => "");
-      throw new Error(`HTTP ${resp.status}: ${txt.slice(0, 160) || resp.statusText}`);
-    }
-    return (await resp.json()) as Record<string, unknown>;
+  /** Lo stesso trasporto del gateway di posta e calendari (outlook-rest.ts): un 401 rinnova il token una volta e riprova. */
+  private richiestaJson(url: string, headers: Record<string, string>): Promise<Record<string, unknown>> {
+    return jsonRest(this.tokens, this.account, url, { headers, fetchFn: this.fetchFn });
   }
 
   private async calendariScelti(forza = false): Promise<CalInfo[]> {
@@ -794,7 +861,7 @@ export class CalendarioDiretto {
       if (!scelti.length && !this.calendari.length && tutti.length) scelti.push(tutti[0]!);
     } else {
       const json = await this.richiestaJson(
-        "https://outlook.office.com/api/v2.0/me/calendars?$top=50&$select=Id,Name,IsDefaultCalendar",
+        `${OUTLOOK_REST}/me/calendars?$top=50&$select=Id,Name,IsDefaultCalendar`,
         {},
       );
       const items = Array.isArray(json.value) ? (json.value as Record<string, unknown>[]) : [];
@@ -966,7 +1033,7 @@ export class CalendarioDiretto {
           }
         } else {
           const url =
-            `https://outlook.office.com/api/v2.0/me/calendars/${encodeURIComponent(cal.id)}/calendarview` +
+            `${OUTLOOK_REST}/me/calendars/${encodeURIComponent(cal.id)}/calendarview` +
             `?startDateTime=${encodeURIComponent(utcInizio)}&endDateTime=${encodeURIComponent(utcFine)}` +
             `&$top=1000&$select=Id,SeriesMasterId,Type,Subject,BodyPreview,Body,Start,End,IsAllDay,IsCancelled,ShowAs,Location,Organizer,Attendees,OnlineMeetingUrl,OnlineMeeting`;
           const json = await this.richiestaJson(url, { Prefer: `outlook.timezone="${this.ctx.zona}"` });

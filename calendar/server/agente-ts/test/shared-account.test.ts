@@ -1,11 +1,11 @@
-import { allowed, renewShared } from '../src/shared-account.ts';
+import { allowed, clientFor, renewShared, TEAMS_APP_CLIENT_ID } from '../src/shared-account.ts';
 import { describe, it, expect } from 'vitest';
 import { creaServer } from '../src/index.ts';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { GestoreToken } from '../src/diretto.ts';
-const jwt = (aud: string, oid = 'object') => 'x.' + Buffer.from(JSON.stringify({ aud, oid, tid: 'tenant', exp: 9000, scp: "Mail.ReadWrite Calendars.ReadWrite" })).toString('base64url') + '.x';
+const jwt = (aud: string, oid = 'object', appid?: string | null) => 'x.' + Buffer.from(JSON.stringify({ aud, oid, tid: 'tenant', exp: 9000, scp: "Mail.ReadWrite Calendars.ReadWrite", ...(appid ? { appid } : {}) })).toString('base64url') + '.x';
 function setup(fetchFn: typeof fetch) {
  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-'));
  const file = path.join(dir, 'tokens.json');
@@ -19,7 +19,7 @@ describe('shared broker', () => {
  const fetchFn = (async (_url, init) => {
  const body = new URLSearchParams(String(init?.body)); seen.push(body.get('refresh_token')!);
  await new Promise(r => setTimeout(r, 5));
- return Response.json({ access_token: jwt(body.get('scope')!.split('/.default')[0]!), refresh_token: 'rotated' + seen.length });
+ return Response.json({ access_token: jwt(body.get('scope')!.split('/.default')[0]!, 'object', body.get('client_id')), refresh_token: 'rotated' + seen.length });
  }) as typeof fetch;
  const s = setup(fetchFn);
  try { const [mail, chat] = await Promise.all([s.manager.ottieniAccessToken('user'), s.manager.ottieniRisorsa('user', 'csa')]);
@@ -60,6 +60,48 @@ describe('shared broker', () => {
  let observed: unknown;
  await renewShared({ tenantId: 'tenant', objectId: 'object', capabilities: ['chat'], origin }, 'csa', 'rt', 'client', (async (_u, init) => { observed = (init?.headers as Record<string, string>).Origin; return Response.json({ access_token: jwt('https://chatsvcagg.teams.microsoft.com') }); }) as typeof fetch, 1000);
  expect(observed).toBe(origin === 'mobile' ? undefined : origin === 'teams-spa' ? 'https://teams.microsoft.com' : 'https://outlook.cloud.microsoft');
+ });
+ it('asks the Teams resources of an Outlook Mobile sign-in as Teams, Outlook as Outlook Mobile, from the refresh token each step returned', async () => {
+ const asked: [string, string, string][] = [];
+ const fetchFn = (async (_url, init) => {
+ const body = new URLSearchParams(String(init?.body)); const resource = body.get('scope')!.split('/.default')[0]!;
+ asked.push([resource, body.get('client_id')!, body.get('refresh_token')!]);
+ return Response.json({ access_token: jwt(resource, 'object', body.get('client_id')), refresh_token: 'family' + asked.length });
+ }) as typeof fetch;
+ const s = setup(fetchFn);
+ try {
+ await s.manager.ottieniRisorsa('user', 'spaces');
+ await s.manager.ottieniRisorsa('user', 'csa');
+ await s.manager.ottieniAccessToken('user');
+ expect(asked).toEqual([
+ ['https://api.spaces.skype.com', TEAMS_APP_CLIENT_ID, 'initial'],
+ ['https://chatsvcagg.teams.microsoft.com', TEAMS_APP_CLIENT_ID, 'family1'],
+ ['https://outlook.office.com', '27922004-5251-4030-b22d-91ecd9a37ea4', 'family2'],
+ ]);
+ expect(JSON.parse(fs.readFileSync(s.file, 'utf8')).accounts.user.refresh_token).toBe('family3');
+ } finally { s.cleanup(); }
+ });
+ it('a Teams token cached as another app is asked again as Teams; one of Teams is reused', async () => {
+ let calls = 0;
+ const s = setup((async (_url, init) => { calls++; const body = new URLSearchParams(String(init?.body)); return Response.json({ access_token: jwt('https://chatsvcagg.teams.microsoft.com', 'object', body.get('client_id')), refresh_token: 'next' }); }) as typeof fetch);
+ const data = JSON.parse(fs.readFileSync(s.file, 'utf8'));
+ data.accounts.user.resourceTokens = { csa: { token: jwt('https://chatsvcagg.teams.microsoft.com', 'object', '27922004-5251-4030-b22d-91ecd9a37ea4'), expiresAt: 9000 } };
+ fs.writeFileSync(s.file, JSON.stringify(data));
+ try {
+ const manager = new GestoreToken(s.file, { fetchFn: s.manager.fetchFn, adesso: () => 1000000 });
+ const fresh = await manager.ottieniRisorsa('user', 'csa');
+ expect(calls).toBe(1);
+ expect(fresh).toBe(jwt('https://chatsvcagg.teams.microsoft.com', 'object', TEAMS_APP_CLIENT_ID));
+ expect(await manager.ottieniRisorsa('user', 'csa')).toBe(fresh);
+ expect(calls).toBe(1);
+ } finally { s.cleanup(); }
+ });
+ it('only an Outlook Mobile sign-in is exchanged: the web sign-ins ask every resource as their own client', () => {
+ const base = { tenantId: 'tenant', objectId: 'object', capabilities: ['chat'] as 'chat'[] };
+ expect(clientFor({ ...base, origin: 'mobile' }, 'ic3', 'stored')).toBe(TEAMS_APP_CLIENT_ID);
+ expect(clientFor({ ...base, origin: 'mobile' }, 'outlook', 'stored')).toBe('stored');
+ expect(clientFor({ ...base, origin: 'outlook-spa' }, 'csa', 'stored')).toBe('stored');
+ expect(clientFor({ ...base, origin: 'teams-spa' }, 'csa', 'stored')).toBe('stored');
  });
 });
 

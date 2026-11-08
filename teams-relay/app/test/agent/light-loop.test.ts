@@ -531,4 +531,15 @@ describe("per-account native calls", () => {
     expect(l.calls).toBeUndefined();
     store.close();
   });
+
+  it("never starts the calling worker on a shared Microsoft account, whose sign-in Teams calling refuses", async () => {
+    const { l, store } = setup(() => []);
+    Object.assign(l, { token: new LightToken("missing", Date.now, { url: "http://agent", key: "k", account: "me@example.com", region: "emea" }) });
+    const make = vi.fn(() => ({ start: vi.fn(async () => undefined), stop: vi.fn(), schedule: vi.fn() }) as unknown as NonNullable<Light["calls"]>);
+    await syncNativeCalls(l, true, make);
+    await syncNativeCalls(l, true, make);
+    expect(make).not.toHaveBeenCalled();
+    expect(l.calls).toBeUndefined();
+    store.close();
+  });
 });

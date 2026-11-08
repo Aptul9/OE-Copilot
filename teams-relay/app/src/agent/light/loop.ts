@@ -241,8 +241,18 @@ async function readViewing(l: Light) {
   if (chat && inApp(l, chat)) await saveChat(l, chat).catch((e: unknown) => void refused(l, e));
 }
 
-// The calling worker of this account follows its Calls switch: started when on, stopped (calls end) when off
+// light agents already told that calls are off on a shared account
+const noCallsTold = new WeakSet<Light>();
+
+// The calling worker of this account follows its Calls switch: started when on, stopped (calls end) when off. Never on a
+// shared Microsoft account: the calling discovery of Teams (authsvc authz) refuses its sign-in (410 ApiRestricted,
+// 2026-11-08), and the worker would ask again every 10 s for as long as the slot runs.
 export async function syncNativeCalls(l: Light, want: boolean, make: (l: Light) => NonNullable<Light["calls"]> = (x) => new NativeCalls(x)) {
+  if (want && l.token.brokerBacked) {
+    if (!noCallsTold.has(l)) log.info("calling", "not available on a shared Microsoft account: chats and notifications only");
+    noCallsTold.add(l);
+    want = false;
+  }
   if (want && !l.calls) {
     if (!l.me.oid) await identify(l);
     l.calls = make(l);

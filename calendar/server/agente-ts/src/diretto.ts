@@ -2,6 +2,7 @@
 // Usa i token di aggiornamento in tokens.json (OAuth2 con client_id di Outlook Mobile per Microsoft, master token aas_et/ o refresh_token per Google)
 // e rinnova da sé gli access token quando scadono, salvando su disco il nuovo refresh_token.
 
+import { allowed, renewShared, hasSharedPermissions, SharedRefreshExpired, type SharedAccount } from "./shared-account.ts";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,6 +42,8 @@ const TTL_PKCE_S = 900;
 export class ErroreAccessoScaduto extends Error {}
 
 export interface VoceToken {
+  shared?: SharedAccount;
+  resourceTokens?: Record<string, { token: string; expiresAt: number }>;
   provider: "microsoft" | "google";
   client_id?: string;
   client_secret?: string;
@@ -187,7 +190,7 @@ export class GestoreToken {
       const adessoS = this.adessoS();
       const account: TokenPostaInfo[] = [];
       for (const [upn, v] of Object.entries(this.dati.accounts)) {
-        if (v.provider !== "microsoft" || !v.access_token || (v.expires_at ?? 0) <= adessoS) continue;
+        if (v.provider !== "microsoft" || (v.shared && !v.shared.capabilities.includes("mail")) || !v.access_token || (v.expires_at ?? 0) <= adessoS) continue;
         account.push(infoPosta(upn, v, v.access_token, v.expires_at ?? 0, Boolean(v.errore), v.errore ?? ""));
       }
       scriviJsonAtomico(this.tokenPostaPath, { generato: adessoS, account });
@@ -221,8 +224,18 @@ export class GestoreToken {
     const chiave = email.toLowerCase();
     this.caricaSeCambiato();
     delete this.dati.accounts[chiave];
-    this.inCorso.delete(chiave);
     this.dati.rimossi = [...new Set([...(this.dati.rimossi ?? []), chiave])];
+    this.salva();
+  }
+
+  /** Attiva o spegne la condivisione di una casella Microsoft; la cache per risorsa non sopravvive a nessun cambio. */
+  impostaShared(email: string, shared: SharedAccount | undefined): void {
+    this.caricaSeCambiato();
+    const voce = this.dati.accounts[email.toLowerCase()];
+    if (!voce || voce.provider !== "microsoft") throw new Error("Casella non trovata");
+    if (shared) voce.shared = shared;
+    else delete voce.shared;
+    delete voce.resourceTokens;
     this.salva();
   }
 
@@ -244,6 +257,7 @@ export class GestoreToken {
     if (!voce) {
       throw new ErroreAccessoScaduto(`La casella ${email} non ha un accesso configurato (Accedi di nuovo nella finestra Account)`);
     }
+    if (voce.shared) return this.ottieniRisorsa(email, "outlook", forza);
     const adessoS = this.adessoS();
     if (!forza && voce.access_token && (voce.expires_at ?? 0) > adessoS + MARGINE_SCADENZA_S) {
       return voce.access_token;
@@ -255,6 +269,56 @@ export class GestoreToken {
     });
     this.inCorso.set(chiave, promessa);
     return promessa;
+  }
+
+  async ottieniRisorsa(email: string, resource: string, force = false): Promise<string> {
+    const key = email.toLowerCase();
+    while (this.inCorso.has(key)) await this.inCorso.get(key)!.catch(() => undefined);
+    this.caricaSeCambiato();
+    const entry = this.dati.accounts[key];
+    if (!entry?.shared || entry.provider !== "microsoft" || !entry.refresh_token) throw new ErroreAccessoScaduto("shared account unavailable");
+    allowed(entry.shared, resource);
+    const hit = entry.resourceTokens?.[resource];
+    if (!force && hit && hit.expiresAt > this.adessoS() + 120) {
+      const claims = claimsJwt(hit.token);
+      if (hasSharedPermissions(entry.shared, resource, hit.token) && claims.tid === entry.shared.tenantId && claims.oid === entry.shared.objectId && allowed(entry.shared, resource).includes(String(claims.aud).replace(/\/$/, "")) && Number(claims.exp) > this.adessoS() + 120) return hit.token;
+    }
+    const refresh = entry.refresh_token;
+    const identity = JSON.stringify(entry.shared);
+    const job = (async () => {
+      let recoveredSession: SessioneMicrosoft | undefined;
+      let fresh;
+      try {
+        fresh = await renewShared(entry.shared!, resource, refresh, entry.client_id || OUTLOOK_CLIENT_ID, this.fetchFn, this.adessoS());
+      } catch (error) {
+        if (!(error instanceof SharedRefreshExpired) || entry.shared!.origin !== "outlook-spa") throw error;
+        const session = leggiSessione(entry.sessione);
+        if (!session || session.loginHint.trim().toLowerCase() !== key) throw new ErroreAccessoScaduto("shared session unavailable");
+        const json = await autorizzaDaSessione(session, entry.shared!.tenantId, { fetchFn: this.fetchFn, adessoS: this.adessoS() });
+        const token = String(json.access_token || "");
+        if (upnDi(claimsJwt(token)) !== key) throw new ErroreAccessoScaduto("shared session account mismatch");
+        this.preserveShared(key, token, entry.shared!.origin);
+        const reason = motivoTokenWebNonValido(token, key, this.adessoS());
+        if (reason || typeof json.refresh_token !== "string" || !json.refresh_token) throw new ErroreAccessoScaduto(reason || "shared session refresh missing");
+        recoveredSession = session;
+        fresh = resource === "outlook" ? { token, expiresAt: Number(claimsJwt(token).exp), refresh: json.refresh_token } : await renewShared(entry.shared!, resource, json.refresh_token, OUTLOOK_WEB_CLIENT_ID, this.fetchFn, this.adessoS());
+      }
+      JSON.parse(fs.readFileSync(this.percorso, "utf-8"));
+      this.mtimeMs = -1;
+      this.caricaSeCambiato();
+      const current = this.dati.accounts[key];
+      if (!current || current.refresh_token !== refresh || JSON.stringify(current.shared) !== identity || current.client_id !== entry.client_id) throw new ErroreAccessoScaduto("shared credential changed during renewal");
+      const next = { ...current, ...(recoveredSession ? { sessione: recoveredSession, client_id: OUTLOOK_WEB_CLIENT_ID } : {}), refresh_token: fresh.refresh, resourceTokens: { ...(recoveredSession ? {} : current.resourceTokens), [resource]: { token: fresh.token, expiresAt: fresh.expiresAt } } };
+      if (resource === "outlook") { next.access_token = fresh.token; next.expires_at = fresh.expiresAt; }
+      const data = { ...this.dati, accounts: { ...this.dati.accounts, [key]: next } };
+      scriviJsonAtomico(this.percorso, data);
+      this.dati = data;
+      this.mtimeMs = fs.statSync(this.percorso).mtimeMs;
+      this.scriviTokenPosta();
+      return fresh.token;
+    })();
+    this.inCorso.set(key, job);
+    try { return await job; } finally { if (this.inCorso.get(key) === job) this.inCorso.delete(key); }
   }
 
   private async rinnovaMicrosoft(chiave: string, voce: VoceToken): Promise<string> {
@@ -467,12 +531,12 @@ export class GestoreToken {
     this.caricaSeCambiato();
     const out: TokenPostaInfo[] = [];
     for (const [upn, voce] of Object.entries(this.dati.accounts)) {
-      if (voce.provider !== "microsoft") continue;
+      if (voce.provider !== "microsoft" || (voce.shared && !voce.shared.capabilities.includes('mail'))) continue;
       try {
         const tok = await this.ottieniAccessToken(upn);
         out.push(infoPosta(upn, voce, tok, voce.expires_at ?? this.adessoS() + 3600, false, ""));
       } catch (e) {
-        if (voce.access_token && (voce.expires_at ?? 0) > this.adessoS()) {
+        if (!voce.shared && voce.access_token && (voce.expires_at ?? 0) > this.adessoS()) {
           out.push(infoPosta(upn, voce, voce.access_token, voce.expires_at ?? 0, true, e instanceof Error ? e.message : String(e)));
         }
       }
@@ -582,6 +646,14 @@ export class GestoreToken {
     return this.salvaRispostaTokenMicrosoft(json);
   }
 
+  private preserveShared(upn: string, token: string, origin: SharedAccount["origin"]): SharedAccount | undefined {
+    const shared = this.dati.accounts[upn]?.shared;
+    if (!shared) return undefined;
+    const claims = claimsJwt(token);
+    if (!hasSharedPermissions(shared, "outlook", token) || !Number.isFinite(Number(claims.exp)) || claims.tid !== shared.tenantId || claims.oid !== shared.objectId || !allowed(shared, "outlook").includes(String(claims.aud).replace(/\/$/, "")) || Number(claims.exp) <= this.adessoS() + 120) throw new Error("shared identity mismatch");
+    return { ...shared, origin };
+  }
+
   private salvaRispostaTokenMicrosoft(json: Record<string, unknown>): { stato: "completato"; account: string; tenant_id: string } {
     const claims = {
       ...claimsJwt(typeof json.id_token === "string" ? json.id_token : ""),
@@ -597,7 +669,9 @@ export class GestoreToken {
     const expIn = Number(json.expires_in ?? 3600);
 
     this.caricaSeCambiato();
+    const shared = this.preserveShared(upn, String(json.access_token), "mobile");
     this.dati.accounts[upn] = {
+      ...(shared ? { shared } : {}),
       provider: "microsoft",
       client_id: OUTLOOK_CLIENT_ID,
       tenant_id: tid,
@@ -633,7 +707,8 @@ export class GestoreToken {
     const upn = upnDi(claims);
     const tid = String(claims.tid || tenant);
     this.caricaSeCambiato();
-    const voce: VoceToken = { provider: "microsoft", client_id: OUTLOOK_WEB_CLIENT_ID, tenant_id: tid, sessione };
+    const shared = this.preserveShared(upn, String(json.access_token), "outlook-spa");
+    const voce: VoceToken = { ...(shared ? { shared } : {}), provider: "microsoft", client_id: OUTLOOK_WEB_CLIENT_ID, tenant_id: tid, sessione };
     this.dati.accounts[upn] = voce;
     this.applicaTokenMicrosoft(voce, json);
     return { account: upn, tenant_id: tid };
@@ -829,6 +904,8 @@ export class CalendarioDiretto {
 
   /** Lo stesso trasporto del gateway di posta e calendari (outlook-rest.ts): un 401 rinnova il token una volta e riprova. */
   private richiestaJson(url: string, headers: Record<string, string>): Promise<Record<string, unknown>> {
+    const shared = this.tokens.voceAccount(this.account)?.shared;
+    if (shared && !shared.capabilities.includes('calendar')) return Promise.reject(new Error('calendar capability disabled'));
     return jsonRest(this.tokens, this.account, url, { headers, fetchFn: this.fetchFn });
   }
 

@@ -25,6 +25,7 @@ export class ErroreComunicazione extends Error {
 }
 
 export interface CasellaComunicazione {
+  capabilities?: ('mail' | 'calendar' | 'chat')[];
   upn: string;
   status: "ok" | "errore";
   message: string;
@@ -164,7 +165,7 @@ export class GatewayComunicazione {
     const out: CasellaComunicazione[] = [];
     for (const [upn, voce] of Object.entries(this.tokens.elencoAccount())) {
       if (voce.provider !== "microsoft" || this.tokens.rimosso(upn)) continue;
-      out.push({ upn, status: voce.errore ? "errore" : "ok", message: voce.errore ?? "" });
+      out.push({ ...(voce.shared ? { capabilities: voce.shared.capabilities } : {}), upn, status: voce.errore ? "errore" : "ok", message: voce.errore ?? "" });
     }
     return out;
   }
@@ -180,6 +181,8 @@ export class GatewayComunicazione {
     const prefer = preferFuso(r.prefer);
     const account = r.account.toLowerCase();
     if (!this.caselle().some((c) => c.upn === account)) throw new ErroreComunicazione(404, "casella non trovata");
+    const shared = this.tokens.voceAccount(account)?.shared;
+    if (shared && !shared.capabilities.includes(/^me\/(?:calendars?|calendarview|events)(?:[\/(?]|$)/i.test(percorso) ? 'calendar' : 'mail')) throw new ErroreComunicazione(403, 'capability disabled');
     return { account, percorso, prefer };
   }
 

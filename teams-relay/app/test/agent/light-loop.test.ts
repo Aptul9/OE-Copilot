@@ -532,14 +532,23 @@ describe("per-account native calls", () => {
     store.close();
   });
 
-  it("never starts the calling worker on a shared Microsoft account, whose sign-in Teams calling refuses", async () => {
+  it("on a shared Microsoft account starts the calling worker only with a token of a Teams app, which Teams calling takes", async () => {
     const { l, store } = setup(() => []);
-    Object.assign(l, { token: new LightToken("missing", Date.now, { url: "http://agent", key: "k", account: "me@example.com", region: "emea" }) });
+    const tokenOf = (appid: string) => "x." + Buffer.from(JSON.stringify({ appid, exp: 9_999_999_999 })).toString("base64url") + ".x";
+    let app = "27922004-5251-4030-b22d-91ecd9a37ea4";
+    const broker = new LightToken("missing", Date.now, { url: "http://agent", key: "k", account: "me@example.com", region: "emea" });
+    vi.spyOn(broker, "accessToken").mockImplementation(async () => tokenOf(app));
+    Object.assign(l, { token: broker });
     const make = vi.fn(() => ({ start: vi.fn(async () => undefined), stop: vi.fn(), schedule: vi.fn() }) as unknown as NonNullable<Light["calls"]>);
+    // a token of Outlook Mobile (cached before the agent asked as Teams): no worker, no request every 10 s
     await syncNativeCalls(l, true, make);
     await syncNativeCalls(l, true, make);
     expect(make).not.toHaveBeenCalled();
-    expect(l.calls).toBeUndefined();
+    // the token of Teams desktop/mobile the agent gives now: the worker starts
+    app = "1fec8e78-bce4-4aaf-ab1b-5451cc387264";
+    await syncNativeCalls(l, true, make);
+    expect(make).toHaveBeenCalledTimes(1);
+    expect(l.calls).toBeDefined();
     store.close();
   });
 });

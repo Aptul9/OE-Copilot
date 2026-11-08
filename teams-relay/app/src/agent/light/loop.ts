@@ -241,15 +241,27 @@ async function readViewing(l: Light) {
   if (chat && inApp(l, chat)) await saveChat(l, chat).catch((e: unknown) => void refused(l, e));
 }
 
-// light agents already told that calls are off on a shared account
+// The apps whose tokens Teams calling takes: Teams web (the sign-in of a slot's own browser) and Teams desktop/mobile (the
+// calendar agent asks the Teams resources of an Outlook Mobile sign-in as this one)
+const TEAMS_APPS = new Set(["5e3ce6c0-2b1f-4285-8d4b-75ee78787346", "1fec8e78-bce4-4aaf-ab1b-5451cc387264"]);
+// light agents already told that calls are off on their shared account
 const noCallsTold = new WeakSet<Light>();
 
-// The calling worker of this account follows its Calls switch: started when on, stopped (calls end) when off. Never on a
-// shared Microsoft account: the calling discovery of Teams (authsvc authz) refuses its sign-in (410 ApiRestricted,
-// 2026-11-08), and the worker would ask again every 10 s for as long as the slot runs.
+function appOf(token: string): string {
+  try {
+    return String((JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as { appid?: unknown }).appid ?? "");
+  } catch {
+    return "";
+  }
+}
+
+// The calling worker of this account follows its Calls switch: started when on, stopped (calls end) when off. On a shared
+// Microsoft account only when its token is of a Teams app: Teams calling (authsvc authz) refuses any other with 410
+// ApiRestricted (an Outlook web sign-in, or a token the agent cached before it asked as Teams), and the worker would ask
+// again every 10 s for as long as the slot runs.
 export async function syncNativeCalls(l: Light, want: boolean, make: (l: Light) => NonNullable<Light["calls"]> = (x) => new NativeCalls(x)) {
-  if (want && l.token.brokerBacked) {
-    if (!noCallsTold.has(l)) log.info("calling", "not available on a shared Microsoft account: chats and notifications only");
+  if (want && !l.calls && l.token.brokerBacked && !TEAMS_APPS.has(appOf(await l.token.accessToken(SPACES)))) {
+    if (!noCallsTold.has(l)) log.info("calling", "not available yet on this shared Microsoft account: its token is not of a Teams app; chats and notifications only");
     noCallsTold.add(l);
     want = false;
   }

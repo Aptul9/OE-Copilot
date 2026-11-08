@@ -47,4 +47,5 @@ The mailbox panel of the Account window ("Usata per") has Posta, Calendario and 
 
 - One `GestoreToken` owns shared refresh; several processes on one `tokens.json` are unsupported.
 - A Teams web sign-in cannot be imported as a shared account (FOCI finding above): new accounts are signed in in the calendar.
+- No calls on a shared account: the calling discovery of Teams (`authsvc/v1.0/authz`) refuses the Outlook Mobile sign-in with 410 `ApiRestricted` (live, 2026-11-08, slot on notarify.io). The light agent of a bound slot never starts its calling worker; chats, activity and notifications work (38 chats, 40 activity items read live). An account whose calls matter keeps a Teams account with its own browser sign-in.
 - Capabilities gate features, not token scopes: an Outlook token is valid for mail and calendar alike, so only trusted services get it (full key); the narrow key never does.

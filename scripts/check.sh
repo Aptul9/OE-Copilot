@@ -78,9 +78,12 @@ check_teams_relay() {
   docker compose --env-file compose.local.env -f docker-compose.yml -f compose.local.yml config -q
   step "teams-relay: Caddyfile"
   docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
+  docker compose down -v --remove-orphans 2>/dev/null
   step "teams-relay: images"
-  # the browsers image runs node agent.cjs --check and node supervisor.cjs --check while it builds
-  docker compose build -q webapp browsers
+  # the two build targets of docker-compose.yml; the browsers image runs node agent.cjs --check and node
+  # supervisor.cjs --check while it builds. Plain docker build: Compose on Windows fails renaming its build metadata file
+  docker build -q --target web -t teamsrelay app
+  docker build -q --target browsers -t teamsrelay-browsers app
 }
 
 check_mcp() {

@@ -632,7 +632,8 @@ describe("the logo of the company of the account", () => {
     });
     j.start();
     const onServer = path.join(dataDir, String(j.slot), "media", "1212121212121212.png");
-    await until("the logo on the server", () => fs.existsSync(onServer));
+    // the picture goes before the sync that carries the identity: the file can be there while the identity is not yet
+    await until("the logo and the identity on the server", () => fs.existsSync(onServer) && withSlot(j.slot, (r) => r.identity().logo) !== "");
     expect(fs.readFileSync(onServer)).toEqual(PNG);
     expect(withSlot(j.slot, (r) => r.identity().logo)).toBe("1212121212121212.png");
     await j.stop();

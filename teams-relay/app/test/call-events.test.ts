@@ -29,6 +29,8 @@ const slot = (n: number, o: Partial<Slot> = {}): Slot => ({
   refreshed: 0,
   refresh_result: "",
   calls: 1,
+  shared_account: "",
+  shared_region: "",
   ...o,
 });
 

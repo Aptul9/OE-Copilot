@@ -1,0 +1,15 @@
+# Shared Microsoft accounts of the OE calendar agent on the same host (app/src/supervisor/broker.ts): the browsers container
+# joins the network the calendar keeps for it, where only the agent is (SHARED_BROKER_URL, http://oe-copilot-agent:8180):
+# not the calendar's gateway, nor the rest of its compose network. Only the browsers container: the web app stays off it
+# and reaches the agent's list through the supervisor's socket.
+# deploy/remote-deploy.sh adds this file when .env sets SHARED_BROKER_URL and the network exists.
+services:
+  browsers:
+    networks:
+      desktop: {}
+      oe: {}
+
+networks:
+  oe:
+    name: ${OE_NETWORK:-oe-copilot-teams}
+    external: true

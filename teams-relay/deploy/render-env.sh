@@ -12,7 +12,16 @@ KEYS=(
   DESKTOP_USER DESKTOP_PASS DESKTOP_URL
   VAPID_SUBJECT TZ HTTPS_PORT HTTPS_BIND
   NTFY_ENABLED NTFY_URL NTFY_TOPIC NATIVE_CALLS
+  SHARED_BROKER_URL SHARED_BROKER_KEY SHARED_ACCOUNTS_OWNER SHARED_ACCOUNTS_URL OE_NETWORK
 )
+
+# The supervisor refuses to start on one of SHARED_BROKER_URL and SHARED_BROKER_KEY without the other, which would stop
+# every Teams account. The key is the repository secret TEAMS_BROKER_KEY, which the calendar agent uses too: without the
+# URL this stack does not use it. A URL without the key stops the deploy here.
+if [ -n "${TR_SHARED_BROKER_URL:-}" ] && [ -z "${TR_SHARED_BROKER_KEY:-}" ]; then
+  echo "SHARED_BROKER_URL is set but the secret TEAMS_BROKER_KEY is not: set both or neither" >&2; exit 1
+fi
+[ -n "${TR_SHARED_BROKER_URL:-}" ] || TR_SHARED_BROKER_KEY=""
 
 for key in "${KEYS[@]}"; do
   ref="TR_$key"

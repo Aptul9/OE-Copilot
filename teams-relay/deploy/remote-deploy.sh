@@ -6,10 +6,28 @@
 set -euo pipefail
 TR_DIR="${TR_DIR:-/opt/teamsrelay}"
 BACKUP=/var/tmp/teamsrelay-prev.tgz
+# the .env of the previous deploy, kept by the Action before it writes the new one: a rollback runs the old code with it
+ENV_BACKUP=/var/tmp/teamsrelay-env.prev
 cd "$TR_DIR"
 # Releases before the browsers container had one container per account in the "accounts" profile: with the
 # profile active, a rollback to one of them creates those containers again. No service of this release uses it.
 export COMPOSE_PROFILES=accounts
+
+# The shared Microsoft accounts of the OE calendar agent (docker-compose.oe.yml): the browsers container joins the network
+# the calendar keeps for it when .env sets the broker and that network exists on this host. Evaluated again after a
+# rollback, whose code may not have the file. No .env yet: nothing to join, "up" says what is missing.
+oe_network() {
+  local net=""
+  [ -f .env ] && net="$(sed -n 's/^OE_NETWORK=//p' .env | tail -n 1)"
+  net="${net:-oe-copilot-teams}"
+  if [ -f docker-compose.oe.yml ] && grep -q '^SHARED_BROKER_URL=.' .env 2>/dev/null && docker network inspect "$net" >/dev/null 2>&1; then
+    export COMPOSE_FILE=docker-compose.yml:docker-compose.oe.yml
+    echo "shared Microsoft accounts: browsers joins $net"
+  else
+    unset COMPOSE_FILE
+  fi
+}
+oe_network
 
 code_files() {
   # everything but the runtime data
@@ -116,6 +134,13 @@ case "${1:-}" in
       code_files | xargs -r rm -rf
       tar -xzf "$BACKUP"
       rm -f .caddyfile-sum
+      # the old code may not read the new .env (a release before the shared accounts refuses SHARED_BROKER_* without its
+      # slot list): it runs with the .env it ran with
+      if [ -f "$ENV_BACKUP" ]; then
+        (umask 077 && cp "$ENV_BACKUP" .env)
+        echo "rollback: previous .env restored" >&2
+      fi
+      oe_network
       start
       healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
     fi

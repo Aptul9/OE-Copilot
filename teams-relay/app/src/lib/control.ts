@@ -1,6 +1,14 @@
 import http from "node:http";
+import { appDb, sharedBinding } from "./appdb";
 import { config } from "./config";
 import { HttpError } from "./http";
+
+type Binding = { account: string; region: string } | null;
+
+// The shared account of a slot, read when its light agent starts: the supervisor gets it with every light start
+function bindingOfSlot(n: number): Binding {
+  return sharedBinding(appDb(), n);
+}
 
 // The supervisor of the browsers container runs the browser and the agent of every account. The web app
 // reaches it only through its unix socket, in the volume shared by the two containers: no Docker access.
@@ -19,10 +27,15 @@ type Action = "start" | "light" | "stop" | "wipe" | "show";
 
 const VERB: Record<Action, string> = { start: "Start", light: "Start without browser", stop: "Stop", wipe: "Wipe", show: "Show" };
 
-export function controlClient(socket = config.controlSocket): ControlClient {
+export function controlClient(socket = config.controlSocket, binding: (n: number) => Binding = bindingOfSlot): ControlClient {
   function post(action: Action, n: number): Promise<string> {
+    let query = "";
+    if (action === "light") {
+      const b = binding(n);
+      if (b) query = `?${new URLSearchParams({ shared: b.account, region: b.region })}`;
+    }
     return new Promise((resolve, reject) => {
-      const req = http.request({ socketPath: socket, method: "POST", path: `/accounts/${n}/${action}`, timeout: 40_000 }, (res) => {
+      const req = http.request({ socketPath: socket, method: "POST", path: `/accounts/${n}/${action}${query}`, timeout: 40_000 }, (res) => {
         let body = "";
         res.on("data", (d) => (body += d));
         res.on("end", () => {
@@ -46,35 +59,45 @@ export function controlClient(socket = config.controlSocket): ControlClient {
   };
 }
 
-// The slots the operator mapped to a shared Microsoft account in the browsers container (SHARED_BROKER_SLOTS of the
-// supervisor), with their account. A supervisor of an earlier release has no such route: none.
-export function brokerSlots(socket = config.controlSocket): Promise<Record<string, { account: string }>> {
-  return new Promise((resolve, reject) => {
-    const req = http.request({ socketPath: socket, method: "GET", path: "/broker", timeout: 10_000 }, (res) => {
-      let body = "";
-      res.on("data", (d) => (body += d));
-      res.on("end", () => {
-        if (res.statusCode === 404) return resolve({});
-        if (res.statusCode !== 200) return reject(new HttpError(502, `Shared accounts of the browsers container not read: status ${res.statusCode}`));
-        try {
-          const slots = (JSON.parse(body) as { slots?: unknown }).slots;
-          const out: Record<string, { account: string }> = {};
-          if (slots && typeof slots === "object") {
-            for (const [slot, v] of Object.entries(slots)) {
-              const account = (v as { account?: unknown })?.account;
-              if (/^[1-9][0-9]*$/.test(slot) && typeof account === "string" && account) out[slot] = { account };
+// The list of shared Microsoft accounts of the OE calendar agent, through the supervisor, which holds the address and
+// key of the agent (src/supervisor/broker.ts). null: no broker in the browsers container, or a supervisor of an earlier
+// release; the feature is off.
+export interface DirectoryClient {
+  list(): Promise<unknown | null>;
+  set(body: { account: string; capabilities: string[] } | { account: string; enabled: false }): Promise<unknown | null>;
+  report(body: { accounts: unknown[]; others: unknown[] }): Promise<unknown | null>;
+}
+
+export function directoryClient(socket = config.controlSocket): DirectoryClient {
+  function call(method: "GET" | "POST", path: string, body?: unknown): Promise<unknown | null> {
+    return new Promise((resolve, reject) => {
+      const data = body === undefined ? undefined : JSON.stringify(body);
+      const req = http.request(
+        { socketPath: socket, method, path, timeout: 50_000, headers: data ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } : {} },
+        (res) => {
+          let text = "";
+          res.on("data", (d) => (text += d));
+          res.on("end", () => {
+            if (res.statusCode === 404) return resolve(null);
+            if (res.statusCode !== 200) return reject(new HttpError(502, `Shared accounts not reached: ${detail(text) ?? `status ${res.statusCode}`}`));
+            try {
+              resolve(JSON.parse(text) as unknown);
+            } catch {
+              reject(new HttpError(502, "Shared accounts not reached: not JSON"));
             }
-          }
-          resolve(out);
-        } catch {
-          reject(new HttpError(502, "Shared accounts of the browsers container not read: not JSON"));
-        }
-      });
+          });
+        },
+      );
+      req.on("timeout", () => req.destroy(new Error("no answer within 50 s")));
+      req.on("error", (e) => reject(new HttpError(503, `Browsers container not reachable: ${e.message}`)));
+      req.end(data);
     });
-    req.on("timeout", () => req.destroy(new Error("no answer within 10 s")));
-    req.on("error", (e) => reject(new HttpError(503, `Browsers container not reachable: ${e.message}`)));
-    req.end();
-  });
+  }
+  return {
+    list: () => call("GET", "/directory"),
+    set: (body) => call("POST", "/directory", body),
+    report: (body) => call("POST", "/directory/teams", body),
+  };
 }
 
 function detail(body: string): string | null {

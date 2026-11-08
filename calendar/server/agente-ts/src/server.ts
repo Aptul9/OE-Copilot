@@ -17,6 +17,7 @@ import { ErroreComunicazione, GatewayComunicazione } from "./comunicazione.ts";
 import { CalendarioDiretto, GestoreToken } from "./diretto.ts";
 import { GoogleCommunication } from "./google-communication.ts";
 import { richiestaCondivisione } from "./shared-provisioning.ts";
+import { ErroreRapportoTeams, leggiRapportoTeams, rapportoValido, type RapportoTeams } from "./shared-teams.ts";
 import { GoogleChatError } from "./gchat.ts";
 import { GmailError } from "./gmail.ts";
 import { ErroreSessioneGoogle } from "./google-web.ts";
@@ -31,6 +32,11 @@ export type Registro = (livello: "INFO" | "WARNING" | "ERROR", testo: string) =>
 
 export interface OpzioniAgente {
   chiave: string;
+  /**
+   * La chiave di TeamsRelay (TEAMS_BROKER_KEY): apre solo l'elenco degli account condivisi (leggerlo, cambiarne le capacità, mandare lo
+   * stato degli account Teams) e i token delle risorse della chat. Mai i token di Outlook, la posta, i calendari o gli accessi.
+   */
+  chiaveTeams?: string;
   fonti: FonteCalendario[];
   /** Il segno di vita scritto a ogni giro dal servizio che aggiorna il telefono (battito.json). */
   battito: string;
@@ -53,6 +59,8 @@ export interface OpzioniAgente {
 }
 
 const MAX_CORPO = 8_000_000;
+/** Le risorse dei token che la chiave di TeamsRelay può chiedere: quelle della chat, mai outlook. */
+const RISORSE_CHAT = new Set(["csa", "ic3", "spaces", "presence"]);
 const CACHE_S = 15;
 const ERRORI_HTTP: Record<number, string> = { 200: "OK", 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 413: "Request Entity Too Large" };
 
@@ -141,7 +149,9 @@ export function pyFloat(v: unknown): number {
 }
 
 export class Agente {
-  private readonly o: Required<Omit<OpzioniAgente, "registro" | "tokens" | "google">> & { registro: Registro; tokens: GestoreToken | undefined };
+  private readonly o: Required<Omit<OpzioniAgente, "registro" | "tokens" | "google" | "chiaveTeams">> & { registro: Registro; tokens: GestoreToken | undefined; chiaveTeams: string };
+  /** L'ultimo stato degli account Teams mandato da TeamsRelay (shared-teams.ts). */
+  private rapportoTeams: RapportoTeams | undefined;
   private readonly google: GoogleCommunication | undefined;
   private readonly cache = new Map<string, { t: number; risposta: Record<string, unknown> }>();
   /** Le caselle rimosse dalla pagina: ferme qui, così un nuovo accesso le riprende come fonti.json le descrive (id, calendari). */
@@ -155,6 +165,7 @@ export class Agente {
       tokenPosta: o.tokenPosta ?? "/stato/token-outlook.json",
       accessi: o.accessi ?? "/stato/accessi.json",
       tokens: o.tokens,
+      chiaveTeams: o.chiaveTeams ?? "",
       maxCorpo: o.maxCorpo ?? MAX_CORPO,
       cacheS: o.cacheS ?? CACHE_S,
       adesso,
@@ -204,6 +215,7 @@ export class Agente {
     const eventi: Evento[] = [];
     const errori: string[] = [];
     for (const fonte of this.o.fonti) {
+      if (this.calendarioSpento(fonte)) continue;
       let trovati: Evento[];
       let err: string[];
       try {
@@ -233,14 +245,35 @@ export class Agente {
   }
 
   /** hmac.compare_digest sulle intestazioni: gli stessi byte, in tempo costante. Con caratteri non ASCII Python solleva TypeError e il gestore muore. */
-  private autorizzato(req: http.IncomingMessage): boolean {
-    if (!this.o.chiave) return false;
-    const atteso = "Bearer " + this.o.chiave;
+  private confronta(req: http.IncomingMessage, chiave: string): boolean {
+    if (!chiave) return false;
+    const atteso = "Bearer " + chiave;
     const dato = req.headers.authorization ?? "";
     if (/[^\x00-\x7f]/.test(dato) || /[^\x00-\x7f]/.test(atteso)) throw new ErroreSenzaRisposta("TypeError: comparing strings with non-ASCII characters is not supported");
     const a = Buffer.from(dato, "latin1");
     const b = Buffer.from(atteso, "latin1");
     return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
+
+  private autorizzato(req: http.IncomingMessage): boolean {
+    return this.confronta(req, this.o.chiave);
+  }
+
+  /**
+   * La chiave di TeamsRelay, solo dove serve a lui: l'elenco degli account condivisi e i token delle risorse della chat. Una chiave uguale a
+   * quella piena vale come piena.
+   */
+  private autorizzatoTeams(req: http.IncomingMessage, metodo: "GET" | "POST", percorso: string, query: string): boolean {
+    if (this.o.chiaveTeams === this.o.chiave || !this.confronta(req, this.o.chiaveTeams)) return false;
+    if (metodo === "POST") return percorso === "/api/auth/shared" || percorso === "/api/auth/shared/teams";
+    if (percorso === "/api/auth/shared") return true;
+    return percorso === "/api/token-resource" && RISORSE_CHAT.has(new URLSearchParams(query).get("resource") ?? "");
+  }
+
+  /** Una casella condivisa senza la capacità calendario: il calendario non la legge e non la mostra, senza errori. */
+  private calendarioSpento(f: FonteCalendario): boolean {
+    const shared = this.o.tokens?.voceAccount(f.account)?.shared;
+    return Boolean(shared && !shared.capabilities.includes("calendar"));
   }
 
   private invia(req: http.IncomingMessage, res: http.ServerResponse, codice: number, dati: unknown, scartaCorpo = false, intestazioni: Record<string, string> = {}): void {
@@ -305,9 +338,9 @@ export class Agente {
   }
 
   private async post(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (!this.autorizzato(req)) return this.invia(req, res, 401, { errore: "non autorizzato" });
-    const percorso = analizzaTarget(req.url ?? "").percorso;
-    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/auth/shared", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
+    const { percorso, query } = analizzaTarget(req.url ?? "");
+    if (!this.autorizzato(req) && !this.autorizzatoTeams(req, "POST", percorso, query)) return this.invia(req, res, 401, { errore: "non autorizzato" });
+    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/auth/shared", "/api/auth/shared/teams", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
       return this.invia(req, res, 404, { errore: "sconosciuto" });
     }
     const dichiarata = req.headers["content-length"] || "0";
@@ -334,6 +367,17 @@ export class Agente {
         this.o.registro("INFO", `condivisione casella aggiornata: ${String(esito.account ?? "")}`);
       }
       return this.invia(req, res, 200, esito);
+    }
+    if (percorso === "/api/auth/shared/teams") {
+      let dati: unknown;
+      try { dati = leggiJson(corpo); } catch { return this.invia(req, res, 400, { errore: "invalid JSON" }); }
+      try {
+        this.rapportoTeams = leggiRapportoTeams(dati, Math.floor(this.o.adesso() / 1000));
+      } catch (e) {
+        if (e instanceof ErroreRapportoTeams) return this.invia(req, res, 400, { errore: e.message });
+        throw e;
+      }
+      return this.invia(req, res, 200, { ok: true });
     }
     if (percorso === "/api/auth/inizio") {
       if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "gestore token non configurato" });
@@ -519,13 +563,17 @@ export class Agente {
   }
 
   private async get(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (!this.autorizzato(req)) return this.invia(req, res, 401, { errore: "non autorizzato" });
     const { percorso, query } = analizzaTarget(req.url ?? "");
+    const piena = this.autorizzato(req);
+    if (!piena && !this.autorizzatoTeams(req, "GET", percorso, query)) return this.invia(req, res, 401, { errore: "non autorizzato" });
     const q = parseQs(query);
     if (percorso === "/api/salute") return this.invia(req, res, 200, { fonti: this.fontiStato(), servizio: this.servizio() });
     if (percorso === "/api/communication/accounts") return this.invia(req, res, 200, { accounts: this.comunicazione?.caselle() ?? [] });
     if (percorso === "/api/communication/google/accounts") return this.invia(req, res, 200, { accounts: this.google?.accounts() ?? [] });
-    if (percorso === "/api/auth/shared") return this.invia(req, res, 200, await richiestaCondivisione(this.o.tokens, "GET", null));
+    if (percorso === "/api/auth/shared") {
+      const teams = rapportoValido(this.rapportoTeams, Math.floor(this.o.adesso() / 1000));
+      return this.invia(req, res, 200, await richiestaCondivisione(this.o.tokens, "GET", null, teams));
+    }
     if (percorso === "/api/auth/stato") {
       const caselle = this.o.fonti.map((f) => {
         const voce = this.o.tokens?.voceAccount(f.account);
@@ -548,9 +596,12 @@ export class Agente {
     if (percorso === '/api/token-resource') {
  res.setHeader('Cache-Control', 'no-store');
  const query = new URL(req.url!, 'http://localhost').searchParams;
+ const risorsa = query.get('resource') || '';
+ // la chiave di TeamsRelay solo per la chat, controllato di nuovo sul valore che si usa davvero
+ if (!piena && !RISORSE_CHAT.has(risorsa)) return this.invia(req, res, 401, { errore: 'non autorizzato' });
  try {
  if (!this.o.tokens) throw new Error('broker unavailable');
- const token = await this.o.tokens.ottieniRisorsa(query.get('account') || '', query.get('resource') || '');
+ const token = await this.o.tokens.ottieniRisorsa(query.get('account') || '', risorsa);
  return this.invia(req, res, 200, { token });
  } catch { return this.invia(req, res, 403, { errore: 'shared token unavailable' }); }
  }
@@ -597,6 +648,7 @@ export class Agente {
     if (percorso === "/api/calendari") {
       const caselle: Record<string, unknown>[] = [];
       for (const f of this.o.fonti) {
+        if (this.calendarioSpento(f)) continue;
         try {
           caselle.push(await f.riepilogo());
         } catch (e) {

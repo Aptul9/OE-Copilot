@@ -3,9 +3,10 @@ import { loadServiceAccount } from "@/agent/push/fcm";
 import { appDb, migrateAppSchema } from "@/lib/appdb";
 import { authOptions } from "@/lib/auth";
 import { config } from "@/lib/config";
-import { controlClient } from "@/lib/control";
+import { controlClient, directoryClient } from "@/lib/control";
 import { mcpConfigError } from "@/lib/mcp/access";
 import { runChecks, settleChecks, slotPort } from "@/lib/checks";
+import { keepSharedAccountsInSync } from "@/lib/shared-accounts";
 import { keepSlotsUp } from "@/lib/slots";
 import { syncEnvAdmin } from "./env-admin";
 
@@ -44,5 +45,7 @@ export async function boot() {
   // a check cut by the restart left its browser running: stopped first, through the same queue
   void settleChecks(ctl, appDb());
   keepSlotsUp(ctl, appDb());
+  // the shared Microsoft accounts of the OE calendar: a slot runs for each with Teams on (src/lib/shared-accounts.ts)
+  keepSharedAccountsInSync({ ctl, db: appDb(), dir: directoryClient(), dataDir: config.dataDir, perUser: config.accountsPerUser });
   runChecks({ ctl, db: appDb(), slot: slotPort() });
 }

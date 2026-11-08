@@ -18,6 +18,9 @@ services:
       - no-new-privileges:true
     environment:
       - API_KEY=${API_KEY}
+      # la chiave stretta di TeamsRelay (agente-ts/src/server.ts, chiaveTeams): l'elenco degli account condivisi e i token della chat,
+      # niente altro; vuota, TeamsRelay non entra
+      - TEAMS_BROKER_KEY=${TEAMS_BROKER_KEY:-}
     volumes:
       - ./agent/fonti.json:/app/fonti.json:ro
       - ./stato:/stato
@@ -25,6 +28,11 @@ services:
     # compose, niente è esposto su internet.
     ports:
       - "127.0.0.1:3180:8180"
+    # default: gateway e MCP. teams: solo l'agente e il container dei browser di TeamsRelay (teams-relay/docker-compose.oe.yml),
+    # che così non vede il gateway né il resto di questa rete
+    networks:
+      - default
+      - teams
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8180/api/salute').then((r) => process.exit(r.status === 401 ? 0 : 1), () => process.exit(1))"]
       interval: 30s
@@ -97,3 +105,8 @@ services:
 volumes:
   caddy_dati:
   caddy_config:
+
+networks:
+  # l'agente per TeamsRelay sullo stesso host (account Microsoft condivisi): il nome fisso è quello che cerca il suo deploy
+  teams:
+    name: oe-copilot-teams

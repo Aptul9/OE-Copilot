@@ -41,6 +41,10 @@ export type Slot = {
   refresh_result: string;
   // a light account rings and answers calls in the app (native calling worker); 0 reads messages only
   calls: number;
+  // the shared Microsoft account of the OE calendar agent this slot runs on, "" for a slot with its own sign-in
+  // (src/lib/shared-accounts.ts), and the chat service region the light agent uses for it
+  shared_account: string;
+  shared_region: string;
 };
 
 export { CHECK_INTERVALS } from "@/shared/checks";
@@ -48,7 +52,7 @@ export type CheckResult = "ok" | "login" | "failed";
 
 // relay_token, the digest of the token of the relay, never leaves the database: rows say only whether there is one
 const SLOT_COLUMNS =
-  "slot, owner_id, added, stopped, started, check_every, check_due, checked, check_result, checking, (relay_token <> '') AS relay, browser_off, light, refreshing, refreshed, refresh_result, calls";
+  "slot, owner_id, added, stopped, started, check_every, check_due, checked, check_result, checking, (relay_token <> '') AS relay, browser_off, light, refreshing, refreshed, refresh_result, calls, shared_account, shared_region";
 
 let shared: Database.Database | null = null;
 
@@ -89,6 +93,8 @@ export function migrateAppSchema(db: Database.Database) {
     ["refreshed", "INTEGER NOT NULL DEFAULT 0"],
     ["refresh_result", "TEXT NOT NULL DEFAULT ''"],
     ["calls", "INTEGER NOT NULL DEFAULT 1"],
+    ["shared_account", "TEXT NOT NULL DEFAULT ''"],
+    ["shared_region", "TEXT NOT NULL DEFAULT ''"],
   ]) {
     if (!columns.includes(column)) db.exec(`ALTER TABLE teams_accounts ADD COLUMN ${column} ${decl}`);
   }
@@ -238,6 +244,17 @@ export function releaseSlot(db: Database.Database, slot: number) {
   db.prepare("DELETE FROM browser_actions WHERE slot=?").run(slot);
 }
 
+
+// A slot bound to a shared Microsoft account runs as a light account on it, never checked every N hours
+export function bindShared(db: Database.Database, slot: number, account: string, region: string) {
+  db.prepare("UPDATE teams_accounts SET shared_account=?, shared_region=?, light=1, check_every=0, check_due=0 WHERE slot=?").run(account.toLowerCase(), region, slot);
+}
+
+// The shared account of slot n and its region, null for a slot with its own sign-in
+export function sharedBinding(db: Database.Database, slot: number): { account: string; region: string } | null {
+  const r = db.prepare("SELECT shared_account, shared_region FROM teams_accounts WHERE slot=?").get(slot) as { shared_account: string; shared_region: string } | undefined;
+  return r?.shared_account ? { account: r.shared_account, region: r.shared_region || "emea" } : null;
+}
 
 export function setBrowserOff(db: Database.Database, slot: number, off: boolean) {
   db.prepare("UPDATE teams_accounts SET browser_off=? WHERE slot=?").run(off ? 1 : 0, slot);

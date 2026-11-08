@@ -35,7 +35,15 @@ beforeEach(async () => {
       });
     }
     if (req.method === "GET" && req.url === "/api/auth/shared") {
-      return json({ ok: true, accounts: [{ account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" } }, { account: BANDPEY, shared: null }] });
+      return json({
+        ok: true,
+        accounts: [
+          { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" }, status: "ok", message: "", teams: { slot: 3, state: "ok", detail: "green" } },
+          { account: BANDPEY, shared: null, status: "ok", message: "", teams: null },
+        ],
+        teamsOnly: [{ email: "anna@contoso.example", slot: 4, state: "ok", detail: "green" }],
+        teamsAt: 1_790_000_000,
+      });
     }
     if (req.method === "POST" && req.url === "/api/auth/shared") {
       let corpo = "";
@@ -93,14 +101,21 @@ describe("finestra Account", () => {
     expect(ricevuti).toEqual([{ account: SERCO }, { account: "altro@serco.example" }]);
   });
 
-  it("get_condivisione_microsoft: capacità e origine di ogni casella Microsoft", async () => {
+  it("get_condivisione_microsoft: l'elenco unico, con capacità, origine, account Teams di ogni casella e gli account solo Teams", async () => {
     expect(await chiama("get_condivisione_microsoft", [])).toEqual({
       ok: true,
       accounts: [
-        { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" } },
-        { account: BANDPEY, shared: null },
+        { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" }, status: "ok", message: "", teams: { slot: 3, state: "ok", detail: "green" } },
+        { account: BANDPEY, shared: null, status: "ok", message: "", teams: null },
       ],
+      teamsOnly: [{ email: "anna@contoso.example", slot: 4, state: "ok", detail: "green" }],
+      teamsAt: 1_790_000_000,
     });
+  });
+
+  it("set_condivisione_microsoft: tutto spento è un elenco vuoto, non lo spegnimento", async () => {
+    expect(await chiama("set_condivisione_microsoft", [SERCO, []])).toEqual({ ok: true, account: SERCO, shared: { capabilities: [], origin: "mobile" } });
+    expect(ricevuti).toEqual([{ account: SERCO, capabilities: [] }]);
   });
 
   it("set_condivisione_microsoft: manda solo indirizzo e capacità, null spegne, un elenco sbagliato non parte", async () => {

@@ -92,7 +92,7 @@ async function identify(l: Light) {
   if (broker) {
     const upn = (auth.upn ?? "").toLowerCase();
     if (upn !== broker) throw new SignedOut(`the shared broker gave a token of ${upn || "an unknown account"}, not of ${broker}`);
-    if (saved.email && saved.email.toLowerCase() !== broker) throw new SignedOut(`slot signed in as ${saved.email}, not the shared account ${broker}: remove it and map a new slot`);
+    if (saved.email && saved.email.toLowerCase() !== broker) throw new SignedOut(`slot signed in as ${saved.email}, not the shared account ${broker}: remove this Teams account, the shared account gets a new one`);
   }
   l.me = { oid: auth.oid, name: saved.name || auth.name || "" };
   if (!l.store.getState(STATE.me)) l.store.setState(STATE.me, JSON.stringify({ ...saved, name: auth.name ?? "", email: auth.upn ?? "" }));

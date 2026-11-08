@@ -8,6 +8,7 @@ import {
   EyeOffIcon,
   LinkIcon,
   LogOutIcon,
+  MessagesSquareIcon,
   PaletteIcon,
   PlusIcon,
   RotateCwIcon,
@@ -41,9 +42,9 @@ import {
   mappaLoghi,
   rinominaGruppo,
 } from "@/lib/oe/logic";
-import type { Calendario, CasellaAccesso, TemaConfig, VoceLogo } from "@/lib/oe/types";
+import type { Calendario, CasellaAccesso, SoloTeams, TemaConfig, VoceLogo } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
-import { CondivisioneMicrosoft } from "./CondivisioneMicrosoft";
+import { CondivisioneMicrosoft, PannelloSoloTeams } from "./CondivisioneMicrosoft";
 import { AvatarLogo, CerchioLogo } from "./ControlloLogo";
 import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
 import { ImpostazioniPromemoria } from "./ImpostazioniPromemoria";
@@ -121,6 +122,8 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
   const [appenaEntrato, setAppenaEntrato] = useState("");
   // le voci con la freccia aperta: "casella:<indirizzo>" e "link"
   const [aperteNav, setAperteNav] = useState<ReadonlySet<string>>(new Set());
+  // gli account Teams con il solo accesso del loro browser, come TeamsRelay li ha mandati all'agente
+  const [soloTeams, setSoloTeams] = useState<SoloTeams[]>([]);
 
   const caricaCaselle = useCallback(async () => {
     try {
@@ -148,6 +151,11 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
     if (!conAccount) return;
     void caricaCaselle();
     void caricaLoghi();
+    // senza l'elenco degli account la voce Solo in Teams non c'è: il resto funziona uguale
+    void api("get_condivisione_microsoft").then(
+      (r) => setSoloTeams(r.ok ? r.teamsOnly : []),
+      () => setSoloTeams([]),
+    );
   }, [aperto, conAccount, caricaCaselle, caricaLoghi]);
 
   const dopoAccesso = async (account: string) => {
@@ -259,6 +267,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
         }}
       />
     );
+  else if (attiva === "solo-teams") pannello = <PannelloSoloTeams voci={soloTeams} />;
   else if (attiva === "gruppi") pannello = <PannelloGruppi />;
   else if (attiva === "eliminati") pannello = <PannelloEliminati />;
   else if (attiva === "aspetto") pannello = <PannelloAspetto />;
@@ -325,6 +334,11 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
                     </Ramo>
                   );
                 })}
+                {soloTeams.length > 0 && (
+                  <VoceNav chiave="solo-teams" attiva={attiva} onScegli={scegli} conteggio={soloTeams.length} id="nav-solo-teams" className="pl-8">
+                    <MessagesSquareIcon className="mx-1 size-4 text-muted-foreground" /> Solo in Teams
+                  </VoceNav>
+                )}
                 <VoceNav chiave="aggiungi" attiva={attiva} onScegli={scegli} id="nav-aggiungi-account" className="pl-8 text-primary">
                   <PlusIcon className="mx-1 size-4" /> Aggiungi account
                 </VoceNav>
@@ -798,7 +812,7 @@ function PannelloCasella({
           <MostraQui c={cal} />
         </Riga>
         {casella.provider === "microsoft" && casella.configurato && (
-          <Riga etichetta="Account condiviso">
+          <Riga etichetta="Usata per">
             <CondivisioneMicrosoft account={casella.account} />
           </Riga>
         )}

@@ -416,14 +416,22 @@ export const apiTs = {
     }
   },
 
-  /** L'account Microsoft condiviso di ogni casella (agente, /api/auth/shared): capacità e origine, o null se la casella non è condivisa. */
+  /**
+   * L'elenco unico degli account (agente, /api/auth/shared): ogni casella Microsoft con capacità e origine (null se non ha mai scelto),
+   * accesso e account Teams che la usa; poi gli account Teams con il solo accesso del loro browser e quando TeamsRelay li ha mandati.
+   */
   async get_condivisione_microsoft() {
     try {
       const r = await chiedi("/api/auth/shared");
-      if (!r.ok) return { ok: false, accounts: [], error: String(r.errore || "Stato della condivisione non letto") };
-      return { ok: true, accounts: Array.isArray(r.accounts) ? r.accounts : [] };
+      if (!r.ok) return { ok: false, accounts: [], teamsOnly: [], teamsAt: 0, error: String(r.errore || "Stato degli account non letto") };
+      return {
+        ok: true,
+        accounts: Array.isArray(r.accounts) ? r.accounts : [],
+        teamsOnly: Array.isArray(r.teamsOnly) ? r.teamsOnly : [],
+        teamsAt: typeof r.teamsAt === "number" ? r.teamsAt : 0,
+      };
     } catch (e) {
-      return { ok: false, accounts: [], error: messaggio(e) };
+      return { ok: false, accounts: [], teamsOnly: [], teamsAt: 0, error: messaggio(e) };
     }
   },
 

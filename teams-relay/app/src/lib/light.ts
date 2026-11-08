@@ -22,7 +22,8 @@ export function refreshDue(s: Slot, sign: LightSignIn | null, now: number): bool
   if (!s.light || s.stopped || s.relay || s.refreshing) return false;
   // an ask still runs, only to be forgotten (runRefresh): its light agent is kept up again
   if (s.refresh_result === REFRESH_ASKED) return true;
-  if (sign?.broker) return false;
+  // a slot on a shared account never gets a browser run, from its binding on, before its light agent says so too
+  if (s.shared_account || sign?.broker) return false;
   if (sign?.session && !sign.browser && !sign.refused) return false;
   if (s.refresh_result === "login" && (sign?.at ?? 0) <= s.refreshed) return false;
   if (s.refreshed && now - s.refreshed < (s.refresh_result === "ok" ? AFTER_OK : AFTER_FAILED)) return false;
@@ -45,7 +46,7 @@ export async function runRefresh(n: number, d: CheckDeps): Promise<CheckResult |
     const s = slotRow(d.db, n);
     if (!s || s.stopped || !s.light || d.slot.busy?.(n)) return false;
     // a shared Microsoft account has no browser: an ask is forgotten, its light agent stays
-    if (d.slot.lightSignIn(n)?.broker) {
+    if (s.shared_account || d.slot.lightSignIn(n)?.broker) {
       endRefresh(d.db, n, { now: begun, result: null });
       return false;
     }

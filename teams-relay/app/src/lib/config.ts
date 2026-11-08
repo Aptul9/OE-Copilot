@@ -54,6 +54,15 @@ export const config = {
   get mcpToken() {
     return process.env.MCP_TOKEN || "";
   },
+  // The user the shared Microsoft accounts of the OE calendar belong to (src/lib/shared-accounts.ts): SHARED_ACCOUNTS_OWNER,
+  // otherwise the administrator of ADMIN_EMAIL. No other user sees them.
+  get sharedAccountsOwner() {
+    return process.env.SHARED_ACCOUNTS_OWNER || process.env.ADMIN_EMAIL || "";
+  },
+  // Where a new Microsoft account is signed in once for mail, calendar and Teams: the calendar (its Account window)
+  get sharedAccountsUrl() {
+    return process.env.SHARED_ACCOUNTS_URL || "";
+  },
 };
 
 export function desktopUrlOf(slot: number): string {

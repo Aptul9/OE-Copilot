@@ -3,12 +3,11 @@ import type Database from "better-sqlite3";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Light } from "@/agent/light/context";
 import { readList, renewSignIn } from "@/agent/light/loop";
-import { askRefresh, claimSlot, migrateAppSchema, openAppDb, setCheckEvery, setLight, setRelayToken, setSlotStopped, slotRow } from "@/lib/appdb";
+import { askRefresh, bindShared, claimSlot, migrateAppSchema, openAppDb, setCheckEvery, setLight, sharedBinding, slotRow } from "@/lib/appdb";
 import type { SlotPort } from "@/lib/checks";
 import type { ControlClient } from "@/lib/control";
 import { refreshDue, runRefresh } from "@/lib/light";
-import { ON_ANOTHER_COMPUTER } from "@/lib/relay";
-import { setSharedMode, sharedAccountOf } from "@/lib/slots";
+import { sharedAccountOf } from "@/lib/slots";
 import { LightSignIn, parseState, STATE } from "@/shared/slot-db/state";
 import { tempDir } from "./helpers";
 
@@ -23,7 +22,6 @@ const ctl: ControlClient = {
   wipe: async () => undefined,
   show: async () => true,
 };
-const mapped = async () => ({ "1": { account: "mario@example.com" } });
 
 beforeEach(() => {
   db = openAppDb(path.join(tempDir(), "app.db"));
@@ -31,31 +29,20 @@ beforeEach(() => {
   calls = [];
 });
 
-describe("opt-in of a slot to its shared Microsoft account", () => {
-  it("runs the light agent of a mapped slot, back in service, any browser run forgotten", async () => {
+describe("binding of a slot to a shared Microsoft account", () => {
+  it("makes it a light account never checked, its account in lower case, emea when no region is known", () => {
     const n = claimSlot(db, "u1", { perUser: null });
     setCheckEvery(db, n, 3600, T0);
-    setSlotStopped(db, n, true);
-    askRefresh(db, n);
-    expect(await setSharedMode(n, ctl, db, mapped)).toBe("mario@example.com");
-    expect(calls).toEqual([`light ${n}`]);
-    expect(slotRow(db, n)).toMatchObject({ light: 1, stopped: 0, check_every: 0, refreshing: 0, refresh_result: "" });
+    bindShared(db, n, "Mario@Example.com", "");
+    expect(slotRow(db, n)).toMatchObject({ light: 1, check_every: 0, check_due: 0, shared_account: "mario@example.com" });
+    expect(sharedBinding(db, n)).toEqual({ account: "mario@example.com", region: "emea" });
+    expect(sharedAccountOf(n, db)).toBe("mario@example.com");
   });
 
-  it("refuses a slot the server did not map, and changes nothing", async () => {
-    claimSlot(db, "u1", { perUser: null });
+  it("a slot with its own sign-in has none", () => {
     const n = claimSlot(db, "u1", { perUser: null });
-    await expect(setSharedMode(n, ctl, db, mapped)).rejects.toMatchObject({ status: 409 });
-    expect(calls).toEqual([]);
-    expect(slotRow(db, n)).toMatchObject({ light: 0, stopped: 0 });
-    expect(await sharedAccountOf(n, mapped)).toBe("");
-  });
-
-  it("refuses an account on another computer", async () => {
-    const n = claimSlot(db, "u1", { perUser: null });
-    setRelayToken(db, n, "digest");
-    await expect(setSharedMode(n, ctl, db, mapped)).rejects.toThrow(ON_ANOTHER_COMPUTER);
-    expect(calls).toEqual([]);
+    expect(sharedBinding(db, n)).toBeNull();
+    expect(sharedAccountOf(n, db)).toBe("");
   });
 });
 
@@ -67,6 +54,12 @@ describe("a slot on a shared account never gets a browser run", () => {
     setLight(db, n, true);
     expect(refreshDue(slotRow(db, n)!, sign, T0)).toBe(false);
     expect(refreshDue(slotRow(db, n)!, { ...sign, broker: undefined }, T0)).toBe(true);
+  });
+
+  it("not right after its binding, before its light agent wrote anything", () => {
+    const n = claimSlot(db, "u1", { perUser: null });
+    bindShared(db, n, "mario@example.com", "emea");
+    expect(refreshDue(slotRow(db, n)!, null, T0)).toBe(false);
   });
 
   it("an ask is forgotten without starting anything, so the keep-alive runs its light agent again", async () => {

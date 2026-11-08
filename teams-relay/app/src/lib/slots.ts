@@ -7,7 +7,6 @@ import {
   askRefresh,
   CHECK_INTERVALS,
   claimSlot,
-  endRefresh,
   listSlots,
   REFRESH_ASKED,
   releaseSlot,
@@ -15,9 +14,10 @@ import {
   setLight,
   setRelayToken,
   setSlotStopped,
+  sharedBinding,
   slotRow,
 } from "./appdb";
-import { brokerSlots, type ControlClient } from "./control";
+import type { ControlClient } from "./control";
 import { HttpError } from "./http";
 import { createRelaySlot, forgetRelay, newRelayToken, ON_ANOTHER_COMPUTER, relayDigest } from "./relay";
 import { withSlotOr } from "./slotdb";
@@ -133,6 +133,8 @@ export function setAccountRunning(n: number, running: boolean, ctl: ControlClien
     const s = slotRow(db, n);
     if (!s) throw new HttpError(404, "Account not found");
     if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    // bound to a shared account while this request waited: started only by Teams on (src/lib/shared-accounts.ts)
+    if (running && s.shared_account) throw new HttpError(409, SHARED_NO_BROWSER);
     if (!running) await slotDown(ctl, n);
     // a light account: its light agent; its browser runs when its sign-in needs it (src/lib/light.ts)
     else if (s.light) await ctl.light(n);
@@ -154,6 +156,7 @@ export function setCheckMode(n: number, every: number, ctl: ControlClient, db: D
     const s = slotRow(db, n);
     if (!s) throw new HttpError(404, "Account not found");
     if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    if (s.shared_account) throw new HttpError(409, SHARED_NO_BROWSER);
     // the browser first: a start or stop that fails leaves the mode as it was
     if (!every) await startOrUndo(ctl, n);
     else if (!s.stopped && !s.checking) await slotDown(ctl, n);
@@ -174,6 +177,7 @@ export function setLightMode(n: number, ctl: ControlClient, db: Database.Databas
     const s = slotRow(db, n);
     if (!s) throw new HttpError(404, "Account not found");
     if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
+    if (s.shared_account) throw new HttpError(409, SHARED_NO_BROWSER);
     if (s.light && !s.stopped) return;
     setLight(db, n, true);
     if (s.stopped) setSlotStopped(db, n, false);
@@ -190,34 +194,9 @@ export function setLightMode(n: number, ctl: ControlClient, db: Database.Databas
 export const SHARED_NO_BROWSER =
   "This Teams account uses a shared Microsoft account: it runs without a browser. Its sign-in is renewed from the Account window of the calendar";
 
-// The shared Microsoft account the operator mapped to slot n in the browsers container, "" for none
-export async function sharedAccountOf(n: number, lookup: () => Promise<Record<string, { account: string }>> = brokerSlots): Promise<string> {
-  return (await lookup())[String(n)]?.account ?? "";
-}
-
-// The owner's opt-in: a slot the operator mapped to a shared Microsoft account (SHARED_BROKER_SLOTS of the supervisor)
-// runs its light agent on that account's resource tokens, never a browser. Without a mapping nothing changes: the
-// slot keeps its own sign-in. A stopped account is back in service; an ask for a browser run is forgotten.
-export function setSharedMode(
-  n: number,
-  ctl: ControlClient,
-  db: Database.Database,
-  lookup: () => Promise<Record<string, { account: string }>> = brokerSlots,
-): Promise<string> {
-  return exclusive(async () => {
-    const s = slotRow(db, n);
-    if (!s) throw new HttpError(404, "Account not found");
-    if (s.relay) throw new HttpError(409, ON_ANOTHER_COMPUTER);
-    const account = await sharedAccountOf(n, lookup);
-    if (!account) throw new HttpError(409, "This Teams account is not mapped to a shared Microsoft account: the server administrator maps it first");
-    // the supervisor stops browser and agent before the light agent starts
-    await ctl.light(n);
-    setLight(db, n, true);
-    endRefresh(db, n, { now: nowSeconds(), result: null });
-    if (s.stopped) setSlotStopped(db, n, false);
-    if (!s.light) forgetLastCheck(n);
-    return account;
-  });
+// The shared Microsoft account slot n runs on (src/lib/shared-accounts.ts), "" for a slot with its own sign-in
+export function sharedAccountOf(n: number, db: Database.Database): string {
+  return sharedBinding(db, n)?.account ?? "";
 }
 
 // Owned slots must be running, unless their owner stopped them or they run only while checked: after a deploy

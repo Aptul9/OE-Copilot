@@ -2,11 +2,15 @@
 // fonte unica di posta, calendario e chat Teams per le capacità scelte. Tenant e object id vengono dai claims di un token appena rinnovato,
 // mai da quello che manda la pagina; l'origine dal client con cui la casella ha fatto l'accesso. Dopo il salvataggio ogni capacità scelta
 // si prova con un token vero: se una non passa, la casella torna com'era.
-//   GET  /api/auth/shared   {"accounts": [{"account", "shared": {"capabilities", "origin"} | null}]}
-//   POST /api/auth/shared   {"account", "capabilities": ["mail", "calendar", "chat"]} attiva o cambia; {"account", "enabled": false} spegne
+//   GET  /api/auth/shared   {"accounts": [{"account", "shared": {"capabilities", "origin"} | null, "status", "message", "teams"}],
+//                            "teamsOnly": [{"email", "slot", "state", "detail"}], "teamsAt"}
+//   POST /api/auth/shared   {"account", "capabilities": ["mail", "calendar", "chat"]} attiva o cambia (anche nessuna: la casella resta
+//                            collegata e nessuno la usa); {"account", "enabled": false} spegne
+// Una casella non condivisa vale posta e calendario, senza chat: è l'accesso di sempre.
 import { claimsJwt, upnDi } from "./outlook-rest.ts";
 import { OUTLOOK_WEB_CLIENT_ID } from "./sessione-web.ts";
 import type { SharedAccount } from "./shared-account.ts";
+import type { RapportoTeams } from "./shared-teams.ts";
 
 export type Capability = SharedAccount["capabilities"][number];
 export const CAPABILITIES: readonly Capability[] = ["mail", "calendar", "chat"];
@@ -20,7 +24,7 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Quello che serve del GestoreToken. `impostaShared` scrive (o toglie, con undefined) i metadati condivisi e svuota i token per risorsa. */
 export interface ArchivioCondiviso {
   voceAccount(email: string): { provider: "microsoft" | "google"; client_id?: string; refresh_token?: string; errore?: string; shared?: SharedAccount } | undefined;
-  elencoAccount(): Record<string, { provider: "microsoft" | "google"; shared?: SharedAccount }>;
+  elencoAccount(): Record<string, { provider: "microsoft" | "google"; errore?: string; shared?: SharedAccount }>;
   ottieniAccessToken(email: string, forza?: boolean): Promise<string>;
   ottieniRisorsa(email: string, resource: string, force?: boolean): Promise<string>;
   impostaShared(email: string, shared: SharedAccount | undefined): void;
@@ -28,10 +32,10 @@ export interface ArchivioCondiviso {
 
 export class ErroreCondivisione extends Error {}
 
-/** Le capacità chieste: un elenco non vuoto di quelle note, senza doppioni, nell'ordine fisso. */
+/** Le capacità chieste: un elenco di quelle note (anche vuoto), senza doppioni, nell'ordine fisso. */
 export function capacitaValide(valore: unknown): Capability[] {
-  if (!Array.isArray(valore) || !valore.length || !valore.every((c) => typeof c === "string" && (CAPABILITIES as readonly string[]).includes(c))) {
-    throw new ErroreCondivisione("capabilities: un elenco non vuoto tra mail, calendar, chat");
+  if (!Array.isArray(valore) || !valore.every((c) => typeof c === "string" && (CAPABILITIES as readonly string[]).includes(c))) {
+    throw new ErroreCondivisione("capabilities: un elenco tra mail, calendar, chat");
   }
   return CAPABILITIES.filter((c) => valore.includes(c));
 }
@@ -55,10 +59,21 @@ export function identitaDaToken(token: string, casella: string): { tenantId: str
 
 const pubblico = (s: SharedAccount | undefined) => (s ? { capabilities: [...s.capabilities], origin: s.origin } : null);
 
-export function statoCondivisione(archivio: ArchivioCondiviso) {
-  return Object.entries(archivio.elencoAccount())
+/**
+ * L'elenco unico degli account: ogni casella Microsoft con le sue capacità, lo stato dell'accesso e, se TeamsRelay ha mandato un rapporto
+ * recente, l'account Teams che la usa; poi gli account Teams con il solo accesso del browser, che il calendario non ha.
+ */
+export function statoCondivisione(archivio: ArchivioCondiviso, teams?: RapportoTeams) {
+  const accounts = Object.entries(archivio.elencoAccount())
     .filter(([, v]) => v.provider === "microsoft")
-    .map(([account, v]) => ({ account, shared: pubblico(v.shared) }));
+    .map(([account, v]) => ({
+      account,
+      shared: pubblico(v.shared),
+      status: v.errore ? "errore" : "ok",
+      message: v.errore ?? "",
+      teams: teams?.accounts.get(account) ?? null,
+    }));
+  return { accounts, teamsOnly: teams?.others ?? [], teamsAt: teams?.at ?? 0 };
 }
 
 /**
@@ -72,9 +87,15 @@ export async function attivaCondivisione(archivio: ArchivioCondiviso, account: s
   const voce = archivio.voceAccount(casella);
   if (!voce) throw new ErroreCondivisione("Casella non trovata");
   if (voce.provider !== "microsoft") throw new ErroreCondivisione("Solo una casella Microsoft può essere condivisa");
+  const prima = voce.shared;
+  // togliere soltanto non chiede niente a Microsoft: si spegne Teams (o posta, o calendario) anche con l'accesso scaduto
+  if (prima && caps.every((c) => prima.capabilities.includes(c))) {
+    const meno: SharedAccount = { ...prima, capabilities: caps };
+    archivio.impostaShared(casella, meno);
+    return { account: casella, shared: pubblico(meno) };
+  }
   if (!voce.refresh_token) throw new ErroreCondivisione("La casella non ha un accesso rinnovabile: accedi di nuovo prima di condividerla");
   if (voce.errore) throw new ErroreCondivisione(`Accesso da rifare prima di condividere: ${voce.errore}`);
-  const prima = voce.shared;
   const identita = prima ? { tenantId: prima.tenantId, objectId: prima.objectId } : identitaDaToken(await archivio.ottieniAccessToken(casella, true), casella);
   const nuovo: SharedAccount = { ...identita, capabilities: caps, origin: prima?.origin ?? origineDi(voce.client_id) };
   archivio.impostaShared(casella, nuovo);
@@ -101,9 +122,9 @@ export function disattivaCondivisione(archivio: ArchivioCondiviso, account: stri
 }
 
 /** La richiesta HTTP di /api/auth/shared, già autorizzata: il corpo della risposta, sempre 200 con ok come le altre di /api/auth. */
-export async function richiestaCondivisione(archivio: ArchivioCondiviso | undefined, metodo: "GET" | "POST", corpo: unknown): Promise<Record<string, unknown>> {
+export async function richiestaCondivisione(archivio: ArchivioCondiviso | undefined, metodo: "GET" | "POST", corpo: unknown, teams?: RapportoTeams): Promise<Record<string, unknown>> {
   if (!archivio) return { ok: false, errore: "gestore token non configurato" };
-  if (metodo === "GET") return { ok: true, accounts: statoCondivisione(archivio) };
+  if (metodo === "GET") return { ok: true, ...statoCondivisione(archivio, teams) };
   try {
     const r = corpo !== null && typeof corpo === "object" && !Array.isArray(corpo) ? (corpo as Record<string, unknown>) : {};
     if (typeof r.account !== "string" || !r.account.trim()) throw new ErroreCondivisione("account mancante");

@@ -43,3 +43,20 @@ it('without a broker the region stays the one the browser captured', () => {
  const token = new LightToken('missing');
  expect(token.region()).toBe('emea');
 });
+it('reuses a broker token until shortly before it ends, and a cached one while the agent restarts', async () => {
+ const exp = Math.floor(Date.now() / 1000) + 3600;
+ const jwt = 'x.' + Buffer.from(JSON.stringify({ exp })).toString('base64url') + '.x';
+ const call = vi.fn(async () => Response.json({ token: jwt }));
+ vi.stubGlobal('fetch', call);
+ let now = Date.now();
+ const token = new LightToken('missing', () => now, { url: 'http://agent', key: 'key', account: 'user', region: 'emea' });
+ expect(await token.accessToken(CHATSVCAGG)).toBe(jwt);
+ expect(await token.accessToken(CHATSVCAGG)).toBe(jwt);
+ expect(call).toHaveBeenCalledTimes(1);
+ // inside the last five minutes: asked again; the agent not reachable then, the cached one still serves
+ now = exp * 1000 - 60_000;
+ vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+ expect(await token.accessToken(CHATSVCAGG)).toBe(jwt);
+ now = exp * 1000 + 1;
+ await expect(token.accessToken(CHATSVCAGG)).rejects.toThrow('not reachable');
+});

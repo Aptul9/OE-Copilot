@@ -1,6 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
-import { parseEnv, PushEnv, pushSettings, type PushSettings } from "@/shared/env";
+import { ConfigError, parseEnv, PushEnv, pushSettings, type PushSettings } from "@/shared/env";
 import type { AgentSettings } from "./context";
 
 // Environment of the agent of one slot, set by docker-compose.yml. Checked once at start: a wrong value stops
@@ -20,6 +20,12 @@ const Env = z.object({
   DESKTOP_APP_ID: z.string().optional(),
   XDG_RUNTIME_DIR: z.string().optional(),
   WAYLAND_DISPLAY: z.string().optional(),
+  // a slot on a shared Microsoft account (src/supervisor/broker.ts): all four or none, set by the supervisor per slot
+  SHARED_BROKER_URL: z.url({ protocol: /^https?$/ }).optional(),
+  SHARED_BROKER_KEY: z.string().min(1).optional(),
+  SHARED_BROKER_ACCOUNT: z.string().min(1).optional(),
+  // chat service region of the broker account (amer, emea, apac, ...): no browser cookie to read it from
+  SHARED_BROKER_REGION: z.string().regex(/^[a-z][a-z0-9]{1,15}$/).optional(),
   // seconds between two reads of the chat list of a light account (src/agent/light)
   LIGHT_POLL: z.coerce.number().int().min(15).max(3600).default(60),
 });
@@ -33,6 +39,7 @@ export type Config = AgentSettings & PushSettings & {
   // database
   mediaDir: string;
   filesDir: string;
+  sharedBroker?: { url: string; key: string; account: string; region: string };
   lightTokenFile: string;
   lightPoll: number;
   // the status history of the status pages, next to app.db (src/shared/status-db.ts)
@@ -41,8 +48,11 @@ export type Config = AgentSettings & PushSettings & {
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
   const e = parseEnv(Env, env);
+  const broker = [e.SHARED_BROKER_URL, e.SHARED_BROKER_KEY, e.SHARED_BROKER_ACCOUNT, e.SHARED_BROKER_REGION];
+  if (broker.some(Boolean) && !broker.every(Boolean)) throw new ConfigError('shared broker requires URL, key, account and region');
   const dataDir = path.dirname(e.DB_PATH);
   return {
+    sharedBroker: e.SHARED_BROKER_URL ? { url: e.SHARED_BROKER_URL, key: e.SHARED_BROKER_KEY!, account: e.SHARED_BROKER_ACCOUNT!, region: e.SHARED_BROKER_REGION! } : undefined,
     cdp: e.CDP,
     slot: e.ACCOUNT,
     dbPath: e.DB_PATH,
@@ -64,7 +74,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     // the sound of a call goes through the remote desktop of the browsers container
     answerCalls: true,
     alerts: {
-      signIn: "Open the remote desktop of the account and sign in again",
+      signIn: e.SHARED_BROKER_ACCOUNT
+        ? `Sign in again to ${e.SHARED_BROKER_ACCOUNT} in the Account window of the calendar, then check its Chat Teams capability`
+        : "Open the remote desktop of the account and sign in again",
       browserDown: `The browser of account ${e.ACCOUNT} does not start`,
     },
   };

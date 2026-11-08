@@ -162,6 +162,11 @@ export type CasellaAccesso = {
   inoltrate?: string[];
 };
 
+/** Quello che una casella Microsoft condivisa lascia usare: posta, calendario, chat Teams (agente, shared-provisioning.ts). */
+export type CapacitaCondivisa = "mail" | "calendar" | "chat";
+/** La condivisione di una casella: null se non è condivisa. L'origine dice con quale client Microsoft rinnova l'accesso. */
+export type Condivisione = { capabilities: CapacitaCondivisa[]; origin: "mobile" | "outlook-spa" | "teams-spa" } | null;
+
 /** I metodi dell'API che il gateway serve (apiTs in lib/core/api.ts): argomenti e risposta. */
 export type Metodi = {
   get_config: [[], Config];
@@ -200,6 +205,8 @@ export type Metodi = {
   remove_logo: [[string], Esito];
   get_stato_caselle: [[], Esito & { caselle: CasellaAccesso[] }];
   rimuovi_casella: [[string], Esito & { account?: string }];
+  get_condivisione_microsoft: [[], Esito & { accounts: { account: string; shared: Condivisione }[] }];
+  set_condivisione_microsoft: [[string, CapacitaCondivisa[] | null], Esito & { account?: string; shared?: Condivisione }];
   inizia_accesso_microsoft: [
     [string?, ("microsoft" | "google")?, ("device" | "pkce")?],
     Esito & {

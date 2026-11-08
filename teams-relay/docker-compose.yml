@@ -40,6 +40,10 @@ services:
       S6_SERVICES_GRACETIME: "35000"
       NATIVE_CALLS: ${NATIVE_CALLS:-0}
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      # shared Microsoft accounts of the OE calendar agent, per slot (app/src/supervisor/broker.ts); empty: none
+      SHARED_BROKER_URL: ${SHARED_BROKER_URL:-}
+      SHARED_BROKER_KEY: ${SHARED_BROKER_KEY:-}
+      SHARED_BROKER_SLOTS: ${SHARED_BROKER_SLOTS:-}
     volumes:
       # browser profiles, one directory per account: the signed-in Microsoft sessions
       - ./config:/profiles

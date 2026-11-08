@@ -43,6 +43,7 @@ import {
 } from "@/lib/oe/logic";
 import type { Calendario, CasellaAccesso, TemaConfig, VoceLogo } from "@/lib/oe/types";
 import { cn } from "@/lib/utils";
+import { CondivisioneMicrosoft } from "./CondivisioneMicrosoft";
 import { AvatarLogo, CerchioLogo } from "./ControlloLogo";
 import { ImpostazioniCondivisione } from "./ImpostazioniCondivisione";
 import { ImpostazioniPromemoria } from "./ImpostazioniPromemoria";
@@ -796,6 +797,11 @@ function PannelloCasella({
         <Riga etichetta="Su questo dispositivo">
           <MostraQui c={cal} />
         </Riga>
+        {casella.provider === "microsoft" && casella.configurato && (
+          <Riga etichetta="Account condiviso">
+            <CondivisioneMicrosoft account={casella.account} />
+          </Riga>
+        )}
         <OpzioniNome nome={nome} />
         {inoltrate.length > 0 && (
           <Riga etichetta="Inoltrate qui">

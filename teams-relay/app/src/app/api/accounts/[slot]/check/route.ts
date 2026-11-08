@@ -1,6 +1,7 @@
 import { appDb, askCheck, askRefresh, slotRow } from "@/lib/appdb";
 import { HttpError, route } from "@/lib/http";
 import { requireAccount } from "@/lib/session";
+import { SHARED_NO_BROWSER, sharedAccountOf } from "@/lib/slots";
 
 type Ctx = { params: Promise<{ slot: string }> };
 
@@ -12,6 +13,7 @@ export const POST = route<Ctx>(async (req, { params }) => {
   const s = slotRow(appDb(), n);
   if (s?.stopped) throw new HttpError(409, "This Teams account is stopped: start it from its page or from Settings");
   if (s?.light) {
+    if (await sharedAccountOf(n).catch(() => "")) throw new HttpError(409, SHARED_NO_BROWSER);
     askRefresh(appDb(), n);
     return Response.json({ ok: true });
   }

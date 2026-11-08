@@ -468,6 +468,11 @@ export function App({ user, desktopUrl }: { user: User; desktopUrl: string }) {
       toast.info("This account runs only during its checks", { description: "Check now starts its browser for a few minutes." });
       return;
     }
+    // a slot on a shared Microsoft account never gets a browser: its sign-in lives in the calendar
+    if (a?.shared) {
+      toast.info("This account uses a shared Microsoft account", { description: `It has no browser: sign in again to ${a.shared} from the Account window of the calendar.` });
+      return;
+    }
     // signed in, a light account needs no browser; signed out, the desktop link starts one for the sign-in
     if (a && noBrowser(a) && !needsLogin(a)) {
       toast.info("This account has no browser now", { description: "It reads Teams without one: its browser runs only to sign it in again." });

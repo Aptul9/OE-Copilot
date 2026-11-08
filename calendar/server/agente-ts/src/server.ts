@@ -16,6 +16,7 @@ import path from "node:path";
 import { ErroreComunicazione, GatewayComunicazione } from "./comunicazione.ts";
 import { CalendarioDiretto, GestoreToken } from "./diretto.ts";
 import { GoogleCommunication } from "./google-communication.ts";
+import { richiestaCondivisione } from "./shared-provisioning.ts";
 import { GoogleChatError } from "./gchat.ts";
 import { GmailError } from "./gmail.ts";
 import { ErroreSessioneGoogle } from "./google-web.ts";
@@ -306,7 +307,7 @@ export class Agente {
   private async post(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (!this.autorizzato(req)) return this.invia(req, res, 401, { errore: "non autorizzato" });
     const percorso = analizzaTarget(req.url ?? "").percorso;
-    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
+    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/auth/shared", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
       return this.invia(req, res, 404, { errore: "sconosciuto" });
     }
     const dichiarata = req.headers["content-length"] || "0";
@@ -324,6 +325,16 @@ export class Agente {
       }
     }
     if (percorso === "/api/communication/read") return this.leggiComunicazione(req, res, corpo);
+    if (percorso === "/api/auth/shared") {
+      let dati: unknown;
+      try { dati = leggiJson(corpo); } catch { return this.invia(req, res, 400, { errore: "invalid JSON" }); }
+      const esito = await richiestaCondivisione(this.o.tokens, "POST", dati);
+      if (esito.ok === true) {
+        this.cache.clear();
+        this.o.registro("INFO", `condivisione casella aggiornata: ${String(esito.account ?? "")}`);
+      }
+      return this.invia(req, res, 200, esito);
+    }
     if (percorso === "/api/auth/inizio") {
       if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "gestore token non configurato" });
       try {
@@ -514,6 +525,7 @@ export class Agente {
     if (percorso === "/api/salute") return this.invia(req, res, 200, { fonti: this.fontiStato(), servizio: this.servizio() });
     if (percorso === "/api/communication/accounts") return this.invia(req, res, 200, { accounts: this.comunicazione?.caselle() ?? [] });
     if (percorso === "/api/communication/google/accounts") return this.invia(req, res, 200, { accounts: this.google?.accounts() ?? [] });
+    if (percorso === "/api/auth/shared") return this.invia(req, res, 200, await richiestaCondivisione(this.o.tokens, "GET", null));
     if (percorso === "/api/auth/stato") {
       const caselle = this.o.fonti.map((f) => {
         const voce = this.o.tokens?.voceAccount(f.account);
@@ -532,6 +544,16 @@ export class Agente {
       });
       return this.invia(req, res, 200, { caselle });
     }
+    // Trusted service endpoint. Capabilities do not downscope raw tokens; gateways filter reads.
+    if (percorso === '/api/token-resource') {
+ res.setHeader('Cache-Control', 'no-store');
+ const query = new URL(req.url!, 'http://localhost').searchParams;
+ try {
+ if (!this.o.tokens) throw new Error('broker unavailable');
+ const token = await this.o.tokens.ottieniRisorsa(query.get('account') || '', query.get('resource') || '');
+ return this.invia(req, res, 200, { token });
+ } catch { return this.invia(req, res, 403, { errore: 'shared token unavailable' }); }
+ }
     if (percorso === "/api/token-posta") {
       if (this.o.tokens && Object.keys(this.o.tokens.elencoAccount()).length > 0) {
         const diretti = await this.o.tokens.tokenPostaAttivi();
@@ -561,7 +583,7 @@ export class Agente {
       } catch {
         // Ignora assenza accessi.json
       }
-      const arricchiti = account.map((a) => {
+      const arricchiti = account.filter((a) => !this.o.tokens?.voceAccount(String(a.upn ?? ""))?.shared).map((a) => {
         const upn = String(a.upn ?? "").toLowerCase();
         const st = caselleStato[upn];
         return {

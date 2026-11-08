@@ -416,6 +416,35 @@ export const apiTs = {
     }
   },
 
+  /** L'account Microsoft condiviso di ogni casella (agente, /api/auth/shared): capacità e origine, o null se la casella non è condivisa. */
+  async get_condivisione_microsoft() {
+    try {
+      const r = await chiedi("/api/auth/shared");
+      if (!r.ok) return { ok: false, accounts: [], error: String(r.errore || "Stato della condivisione non letto") };
+      return { ok: true, accounts: Array.isArray(r.accounts) ? r.accounts : [] };
+    } catch (e) {
+      return { ok: false, accounts: [], error: messaggio(e) };
+    }
+  },
+
+  /**
+   * Attiva o cambia l'account condiviso di una casella Microsoft con le capacità scelte (mail, calendar, chat), o lo spegne con null.
+   * Tenant e object id li legge l'agente dal token della casella: la pagina manda solo indirizzo e capacità.
+   */
+  async set_condivisione_microsoft(account: unknown, capacita: unknown) {
+    try {
+      const casella = pyStr(account);
+      if (capacita !== null && !Array.isArray(capacita)) throw new ErroreValore("capacità: un elenco, o null per spegnere");
+      const r = await invia("/api/auth/shared", capacita === null ? { account: casella, enabled: false } : { account: casella, capabilities: capacita });
+      if (!r.ok) return { ok: false, error: String(r.errore || "Condivisione non cambiata") };
+      azzeraMemoria();
+      console.info(`set_condivisione_microsoft: ${String(r.account)} ${capacita === null ? "spenta" : (capacita as unknown[]).join(",")}`);
+      return { ok: true, account: String(r.account ?? ""), shared: r.shared ?? null };
+    } catch (e) {
+      return rifiuto("set_condivisione_microsoft", e);
+    }
+  },
+
   /** Rimuovi account: l'agente smette di leggere la casella e cancella l'accesso salvato. Nome, colore e logo restano per quando torna. */
   async rimuovi_casella(account: unknown) {
     try {

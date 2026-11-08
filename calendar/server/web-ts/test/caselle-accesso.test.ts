@@ -34,6 +34,20 @@ beforeEach(async () => {
         caselle: [BANDPEY, SERCO, NASCOSTA].map((account) => ({ id: `android::${account}`, nome: "x", account, provider: "microsoft", configurato: true, scaduto: account === SERCO, stato: "ok", msg: "" })),
       });
     }
+    if (req.method === "GET" && req.url === "/api/auth/shared") {
+      return json({ ok: true, accounts: [{ account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" } }, { account: BANDPEY, shared: null }] });
+    }
+    if (req.method === "POST" && req.url === "/api/auth/shared") {
+      let corpo = "";
+      req.on("data", (c) => (corpo += c));
+      req.on("end", () => {
+        const r = JSON.parse(corpo) as { account: string; capabilities?: string[]; enabled?: boolean };
+        ricevuti.push(r);
+        if (r.account !== SERCO) return json({ ok: false, errore: "Casella non trovata" });
+        json({ ok: true, account: SERCO, shared: r.enabled === false ? null : { capabilities: r.capabilities, origin: "mobile" } });
+      });
+      return;
+    }
     if (req.method === "POST" && req.url === "/api/auth/rimuovi") {
       let corpo = "";
       req.on("data", (c) => (corpo += c));
@@ -77,5 +91,27 @@ describe("finestra Account", () => {
     expect(await chiama("rimuovi_casella", [SERCO])).toEqual({ ok: true, account: SERCO });
     expect(await chiama("rimuovi_casella", ["altro@serco.example"])).toEqual({ ok: false, error: "Casella non trovata" });
     expect(ricevuti).toEqual([{ account: SERCO }, { account: "altro@serco.example" }]);
+  });
+
+  it("get_condivisione_microsoft: capacità e origine di ogni casella Microsoft", async () => {
+    expect(await chiama("get_condivisione_microsoft", [])).toEqual({
+      ok: true,
+      accounts: [
+        { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" } },
+        { account: BANDPEY, shared: null },
+      ],
+    });
+  });
+
+  it("set_condivisione_microsoft: manda solo indirizzo e capacità, null spegne, un elenco sbagliato non parte", async () => {
+    expect(await chiama("set_condivisione_microsoft", [SERCO, ["calendar", "chat"]])).toEqual({ ok: true, account: SERCO, shared: { capabilities: ["calendar", "chat"], origin: "mobile" } });
+    expect(await chiama("set_condivisione_microsoft", [SERCO, null])).toEqual({ ok: true, account: SERCO, shared: null });
+    expect(await chiama("set_condivisione_microsoft", ["altro@serco.example", ["mail"]])).toEqual({ ok: false, error: "Casella non trovata" });
+    expect((await chiama("set_condivisione_microsoft", [SERCO, "chat"])) as { ok: boolean }).toMatchObject({ ok: false });
+    expect(ricevuti).toEqual([
+      { account: SERCO, capabilities: ["calendar", "chat"] },
+      { account: SERCO, enabled: false },
+      { account: "altro@serco.example", capabilities: ["mail"] },
+    ]);
   });
 });

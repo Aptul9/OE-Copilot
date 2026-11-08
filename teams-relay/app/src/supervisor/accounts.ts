@@ -2,9 +2,13 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { format } from "../agent/log";
+import { brokerEnv, type SharedBroker } from "./broker";
 import { Supervised, type Command } from "./process";
 
 export type AccountsConfig = {
+  // per-slot shared Microsoft broker (src/supervisor/broker.ts): a slot listed here runs only its light agent, on
+  // resource tokens of its own unified account, never a browser or a local credential
+  sharedBroker?: SharedBroker;
   profilesDir: string;
   dataDir: string;
   vapidDir: string;
@@ -122,6 +126,7 @@ export function agentCommand(n: number, cfg: AccountsConfig): Command {
 export function lightCommand(n: number, cfg: AccountsConfig): Command {
   const agent = agentCommand(n, cfg);
   const env = Object.fromEntries(Object.entries(agent.env ?? {}).filter(([k]) => !["CDP", "DESKTOP_PORT", "DESKTOP_UID", "DESKTOP_GID", "DESKTOP_APP_ID", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY"].includes(k)));
+  Object.assign(env, brokerEnv(n, cfg.sharedBroker));
   if (env.NATIVE_CALLS && env.NATIVE_CALLS !== "1") env.NATIVE_CALLS = env.NATIVE_CALLS.split(",").includes(String(n)) ? "1" : "0";
   return { file: cfg.node, args: [cfg.lightScript], env };
 }
@@ -153,6 +158,8 @@ export class Accounts {
 
   start(n: number) {
     return this.queued(n, async () => {
+      // a broker-backed slot has no browser sign-in: its session lives in the unified account (OE calendar agent)
+      if (this.cfg.sharedBroker?.slots[String(n)]) throw new AccountError(409, `Account ${n} uses a shared Microsoft account: it runs without a browser, choose Shared Microsoft account in Settings`);
       const a = this.account(n);
       if (a.light.active) await a.light.stop();
       const running = a.browser.active && a.agent.active;
@@ -218,6 +225,11 @@ export class Accounts {
     const a = this.accounts.get(n);
     if (!a?.browser.running) return false;
     return this.focus(n);
+  }
+
+  // the slots mapped to a shared Microsoft account and their account, for the web app: no URL, key or region
+  broker(): Record<string, { account: string }> {
+    return Object.fromEntries(Object.entries(this.cfg.sharedBroker?.slots ?? {}).map(([slot, { account }]) => [slot, { account }]));
   }
 
   status(): AccountStatus[] {

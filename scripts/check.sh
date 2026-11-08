@@ -59,7 +59,14 @@ check_teams_relay() {
   step "teams-relay: Android app (page tests, shared Rust)"
   install
   npm test
-  if command -v cargo >/dev/null; then cargo test --manifest-path core/Cargo.toml; else echo "no cargo: core/ not tested"; fi
+  # with Docker in a Linux Rust image, as on the old runner (a Windows GNU toolchain has no C compiler for ring)
+  if [ "$docker" = 1 ]; then
+    docker run --rm -v "$(pwd -W 2>/dev/null || pwd)/core:/core:ro" -w /core -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test
+  elif command -v cargo >/dev/null; then
+    cargo test --manifest-path core/Cargo.toml
+  else
+    echo "no cargo: core/ not tested"
+  fi
   cd "$root/teams-relay"
   step "teams-relay: shell syntax"
   bash -n deploy/remote-deploy.sh

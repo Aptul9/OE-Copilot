@@ -26,7 +26,7 @@ jobs:
       SERVER: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
       OE_DIR: /opt/oe-copilot
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Chiave SSH
         env:

@@ -25,7 +25,7 @@ jobs:
       MCP_DIR: /opt/communication-mcp
       BACKUP: /var/tmp/communication-mcp-prev.tgz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: SSH setup
         env:

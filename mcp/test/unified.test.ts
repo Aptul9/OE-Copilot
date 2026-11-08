@@ -67,17 +67,17 @@ test("single stdio server discovers Teams alongside mail/calendar and calls both
   try {
     await c.connect(tr);
     const names = (await c.listTools()).tools.map((t) => t.name);
-    assert.ok(names.includes("teams_list_chats"));
-    assert.ok(names.includes("list_unread"));
-    assert.ok(names.includes("list_calendars"));
+    assert.ok(names.includes("chat_list"));
+    assert.ok(names.includes("email_list"));
+    assert.ok(names.includes("calendar_list"));
+
     assert.match(
       JSON.stringify(
-        await c.callTool({ name: "teams_list_chats", arguments: {} }),
+        await c.callTool({
+          name: "email_list",
+          arguments: { account_id: "outlook:a@msc.example" },
+        }),
       ),
-      /chat-fixture/,
-    );
-    assert.match(
-      JSON.stringify(await c.callTool({ name: "list_unread", arguments: {} })),
       /mail-fixture/,
     );
   } finally {

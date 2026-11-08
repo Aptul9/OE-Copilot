@@ -5,7 +5,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import http from "node:http";
 import path from "node:path";
 
-test("real stdio MCP service mode lists read tools only and reads unread fixture", async () => {
+test("real stdio MCP service mode lists unified tools and reads explicit account fixture", async () => {
   const server = http.createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
     if (req.url === "/api/communication/accounts")
@@ -38,11 +38,11 @@ test("real stdio MCP service mode lists read tools only and reads unread fixture
     await client.connect(transport);
     const tools = await client.listTools();
     const names = tools.tools.map((t) => t.name);
-    assert.ok(names.includes("list_unread"));
+    assert.ok(names.includes("email_list"));
     assert.ok(!names.includes("send_email"));
     const r = await client.callTool({
-      name: "list_unread",
-      arguments: { limit: 10 },
+      name: "email_list",
+      arguments: { account_id: "outlook:a@msc.example", limit: 10 },
     });
     assert.ok(!r.isError);
     assert.match(JSON.stringify(r), /fixture/);

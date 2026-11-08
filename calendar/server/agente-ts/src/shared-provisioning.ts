@@ -87,9 +87,15 @@ export async function attivaCondivisione(archivio: ArchivioCondiviso, account: s
   const voce = archivio.voceAccount(casella);
   if (!voce) throw new ErroreCondivisione("Casella non trovata");
   if (voce.provider !== "microsoft") throw new ErroreCondivisione("Solo una casella Microsoft può essere condivisa");
+  const prima = voce.shared;
+  // togliere soltanto non chiede niente a Microsoft: si spegne Teams (o posta, o calendario) anche con l'accesso scaduto
+  if (prima && caps.every((c) => prima.capabilities.includes(c))) {
+    const meno: SharedAccount = { ...prima, capabilities: caps };
+    archivio.impostaShared(casella, meno);
+    return { account: casella, shared: pubblico(meno) };
+  }
   if (!voce.refresh_token) throw new ErroreCondivisione("La casella non ha un accesso rinnovabile: accedi di nuovo prima di condividerla");
   if (voce.errore) throw new ErroreCondivisione(`Accesso da rifare prima di condividere: ${voce.errore}`);
-  const prima = voce.shared;
   const identita = prima ? { tenantId: prima.tenantId, objectId: prima.objectId } : identitaDaToken(await archivio.ottieniAccessToken(casella, true), casella);
   const nuovo: SharedAccount = { ...identita, capabilities: caps, origin: prima?.origin ?? origineDi(voce.client_id) };
   archivio.impostaShared(casella, nuovo);

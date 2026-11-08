@@ -54,14 +54,36 @@ describe("attivazione dell'account condiviso", () => {
   });
 
   it("cambiare le capacità tiene identità e origine già salvate, senza un nuovo token", async () => {
-    const prima: SharedAccount = { tenantId: TID, objectId: OID, capabilities: ["mail", "calendar", "chat"], origin: "outlook-spa" };
+    const prima: SharedAccount = { tenantId: TID, objectId: OID, capabilities: ["mail", "chat"], origin: "outlook-spa" };
     const voci: Record<string, Voce> = { "mario@example.com": { provider: "microsoft", refresh_token: "r", shared: prima } };
     const s = archivio(voci, { rifiuta: "csa" });
     await attivaCondivisione(s.a, "mario@example.com", ["calendar"]);
     expect(s.forzati).toEqual([]);
     expect(voci["mario@example.com"]!.shared).toEqual({ ...prima, capabilities: ["calendar"] });
-    // la chat non c'è più: nessuna prova sulle sue risorse
+    // la chat non c'è più: nessuna prova sulle sue risorse, solo quella del calendario aggiunto
     expect(s.richieste).toEqual(["outlook"]);
+  });
+
+  it("togliere soltanto non chiede niente a Microsoft, anche con l'accesso scaduto o senza refresh token", async () => {
+    const prima: SharedAccount = { tenantId: TID, objectId: OID, capabilities: ["mail", "calendar", "chat"], origin: "mobile" };
+    const voci: Record<string, Voce> = {
+      "scaduta@example.com": { provider: "microsoft", refresh_token: "r", errore: "Accesso scaduto", shared: prima },
+      "senza@example.com": { provider: "microsoft", shared: prima },
+    };
+    const s = archivio(voci, { rifiuta: "outlook" });
+    expect(await richiestaCondivisione(s.a, "POST", { account: "scaduta@example.com", capabilities: ["mail", "calendar"] })).toEqual({
+      ok: true,
+      account: "scaduta@example.com",
+      shared: { capabilities: ["mail", "calendar"], origin: "mobile" },
+    });
+    expect((await richiestaCondivisione(s.a, "POST", { account: "senza@example.com", capabilities: [] })).ok).toBe(true);
+    expect(voci["scaduta@example.com"]!.shared).toEqual({ ...prima, capabilities: ["mail", "calendar"] });
+    expect(voci["senza@example.com"]!.shared).toEqual({ ...prima, capabilities: [] });
+    expect(s.richieste).toEqual([]);
+    expect(s.forzati).toEqual([]);
+    // aggiungere invece chiede ancora un accesso valido
+    expect((await richiestaCondivisione(s.a, "POST", { account: "scaduta@example.com", capabilities: ["mail", "calendar", "chat"] })).ok).toBe(false);
+    expect(voci["scaduta@example.com"]!.shared).toEqual({ ...prima, capabilities: ["mail", "calendar"] });
   });
 
   it.each([

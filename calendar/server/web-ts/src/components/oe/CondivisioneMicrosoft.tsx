@@ -54,12 +54,16 @@ export function CondivisioneMicrosoft({ account }: { account: string }) {
     void leggi();
   }, [leggi]);
 
+  // Un servizio alla volta, sull'elenco com'è adesso e non come lo si è letto all'apertura: un cambio fatto intanto dalle
+  // Impostazioni di TeamsRelay resta.
   const cambia = async (cap: CapacitaCondivisa, acceso: boolean) => {
-    const prima = capacitaDi(voce ?? undefined);
-    const capacita = acceso ? [...new Set([...prima, cap])] : prima.filter((c) => c !== cap);
     setLavoro(cap);
     setErrore("");
     try {
+      const ora = await api("get_condivisione_microsoft");
+      if (!ora.ok) throw new Error(ora.error ?? "Stato degli account non letto");
+      const prima = capacitaDi(ora.accounts.find((a) => a.account.toLowerCase() === account.toLowerCase()));
+      const capacita = acceso ? [...new Set([...prima, cap])] : prima.filter((c) => c !== cap);
       const r = await api("set_condivisione_microsoft", account, capacita);
       if (!r.ok) throw new Error(r.error ?? "Non cambiato");
       await leggi();

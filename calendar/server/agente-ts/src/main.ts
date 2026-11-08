@@ -31,10 +31,16 @@ try {
     registro("ERROR", "API_KEY mancante: l'API resterebbe aperta a chiunque, non parto");
     process.exit(2);
   }
+  // TEAMS_BROKER_KEY: la chiave stretta di TeamsRelay (elenco degli account condivisi, token della chat); vuota, TeamsRelay non entra.
+  // Uguale ad API_KEY darebbe a TeamsRelay la chiave piena senza che nessuno se ne accorga.
+  const chiaveTeams = process.env.TEAMS_BROKER_KEY ?? "";
+  if (chiaveTeams && chiaveTeams === chiave) {
+    registro("ERROR", "TEAMS_BROKER_KEY uguale ad API_KEY: TeamsRelay avrebbe la chiave piena, non parto");
+    process.exit(2);
+  }
   const { server } = creaServer({
     chiave,
-    // TEAMS_BROKER_KEY: la chiave stretta di TeamsRelay (elenco degli account condivisi, token della chat); vuota, TeamsRelay non entra
-    chiaveTeams: process.env.TEAMS_BROKER_KEY ?? "",
+    chiaveTeams,
     fonti,
     battito: process.env.BATTITO ?? "/stato/battito.json",
     tokenPosta: tokenPostaPath,

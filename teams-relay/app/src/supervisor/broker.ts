@@ -5,6 +5,12 @@
 // AccountError carries the HTTP status of the control API; used only when a call fails, so the import cycle with
 // accounts.ts is never reached at load time
 import { AccountError } from "./accounts";
+import path from "node:path";
+import fs from "node:fs";
+import { SessionAuth } from "../agent/light/session-auth";
+import { LightToken } from "../agent/light/token";
+import { McasSession } from "../agent/light/mcas-session";
+import type { MicrosoftSession } from "../agent/light/session-auth";
 
 export type SharedBroker = { url: string; key: string };
 // the shared account of a light slot and its chat service region
@@ -44,6 +50,7 @@ export interface Directory {
   list(): Promise<unknown>;
   set(body: unknown): Promise<unknown>;
   report(body: unknown): Promise<unknown>;
+  connect?(body: { id: string; account: string; slot: number }): Promise<{ ok: boolean; interaction?: boolean; errore?: string; route?: string }>;
 }
 
 // Only the fields the agent's routes take go through: an account and its capabilities, or the report of the slots
@@ -51,6 +58,8 @@ function setBody(body: unknown) {
   const b = (body ?? {}) as Record<string, unknown>;
   if (typeof b.account !== "string")
     throw new AccountError(400, "account: an address");
+  if (b.operation === "connect") return { operation: b.operation, account: b.account, capabilities: b.capabilities };
+  if (b.operation === "signin-progress") return { operation: b.operation, account: b.account, id: b.id, slot: b.slot, phase: b.phase, url: b.url, error: b.error };
   if (
     (b.operation === "remove" || b.operation === "chat") &&
     EMAIL.test(b.account)
@@ -79,6 +88,9 @@ function reportBody(body: unknown) {
 export function directory(
   broker: SharedBroker,
   fetchFn: typeof fetch = fetch,
+  dataDir?: string,
+  capture?: (slot: number, account: string) => Promise<MicrosoftSession | null>,
+  captureProxy?: (slot: number) => Promise<{ bootstrapUrl: string; cookies: unknown[] } | null>,
 ): Directory {
   const call = async (path: string, body?: unknown) => {
     let r: Response;
@@ -91,7 +103,7 @@ export function directory(
         },
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: "error",
-        signal: AbortSignal.timeout(45_000),
+        signal: AbortSignal.timeout((body as { operation?: string })?.operation === "signin-import" ? 150_000 : 45_000),
       });
     } catch {
       throw new AccountError(502, "OE calendar agent not reachable");
@@ -102,6 +114,7 @@ export function directory(
         502,
         "OE calendar agent refused the key of the browsers container (TEAMS_BROKER_KEY)",
       );
+    if (!r.ok && r.status === 400 && (body as { operation?: string })?.operation === "signin-import") return { ok: false, needsProxy: (j as { needsProxy?: boolean })?.needsProxy === true, needsBrowser: (j as { needsBrowser?: boolean })?.needsBrowser === true, errore: (j as { errore?: string })?.errore || "Microsoft sign-in refused" };
     if (!r.ok || j === null || typeof j !== "object")
       throw new AccountError(502, `OE calendar agent answered ${r.status}`);
     return j;
@@ -110,5 +123,24 @@ export function directory(
     list: () => call("/api/auth/shared"),
     set: (body) => call("/api/auth/shared", setBody(body)),
     report: (body) => call("/api/auth/shared/teams", reportBody(body)),
+    connect: async body => {
+      if (!dataDir || !Number.isInteger(body.slot) || body.slot < 1 || body.slot > 9999 || !EMAIL.test(body.account)) throw new AccountError(400, "Invalid sign-in slot");
+      const folder = path.join(dataDir, String(body.slot));
+      const session = await capture?.(body.slot, body.account).catch(() => null) ?? SessionAuth.load(path.join(folder, "session.json"));
+      if (!session) return { ok: false, interaction: true };
+      if (session.loginHint.trim().toLowerCase() !== body.account) throw new AccountError(409, "Microsoft session identity mismatch");
+      const token = LightToken.load(path.join(folder, "light-token.json"));
+      const proxy = McasSession.load(path.join(folder, "mcas-session.json"));
+      const imported = async (proxy?: { bootstrapUrl: string; cookies: unknown[] } | null) => await call("/api/auth/shared", { operation: "signin-import", ...body, sessione: { ...session, ...(proxy ? { proxy: { bootstrapUrl: proxy.bootstrapUrl, cookies: proxy.cookies } } : {}) }, tenant: token?.tenantId || "organizations" }) as { ok: boolean; interaction?: boolean; needsProxy?: boolean; needsBrowser?: boolean; errore?: string; route?: string };
+      let result = await imported(proxy);
+      if (result.needsProxy || result.needsBrowser) {
+        const captured = await captureProxy?.(body.slot).catch(() => null);
+        if (!captured) return { ok: false, interaction: true };
+        result = await imported(captured);
+      }
+      if (result.needsBrowser) return { ok: false, interaction: true };
+      if (result.ok) { fs.mkdirSync(folder, { recursive: true, mode: 0o700 }); SessionAuth.save(path.join(folder, "session.json"), session); }
+      return result;
+    },
   };
 }

@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest": "node ../../../shared/sync.mjs",
+    "pretypecheck": "node ../../../shared/sync.mjs",
     "start": "node src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

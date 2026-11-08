@@ -11,13 +11,17 @@
 
 import crypto from "node:crypto";
 import { readCommands, saveCommands } from "./shared-commands.ts";
+import { SignIns } from "./signin.ts";
+import { ProxyBrowserRequired } from "./mcas-outlook.ts";
+import { SessioneScaduta } from "./sessione-web.ts";
+import { SharedAuthorizationRefused } from "./shared-account.ts";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { ErroreComunicazione, GatewayComunicazione } from "./comunicazione.ts";
 import { CalendarioDiretto, GestoreToken } from "./diretto.ts";
 import { GoogleCommunication } from "./google-communication.ts";
-import { richiestaCondivisione } from "./shared-provisioning.ts";
+import { richiestaCondivisione, identitaDaToken, attivaCondivisione } from "./shared-provisioning.ts";
 import { ErroreRapportoTeams, leggiRapportoTeams, rapportoValido, type RapportoTeams } from "./shared-teams.ts";
 import { GoogleChatError } from "./gchat.ts";
 import { GmailError } from "./gmail.ts";
@@ -338,6 +342,12 @@ export class Agente {
     }
   }
 
+  private cancelSignIn(account: string): void {
+    if (!this.o.tokens) return;
+    const jobs = new SignIns(this.o.tokens.percorso + ".signins.json", () => Math.floor(this.o.adesso() / 1000));
+    for (const job of jobs.list().filter(j => j.account === account && ["queued", "browser"].includes(j.phase))) jobs.update(job.id, { phase: "blocked", error: "Connection cancelled because service choices changed. Start a new connection if needed." });
+  }
+
   private async post(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const { percorso, query } = analizzaTarget(req.url ?? "");
     if (!this.autorizzato(req) && !this.autorizzatoTeams(req, "POST", percorso, query)) return this.invia(req, res, 401, { errore: "non autorizzato" });
@@ -367,6 +377,63 @@ export class Agente {
         return this.invia(req, res, 400, { errore: "invalid JSON" });
       }
       const data = dati as Record<string, unknown>;
+      if (data && ["connect", "signin-progress", "signin-import"].includes(String(data.operation))) {
+        if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "Token store unavailable" });
+        const tokens = this.o.tokens;
+        const jobs = new SignIns(tokens.percorso + ".signins.json", () => Math.floor(this.o.adesso() / 1000));
+        try {
+          const account = typeof data.account === "string" ? data.account.trim().toLowerCase() : "";
+          if (data.operation === "connect") {
+            const report = rapportoValido(this.rapportoTeams, Math.floor(this.o.adesso() / 1000));
+            if (!report) throw new Error("Microsoft sign-in service unavailable. TeamsRelay must be connected.");
+            const previous = tokens.voceAccount(account);
+            if (!Array.isArray(data.capabilities) || !data.capabilities.length || data.capabilities.some(c => !["mail", "calendar", "chat"].includes(c))) throw new Error("Choose mail, calendar or Teams");
+            if (previous && previous.provider !== "microsoft" && data.capabilities.some(c => c !== "chat")) throw new Error("This address already has a different mail provider. Its credentials will not be replaced.");
+            const existing = previous?.provider === "microsoft" ? previous.shared?.capabilities ?? ["mail", "calendar"] : [];
+            const browserOn = report.others.some(t => t.email === account && t.state !== "stopped");
+            const signin = jobs.start(account, [...new Set([...data.capabilities, ...existing, ...(browserOn ? ["chat"] : [])])]);
+            if (signin.phase === "queued" && previous?.provider === "microsoft" && previous.refresh_token && previous.client_id !== "9199bf20-a13f-4107-85dc-02114787ef48" && !previous.errore && report && !report.others.some(t => t.email === account)) {
+              try {
+                await attivaCondivisione(tokens, account, signin.capabilities);
+                jobs.update(signin.id, { phase: "complete", route: "outlook-mobile" });
+                this.cache.clear();
+              } catch (e) {
+                // Only expired/refused credentials enter the browser flow; an outage must not request a fresh login.
+                if (!tokens.voceAccount(account)?.errore && !(e instanceof Error && e.cause instanceof SharedAuthorizationRefused)) jobs.update(signin.id, { phase: "blocked", error: testoErrore(e) });
+              }
+            }
+            return this.invia(req, res, 200, { ok: true, signin: jobs.list().find(j => j.id === signin.id) });
+          }
+          const job = jobs.find(data.id, account);
+          const firstBinding = data.operation === "signin-progress" && data.phase === "browser" && job.phase === "queued";
+          if (!(data.operation === "signin-progress" && data.phase === "blocked" && data.slot === undefined) && (!Number.isInteger(data.slot) || Number(data.slot) < 1 || Number(data.slot) > 9999 || (job.slot && job.slot !== data.slot && !firstBinding))) throw new Error("Sign-in slot mismatch");
+          if (data.operation === "signin-progress") {
+            if (data.phase !== "browser" && data.phase !== "blocked" && data.phase !== "complete") throw new Error("Invalid sign-in phase");
+            const url = data.url ? new URL(String(data.url)) : undefined;
+            if (url && (!/^https?:$/.test(url.protocol) || url.username || url.password || url.pathname !== `/api/desktop/${data.slot}` || url.search || url.hash)) throw new Error("Invalid sign-in URL");
+            if (data.phase === "complete" && job.capabilities.some(c => c !== "chat") && !tokens.haAccount(account)) throw new Error("Mailbox not imported");
+            return this.invia(req, res, 200, { ok: true, signin: jobs.update(job.id, { phase: data.phase, ...(data.slot ? { slot: Number(data.slot) } : {}), ...(url ? { url: url.href } : {}), error: typeof data.error === "string" ? data.error.slice(0, 300) : undefined }) });
+          }
+          const session = data.sessione as { loginHint?: string } | null;
+          if (!job.slot || job.phase !== "browser" || session?.loginHint?.trim().toLowerCase() !== account) throw new Error("Microsoft session identity mismatch");
+          const result = await tokens.importaGuidata(session, typeof data.tenant === "string" ? data.tenant : "organizations", token => {
+            jobs.find(job.id, account);
+            if (tokens.voceAccount(account)?.provider === "google") throw new Error("The account provider changed during sign-in");
+            identitaDaToken(token, account);
+          }, job.capabilities.filter((c): c is "mail" | "calendar" => c !== "chat"));
+          const token = tokens.voceAccount(account)?.access_token;
+          if (!token) throw new Error("Microsoft did not return a mailbox token");
+          const identity = identitaDaToken(token, account);
+          const caps = job.capabilities.filter(c => c !== "chat");
+          tokens.impostaShared(account, { ...identity, capabilities: caps, origin: result.route === "outlook-web" ? "outlook-spa" : "mobile" });
+          this.assicuraFonteDiretta(account, "microsoft");
+          this.cache.clear();
+          jobs.update(job.id, { route: result.route });
+          return this.invia(req, res, 200, { ok: true, route: result.route });
+        } catch (e) {
+          return this.invia(req, res, 400, { ok: false, ...(e instanceof ProxyBrowserRequired ? { needsProxy: true } : {}), ...(e instanceof SessioneScaduta && !testoErrore(e).includes("AADSTS53003") ? { needsBrowser: true } : {}), errore: testoErrore(e) });
+        }
+      }
       if (data && (data.operation === "remove" || data.operation === "chat")) {
         if (!this.o.tokens || typeof data.account !== "string")
           return this.invia(req, res, 400, {
@@ -417,6 +484,7 @@ export class Agente {
           ...(data.operation === "chat" ? { on: data.on as boolean } : {}),
         });
         saveCommands(file, commands);
+        if (data.operation === "remove" || (data.operation === "chat" && data.on === false)) this.cancelSignIn(account);
         if (data.operation === "remove" && mailbox) {
           for (const f of this.o.fonti.filter(
             (f) => f.account.toLowerCase() === account,
@@ -426,6 +494,14 @@ export class Agente {
           this.cache.clear();
         }
         return this.invia(req, res, 200, { ok: true, account, pending: true });
+      }
+      if (this.o.tokens && typeof data?.account === "string" && Array.isArray(data.capabilities)) {
+        const account = data.account.trim().toLowerCase();
+        const current = this.o.tokens.voceAccount(account);
+        const before = current?.shared?.capabilities ?? ["mail", "calendar"];
+        const removingOnly = data.capabilities.every(c => before.includes(c));
+        if (removingOnly) this.cancelSignIn(account);
+        else if (new SignIns(this.o.tokens.percorso + ".signins.json").list().some(j => j.account === account && ["queued", "browser"].includes(j.phase))) return this.invia(req, res, 409, { ok: false, errore: "Finish the connection before enabling more services" });
       }
       const esito = await richiestaCondivisione(this.o.tokens, "POST", dati);
       if (esito.ok === true) {
@@ -678,6 +754,7 @@ export class Agente {
       );
       return this.invia(req, res, 200, {
         ...(await richiestaCondivisione(this.o.tokens, "GET", null, teams)),
+        signins: this.o.tokens ? new SignIns(this.o.tokens.percorso + ".signins.json", () => Math.floor(this.o.adesso() / 1000)).list() : [],
         commands: this.o.tokens
           ? readCommands(this.o.tokens.percorso + ".commands.json")
           : [],

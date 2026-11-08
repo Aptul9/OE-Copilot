@@ -106,7 +106,7 @@ export async function attivaCondivisione(archivio: ArchivioCondiviso, account: s
     } catch (e) {
       archivio.impostaShared(casella, prima);
       const per = caps.filter((c) => PROVE[c].includes(risorsa)).join(", ");
-      throw new ErroreCondivisione(`Capacità ${per} non disponibile per questa casella (${risorsa}): ${e instanceof Error ? e.message : String(e)}`);
+      throw new ErroreCondivisione(`Capacità ${per} non disponibile per questa casella (${risorsa}): ${e instanceof Error ? e.message : String(e)}`, { cause: e });
     }
   }
   return { account: casella, shared: pubblico(nuovo) };

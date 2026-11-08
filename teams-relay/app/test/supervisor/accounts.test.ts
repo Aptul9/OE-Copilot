@@ -51,6 +51,13 @@ function profile(n: number, ...files: string[]) {
   }
   return dir;
 }
+it("sign-in-only browser does not start Teams or its light agent", async () => {
+  const a = accounts();
+  await a.signin(1);
+  expect(calls).toEqual(["start browser-1"]);
+  expect(await a.show(1)).toBe(true);
+  await a.stop(1);
+});
 
 describe("browserCommand", () => {
   it("runs Chromium as the desktop user, with the profile of the account and its own DevTools port", () => {

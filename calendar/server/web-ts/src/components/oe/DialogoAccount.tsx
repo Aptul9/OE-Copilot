@@ -117,6 +117,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
   const [erroreCaselle, setErroreCaselle] = useState("");
   // vuota: la prima casella
   const [sezione, setSezione] = useState("");
+  const [guidedAccount, setGuidedAccount] = useState<string | undefined>();
   // schermo stretto: false = l'elenco, true = la sezione scelta
   const [dettaglio, setDettaglio] = useState(true);
   const [loghi, setLoghi] = useState<Record<string, VoceLogo>>({});
@@ -161,7 +162,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
     setAppenaEntrato(account.toLowerCase());
     setSezione("microsoft");
   };
-  const acc = useAccesso(aperto, dopoAccesso);
+  const acc = useAccesso(aperto, dopoAccesso, email => { setGuidedAccount(email); setSezione("microsoft"); setDettaglio(true); });
 
   const loghiCambiati = async () => {
     await Promise.all([oe.ricaricaPers(), caricaLoghi()]);
@@ -263,7 +264,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
         }}
       />
     );
-  else if (attiva === "microsoft") pannello = <MicrosoftAccounts onAdd={() => scegli("aggiungi")} />;
+  else if (attiva === "microsoft") pannello = <MicrosoftAccounts key={guidedAccount} initialAccount={guidedAccount} onAdd={() => scegli("aggiungi")} />;
   else if (attiva === "gruppi") pannello = <PannelloGruppi />;
   else if (attiva === "eliminati") pannello = <PannelloEliminati />;
   else if (attiva === "aspetto") pannello = <PannelloAspetto />;
@@ -509,7 +510,7 @@ type StatoAccesso = {
   inCorso: boolean;
 };
 
-function useAccesso(aperto: boolean, onFatto: (account: string) => Promise<void>) {
+function useAccesso(aperto: boolean, onFatto: (account: string) => Promise<void>, onMicrosoft: (email: string) => void) {
   const [a, setA] = useState<StatoAccesso | null>(null);
   const fatto = useRef(onFatto);
   fatto.current = onFatto;
@@ -518,9 +519,10 @@ function useAccesso(aperto: boolean, onFatto: (account: string) => Promise<void>
   }, [aperto]);
 
   const avvia = async (provider: Provider, email = "") => {
+    if (provider === "microsoft") { onMicrosoft(email); return; }
     setA({ provider, email, fase: "avvio", state: "", esito: "", inCorso: true });
     try {
-      const r = await api("inizia_accesso_microsoft", email, provider, provider === "microsoft" ? "device" : "pkce");
+      const r = await api("inizia_accesso_microsoft", email, provider, "pkce");
       if (!r.ok || !r.url) {
         setA({ provider, email, fase: "avvio", state: "", esito: r.error ?? "Accesso non avviato.", inCorso: false });
         return;

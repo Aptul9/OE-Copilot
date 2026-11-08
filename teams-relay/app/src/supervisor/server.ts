@@ -3,7 +3,7 @@ import http from "node:http";
 import { AccountError, type Accounts } from "./accounts";
 import { bindingOf, type Directory } from "./broker";
 
-export type AccountControl = Pick<Accounts, "start" | "light" | "stop" | "wipe" | "show" | "status">;
+export type AccountControl = Pick<Accounts, "start" | "light" | "stop" | "wipe" | "show" | "status"> & { signin?: Accounts["signin"] };
 
 type Options = {
   // the desktop session is up: a browser started before it would find no display
@@ -15,7 +15,7 @@ type Options = {
 
 type Reply = { status: number; body?: unknown };
 
-const ACTION = /^\/accounts\/([^/]+)\/(start|light|stop|wipe|show)$/;
+const ACTION = /^\/accounts\/([^/]+)\/(start|signin|light|stop|wipe|show)$/;
 // the body of a directory request: an account and its capabilities, or the report of the slots
 const MAX_BODY = 64 * 1024;
 
@@ -26,10 +26,14 @@ export function controlServer(accounts: AccountControl, { desktop, log, director
   async function handle(method: string, url: string, body: () => Promise<unknown>): Promise<Reply> {
     const [path, query = ""] = url.split("?");
     if (path === "/accounts") return method === "GET" ? { status: 200, body: accounts.status() } : notAllowed;
-    if (path === "/directory" || path === "/directory/teams") {
+    if (path === "/directory" || path === "/directory/teams" || path === "/directory/connect") {
       if (!directory) return { status: 404, body: { detail: "No shared Microsoft accounts: SHARED_BROKER_URL and SHARED_BROKER_KEY are not set" } };
       if (path === "/directory" && method === "GET") return { status: 200, body: await directory.list() };
       if (method !== "POST") return notAllowed;
+      if (path === "/directory/connect") {
+        if (!directory.connect) return { status: 404, body: { detail: "Guided sign-in unavailable" } };
+        return { status: 200, body: await directory.connect(await body() as { id: string; account: string; slot: number }) };
+      }
       return { status: 200, body: path === "/directory" ? await directory.set(await body()) : await directory.report(await body()) };
     }
     const m = ACTION.exec(path);
@@ -37,6 +41,11 @@ export function controlServer(accounts: AccountControl, { desktop, log, director
     if (method !== "POST") return notAllowed;
     const n = /^\d+$/.test(m[1]) ? Number(m[1]) : Number.NaN;
     switch (m[2]) {
+      case "signin":
+        await desktop;
+        if (!accounts.signin) throw new AccountError(501, "Sign-in browser unavailable");
+        await accounts.signin(n);
+        return { status: 204 };
       case "start":
         await desktop;
         await accounts.start(n);

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ErroreAccessoScaduto, GestoreToken, OUTLOOK_WEB_CLIENT_ID, OUTLOOK_WEB_REDIRECT_URI, leggiSessione } from "../src/index.ts";
+import { OUTLOOK_CLIENT_ID } from "../src/diretto.ts";
 
 function fakeJwt(claims: Record<string, unknown>): string {
   const h = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
@@ -105,6 +106,59 @@ describe("accesso da sessione del browser (client web di Outlook)", () => {
     expect(voce.sessione.cookies).toEqual([expect.objectContaining({ name: "ESTSAUTHPERSISTENT", value: "ests-2" })]);
   });
 
+  it("guided import falls back once from blocked mobile and remembers web on reconnect", async () => {
+    const file = archivio();
+    const clients: string[] = [];
+    const ms = microsoftFinto();
+    const fetchFn: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/authorize")) {
+        clients.push(url.searchParams.get("client_id")!);
+        if (url.searchParams.get("client_id") === OUTLOOK_CLIENT_ID) {
+          const back = new URL(url.searchParams.get("redirect_uri")!);
+          back.search = new URLSearchParams({ state: url.searchParams.get("state")!, error: "interaction_required", error_description: "AADSTS53003: policy blocked" }).toString();
+          return new Response(null, { status: 302, headers: { Location: back.href } });
+        }
+      }
+      return ms.fetchFn(input, init);
+    };
+    const g = new GestoreToken(file, { adesso: () => ORA_MS, fetchFn });
+    expect(await g.importaGuidata(sessione(), "tid-msc")).toMatchObject({ account: CASELLA, route: "outlook-web" });
+    expect(clients).toEqual([OUTLOOK_CLIENT_ID, OUTLOOK_WEB_CLIENT_ID]);
+    clients.length = 0;
+    const restarted = new GestoreToken(file, { adesso: () => ORA_MS, fetchFn });
+    await restarted.importaGuidata(sessione(), "tid-msc");
+    expect(clients).toEqual([OUTLOOK_WEB_CLIENT_ID]);
+  });
+
+  it("guided import does not turn transient Microsoft errors into another login attempt", async () => {
+    let attempts = 0;
+    const g = new GestoreToken(archivio(), { adesso: () => ORA_MS, fetchFn: async () => { attempts++; return new Response(null, { status: 503 }); } });
+    await expect(g.importaGuidata(sessione(), "tid-msc")).rejects.toThrow("503");
+    expect(attempts).toBe(1);
+  });
+  it("a transient token error returned as HTTP400 does not request a second sign-in route", async () => {
+    const ms = microsoftFinto(); let auth = 0;
+    const g = new GestoreToken(archivio(), { adesso: () => ORA_MS, fetchFn: async (input, init) => {
+      const url = String(input);
+      if (url.includes("/authorize?")) { auth++; const q = new URL(url).searchParams; const back = new URL(q.get("redirect_uri")!); back.search = new URLSearchParams({ state: q.get("state")!, code: "fixture" }).toString(); return new Response(null, { status: 302, headers: { Location: back.href } }); }
+      return Response.json({ error: "temporarily_unavailable" }, { status: 400 });
+    } });
+    await expect(g.importaGuidata(sessione(), "tid-msc")).rejects.toThrow("temporarily unavailable");
+    expect(auth).toBe(1);
+  });
+  it("mail-only onboarding validates mail permissions without requiring a calendar grant", async () => {
+    const file = archivio();
+    const g = new GestoreToken(file, { adesso: () => ORA_MS, fetchFn: microsoftFinto({ tokenAccesso: jwt({ scp: "Mail.Read" }) }).fetchFn });
+    await expect(g.importaGuidata(sessione(), "tid-msc", undefined, ["mail"])).resolves.toMatchObject({ account: CASELLA });
+  });
+  it("a temporary refresh failure does not mark an existing mailbox as signed out", async () => {
+    const file = archivio({accounts:{[CASELLA]:{provider:"microsoft",refresh_token:"existing",client_id:OUTLOOK_CLIENT_ID}}});
+    const g = new GestoreToken(file,{adesso:()=>ORA_MS,fetchFn:async()=>json({error:"temporarily_unavailable"},400)});
+    await expect(g.ottieniAccessToken(CASELLA)).rejects.toThrow("temporarily unavailable");
+    expect(g.voceAccount(CASELLA)?.errore).toBeUndefined();
+  });
+
   it("importa la sessione solo se Microsoft restituisce la stessa casella, risorsa Outlook e calendari", async () => {
     for (const [token, testo] of [
       [jwt({ upn: "altra@msc.example" }), "altra casella"],
@@ -180,6 +234,13 @@ describe("accesso da sessione del browser (client web di Outlook)", () => {
   });
 
   const suDisco = (file: string) => JSON.parse(fs.readFileSync(file, "utf-8")).accounts[CASELLA];
+  it("mobile session recovery records the web client when policy forces a fallback", async () => {
+    const file = archivio(voceWeb({ client_id: OUTLOOK_CLIENT_ID }));
+    const ms = microsoftFinto({ rifiutaRefresh: true });
+    const g = new GestoreToken(file, { adesso: () => ORA_MS, fetchFn: ms.fetchFn });
+    await g.ottieniAccessToken(CASELLA);
+    expect(suDisco(file).client_id).toBe(OUTLOOK_WEB_CLIENT_ID);
+  });
   const TOKEN_SBAGLIATI = [
     [jwt({ upn: "altra@msc.example" }), "altra casella"],
     [jwt({ aud: "https://graph.microsoft.com" }), "altra risorsa"],

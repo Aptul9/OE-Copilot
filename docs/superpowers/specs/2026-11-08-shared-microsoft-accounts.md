@@ -1,11 +1,11 @@
 # Shared Microsoft accounts
 
-One sign-in per Microsoft account, made once in the calendar, for mail, calendar and Teams. The calendar agent keeps the account list and, per account, which of the three are on. The calendar and TeamsRelay both show that list and both change it; each component follows it.
+One guided Microsoft connection from either account screen. The calendar agent keeps mailbox credentials and service choices. Teams retains its own browser grant when a family refresh token cannot cover both services. Both sites render the same account management source from `shared/accounts/`, including connection progress and account removal.
 
 ## Live findings (2026-11-08)
 
 - Six Teams refresh credentials and five Outlook Mobile refresh credentials each redeemed Outlook and Teams CSA tokens; mail, calendar and chat GETs answered 200. Direct cross-audience use of an access token answered 401 in both directions.
-- The Outlook Mobile refresh credential is FOCI (`foci: "1"`) and long-lived. A Teams web (SPA) refresh token redeemed with the Outlook Mobile or Teams desktop client id answers `invalid_grant` 70000: a Teams web sign-in cannot become a long-lived credential. The single sign-in therefore lives on the calendar side.
+- The Outlook Mobile refresh credential is FOCI (`foci: "1"`). Teams web and Outlook web SPA refresh tokens redeemed as another client answer `invalid_grant` 70000. Browser cookies can instead authorize a separate service grant without another password prompt when Microsoft permits SSO.
 - `authsvc/v1.0/authz` answers 410 `ApiRestricted` on teams.microsoft.com, authsvc.teams.microsoft.com and teams.cloud.microsoft: no region lookup from a token. The Teams gateway answered the same account on `emea` and `amer`; the six live slots are `emea`. A new slot uses `emea`, a slot taken over keeps the region its browser captured.
 
 ## Agent (calendar/server/agente-ts)
@@ -18,21 +18,31 @@ Records opt in with `shared: { tenantId, objectId, capabilities, origin }`. Orig
 - The agent refuses to start when `TEAMS_BROKER_KEY` equals `API_KEY`.
 - `POST /api/auth/shared/teams {accounts, others}`: TeamsRelay's state report, kept in memory, shown while younger than 10 minutes.
 - A source whose account has calendar off is skipped by `/api/eventi` and `/api/calendari`, without an error. Mail off drops it from the mail gateway and `/api/token-posta`.
-- `TEAMS_BROKER_KEY`: a second key, accepted only for `GET/POST /api/auth/shared`, `POST /api/auth/shared/teams` and `GET /api/token-resource` with a chat resource. Never Outlook tokens, mail, calendars or sign-ins. `API_KEY` keeps full access.
+- `TEAMS_BROKER_KEY`: accepted only for `GET/POST /api/auth/shared`, `POST /api/auth/shared/teams` and `GET /api/token-resource` with a chat resource. Shared operations include correlated onboarding requests and session import. The key cannot call the general authentication endpoints or read Outlook tokens, mail or calendars. `API_KEY` keeps full access.
 
 ## TeamsRelay (teams-relay)
 
 - The calendar's agent also sits on network `oe-copilot-teams`, which holds nothing else of the calendar. The browsers container joins it (`docker-compose.oe.yml`, added by `deploy/remote-deploy.sh` when `.env` sets `SHARED_BROKER_URL` and the network exists); the gateway stays out of its reach. The web app stays off it: it reaches the list through the supervisor socket (`GET/POST /directory`, `POST /directory/teams`), so the key lives only in the browsers container.
 - A rollback of a TeamsRelay deploy restores the previous `.env` with the previous code. `render-env.sh` refuses `SHARED_BROKER_URL` without the key and leaves out a key without the URL (the secret is shared with the calendar).
 - `teams_accounts.shared_account` and `shared_region` bind a slot to an account. Each light start the web app sends carries the binding (`POST /accounts/N/light?shared=&region=`); the supervisor keeps it, gives the light agent `SHARED_BROKER_*`, restarts a light agent whose binding changed, and refuses a browser start for a bound slot (409).
-- Every minute (`src/lib/shared-accounts.ts`), inside the slot queue with the list read there: for each account with Teams on, a running slot of the owner. An existing slot of the owner signed in to the same address is taken over (no second slot pushing the same messages); otherwise a new slot is claimed, wiped and bound. Teams off, or the account gone from the list, stops the slot and keeps its data. Nothing changes when the list cannot be read. Then the state report goes to the agent.
+- Every minute (`src/lib/shared-accounts.ts`), inside the slot queue: configured shared accounts get a bound light slot. Existing browser identities are preserved, never taken over. Owner-bound commands stop, resume or remove matching slots. Pending onboarding reuses a matching owner profile or allocates one isolated browser. Nothing changes when the directory cannot be read. The state report then returns to the agent.
 - Owner: the user of `SHARED_ACCOUNTS_OWNER`, by default `ADMIN_EMAIL`. Only that user sees the list (`GET/POST /api/shared-accounts`); other users of a multi-user server see nothing.
-- Settings: "Microsoft accounts" card with Mail, Calendar and Teams switches per account, the Teams-only slots, and a link to the calendar for a new account. Each switch sends one service and its state (`{account, capability, on}`), applied to the list as the agent has it then; the calendar's switches read the list again before they change it. A bound slot offers Stopped or On; either is Teams off or on for its account, and only the owner of the shared accounts changes it. Removing a bound slot turns Teams off first, otherwise the next pass would add it again; an account already gone from the list, or a server without a broker, is just removed. A wipe drops the slot's binding in the supervisor.
+- Settings renders the shared `Management` and `AccountPanel` components. Identities merge case-insensitively across mailboxes and Teams profiles. Each switch changes one service. Remove confirms deletion of saved access and matching owner slots; Microsoft mailbox contents remain unchanged. A wipe drops the supervisor binding. Mail-only profiles retain a verified mailbox identity without running a Teams agent.
 - Light agent in broker mode caches each token until five minutes before its expiry and keeps serving a cached token while the agent restarts. It refuses a token of another account and a slot whose saved identity is another person.
 
 ## Calendar web (calendar/server/web-ts)
 
-The mailbox panel of the Account window ("Usata per") has Posta, Calendario and Teams switches applied at once, and the state of the Teams slot. "Solo in Teams" lists the TeamsRelay slots with only their own sign-in. Turning calendar off reloads the calendars.
+The Account window opens the same shared management screen as TeamsRelay. Provider-specific calendar settings remain secondary. There is no separate Teams-only category. Turning calendar off reloads the calendars.
+
+## Guided onboarding
+
+- `POST /api/auth/shared {operation: "connect", account, capabilities}` creates an address-bound request in `tokens.json.signins.json`. Adding services preserves already enabled services. Switches remain the way to turn services off.
+- Existing usable mobile grants are reused first. Otherwise the owner's browser session silently authorizes Outlook Mobile, then Outlook web once if the mobile client is refused. The stored client determines subsequent authorization. Network failures do not select another client or request another login.
+- `signin-progress` binds a request to one slot and exposes a validated desktop URL. `signin-import` accepts a session only for that request, address and slot. Tenant, object id, audience, requested permissions and expiry validate before mailbox credentials are replaced. Browser cookies never return to the web app.
+- Missing SSO or additional Microsoft confirmation opens the same persistent browser profile. The Outlook tab handles proxy confirmation when needed. NPO uses the restricted Defender continuation; proxy cookie rotation and the Outlook bootstrap context persist for renewal.
+- Mail-only profiles can open a sign-in browser without starting Teams. Teams selections complete only after Teams reports healthy. Requests expire after 30 minutes. Blocked requests are not retried automatically. Expired saved sessions get one guided repair request with current service choices.
+- Turning a service off cancels pending onboarding, preventing a late authorization result from restoring older choices. Removing an account also cancels pending authorization.
+- Deploy compatibility checks reject onboarding against an older agent instead of interpreting it as a capability update.
 
 ## Configuration
 
@@ -46,7 +56,7 @@ The mailbox panel of the Account window ("Usata per") has Posta, Calendario and 
 ## Limits
 
 - One `GestoreToken` owns shared refresh; several processes on one `tokens.json` are unsupported.
-- A Teams web sign-in cannot be imported as a shared account (FOCI finding above): new accounts are signed in in the calendar.
+- SPA refresh tokens are not converted into family credentials. Separate service grants share the browser SSO session instead.
 - Teams resources of an Outlook Mobile sign-in are asked as Teams desktop/mobile (`1fec8e78-bce4-4aaf-ab1b-5451cc387264`), a member of the same family of clients (FOCI). Teams calling (`authsvc/v1.0/authz`) answers 410 `ApiRestricted` to an Outlook Mobile token and 200 with the calling endpoints to a Teams one; the chat list (csa) returned 142 chats to the Teams token. The refresh token that comes back still redeems Outlook as Outlook Mobile (mail and calendar 200). Live, 2026-11-08, notarify.io. A cached token of the other app is asked again.
-- Outlook web (`outlook-spa`) sign-ins are not in that family: their Teams tokens stay Outlook web ones, and the light agent starts the calling worker only with a token of a Teams app (chats and notifications work either way).
+- Outlook web (`outlook-spa`) grants do not establish Teams calling. The existing or newly authenticated Teams browser grant supplies Teams resources and calls. The light agent starts its calling worker only for a Teams application id.
 - Capabilities gate features, not token scopes: an Outlook token is valid for mail and calendar alike, so only trusted services get it (full key); the narrow key never does.

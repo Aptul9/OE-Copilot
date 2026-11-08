@@ -1,11 +1,12 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   Management,
   type AccountTransport,
 } from "@/shared/accounts/Management";
 import { buildAccountRows } from "@/shared/accounts/model";
 import { call, post } from "@/lib/client";
+import type { SignIn } from "@/shared/accounts/ConnectForm";
 type List = {
   enabled: boolean;
   addUrl: string;
@@ -20,16 +21,17 @@ type List = {
   }[];
   teamsOnly: { email: string; slot: number; running: boolean; teams: string }[];
   commands?: { account: string; error?: string }[];
+  signins?: SignIn[];
   error?: string;
 };
 export function SharedAccounts({ onChange }: { onChange?: () => void }) {
+  const addUrl = useRef("");
   const transport = useMemo<AccountTransport>(() => {
-    let addUrl = "";
     return {
       load: async () => {
         const l = await call<List>("/api/shared-accounts", undefined, 0);
         if (!l.enabled) throw Error("Shared accounts unavailable");
-        addUrl = l.addUrl;
+        addUrl.current = l.addUrl;
         return {
           rows: buildAccountRows(
             l.accounts.map((a) => ({
@@ -42,6 +44,7 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
             })),
           ),
           commands: l.commands,
+          signins: l.signins,
         };
       },
       toggle: async (account, capability, on) => {
@@ -57,9 +60,13 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
         await post("/api/shared-accounts", { account, operation: "remove" }, 0);
         onChange?.();
       },
+      connect: async (account, capabilities) => {
+        await post("/api/shared-accounts", { operation: "connect", account, capabilities }, 0);
+      },
+      connected: () => onChange?.(),
       add: () => {
-        if (!addUrl) throw Error("Calendar sign-in URL unavailable");
-        const url = new URL(addUrl, window.location.href);
+        if (!addUrl.current) throw Error("Calendar sign-in URL unavailable");
+        const url = new URL(addUrl.current, window.location.href);
         url.searchParams.set("add-account", "1");
         window.location.assign(url.href);
       },

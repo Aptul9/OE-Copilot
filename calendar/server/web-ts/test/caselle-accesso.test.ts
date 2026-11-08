@@ -90,6 +90,10 @@ afterEach(async () => {
 });
 
 describe("finestra Account", () => {
+  it("does not send onboarding to a server missing the guided API", async () => {
+    expect(await chiama("connect_microsoft",[SERCO,["mail"]])).toMatchObject({ok:false});
+    expect(ricevuti).toEqual([]);
+  });
   it("get_stato_caselle: le aziende copiate stanno con la casella che le riceve, le caselle nascoste non ci sono", async () => {
     const r = (await chiama("get_stato_caselle", [])) as { ok: boolean; caselle: { account: string; scaduto: boolean; inoltrate: string[] }[] };
     expect(r.ok).toBe(true);
@@ -107,7 +111,7 @@ describe("finestra Account", () => {
 
   it("get_condivisione_microsoft: l'elenco unico, con capacità, origine, account Teams di ogni casella e gli account solo Teams", async () => {
     expect(await chiama("get_condivisione_microsoft", [])).toEqual({
-      ok: true, commands: [],
+      ok: true, commands: [], signins: [],
       accounts: [
         { account: SERCO, shared: { capabilities: ["mail", "chat"], origin: "mobile" }, status: "ok", message: "", teams: { slot: 3, state: "ok", detail: "green" } },
         { account: BANDPEY, shared: null, status: "ok", message: "", teams: null },

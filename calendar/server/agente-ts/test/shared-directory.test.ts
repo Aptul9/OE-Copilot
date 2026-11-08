@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SharedAuthorizationRefused } from "../src/shared-account.ts";
 import { GestoreToken } from "../src/diretto.ts";
 import type { FonteCalendario } from "../src/fonte.ts";
 import { creaServer } from "../src/index.ts";
@@ -93,10 +94,47 @@ async function avvia(o: { chiaveTeams?: string; adesso?: () => number } = {}) {
       },
       body: corpo === undefined ? undefined : JSON.stringify(corpo),
     });
-  return { chiama, letture };
+  return { chiama, letture, tokens };
 }
 
 describe("chiave di TeamsRelay", () => {
+  it("turning a service off cancels pending onboarding before it can restore old choices", async () => {
+    const { chiama } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", {accounts:[],others:[{email:"on@example.com",slot:4,state:"ok",detail:"green"}]});
+    await chiama("/api/auth/shared", "stretta", {operation:"connect",account:"on@example.com",capabilities:["mail"]});
+    const off=await chiama("/api/auth/shared", "stretta", {account:"on@example.com",capabilities:["mail","calendar"]});
+    expect(off.status).toBe(200);
+    const after=await(await chiama("/api/auth/shared","stretta")).json() as {signins:{phase:string;error:string}[]};
+    expect(after.signins[0]).toMatchObject({phase:"blocked",error:expect.stringContaining("cancelled")});
+  });
+  it("connecting mail preserves already enabled calendar and browser Teams services", async () => {
+    const { chiama } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", { accounts: [], others: [{ email:"legacy@example.com",slot:4,state:"ok",detail:"green" }] });
+    const response = await chiama("/api/auth/shared", "stretta", {operation:"connect",account:"legacy@example.com",capabilities:["mail"]});
+    expect(await response.json()).toMatchObject({ok:true,signin:{capabilities:expect.arrayContaining(["mail","calendar","chat"]),phase:"queued"}});
+  });
+  it("continues through the browser when the family client is refused for Teams, preserving mailbox access", async () => {
+    const { chiama, tokens } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", { accounts: [], others: [] });
+    const token = "x."+Buffer.from(JSON.stringify({ upn:"legacy@example.com",tid:TID,oid:OID,aud:"https://outlook.office.com",exp:Math.floor(Date.now()/1000)+3600,scp:"Mail.ReadWrite Calendars.ReadWrite" })).toString("base64url")+".x";
+    vi.spyOn(tokens,"ottieniAccessToken").mockResolvedValue(token);
+    vi.spyOn(tokens,"ottieniRisorsa").mockImplementation(async (_a,r) => { if(r!=="outlook") throw new SharedAuthorizationRefused("Microsoft refused this client"); return token; });
+    const r = await chiama("/api/auth/shared", "stretta", { operation:"connect",account:"legacy@example.com",capabilities:["mail","chat"] });
+    expect(await r.json()).toMatchObject({ok:true,signin:{phase:"queued"}});
+    expect(tokens.voceAccount("legacy@example.com")?.refresh_token).toBe("r");
+  });
+  it("queues guided sign-in without credentials, correlates progress and rejects mismatched import", async () => {
+    const { chiama } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", { accounts: [], others: [] });
+    const response = await chiama("/api/auth/shared", "stretta", { operation: "connect", account: " NEW@EXAMPLE.COM ", capabilities: ["mail", "chat"] });
+    expect(response.status).toBe(200);
+    const { signin } = await response.json() as { signin: { id: string; account: string } };
+    expect(signin).toMatchObject({ account: "new@example.com", phase: "queued" });
+    expect((await (await chiama("/api/auth/shared", "stretta")).json() as { signins: unknown[] }).signins).toHaveLength(1);
+    expect((await chiama("/api/auth/shared", "stretta", { operation: "signin-progress", account: "other@example.com", id: signin.id, phase: "browser", slot: 4 })).status).toBe(400);
+    expect((await chiama("/api/auth/shared", "stretta", { operation: "signin-progress", account: signin.account, id: signin.id, phase: "browser", slot: 4, url: "https://teams.example/api/desktop/4" })).status).toBe(200);
+    expect((await chiama("/api/auth/shared", "stretta", { operation: "signin-import", account: signin.account, id: signin.id, slot: 5, sessione: {} })).status).toBe(400);
+  });
   it("apre solo l'elenco degli account condivisi, il rapporto Teams e i token della chat", async () => {
     const { chiama } = await avvia();
     expect((await chiama("/api/auth/shared", "stretta")).status).toBe(200);

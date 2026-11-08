@@ -18,3 +18,18 @@ for (const app of ["calendar/server/web-ts", "teams-relay/app"]) {
     } else fs.writeFileSync(target, content);
   }
 }
+const agentShared = path.join(root, "calendar/server/agente-ts/src/shared");
+fs.mkdirSync(agentShared, { recursive: true });
+for (const [source, name] of [
+  ["teams-relay/app/scripts/mcas-auth-forms.mjs", "mcas-auth-forms.mjs"],
+  ["shared/mcas-auth-forms.d.mts", "mcas-auth-forms.d.mts"],
+]) {
+  const content =
+    `// Generated from ${source}. DO NOT EDIT.\n` +
+    fs.readFileSync(path.join(root, source), "utf8");
+  const target = path.join(agentShared, name);
+  if (process.argv.includes("--check")) {
+    if (fs.readFileSync(target, "utf8") !== content)
+      throw Error("MCAS source out of sync");
+  } else fs.writeFileSync(target, content);
+}

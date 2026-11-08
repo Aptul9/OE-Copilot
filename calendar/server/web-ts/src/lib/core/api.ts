@@ -420,6 +420,14 @@ export const apiTs = {
    * L'elenco unico degli account (agente, /api/auth/shared): ogni casella Microsoft con capacità e origine (null se non ha mai scelto),
    * accesso e account Teams che la usa; poi gli account Teams con il solo accesso del loro browser e quando TeamsRelay li ha mandati.
    */
+  async connect_microsoft(account: unknown, capabilities: unknown) {
+    try {
+      const current = await chiedi("/api/auth/shared");
+      if (!current.ok || !Array.isArray(current.signins)) throw new ErroreValore("Microsoft sign-in service is upgrading or unavailable");
+      const r = await invia("/api/auth/shared", { account, operation: "connect", capabilities });
+      return r.ok ? { ok: true } : { ok: false, error: String(r.errore || "Sign-in could not start") };
+    } catch (e) { return { ok: false, error: messaggio(e) }; }
+  },
   async manage_microsoft(account: unknown, operation: unknown, on?: unknown) {
     try {
       if (typeof account !== "string" || !["remove", "chat"].includes(String(operation))) throw new ErroreValore("Invalid operation");
@@ -437,6 +445,7 @@ export const apiTs = {
         accounts: Array.isArray(r.accounts) ? r.accounts : [],
         teamsOnly: Array.isArray(r.teamsOnly) ? r.teamsOnly : [],
         commands: Array.isArray(r.commands) ? r.commands : [],
+        signins: Array.isArray(r.signins) ? r.signins : [],
         teamsAt: typeof r.teamsAt === "number" ? r.teamsAt : 0,
       };
     } catch (e) {

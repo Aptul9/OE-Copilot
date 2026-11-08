@@ -7,7 +7,7 @@ import {
 import { buildAccountRows, validTeamsReport } from "@/shared/accounts/model";
 import { api } from "@/lib/oe/api";
 import { useOe } from "./OeProvider";
-export function MicrosoftAccounts({ onAdd }: { onAdd?: () => void } = {}) {
+export function MicrosoftAccounts({ onAdd, initialAccount }: { onAdd?: () => void; initialAccount?: string } = {}) {
   const oe = useOe();
   const transport = useMemo<AccountTransport>(
     () => ({
@@ -27,6 +27,7 @@ export function MicrosoftAccounts({ onAdd }: { onAdd?: () => void } = {}) {
             validTeamsReport(r.teamsAt),
           ),
           commands: r.commands,
+          signins: r.signins,
         };
       },
       toggle: async (account, cap, on) => {
@@ -60,8 +61,13 @@ export function MicrosoftAccounts({ onAdd }: { onAdd?: () => void } = {}) {
         oe.ricarica();
       },
       add: () => onAdd?.(),
+      connect: async (account, capabilities) => {
+        const r = await api("connect_microsoft", account, capabilities);
+        if (!r.ok) throw Error(r.error || "Sign-in failed");
+      },
+      connected: () => { void oe.aggiornaCalendari(); oe.ricarica(); },
     }),
     [oe, onAdd],
   );
-  return <Management transport={transport} />;
+  return <Management transport={transport} initialAccount={initialAccount} />;
 }

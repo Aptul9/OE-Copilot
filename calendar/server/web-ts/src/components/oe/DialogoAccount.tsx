@@ -146,7 +146,7 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
   }, []);
   useEffect(() => {
     if (!aperto) return;
-    setSezione(new URLSearchParams(window.location.search).has("add-account") ? "aggiungi" : "");
+    setSezione(new URLSearchParams(window.location.search).has("account-logos") ? "microsoft" : new URLSearchParams(window.location.search).has("add-account") ? "aggiungi" : "");
     setDettaglio(true);
     setAppenaEntrato("");
     setAperteNav(new Set());

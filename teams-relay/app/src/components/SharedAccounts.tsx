@@ -1,5 +1,7 @@
 "use client";
 import { useMemo, useRef } from "react";
+import { CameraIcon } from "lucide-react";
+import { Logo } from "@/shared/accounts/Identity";
 import {
   Management,
   type AccountTransport,
@@ -103,5 +105,5 @@ export function SharedAccounts({ onChange, adding }: { onChange?: () => void; ad
       },
     };
   }, [onChange]);
-  return <Management transport={transport} initialAccount={adding ? "" : undefined} />;
+  return <Management transport={transport} initialAccount={adding ? "" : undefined} renderLogo={(row) => { const url = new URL(addUrl.current, window.location.href); url.searchParams.set("account-logos", "1"); return <a href={url.href} target="_blank" rel="noreferrer" title={`Change logo of ${row.name ?? row.account} in calendar`} aria-label={`Change logo of ${row.name ?? row.account} in calendar`} className="group relative shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-ring"><Logo name={row.name ?? row.account} src={row.logo} /><span aria-hidden="true" className="absolute inset-0 grid place-items-center rounded-full bg-black/50 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"><CameraIcon className="size-3.5" /></span></a>; }} />;
 }

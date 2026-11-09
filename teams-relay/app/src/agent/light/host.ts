@@ -1,8 +1,10 @@
 // The light host: every light slot of the container in this one process, driven by the supervisor over the IPC channel
 // of fork (src/supervisor/light-host.ts). Each slot runs in its own slot scope (src/agent/slot-scope.ts).
+import { setGlobalDispatcher } from "undici";
 import { restartDelay, TIMING, type Timing } from "@/supervisor/process";
 import { errorText, log } from "../log";
 import { dropSlot, inSlot } from "../slot-scope";
+import { slotConnections } from "./connections";
 import type { FromHost, ToHost } from "./host-protocol";
 import { startSlot } from "./slot";
 
@@ -106,6 +108,7 @@ export class SlotHost {
 }
 
 export function runHost(): void {
+  setGlobalDispatcher(slotConnections());
   const host = new SlotHost(startSlot, (m) => {
     if (process.connected) process.send?.(m);
   });

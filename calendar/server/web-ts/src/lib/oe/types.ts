@@ -167,7 +167,7 @@ export type CapacitaCondivisa = "mail" | "calendar" | "chat";
 /** La condivisione di una casella: null se non è condivisa. L'origine dice con quale client Microsoft rinnova l'accesso. */
 export type Condivisione = { capabilities: CapacitaCondivisa[]; origin: "mobile" | "outlook-spa" | "teams-spa" } | null;
 /** L'account Teams che TeamsRelay fa girare su una casella, o uno con il solo accesso del suo browser (agente, shared-teams.ts). */
-export type StatoTeams = { slot: number; state: string; detail: string };
+export type StatoTeams = { slot: number; state: string; detail: string; calls?: boolean };
 export type SoloTeams = StatoTeams & { email: string };
 /** Una casella Microsoft nell'elenco unico degli account: capacità, accesso, account Teams. */
 export type AccountCondiviso = { account: string; shared: Condivisione; status: "ok" | "errore"; message: string; teams: StatoTeams | null };
@@ -211,7 +211,7 @@ export type Metodi = {
   get_stato_caselle: [[], Esito & { caselle: CasellaAccesso[] }];
   rimuovi_casella: [[string], Esito & { account?: string }];
   connect_microsoft: [[string, CapacitaCondivisa[]], Esito];
-  manage_microsoft: [[string, "remove" | "chat", boolean?], Esito & {pending?:boolean}];
+  manage_microsoft: [[string, "remove" | "chat" | "calls", boolean?], Esito & {pending?:boolean}];
   get_condivisione_microsoft: [[], Esito & { accounts: AccountCondiviso[]; teamsOnly: SoloTeams[]; teamsAt: number; commands?: {id:string;account:string;operation:string;error?:string}[]; signins?: import("@/shared/accounts/ConnectForm").SignIn[] }];
   set_condivisione_microsoft: [[string, CapacitaCondivisa[] | null], Esito & { account?: string; shared?: Condivisione }];
   inizia_accesso_microsoft: [

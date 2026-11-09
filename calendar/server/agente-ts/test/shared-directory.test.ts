@@ -270,6 +270,31 @@ describe("rapporto degli account Teams", () => {
     expect(() => leggiRapportoTeams(corpo, 0)).toThrow();
   });
 
+  it("tiene il campo calls solo se è true o false", () => {
+    const r = leggiRapportoTeams(
+      {
+        accounts: [
+          { account: "a@example.com", slot: 1, state: "ok", calls: false },
+          { account: "b@example.com", slot: 2, state: "ok", calls: "no" },
+        ],
+        others: [{ email: "c@example.com", slot: 3, state: "ok", calls: true }],
+      },
+      0,
+    );
+    expect(r.accounts.get("a@example.com")).toEqual({
+      slot: 1,
+      state: "ok",
+      detail: "",
+      calls: false,
+    });
+    expect(r.accounts.get("b@example.com")).toEqual({
+      slot: 2,
+      state: "ok",
+      detail: "",
+    });
+    expect(r.others[0]).toMatchObject({ email: "c@example.com", calls: true });
+  });
+
   it("toglie i caratteri di controllo dal dettaglio e lo accorcia", () => {
     const r = leggiRapportoTeams(
       {
@@ -367,6 +392,49 @@ describe("shared management commands", () => {
       }[];
     };
     expect(state.commands).toEqual([]);
+  });
+  it("queues a calls switch only for an account the report says can switch calls", async () => {
+    const { chiama } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", {
+      accounts: [
+        { account: "on@example.com", slot: 1, state: "ok", calls: true },
+        { account: "legacy@example.com", slot: 2, state: "ok" },
+      ],
+      others: [],
+    });
+    for (const bad of [
+      { account: "legacy@example.com", operation: "calls", on: false },
+      { account: "on@example.com", operation: "calls" },
+      { account: "on@example.com", operation: "calls", on: "off" },
+    ])
+      expect((await chiama("/api/auth/shared", "stretta", bad)).status).toBe(
+        400,
+      );
+    expect(
+      await (
+        await chiama("/api/auth/shared", "stretta", {
+          account: "ON@example.com",
+          operation: "calls",
+          on: false,
+        })
+      ).json(),
+    ).toMatchObject({ ok: true, pending: true });
+    const state = (await (
+      await chiama("/api/auth/shared", "stretta")
+    ).json()) as {
+      accounts: { account: string; teams: unknown }[];
+      commands: { account: string; operation: string; on?: boolean }[];
+    };
+    expect(state.commands).toEqual([
+      expect.objectContaining({
+        account: "on@example.com",
+        operation: "calls",
+        on: false,
+      }),
+    ]);
+    expect(
+      state.accounts.find((a) => a.account === "on@example.com")?.teams,
+    ).toMatchObject({ slot: 1, calls: true });
   });
   it("supports browser-only stop/resume and remove, rejects unknown identity and stale reports", async () => {
     const { chiama } = await avvia();

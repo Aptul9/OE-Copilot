@@ -430,7 +430,7 @@ export const apiTs = {
   },
   async manage_microsoft(account: unknown, operation: unknown, on?: unknown) {
     try {
-      if (typeof account !== "string" || !["remove", "chat"].includes(String(operation))) throw new ErroreValore("Invalid operation");
+      if (typeof account !== "string" || !["remove", "chat", "calls"].includes(String(operation))) throw new ErroreValore("Invalid operation");
       const r = await invia("/api/auth/shared", {account, operation, on});
       if (!r.ok) return {ok:false,error:String(r.errore || "Operation failed")};
       azzeraMemoria(); return {ok:true,pending:true};

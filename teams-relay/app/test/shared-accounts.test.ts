@@ -17,6 +17,7 @@ import {
 } from "@/lib/appdb";
 import type { ControlClient, DirectoryClient } from "@/lib/control";
 import {
+  NO_CALLS_SWITCH,
   parseDirectory,
   setSharedCapability,
   setSharedChat,
@@ -464,6 +465,7 @@ describe("report and owner", () => {
         slot: 1,
         state: expect.stringMatching(/^[a-z][a-z-]*$/),
         detail: expect.any(String),
+        calls: true,
       },
     ]);
     expect(r.others).toEqual([
@@ -527,6 +529,71 @@ describe("owner-bound directory commands", () => {
     expect(slotRow(db, n)?.stopped).toBe(0);
     expect(slotRow(db, n)?.shared_account).toBe("");
     expect(calls).toEqual(["stop " + n, "start " + n]);
+  });
+  it("switches calls of a slot without a browser and reports the new state with the result", async () => {
+    accounts = [shared("a@example.com", ["chat"])];
+    await syncSharedAccounts(deps());
+    expect(sharedReport(db, OWNER).accounts[0]?.calls).toBe(true);
+    const directory = dir({
+      list: async () => ({
+        ok: true,
+        accounts,
+        commands: [
+          {
+            id: "calls",
+            account: "a@example.com",
+            operation: "calls",
+            on: false,
+          },
+        ],
+      }),
+    });
+    await syncSharedAccounts(deps({ dir: directory }));
+    expect(slotRow(db, 1)?.calls).toBe(0);
+    expect(directory.report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accounts: [
+          expect.objectContaining({ account: "a@example.com", calls: false }),
+        ],
+        results: [{ id: "calls" }],
+      }),
+    );
+  });
+  it("refuses a calls switch for a browser slot and for an address with no slot", async () => {
+    const n = claimSlot(db, OWNER, { perUser: null });
+    identities[n] = "b@example.com";
+    const directory = dir({
+      list: async () => ({
+        ok: true,
+        accounts: [],
+        commands: [
+          {
+            id: "browser",
+            account: "b@example.com",
+            operation: "calls",
+            on: false,
+          },
+          {
+            id: "none",
+            account: "nobody@example.com",
+            operation: "calls",
+            on: true,
+          },
+          { id: "bad", account: "b@example.com", operation: "calls" },
+        ],
+      }),
+    });
+    await syncSharedAccounts(deps({ dir: directory }));
+    expect(slotRow(db, n)?.calls).toBe(1);
+    expect(directory.report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        results: [
+          { id: "browser", error: NO_CALLS_SWITCH },
+          { id: "none", error: NO_CALLS_SWITCH },
+          { id: "bad", error: NO_CALLS_SWITCH },
+        ],
+      }),
+    );
   });
   it("reports failure without claiming completion or releasing the failed slot", async () => {
     const n = claimSlot(db, OWNER, { perUser: null });

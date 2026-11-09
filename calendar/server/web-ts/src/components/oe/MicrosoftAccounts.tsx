@@ -7,7 +7,10 @@ import {
 import { buildAccountRows, validTeamsReport } from "@/shared/accounts/model";
 import { api } from "@/lib/oe/api";
 import { useOe } from "./OeProvider";
-export function MicrosoftAccounts({ onAdd, initialAccount }: { onAdd?: () => void; initialAccount?: string } = {}) {
+export function MicrosoftAccounts({
+  onAdd,
+  initialAccount,
+}: { onAdd?: () => void; initialAccount?: string } = {}) {
   const oe = useOe();
   const transport = useMemo<AccountTransport>(
     () => ({
@@ -22,6 +25,7 @@ export function MicrosoftAccounts({ onAdd, initialAccount }: { onAdd?: () => voi
               status: a.status,
               message: a.message,
               state: a.teams?.state,
+              calls: a.teams?.calls,
             })),
             r.teamsOnly,
             validTeamsReport(r.teamsAt),
@@ -60,12 +64,19 @@ export function MicrosoftAccounts({ onAdd, initialAccount }: { onAdd?: () => voi
         await oe.aggiornaCalendari();
         oe.ricarica();
       },
+      setCalls: async (account, on) => {
+        const r = await api("manage_microsoft", account, "calls", on);
+        if (!r.ok) throw Error(r.error);
+      },
       add: () => onAdd?.(),
       connect: async (account, capabilities) => {
         const r = await api("connect_microsoft", account, capabilities);
         if (!r.ok) throw Error(r.error || "Sign-in failed");
       },
-      connected: () => { void oe.aggiornaCalendari(); oe.ricarica(); },
+      connected: () => {
+        void oe.aggiornaCalendari();
+        oe.ricarica();
+      },
     }),
     [oe, onAdd],
   );

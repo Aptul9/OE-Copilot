@@ -257,7 +257,7 @@ test("Gmail draft MIME blocks header injection and carries attachments", async (
   assert.equal(request.action, "draft");
   const mime = Buffer.from(request.raw, "base64url").toString();
   assert.match(mime, /multipart.mixed/);
-  assert.match(mime, /filename=test.txt/);
+  assert.match(mime, /filename="test.txt"/);
   await assert.rejects(
     c.email(a, "send", {
       to: ["bad" + String.fromCharCode(10) + "Bcc: other"],

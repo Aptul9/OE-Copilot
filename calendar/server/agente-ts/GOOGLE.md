@@ -65,6 +65,8 @@ Allowed paths: `profile`, `history`, `labels`, `labels/ID`, `messages`, `message
 - `send` or `draft`: `raw` (base64url RFC2822/MIME), optional `thread_id`. Replies require matching MIME `Subject`, `References` and `In-Reply-To` headers.
 - `modify`: `message_id`, `add_labels` and/or `remove_labels`. Use labels such as `UNREAD`, `STARRED` or `INBOX`.
 - `trash` or `untrash`: `message_id`.
+- `update_draft`: `draft_id`, `raw`, optional `thread_id`. Replaces the whole draft message.
+- `send_draft`: `draft_id`. Sends the draft as it is stored.
 - `delete_draft`: `draft_id`. Permanently removes a draft. Permanent message deletion and account settings are not exposed.
 
 ### Google Chat

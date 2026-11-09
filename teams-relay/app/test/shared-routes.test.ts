@@ -336,6 +336,54 @@ describe("one list of accounts", () => {
     expect(sets).toEqual([]);
   });
 
+  it("the owner switches calls of a slot without a browser; a slot with a browser has no switch", async () => {
+    type Listed = {
+      accounts: { account: string; calls: boolean | null }[];
+      teamsOnly: { slot: number; calls: boolean | null }[];
+    };
+    const read = async (res: Response) => (await res.json()) as Listed;
+    const before = await read(
+      await sharedList(
+        new Request("http://localhost/api/shared-accounts"),
+        undefined,
+      ),
+    );
+    expect(
+      before.accounts.find((a) => a.account === "mario@example.com")?.calls,
+    ).toBe(true);
+    expect(before.teamsOnly.find((t) => t.slot === own)?.calls).toBeNull();
+    const off = await post({
+      account: "Mario@Example.com",
+      operation: "calls",
+      on: false,
+    });
+    expect(off.status).toBe(200);
+    expect(slotRow(appDb(), shared)?.calls).toBe(0);
+    expect(
+      (await read(off)).accounts.find((a) => a.account === "mario@example.com")
+        ?.calls,
+    ).toBe(false);
+    expect(
+      (await post({ account: "mario@example.com", operation: "calls", on: "no" }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await post({
+          account: "nobody@example.com",
+          operation: "calls",
+          on: true,
+        })
+      ).status,
+    ).toBe(409);
+    expect(sets).toEqual([]);
+    expect(
+      (await post({ account: "mario@example.com", operation: "calls", on: true }))
+        .status,
+    ).toBe(200);
+    expect(slotRow(appDb(), shared)?.calls).toBe(1);
+  });
+
   it("removing a slot on a shared account turns Teams off for it first; mail stays", async () => {
     const res = await DELETE(
       new Request(`http://localhost/api/accounts/${shared}`, {

@@ -407,7 +407,7 @@ export function Settings({ user, passwordManaged }: { user: { name: string; emai
         </Card>
 
         <SharedAccounts />
-        <details><summary className="cursor-pointer text-sm text-muted-foreground">Advanced Teams settings</summary><TeamsAccounts /></details>
+        <details><summary className="cursor-pointer text-sm text-muted-foreground">Advanced Teams settings: run mode and relay tokens</summary><TeamsAccounts /></details>
         <AiClients />
 
         <Card>

@@ -18,8 +18,15 @@ type List = {
     slot: number;
     running: boolean;
     teams: string;
+    calls: boolean | null;
   }[];
-  teamsOnly: { email: string; slot: number; running: boolean; teams: string }[];
+  teamsOnly: {
+    email: string;
+    slot: number;
+    running: boolean;
+    teams: string;
+    calls: boolean | null;
+  }[];
   commands?: { account: string; error?: string }[];
   signins?: SignIn[];
   error?: string;
@@ -60,8 +67,20 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
         await post("/api/shared-accounts", { account, operation: "remove" }, 0);
         onChange?.();
       },
+      setCalls: async (account, on) => {
+        await post(
+          "/api/shared-accounts",
+          { account, operation: "calls", on },
+          0,
+        );
+        onChange?.();
+      },
       connect: async (account, capabilities) => {
-        await post("/api/shared-accounts", { operation: "connect", account, capabilities }, 0);
+        await post(
+          "/api/shared-accounts",
+          { operation: "connect", account, capabilities },
+          0,
+        );
       },
       connected: () => onChange?.(),
       add: () => {

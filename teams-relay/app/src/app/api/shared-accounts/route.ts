@@ -1,13 +1,15 @@
 import { accountSummary } from "@/lib/accounts";
-import { appDb, listSlots } from "@/lib/appdb";
+import { appDb, listSlots, setCalls } from "@/lib/appdb";
 import { config } from "@/lib/config";
 import { controlClient, directoryClient } from "@/lib/control";
 import { body, HttpError, route } from "@/lib/http";
 import { requireUser } from "@/lib/session";
 import {
+  NO_CALLS_SWITCH,
   parseDirectory,
   setSharedCapability,
   sharedOwnerId,
+  sharedReport,
   syncSharedAccounts,
   type Capability,
 } from "@/lib/shared-accounts";
@@ -19,6 +21,7 @@ import {
 //   GET  /api/shared-accounts                                  {enabled, addUrl, accounts, teamsOnly}
 //   POST /api/shared-accounts {account, capability, on}        the same, after the change and the pass that follows it;
 //                                                              one service per change, applied to the list as it is now
+//   POST /api/shared-accounts {account, operation: "calls", on} calls of its Teams account without a browser on or off
 
 const OFF = { enabled: false, addUrl: "", accounts: [], teamsOnly: [] };
 
@@ -39,6 +42,7 @@ async function listFor(userId: string) {
       running: !!s && !s.stopped,
       teams: summary?.teams ?? "",
       overall: summary?.overall ?? "",
+      calls: s?.light ? s.calls !== 0 : null,
     };
   });
   const teamsOnly = slots
@@ -52,6 +56,7 @@ async function listFor(userId: string) {
         running: !s.stopped,
         teams: summary.teams,
         overall: summary.overall,
+        calls: s.light ? s.calls !== 0 : null,
       };
     });
   return {
@@ -78,11 +83,49 @@ export const POST = route(async (req) => {
   if (typeof account !== "string" || !account.includes("@"))
     throw new HttpError(400, "account must be an address");
   if (operation === "connect") {
-    if (!Array.isArray(capabilities) || capabilities.some(c => !["mail", "calendar", "chat"].includes(c))) throw new HttpError(400, "Invalid services");
+    if (
+      !Array.isArray(capabilities) ||
+      capabilities.some((c) => !["mail", "calendar", "chat"].includes(c))
+    )
+      throw new HttpError(400, "Invalid services");
     const current = await directoryClient().list();
-    if (!Array.isArray((current as { signins?: unknown } | null)?.signins)) throw new HttpError(503, "Microsoft sign-in service is upgrading or unavailable");
-    const result = await directoryClient().set({ operation: "connect", account, capabilities });
-    if (!(result as { ok?: boolean })?.ok) throw new HttpError(409, String((result as { errore?: string })?.errore || "Sign-in unavailable"));
+    if (!Array.isArray((current as { signins?: unknown } | null)?.signins))
+      throw new HttpError(
+        503,
+        "Microsoft sign-in service is upgrading or unavailable",
+      );
+    const result = await directoryClient().set({
+      operation: "connect",
+      account,
+      capabilities,
+    });
+    if (!(result as { ok?: boolean })?.ok)
+      throw new HttpError(
+        409,
+        String(
+          (result as { errore?: string })?.errore || "Sign-in unavailable",
+        ),
+      );
+    return Response.json(await listFor(user.id));
+  }
+  if (operation === "calls") {
+    if (typeof on !== "boolean")
+      throw new HttpError(400, "on must be true or false");
+    const key = account.trim().toLowerCase();
+    const light = listSlots(db).filter(
+      (s) =>
+        s.owner_id === owner &&
+        !s.relay &&
+        s.light &&
+        (s.shared_account === key ||
+          accountSummary(s).email.trim().toLowerCase() === key),
+    );
+    if (!light.length) throw new HttpError(409, NO_CALLS_SWITCH);
+    for (const s of light) setCalls(db, s.slot, on);
+    // the calendar shows the new state now, not at the next minute's report
+    await directoryClient()
+      .report(sharedReport(db, owner))
+      .catch(() => null);
     return Response.json(await listFor(user.id));
   }
   const browser = listSlots(db).find(

@@ -434,7 +434,7 @@ export class Agente {
           return this.invia(req, res, 400, { ok: false, ...(e instanceof ProxyBrowserRequired ? { needsProxy: true } : {}), ...(e instanceof SessioneScaduta && !testoErrore(e).includes("AADSTS53003") ? { needsBrowser: true } : {}), errore: testoErrore(e) });
         }
       }
-      if (data && (data.operation === "remove" || data.operation === "chat")) {
+      if (data && (data.operation === "remove" || data.operation === "chat" || data.operation === "calls")) {
         if (!this.o.tokens || typeof data.account !== "string")
           return this.invia(req, res, 400, {
             ok: false,
@@ -470,6 +470,15 @@ export class Agente {
             ok: false,
             errore: "Browser Teams account required",
           });
+        if (
+          data.operation === "calls" &&
+          (typeof data.on !== "boolean" ||
+            typeof (teams.accounts.get(account) ?? teams.others.find((t) => t.email === account))?.calls !== "boolean")
+        )
+          return this.invia(req, res, 400, {
+            ok: false,
+            errore: "Calls are switched only for Teams accounts without a browser",
+          });
         const file = this.o.tokens.percorso + ".commands.json";
         const commands = readCommands(file);
         if (commands.some((c) => c.account === account))
@@ -481,7 +490,7 @@ export class Agente {
           id: crypto.randomUUID(),
           account,
           operation: data.operation,
-          ...(data.operation === "chat" ? { on: data.on as boolean } : {}),
+          ...(data.operation !== "remove" ? { on: data.on as boolean } : {}),
         });
         saveCommands(file, commands);
         if (data.operation === "remove" || (data.operation === "chat" && data.on === false)) this.cancelSignIn(account);

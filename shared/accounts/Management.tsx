@@ -11,6 +11,8 @@ export type AccountTransport = {
   load: () => Promise<Snapshot>;
   toggle: (account: string, cap: Capability, on: boolean) => Promise<unknown>;
   remove: (account: string) => Promise<unknown>;
+  // Teams calls on or off for an account without a browser
+  setCalls?: (account: string, on: boolean) => Promise<unknown>;
   add: () => void;
   connect?: (account: string, capabilities: Capability[]) => Promise<unknown>;
   connected?: () => void;
@@ -23,7 +25,9 @@ export function Management({
   initialAccount?: string;
 }) {
   const current = useRef(transport);
-  useEffect(() => { current.current = transport; }, [transport]);
+  useEffect(() => {
+    current.current = transport;
+  }, [transport]);
   const [snapshot, setSnapshot] = useState<Snapshot>({ rows: [] });
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState("");
@@ -55,16 +59,18 @@ export function Management({
     const timer = setInterval(() => void load(), 15000);
     return () => clearInterval(timer);
   }, [load]);
-  async function action(account: string, fn: () => Promise<unknown>) {
+  async function action(
+    account: string,
+    fn: () => Promise<unknown>,
+    done = "Request accepted. Pending Teams operations apply on the next sync.",
+  ) {
     setPending(account);
     setError("");
     setFeedback("");
     try {
       await fn();
       await load();
-      setFeedback(
-        "Request accepted. Pending Teams operations apply on the next sync.",
-      );
+      setFeedback(done);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -106,6 +112,16 @@ export function Management({
           setError(e instanceof Error ? e.message : String(e));
         }
       }}
+      onCalls={
+        transport.setCalls
+          ? (a, on) =>
+              void action(
+                a,
+                () => transport.setCalls!(a, on),
+                `Calls ${on ? "on" : "off"} for ${a}. Applies within a minute.`,
+              )
+          : undefined
+      }
       onToggle={(a, c, on) => void action(a, () => transport.toggle(a, c, on))}
       onRemove={(a) => void action(a, () => transport.remove(a))}
     >

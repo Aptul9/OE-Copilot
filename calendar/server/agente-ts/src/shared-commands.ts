@@ -2,7 +2,7 @@ import fs from "node:fs";
 export type SharedCommand = {
   id: string;
   account: string;
-  operation: "remove" | "chat";
+  operation: "remove" | "chat" | "calls";
   on?: boolean;
   error?: string;
 };

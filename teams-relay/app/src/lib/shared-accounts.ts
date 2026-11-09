@@ -8,6 +8,7 @@ import {
   endRefresh,
   listSlots,
   releaseSlot,
+  setCalls,
   setSlotStopped,
   type Slot,
 } from "./appdb";
@@ -154,13 +155,35 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
     const raw = await d.dir.list();
     if (raw === null) return { enabled: false, accounts: [], errors: {} };
     const directoryAccounts = parseDirectory(raw);
-    const signins = (raw as { signins?: { account: string; phase: string }[] }).signins;
+    const signins = (raw as { signins?: { account: string; phase: string }[] })
+      .signins;
     if (Array.isArray(signins)) {
-      for (const a of directoryAccounts.filter(a => a.status === "error" && a.capabilities.some(c => c !== "chat") && /Sessione del browser|Accesso scaduto/.test(a.message))) {
-        if (signins.some(j => j.account === a.account && j.phase !== "complete")) continue;
-        const browser = listSlots(d.db).find(s => s.owner_id === owner && !s.relay && !s.shared_account && (d.identity ?? identityOf)(s).trim().toLowerCase() === a.account);
-        const capabilities = [...new Set([...a.capabilities, ...(browser && !browser.stopped ? ["chat"] : [])])];
-        await d.dir.set({ operation: "connect", account: a.account, capabilities }).catch(() => null);
+      for (const a of directoryAccounts.filter(
+        (a) =>
+          a.status === "error" &&
+          a.capabilities.some((c) => c !== "chat") &&
+          /Sessione del browser|Accesso scaduto/.test(a.message),
+      )) {
+        if (
+          signins.some((j) => j.account === a.account && j.phase !== "complete")
+        )
+          continue;
+        const browser = listSlots(d.db).find(
+          (s) =>
+            s.owner_id === owner &&
+            !s.relay &&
+            !s.shared_account &&
+            (d.identity ?? identityOf)(s).trim().toLowerCase() === a.account,
+        );
+        const capabilities = [
+          ...new Set([
+            ...a.capabilities,
+            ...(browser && !browser.stopped ? ["chat"] : []),
+          ]),
+        ];
+        await d.dir
+          .set({ operation: "connect", account: a.account, capabilities })
+          .catch(() => null);
       }
     }
     await syncSignIns(d, (raw as { signins?: unknown }).signins);
@@ -185,6 +208,14 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
             (s.shared_account === c.account ||
               (d.identity ?? identityOf)(s).trim().toLowerCase() === c.account),
         );
+        if (c.operation === "calls") {
+          const light = matching.filter((s) => s.light);
+          if (typeof c.on !== "boolean" || !light.length)
+            throw new Error(NO_CALLS_SWITCH);
+          for (const s of light) setCalls(d.db, s.slot, c.on);
+          results.push({ id: c.id });
+          continue;
+        }
         for (const slot of matching) {
           if (c.operation === "remove") {
             if (
@@ -296,16 +327,25 @@ export async function syncSharedAccounts(d: SyncDeps): Promise<SyncResult> {
   });
 }
 
-// The state of a slot as one word for the calendar: stopped, or what its agent says of Teams (ok, starting, login, ...)
-function stateOf(s: Slot): { state: string; detail: string } {
-  if (s.stopped) return { state: "stopped", detail: "" };
+export const NO_CALLS_SWITCH =
+  "Calls are switched only for Teams accounts without a browser";
+
+// The state of a slot as one word for the calendar: stopped, or what its agent says of Teams (ok, starting, login, ...),
+// and, for a slot without a browser, whether its calls ring (a slot with a browser has no such switch: no field)
+function stateOf(s: Slot): { state: string; detail: string; calls?: boolean } {
+  const calls = s.light ? { calls: s.calls !== 0 } : {};
+  if (s.stopped) return { state: "stopped", detail: "", ...calls };
   const a = accountSummary(s);
   const word = a.teams
     .toLowerCase()
     .replace(/[^a-z-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 24);
-  return { state: /^[a-z]/.test(word) ? word : "unknown", detail: a.overall };
+  return {
+    state: /^[a-z]/.test(word) ? word : "unknown",
+    detail: a.overall,
+    ...calls,
+  };
 }
 
 // What the calendar shows next to each account: the slot on it and its state, and the owner's slots with only their own
@@ -320,12 +360,14 @@ export function sharedReport(
     slot: number;
     state: string;
     detail: string;
+    calls?: boolean;
   }[] = [];
   const others: {
     email: string;
     slot: number;
     state: string;
     detail: string;
+    calls?: boolean;
   }[] = [];
   for (const s of listSlots(db)) {
     if (s.owner_id === owner && s.shared_account)

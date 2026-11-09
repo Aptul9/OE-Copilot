@@ -5,7 +5,20 @@ import { ConnectForm } from "@/shared/accounts/ConnectForm";
 import { describe, expect, it } from "vitest";
 import { buildAccountRows } from "@/shared/accounts/model";
 it("guided form offers services and browser progress without device-code or credential copy instructions", () => {
-  const html = renderToStaticMarkup(createElement(ConnectForm, { onConnect: () => {}, signins: [{ id: "j", account: "a@b", capabilities: ["mail"], phase: "browser", url: "https://teams.example/api/desktop/3" }] }));
+  const html = renderToStaticMarkup(
+    createElement(ConnectForm, {
+      onConnect: () => {},
+      signins: [
+        {
+          id: "j",
+          account: "a@b",
+          capabilities: ["mail"],
+          phase: "browser",
+          url: "https://teams.example/api/desktop/3",
+        },
+      ],
+    }),
+  );
   expect(html).toContain('type="email"');
   expect(html).toContain("Open Microsoft sign-in");
   expect(html).toContain("Teams");
@@ -109,9 +122,88 @@ it("renders common add, remove and loading/error states", () => {
 });
 
 it("renders accessible trash target", () => {
-const html=renderToStaticMarkup(createElement(AccountPanel,{rows:[{account:"a@b",capabilities:[],status:"Connected"}],onToggle:()=>{}}));
-expect(html).toContain('aria-label="Remove a@b"');
-expect(html).toContain('title="Remove account"');
-expect(html).toContain('min-w-11');
-expect(html).toContain('<svg');
+  const html = renderToStaticMarkup(
+    createElement(AccountPanel, {
+      rows: [{ account: "a@b", capabilities: [], status: "Connected" }],
+      onToggle: () => {},
+    }),
+  );
+  expect(html).toContain('aria-label="Remove a@b"');
+  expect(html).toContain('title="Remove account"');
+  expect(html).toContain("min-w-11");
+  expect(html).toContain("<svg");
+});
+
+describe("service switches, calls option and status", () => {
+  it("shows an icon, a label and an On/Off word for each service, not color alone", () => {
+    const html = renderToStaticMarkup(
+      createElement(AccountPanel, {
+        rows: [{ account: "a@b", capabilities: ["mail"], status: "Connected" }],
+        onToggle: () => {},
+      }),
+    );
+    expect(html.match(/<svg/g)!.length).toBeGreaterThanOrEqual(5);
+    expect(html).toContain(">On<");
+    expect(html.match(/>Off</g)).toHaveLength(2);
+  });
+  it("offers the calls switch only for a Teams account that reports one, and only with Teams on", () => {
+    const render = (row: object, onCalls?: () => void) =>
+      renderToStaticMarkup(
+        createElement(AccountPanel, {
+          rows: [
+            {
+              account: "a@b",
+              capabilities: ["chat"],
+              status: "Teams: ok",
+              ...row,
+            },
+          ],
+          onToggle: () => {},
+          onCalls,
+        }),
+      );
+    const withCalls = render({ calls: true }, () => {});
+    expect(withCalls.match(/role="switch"/g)).toHaveLength(4);
+    expect(withCalls).toContain('aria-label="Calls of a@b"');
+    expect(withCalls).toContain("Rings and is answered in the app.");
+    const off = render({ calls: false }, () => {});
+    expect(off).toContain("Messages only");
+    expect(off).toContain("AI (MCP)");
+    expect(render({}, () => {}).match(/role="switch"/g)).toHaveLength(3);
+    expect(render({ calls: true }).match(/role="switch"/g)).toHaveLength(3);
+    expect(render({ calls: true, capabilities: [] }, () => {})).not.toContain(
+      "Calls of",
+    );
+  });
+  it("carries the calls state of the Teams account into the row", () => {
+    const [shared] = buildAccountRows(
+      [
+        {
+          account: "a@b",
+          capabilities: ["chat"],
+          status: "ok",
+          state: "ok",
+          calls: false,
+        },
+      ],
+      [],
+    );
+    expect(shared.calls).toBe(false);
+    const [mailbox] = buildAccountRows(
+      [{ account: "a@b", capabilities: ["mail"], status: "ok", calls: null }],
+      [],
+    );
+    expect(mailbox.calls).toBeUndefined();
+    const [browser] = buildAccountRows(
+      [],
+      [{ email: "c@d", slot: 2, state: "ok", calls: true }],
+    );
+    expect(browser.calls).toBe(true);
+    const [stale] = buildAccountRows(
+      [{ account: "a@b", capabilities: ["chat"], status: "ok", calls: true }],
+      [],
+      false,
+    );
+    expect(stale.calls).toBeUndefined();
+  });
 });

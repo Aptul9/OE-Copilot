@@ -1,7 +1,8 @@
 // Lo stato degli account Teams che TeamsRelay manda all'agente ogni minuto (POST /api/auth/shared/teams), perché il calendario mostri
 // accanto a ogni casella se Teams la usa e come sta, e gli account Teams che hanno solo il loro accesso del browser. Sta in memoria: un
 // riavvio lo perde fino al giro dopo. Un rapporto più vecchio di STANTIO_S non si mostra.
-//   {"accounts": [{"account", "slot", "state", "detail"}], "others": [{"email", "slot", "state", "detail"}]}
+//   {"accounts": [{"account", "slot", "state", "detail", "calls"?}], "others": [{"email", "slot", "state", "detail", "calls"?}]}
+// "calls" (true or false) is there only for an account without a browser, whose calls can be switched; no field for the others.
 
 export const STANTIO_S = 600;
 const MAX_VOCI = 64;
@@ -12,6 +13,7 @@ export interface StatoTeams {
   slot: number;
   state: string;
   detail: string;
+  calls?: boolean;
 }
 
 export interface RapportoTeams {
@@ -35,7 +37,7 @@ function voce(dato: unknown, campo: "account" | "email"): StatoTeams & { email: 
   if (!Number.isInteger(r.slot) || (r.slot as number) < 1 || (r.slot as number) > 9999) return rifiuta("slot non valido");
   if (typeof r.state !== "string" || !STATO.test(r.state)) return rifiuta("state non valido");
   const detail = typeof r.detail === "string" ? r.detail.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 200) : "";
-  return { email, slot: r.slot as number, state: r.state, detail };
+  return { email, slot: r.slot as number, state: r.state, detail, ...(typeof r.calls === "boolean" ? { calls: r.calls } : {}) };
 }
 
 /** Il corpo del rapporto, controllato: elenchi brevi, indirizzi, slot, stati come parole. Nessun altro campo. */

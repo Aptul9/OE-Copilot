@@ -6,11 +6,13 @@ export function buildAccountRows(
     status: string;
     message?: string;
     state?: string;
+    calls?: boolean | null;
   }[],
   teams: {
     email: string;
     slot: number;
     state: string;
+    calls?: boolean | null;
   }[],
   reportValid = true,
 ): AccountRow[] {
@@ -36,16 +38,19 @@ export function buildAccountRows(
         !reportValid && !a.capabilities.includes("chat")
           ? { chat: "Teams report unavailable. Cannot enable safely." }
           : undefined,
+      calls: reportValid && typeof a.calls === "boolean" ? a.calls : undefined,
     });
   }
   for (const t of reportValid ? teams : []) {
     const key = t.email.trim().toLowerCase() || `Teams account ${t.slot}`;
     const row = rows.get(key);
+    const calls = typeof t.calls === "boolean" ? t.calls : undefined;
     if (row) {
       if (t.state !== "stopped")
         row.capabilities = [...new Set([...row.capabilities, "chat" as const])];
       if (row.status !== "Sign-in needed") row.status = `Teams: ${t.state}`;
       row.unavailable = undefined;
+      if (calls !== undefined) row.calls = calls;
     } else
       rows.set(key, {
         account: key,
@@ -55,6 +60,7 @@ export function buildAccountRows(
           mail: "Connect mailbox first",
           calendar: "Connect mailbox first",
         },
+        calls,
       });
   }
   return [...rows.values()].sort((a, b) => a.account.localeCompare(b.account));

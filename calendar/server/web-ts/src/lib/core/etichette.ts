@@ -26,13 +26,18 @@ function fileLoghi(): Record<string, string> {
   );
 }
 
-/** Le etichette degli indirizzi dati: i loghi come indirizzi di questo sito (/logos/...). */
+/**
+ * Le etichette degli indirizzi dati e di quelli con un nome in nomi_per_indirizzo (un account Teams su un altro computer, che l'agente non
+ * conosce, ha così il nome e il logo della sua azienda in TeamsRelay): i loghi come indirizzi di questo sito (/logos/...).
+ */
 export function etichetteAccount(indirizzi: string[]): Etichette {
   const cfg = loadConfig();
-  const inoltrate = [...personalizzazione().aziendeInoltrate.entries()];
-  const tutti = [...new Set([...indirizzi, ...inoltrate.map(([, d]) => d.via)].map((i) => i.trim().toLowerCase()).filter((i) => i.includes("@")))];
+  const p = personalizzazione();
+  const inoltrate = [...p.aziendeInoltrate.entries()];
+  const nominati = [...new Set([...indirizzi, ...[...p.nomiPerIndirizzo.keys()].map(String)].map((i) => i.trim().toLowerCase()))];
+  const tutti = [...new Set([...nominati, ...inoltrate.map(([, d]) => d.via)].map((i) => i.trim().toLowerCase()).filter((i) => i.includes("@")))];
   const alias = aliasPerAccount(cfg, tutti);
-  const names = Object.fromEntries(indirizzi.map((i) => i.trim().toLowerCase()).filter((i) => alias[i]).map((i) => [i, alias[i]]));
+  const names = Object.fromEntries(nominati.filter((i) => alias[i]).map((i) => [i, alias[i]]));
   const usati = new Set(Object.values(names));
   const file = fileLoghi();
   const logos = Object.fromEntries([...usati].filter((n) => file[n]).map((n) => [n, "/logos/" + file[n]]));

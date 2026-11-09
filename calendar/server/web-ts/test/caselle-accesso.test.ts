@@ -158,6 +158,18 @@ describe("finestra Account", () => {
     expect(etichette).toHaveLength(1);
   });
 
+  it("get_condivisione_microsoft: un indirizzo in nomi_per_indirizzo che l'agente non conosce (Teams su un altro computer) ha nome e logo", async () => {
+    fs.writeFileSync(
+      `${dati}/personalizzazione.json`,
+      JSON.stringify({ nomi_per_indirizzo: { "Me@Zurich.Example": "Zurich" }, interfaccia: { loghi: { Zurich: "logos/zurich.png" } } }),
+    );
+    fs.mkdirSync(`${dati}/logos`, { recursive: true });
+    fs.writeFileSync(`${dati}/logos/zurich.png`, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const r = (await chiama("get_condivisione_microsoft", [])) as { labels: { names: Record<string, string>; logos: Record<string, string> } };
+    expect(r.labels.names["me@zurich.example"]).toBe("Zurich");
+    expect(r.labels.logos).toEqual({ Zurich: "/logos/zurich.png" });
+  });
+
   it("set_condivisione_microsoft: tutto spento è un elenco vuoto, non lo spegnimento", async () => {
     expect(await chiama("set_condivisione_microsoft", [SERCO, []])).toEqual({ ok: true, account: SERCO, shared: { capabilities: [], origin: "mobile" } });
     expect(ricevuti).toEqual([{ account: SERCO, capabilities: [] }]);

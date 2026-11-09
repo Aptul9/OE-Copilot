@@ -155,7 +155,25 @@ export function statoInoltro(azienda: string): Ev {
   return { stato: "ok", stato_msg: `Copie lette dal calendario di ${via}; flusso non verificabile da remoto` };
 }
 
-export const calendariDiInoltro = (cfg: Config) => calendariInoltrati(cfg, statoInoltro);
+/**
+ * Le aziende inoltrate che hanno ora una casella propria, letta senza errori all'ultima lettura: le loro copie non servono, la barra non
+ * le mostra come calendario a parte e la casella ospite non le elenca. Se quella casella va in errore le copie tornano da sole.
+ */
+export function inoltriSostituiti(cfg: Config): Set<string> {
+  const stati = memoria().ultimoStato;
+  const alias = aliasPerAccount(cfg, Object.keys(stati));
+  const inoltrate = personalizzazione().aziendeInoltrate;
+  return new Set(
+    Object.entries(stati)
+      .filter(([account, s]) => s.stato !== "errore" && inoltrate.has(alias[account]))
+      .map(([account]) => alias[account]),
+  );
+}
+
+export const calendariDiInoltro = (cfg: Config) => {
+  const sostituiti = inoltriSostituiti(cfg);
+  return calendariInoltrati(cfg, statoInoltro).filter((c) => !sostituiti.has(String(c.account)));
+};
 
 // ---- Calendari ed eventi -------------------------------------------------------------------------------------------------
 /**
@@ -306,6 +324,11 @@ export async function tuttiGliEventi(cfg: Config, startIso: string, endIso: stri
     const invitati = (Array.isArray(e.attendees) ? e.attendees : []).map((x: unknown) => pyStr(x).toLowerCase());
     accoda(events, seen, ev, label, () => invitati.find((i: string) => mie.has(i)) ?? "");
   }
+  // le copie di un'azienda che si legge ora dalla sua casella: quelle della casella bastano
+  const sostituiti = inoltriSostituiti(cfg);
+  const tenuti = events.filter((e) => !(e.inoltrata_da && sostituiti.has(String(e.inoltrata_da))));
+  events.length = 0;
+  events.push(...tenuti);
   events.sort((a, b) => ((a.start || "") < (b.start || "") ? -1 : (a.start || "") > (b.start || "") ? 1 : 0));
   etichetta(cfg, events);
   meta.aziende = aziende;

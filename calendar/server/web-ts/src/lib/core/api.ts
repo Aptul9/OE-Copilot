@@ -1,4 +1,4 @@
-import { AgenteNonDisponibile, azzeraMemoria, chiedi, invia } from "./agente";
+import { AgenteNonDisponibile, azzeraMemoria, chiedi, inoltriSostituiti, invia } from "./agente";
 import type { Ev } from "./caselle";
 import { aggiornaCondivisione, creaCondivisione, elencoCondivisioni, eliminaCondivisione, revocaCondivisione, ruotaCondivisione } from "./condivisione";
 import { calendariCaselle, calendariExtra, chiaveEliminato, occupato, raccogli, tuttiAccesi } from "./eventi";
@@ -406,11 +406,14 @@ export const apiTs = {
     try {
       const r = await chiedi("/api/auth/stato");
       const p = personalizzazione();
+      const sostituiti = inoltriSostituiti(loadConfig());
       const caselle = (Array.isArray(r.caselle) ? (r.caselle as Ev[]) : [])
         .filter((c) => c.account && !p.accountNascosti.has(String(c.account).toLowerCase()))
         .map((c) => ({
           ...c,
-          inoltrate: [...p.aziendeInoltrate].filter(([, d]) => pyStr(d.via).toLowerCase() === String(c.account).toLowerCase()).map(([azienda]) => azienda),
+          inoltrate: [...p.aziendeInoltrate]
+            .filter(([azienda, d]) => pyStr(d.via).toLowerCase() === String(c.account).toLowerCase() && !sostituiti.has(azienda))
+            .map(([azienda]) => azienda),
         }));
       return { ok: true, caselle };
     } catch (e) {

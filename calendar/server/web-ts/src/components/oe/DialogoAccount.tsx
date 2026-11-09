@@ -12,6 +12,7 @@ import {
   PaletteIcon,
   PlusIcon,
   RotateCwIcon,
+  CalendarDaysIcon,
   Settings2Icon,
   Share2Icon,
   Trash2Icon,
@@ -288,7 +289,39 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
           <DialogTitle>{conAccount ? "Account" : "Impostazioni"}</DialogTitle>
           <DialogDescription className="sr-only">{conAccount ? "Caselle, calendari da link, gruppi ed eventi eliminati" : "Aspetto, promemoria, condivisione e generale"}</DialogDescription>
         </DialogHeader>
-        {conAccount && <button type="button" className="self-end px-5 py-2 text-xs text-muted-foreground" onClick={() => scegli(attiva === "microsoft" ? "link" : "microsoft")}>{attiva === "microsoft" ? "Calendar settings" : "Microsoft accounts"}</button>}
+        {conAccount && (
+          // le due viste della finestra: gli account Microsoft (posta, calendario, Teams) e i calendari con le loro impostazioni
+          <div role="tablist" aria-label="Sezioni dell'account" className="flex gap-1 border-b bg-muted/40 px-3 py-2">
+            {(
+              [
+                ["microsoft", "Microsoft accounts", UsersIcon],
+                ["calendari", "Calendars", CalendarDaysIcon],
+              ] as const
+            ).map(([vista, testo, Icona]) => {
+              const scelta = vista === "microsoft" ? attiva === "microsoft" : attiva !== "microsoft";
+              return (
+                <button
+                  key={vista}
+                  type="button"
+                  role="tab"
+                  id={`tab-${vista}`}
+                  aria-selected={scelta}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:h-11 motion-reduce:transition-none",
+                    scelta ? "bg-background text-foreground shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                  )}
+                  onClick={() => {
+                    if (vista === "microsoft") scegli("microsoft");
+                    else if (attiva === "microsoft") scegli(ordinate[0] ? "casella:" + ordinate[0].account.toLowerCase() : "link");
+                  }}
+                >
+                  <Icona aria-hidden className="size-4" />
+                  {testo}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="flex min-h-0 flex-1">
           {(!conAccount || attiva !== "microsoft") && <nav id="account-nav" aria-label="Sezioni" className={cn("scroll-thin w-full flex-none overflow-y-auto bg-sidebar p-2 md:w-72 md:border-r", dettaglio && "max-md:hidden")}>
             {!conAccount &&
@@ -332,7 +365,6 @@ export function DialogoAccount({ modo, aperto, onChiudi, accesso2fa = "off" }: P
                     </Ramo>
                   );
                 })}
-                <VoceNav chiave="microsoft" attiva={attiva} onScegli={scegli} id="nav-microsoft-accounts" className="pl-8"><UsersIcon className="mx-1 size-4" /> Microsoft accounts</VoceNav>
                 <VoceNav chiave="aggiungi" attiva={attiva} onScegli={scegli} id="nav-aggiungi-account" className="pl-8 text-primary">
                   <PlusIcon className="mx-1 size-4" /> Aggiungi account
                 </VoceNav>

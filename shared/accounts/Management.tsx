@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, type ReactNode } from "react";
 import { AccountPanel, type AccountRow, type Capability } from "./AccountPanel";
 import { ConnectForm, SignInProgress, type SignIn } from "./ConnectForm";
 export type Snapshot = {
@@ -20,9 +20,11 @@ export type AccountTransport = {
 export function Management({
   transport,
   initialAccount,
+  renderLogo,
 }: {
   transport: AccountTransport;
   initialAccount?: string;
+  renderLogo?: (row: AccountRow) => ReactNode;
 }) {
   const current = useRef(transport);
   useEffect(() => {
@@ -153,6 +155,7 @@ export function Management({
   return (
     <AccountPanel
       rows={rows}
+      renderLogo={renderLogo}
       expanded={expanded}
       inline={
         transport.connect && expanded ? (

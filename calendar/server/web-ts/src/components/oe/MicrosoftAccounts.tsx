@@ -1,9 +1,12 @@
 "use client";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { AccountRow } from "@/shared/accounts/AccountPanel";
 import {
   Management,
   type AccountTransport,
 } from "@/shared/accounts/Management";
+import type { VoceLogo } from "@/lib/oe/types";
+import { AvatarLogo } from "./ControlloLogo";
 import { buildAccountRows, validTeamsReport } from "@/shared/accounts/model";
 import { api } from "@/lib/oe/api";
 import { useOe } from "./OeProvider";
@@ -84,5 +87,33 @@ export function MicrosoftAccounts({
     };
   }, [oe, onAdd]);
   useEffect(() => () => clearTimeout(timer.current), []);
-  return <Management transport={transport} initialAccount={initialAccount} />;
+  // the logo of each company, changed by clicking it as on the calendars' page (ControlloLogo): same names, same files
+  const [loghi, setLoghi] = useState<Record<string, VoceLogo>>({});
+  const caricaLoghi = useCallback(async () => {
+    try {
+      setLoghi((await api("get_loghi")).loghi);
+    } catch {
+      // without them the dialog does not show the chosen address, and still works
+    }
+  }, []);
+  useEffect(() => void caricaLoghi(), [caricaLoghi]);
+  const renderLogo = useCallback(
+    (row: AccountRow) => {
+      const nome = row.name ?? row.account;
+      const colore = oe.calendari.find((c) => (c.alias || c.account) === nome)?.color ?? "#64748b";
+      return (
+        <AvatarLogo
+          nome={nome}
+          colore={colore}
+          lato={28}
+          voce={loghi[nome]}
+          onCambiato={async () => {
+            await Promise.all([oe.ricaricaPers(), caricaLoghi()]);
+          }}
+        />
+      );
+    },
+    [oe, loghi, caricaLoghi],
+  );
+  return <Management transport={transport} initialAccount={initialAccount} renderLogo={renderLogo} />;
 }

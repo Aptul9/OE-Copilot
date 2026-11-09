@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, useRef, type ReactNode } from "react";
 import { AccountPanel, type AccountRow, type Capability } from "./AccountPanel";
 import { ConnectForm, SignInProgress, type SignIn } from "./ConnectForm";
+import { shownSignIn, withSignIns } from "./model";
 export type Snapshot = {
   rows: AccountRow[];
   commands?: { account: string; operation?: string; on?: boolean; error?: string }[];
@@ -15,6 +16,8 @@ export type AccountTransport = {
   setCalls?: (account: string, on: boolean) => Promise<unknown>;
   add: () => void;
   connect?: (account: string, capabilities: Capability[]) => Promise<unknown>;
+  // stops a guided sign-in (or takes a stopped one off the list); its TeamsRelay slot is given back
+  cancel?: (account: string, id: string) => Promise<unknown>;
   connected?: () => void;
 };
 export function Management({
@@ -77,7 +80,7 @@ export function Management({
     });
   async function action(
     account: string,
-    what: Capability | "calls" | "remove" | "connect",
+    what: Capability | "calls" | "remove" | "connect" | "cancel",
     target: boolean,
     fn: () => Promise<unknown>,
     done = "Request accepted. Pending Teams operations apply on the next sync.",
@@ -130,7 +133,7 @@ export function Management({
     return { ...row, capabilities: [...caps], calls };
   };
   const rows: AccountRow[] = [
-    ...snapshot.rows.map(shown),
+    ...withSignIns(snapshot.rows, snapshot.signins).map(shown),
     ...commands
       .filter((c) => !snapshot.rows.some((r) => r.account === c.account))
       .map((c) => ({
@@ -140,10 +143,20 @@ export function Management({
         message: c.error,
       })),
   ];
-  const open = (snapshot.signins ?? []).filter((j) => j.phase !== "complete");
+  const open = (snapshot.signins ?? []).filter(shownSignIn);
   const connectingNow = (account: string) => `${account}|connect` in inflight;
   const onConnect = (account: string, caps: Capability[]) =>
     void action(account, "connect", true, () => transport.connect!(account, caps));
+  const onCancel = transport.cancel
+    ? (j: SignIn) =>
+        void action(
+          j.account,
+          "cancel",
+          true,
+          () => transport.cancel!(j.account, j.id),
+          `${j.account}: sign-in cancelled.`,
+        )
+    : undefined;
   // the form opens under the row it was asked from; "Add account" opens it at the top
   const expanded =
     connecting && rows.some((r) => r.account === connecting)
@@ -166,6 +179,7 @@ export function Management({
               pending={connectingNow(expanded)}
               signins={open.filter((j) => j.account === expanded)}
               onConnect={onConnect}
+              onCancel={onCancel}
               onClose={close}
             />
           ) : (
@@ -173,6 +187,7 @@ export function Management({
               <SignInProgress
                 signins={open.filter((j) => j.account === expanded)}
                 onConnect={onConnect}
+                onCancel={onCancel}
               />
             </div>
           )
@@ -231,10 +246,11 @@ export function Management({
               )}
               signins={orphan}
               onConnect={onConnect}
+              onCancel={onCancel}
               onClose={close}
             />
           ) : (
-            <SignInProgress signins={orphan} onConnect={onConnect} />
+            <SignInProgress signins={orphan} onConnect={onConnect} onCancel={onCancel} />
           )}
         </div>
       )}

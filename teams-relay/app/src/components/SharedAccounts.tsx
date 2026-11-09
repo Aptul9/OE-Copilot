@@ -32,7 +32,8 @@ type List = {
   labels?: AccountLabels | null;
   error?: string;
 };
-export function SharedAccounts({ onChange }: { onChange?: () => void }) {
+// adding: opened from "Add a Teams account" of the account menu, with the form to add one already open
+export function SharedAccounts({ onChange, adding }: { onChange?: () => void; adding?: boolean }) {
   const addUrl = useRef("");
   const transport = useMemo<AccountTransport>(() => {
     return {
@@ -85,6 +86,14 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
           0,
         );
       },
+      cancel: async (account, id) => {
+        await post(
+          "/api/shared-accounts",
+          { operation: "signin-cancel", account, id },
+          0,
+        );
+        onChange?.();
+      },
       connected: () => onChange?.(),
       add: () => {
         if (!addUrl.current) throw Error("Calendar sign-in URL unavailable");
@@ -94,5 +103,5 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
       },
     };
   }, [onChange]);
-  return <Management transport={transport} />;
+  return <Management transport={transport} initialAccount={adding ? "" : undefined} />;
 }

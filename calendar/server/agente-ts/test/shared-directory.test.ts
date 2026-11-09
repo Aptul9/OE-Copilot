@@ -135,6 +135,17 @@ describe("chiave di TeamsRelay", () => {
     expect((await chiama("/api/auth/shared", "stretta", { operation: "signin-progress", account: signin.account, id: signin.id, phase: "browser", slot: 4, url: "https://teams.example/api/desktop/4" })).status).toBe(200);
     expect((await chiama("/api/auth/shared", "stretta", { operation: "signin-import", account: signin.account, id: signin.id, slot: 5, sessione: {} })).status).toBe(400);
   });
+  it("TeamsRelay's key cancels a guided sign-in of that address only, and it stays stopped with the time it ended", async () => {
+    const { chiama } = await avvia();
+    await chiama("/api/auth/shared/teams", "stretta", { accounts: [], others: [] });
+    const { signin } = (await (await chiama("/api/auth/shared", "stretta", { operation: "connect", account: "new@example.com", capabilities: ["mail", "chat"] })).json()) as { signin: { id: string } };
+    expect((await chiama("/api/auth/shared", "stretta", { operation: "signin-cancel", account: "other@example.com", id: signin.id })).status).toBe(400);
+    const r = await chiama("/api/auth/shared", "stretta", { operation: "signin-cancel", account: "new@example.com", id: signin.id });
+    expect(r.status).toBe(200);
+    const listed = ((await (await chiama("/api/auth/shared", "stretta")).json()) as { signins: { phase: string; error: string; ended: number }[] }).signins[0];
+    expect(listed).toMatchObject({ phase: "blocked", error: "Connection cancelled." });
+    expect(listed?.ended).toBeGreaterThan(0);
+  });
   it("apre solo l'elenco degli account condivisi, il rapporto Teams e i token della chat", async () => {
     const { chiama } = await avvia();
     expect((await chiama("/api/auth/shared", "stretta")).status).toBe(200);

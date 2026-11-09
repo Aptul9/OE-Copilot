@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AccountPanel } from "@/shared/accounts/AccountPanel";
 import { ConnectForm } from "@/shared/accounts/ConnectForm";
 import { describe, expect, it } from "vitest";
-import { buildAccountRows } from "@/shared/accounts/model";
+import { buildAccountRows, labelFor, shownSignIn, withSignIns } from "@/shared/accounts/model";
+import { SignInProgress, type SignIn } from "@/shared/accounts/ConnectForm";
 it("guided form offers services and browser progress without device-code or credential copy instructions", () => {
   const html = renderToStaticMarkup(
     createElement(ConnectForm, {
@@ -291,4 +292,40 @@ it("an app's own logo control replaces the plain logo on every row", () => {
   );
   expect(html).toContain('data-logo-apri="Alfa"');
   expect(html).not.toContain("ring-black/10");
+});
+
+describe("a guided sign-in and its Teams slot", () => {
+  const job = (o: Partial<SignIn> = {}): SignIn => ({ id: "j", account: "me@bip.example", capabilities: ["mail", "calendar", "chat"], phase: "browser", slot: 10, ...o });
+  const slotRows = () => buildAccountRows([], [{ email: "", slot: 10, state: "login" }, { email: "", slot: 11, state: "login" }]);
+  it("folds the slot a sign-in runs in into one row for the address being signed in", () => {
+    const rows = withSignIns(slotRows(), [job()], 1000);
+    expect(rows.map((r) => r.account)).toEqual(["Teams account 11", "me@bip.example"]);
+    expect(rows[1]).toMatchObject({ pending: true, status: "Signing in" });
+    expect(rows[1].unavailable?.mail).toMatch(/cancel/i);
+  });
+  it("keeps the slot hidden for a moment after the sign-in stopped, then shows what is left", () => {
+    const stopped = job({ phase: "blocked", ended: 1000 });
+    expect(withSignIns(slotRows(), [stopped], 1100).map((r) => r.account)).toEqual(["Teams account 11"]);
+    expect(withSignIns(slotRows(), [stopped], 1300).map((r) => r.account)).toEqual(["Teams account 10", "Teams account 11"]);
+  });
+  it("shows no cancelled or finished sign-in", () => {
+    expect(shownSignIn(job({ phase: "blocked", error: "Connection cancelled." }))).toBe(false);
+    expect(shownSignIn(job({ phase: "complete" }))).toBe(false);
+    expect(shownSignIn(job({ phase: "blocked", error: "Sign-in timed out. Resume when ready." }))).toBe(true);
+  });
+  it("a row being signed in has nothing to remove or edit; its progress has Cancel, a stopped one Dismiss", () => {
+    const rows = withSignIns([], [job()], 1000);
+    const html = renderToStaticMarkup(createElement(AccountPanel, { rows, onToggle: () => {}, renderLogo: () => createElement("button", { "data-logo-apri": "x" }) }));
+    expect(html).not.toContain("Remove me@bip.example");
+    expect(html).not.toContain("data-logo-apri");
+    const progress = renderToStaticMarkup(createElement(SignInProgress, { signins: [job(), job({ id: "k", account: "old@bip.example", phase: "blocked", error: "Sign-in timed out. Resume when ready." })], onConnect: () => {}, onCancel: () => {} }));
+    expect(progress).toContain("Cancel the sign-in of me@bip.example");
+    expect(progress).toContain("Dismiss the sign-in of old@bip.example");
+  });
+  it("one name and logo per address, for every list of accounts", () => {
+    const labels = { names: { "me@npo.example": "NPO" }, logos: { NPO: "data:image/png;base64,AA" } };
+    expect(labelFor(" ME@NPO.EXAMPLE ", labels)).toEqual({ name: "NPO", logo: "data:image/png;base64,AA" });
+    expect(labelFor("other@x", labels)).toEqual({});
+    expect(labelFor("me@npo.example", null)).toEqual({});
+  });
 });

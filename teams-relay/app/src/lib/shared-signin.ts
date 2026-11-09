@@ -18,7 +18,12 @@ type SignIn = {
   slot?: number;
   capabilities: string[];
   route?: string;
+  created?: number;
+  ended?: number;
 };
+
+// the agent's timeout of a sign-in (agente-ts signin.ts), for a stopped one that does not say when it stopped
+const SIGNIN_TIMEOUT_S = 300;
 
 // Runs inside the existing slot queue. Progress is persisted before a browser starts, so a restart never allocates it twice.
 export async function syncSignIns(d: SyncDeps, input: unknown) {
@@ -35,14 +40,24 @@ export async function syncSignIns(d: SyncDeps, input: unknown) {
   for (const job of jobs) {
     if (job.phase === "blocked" && job.slot) {
       const row = slotRow(d.db, job.slot);
-      if (
+      const address = row ? identity(row).trim().toLowerCase() : "";
+      const ours =
         row?.owner_id === d.owner &&
-        row.stopped &&
         !row.relay &&
         !row.shared_account &&
-        !reservedElsewhere(job, job.slot) &&
-        (!identity(row) || identity(row).trim().toLowerCase() === job.account)
-      )
+        !reservedElsewhere(job, job.slot);
+      // a slot claimed for this sign-in (between its start and its end) that never signed in: given back, so no nameless
+      // account stays behind. A slot claimed later, for another account, is never touched.
+      const claimedForIt =
+        !!job.created &&
+        !!row &&
+        row.added >= job.created &&
+        row.added <= (job.ended ?? job.created + SIGNIN_TIMEOUT_S);
+      if (ours && !address && claimedForIt) {
+        await slotDown(d.ctl, job.slot);
+        await wipeSlot(d.ctl, job.slot, d);
+        releaseSlot(d.db, job.slot);
+      } else if (ours && row?.stopped && (!address || address === job.account))
         await d.ctl.stop(job.slot);
     }
     if (!["queued", "browser"].includes(job.phase)) continue;

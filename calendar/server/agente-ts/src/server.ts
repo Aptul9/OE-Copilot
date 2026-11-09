@@ -378,6 +378,17 @@ export class Agente {
         return this.invia(req, res, 400, { errore: "invalid JSON" });
       }
       const data = dati as Record<string, unknown>;
+      if (data?.operation === "signin-cancel") {
+        if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "Token store unavailable" });
+        try {
+          const account = typeof data.account === "string" ? data.account.trim().toLowerCase() : "";
+          const signin = new SignIns(this.o.tokens.percorso + ".signins.json", () => Math.floor(this.o.adesso() / 1000)).cancel(data.id, account);
+          this.o.registro("INFO", `accesso guidato annullato: ${account}`);
+          return this.invia(req, res, 200, { ok: true, signin });
+        } catch (e) {
+          return this.invia(req, res, 400, { ok: false, errore: testoErrore(e) });
+        }
+      }
       if (data && ["connect", "signin-progress", "signin-import"].includes(String(data.operation))) {
         if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "Token store unavailable" });
         const tokens = this.o.tokens;

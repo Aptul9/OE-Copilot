@@ -19,6 +19,7 @@ import {
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { cn } from "cn";
+import { identityOf, useSharedNames } from "./AccountIdentity";
 import { AccountMenu, needsLogin } from "./AccountMenu";
 import { Activity } from "./Activity";
 import { CallBanner, RingHint } from "./CallAlert";
@@ -179,6 +180,8 @@ export function App({ user, desktopUrl }: { user: User; desktopUrl: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [deskOpened, setDeskOpened] = useState(false);
   const [adding, setAdding] = useState(false);
+  // the calendar's names and logos of the owner's accounts, and the guided sign-ins running
+  const names = useSharedNames();
   // the token of an account on another computer just added, shown once, with the address of the server its relay joins
   const [relayToken, setRelayToken] = useState<{ token: string; server: string } | null>(null);
   const [toggling, setToggling] = useState(0);
@@ -776,15 +779,17 @@ export function App({ user, desktopUrl }: { user: User; desktopUrl: string }) {
             adding={adding}
             onSelect={selectAccount}
             onAdd={() => void addAccount()}
+            addHref={names.enabled ? "/settings?add-account=1" : undefined}
             onAddRelay={() => void addRelayAccount()}
             onOpenDesktop={openDesktop}
             onRemove={setRemoving}
             onSignOut={() => void authClient.signOut().then(toLogin)}
             appPage={appPage}
+            names={names}
           />
           <StatusPanel
             acc={acc}
-            accountName={current ? accName(current) : ""}
+            accountName={current ? identityOf(current, names).name : ""}
             health={health}
             pushOff={pushOff}
             onEnablePush={() => void turnOnPush()}

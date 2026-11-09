@@ -11,13 +11,22 @@ export const slotPrefix = () => {
   return s === undefined ? "" : `[${s}] `;
 };
 
+const states: Map<number, unknown>[] = [];
+
 // Module state that belongs to one account: one instance per slot
 export function perSlot<T>(make: () => T): () => T {
   const all = new Map<number, T>();
+  states.push(all);
   return () => {
     const slot = currentSlot();
     let v = all.get(slot);
     if (v === undefined) all.set(slot, (v = make()));
     return v;
   };
+}
+
+// A slot stopped in the light host may come back on another account (wiped, signed in again): nothing of the last one
+// may stay
+export function dropSlot(slot: number) {
+  for (const all of states) all.delete(slot);
 }

@@ -25,7 +25,8 @@ class HostedLight implements ProcessLike {
   lastExit: string | null = null;
   up = false;
   wanted = false;
-  private seen = false;
+  // the next start follows an exit, not a stop: a restart, as Supervised counts them
+  private failed = false;
   private waiting: (() => void)[] = [];
 
   constructor(
@@ -59,17 +60,19 @@ class HostedLight implements ProcessLike {
 
   started() {
     this.up = true;
-    if (this.seen) this.restarts++;
-    this.seen = true;
+    if (this.failed) this.restarts++;
+    this.failed = false;
   }
 
   exited(how: string) {
     this.up = false;
     this.lastExit = how;
+    this.failed = this.wanted;
   }
 
   stopped() {
     this.up = false;
+    this.failed = false;
     this.flush();
   }
 

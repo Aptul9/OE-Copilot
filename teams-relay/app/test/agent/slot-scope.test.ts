@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "@/agent/context";
 import { isRecentlyRead, markReadViaApi, saveChatViaApi, servedByApi } from "@/agent/jobs/conversation";
 import { log } from "@/agent/log";
-import { currentSlot, inSlot, perSlot, slotPrefix } from "@/agent/slot-scope";
+import { currentSlot, dropSlot, inSlot, perSlot, slotPrefix } from "@/agent/slot-scope";
 
 const chatsvc = vi.hoisted(() => ({
   getTeamsAuth: vi.fn(async () => ({ token: "t", region: "emea", oid: "o", upn: "", name: "" })),
@@ -76,6 +76,17 @@ describe("slot scope", () => {
     });
     inSlot(3, () => expect(servedByApi("chat")).toBe(false));
     inSlot(2, () => expect(servedByApi("chat")).toBe(true));
+  });
+
+  it("forgets the state of a dropped slot: the next account of the slot starts clean", async () => {
+    await inSlot(6, async () => {
+      expect(await saveChatViaApi(agent(), "chat")).toBe(true);
+    });
+    inSlot(7, () => expect(servedByApi("chat")).toBe(false));
+    await inSlot(7, () => saveChatViaApi(agent(), "chat"));
+    dropSlot(6);
+    inSlot(6, () => expect(servedByApi("chat")).toBe(false));
+    inSlot(7, () => expect(servedByApi("chat")).toBe(true));
   });
 
   it("does not show the chats one slot read to another", async () => {

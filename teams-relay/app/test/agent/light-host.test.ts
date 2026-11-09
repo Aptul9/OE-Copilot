@@ -2,7 +2,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FromHost } from "@/agent/light/host-protocol";
 import { SlotHost, type SlotRunner } from "@/agent/light/host";
-import { currentSlot } from "@/agent/slot-scope";
+import { currentSlot, perSlot } from "@/agent/slot-scope";
+
+const cache = perSlot(() => ({}));
 
 const TIMING = { minDelayMs: 10, maxDelayMs: 40, stableMs: 1000, stopGraceMs: 200 };
 
@@ -37,6 +39,23 @@ describe("light host", () => {
     expect(calls.map((c) => [c.slot, c.env])).toEqual([[2, { ACCOUNT: "2" }], [3, { ACCOUNT: "3" }]]);
     expect(sent).toEqual([{ slot: 2, event: "started" }, { slot: 3, event: "started" }]);
     expect(host.running()).toEqual([2, 3]);
+  });
+
+  it("gives a slot started after a stop fresh module state, and keeps it across a restart after a failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const seen: object[] = [];
+    const { host, of } = setup(async (call, n) => {
+      seen.push(cache());
+      if (n === 1) throw new Error("boom");
+      return untilAbort(call);
+    });
+    await host.handle({ op: "start", slot: 4, env: { ACCOUNT: "4" } });
+    await vi.waitFor(() => expect(of(4)).toHaveLength(2));
+    expect(seen[1]).toBe(seen[0]);
+    await host.handle({ op: "stop", slot: 4 });
+    await host.handle({ op: "start", slot: 4, env: { ACCOUNT: "4" } });
+    await vi.waitFor(() => expect(of(4)).toHaveLength(3));
+    expect(seen[2]).not.toBe(seen[0]);
   });
 
   it("starts a slot that failed again after the delay and leaves the others alone", async () => {

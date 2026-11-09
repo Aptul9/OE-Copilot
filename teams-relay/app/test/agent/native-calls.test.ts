@@ -46,4 +46,14 @@ describe('native calling parent', () => {
   expect(err).toHaveBeenCalledWith('[6] calling: worker said no');
   calls.stop();
  });
+ it('starts no worker when it was stopped while it cleaned up the registration of the last one', async () => {
+  const dir=tempDir();
+  fs.writeFileSync(path.join(dir,'owned-registration.json'),JSON.stringify({endpoint:'0f8fad5b-d9cb-469f-a165-70867728950e',registrar:'https://teams.microsoft.com/registrar/prod/v2/registrations'}));
+  spawn.mockClear();
+  const l={config:{lightTokenFile:path.join(dir,'light-token.json'),slot:5,callingHost:'/opt/calling-host.mjs',callAudioUrl:'',env:{}},me:{oid:'owned',name:'Owner'},token:{accessToken:async()=> 'access'},list:{members:new Map(),names:new Map()},store:{setState:vi.fn()},notifier:{}} as unknown as Light;
+  const calls=new NativeCalls(l);
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{ if(String(url).includes('/registrar/')){ calls.stop(); return new Response(null,{status:204}); } return Response.json({tokens:{skypeToken:'test'},regionGtms:{}}); }));
+  await calls.start();
+  expect(spawn).not.toHaveBeenCalled();
+ });
 });

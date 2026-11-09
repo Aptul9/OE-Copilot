@@ -2,7 +2,7 @@
 // of fork (src/supervisor/light-host.ts). Each slot runs in its own slot scope (src/agent/slot-scope.ts).
 import { restartDelay, TIMING, type Timing } from "@/supervisor/process";
 import { errorText, log } from "../log";
-import { inSlot } from "../slot-scope";
+import { dropSlot, inSlot } from "../slot-scope";
 import type { FromHost, ToHost } from "./host-protocol";
 import { startSlot } from "./slot";
 
@@ -84,6 +84,7 @@ export class SlotHost {
     this.slots.delete(slot);
     this.abort(e);
     await within(e.current, this.timing.stopGraceMs);
+    dropSlot(slot);
   }
 
   // A run that ends while its slot is wanted is reported and started again, like Supervised does with a process

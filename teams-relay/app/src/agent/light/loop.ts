@@ -283,8 +283,10 @@ export async function runLight(l: Light, signal?: AbortSignal): Promise<void> {
   const nativeAllowed = l.config.nativeCalls;
   const callsWanted = () => nativeAllowed && (l.callsWanted?.() ?? true);
   if (nativeAllowed) {
-    // the light host aborts the signal of its slots and owns the process signals
-    if (!signal) {
+    // the light host aborts the signal of its slots and owns the process signals: a call ends at once either way, not
+    // after the read in progress
+    if (signal) signal.addEventListener("abort", () => l.calls?.stop(), { once: true });
+    else {
       process.once("SIGTERM", () => l.calls?.stop());
       process.once("SIGINT", () => l.calls?.stop());
     }

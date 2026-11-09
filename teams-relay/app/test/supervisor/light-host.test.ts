@@ -123,6 +123,21 @@ describe("LightHost", () => {
     expect(a).toMatchObject({ running: true, restarts: 1 });
   });
 
+  it("counts as restarts only the starts that follow an exit, as Supervised does, not a stop and a start", async () => {
+    const host = make();
+    const a = host.slot(2, command("2"));
+    const b = host.slot(3, command("3"));
+    b.start();
+    a.start();
+    children[0]!.emit({ slot: 2, event: "started" });
+    const stopping = a.stop();
+    children[0]!.emit({ slot: 2, event: "stopped" });
+    await stopping;
+    a.start();
+    children[0]!.emit({ slot: 2, event: "started" });
+    expect(a).toMatchObject({ running: true, restarts: 0 });
+  });
+
   it("starts the host again after it exits and sends the start of every wanted slot, with a fresh command", async () => {
     const host = make();
     let n = 0;

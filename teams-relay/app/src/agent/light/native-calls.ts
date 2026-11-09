@@ -37,6 +37,8 @@ export class NativeCalls {
       if (!deleted.ok && deleted.status !== 404) throw new Error(`calling cleanup ${deleted.status}`);
       fs.unlinkSync(marker);
     }
+    // stopped during the cleanup: a worker started now would outlive its slot in the light host
+    if (this.stopped) return;
     const env: Record<string, string> = { ...l.config.env, HOST_STATE: dir, HOST_BUNDLES: '/app/calling', WRTC_DIR: '/app', CALLING_OID: l.me.oid, CALLING_NAME: l.me.name, CALL_AUDIO_TOKEN_FILE: audioToken, CALL_AUDIO_URL: l.config.callAudioUrl, CALL_AUDIO_INTERNAL: '1' };
     const child = fork(l.config.callingHost, ['--mode=serve'], {
       env: env as NodeJS.ProcessEnv,

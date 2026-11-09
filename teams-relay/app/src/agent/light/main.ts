@@ -10,6 +10,7 @@ import { errorText, log } from "../log";
 import { runHost } from "./host";
 import { HOST_FLAG } from "./host-protocol";
 import { startSlot } from "./slot";
+import { traceSlowRequests } from "./slow-requests";
 
 function check() {
   const db = new Database(":memory:");
@@ -20,6 +21,7 @@ function check() {
 
 async function main() {
   if (process.argv.includes("--check")) return check();
+  traceSlowRequests();
   if (process.argv.includes(HOST_FLAG)) return runHost();
   for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => { /* runLight owns graceful native-worker shutdown */ setTimeout(() => process.exit(0), 4000).unref(); });
   await startSlot(process.env);

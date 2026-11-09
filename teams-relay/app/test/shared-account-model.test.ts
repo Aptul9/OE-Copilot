@@ -4,6 +4,7 @@ import { AccountPanel } from "@/shared/accounts/AccountPanel";
 import { describe, expect, it } from "vitest";
 import { buildAccountRows, labelFor, shownSignIn, withSignIns } from "@/shared/accounts/model";
 import { SignInProgress, type SignIn } from "@/shared/accounts/ConnectForm";
+import { initials } from "@/shared/accounts/Identity";
 describe("shared account identities", () => {
   it("merges case-folded mailbox and browser identity, preserving browser Teams control", () => {
     const rows = buildAccountRows(
@@ -294,4 +295,21 @@ describe("a guided sign-in and its Teams slot", () => {
     expect(labelFor("other@x", labels)).toEqual({});
     expect(labelFor("me@npo.example", null)).toEqual({});
   });
+});
+
+it("links to the sign-in browser only while the sign-in runs: a stopped one gave its browser back", () => {
+  const html = renderToStaticMarkup(
+    createElement(SignInProgress, {
+      signins: [
+        { id: "a", account: "a@b", capabilities: ["mail"], phase: "browser", url: "https://teams.example/api/desktop/3" },
+        { id: "b", account: "c@d", capabilities: ["mail"], phase: "blocked", url: "https://teams.example/api/desktop/4", error: "Sign-in timed out. Resume when ready." },
+      ],
+      onConnect: () => {},
+    }),
+  );
+  expect(html.match(/Open Microsoft sign-in/g)).toHaveLength(1);
+  expect(html).not.toContain("desktop/4");
+});
+it("a logo-less company shows the calendar's letters", () => {
+  expect(["agap2", "Beta Servizi", "antonio.maritato@bip-group.com", "Fincons"].map(initials)).toEqual(["AG", "BS", "AM", "FI"]);
 });

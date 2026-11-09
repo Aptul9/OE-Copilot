@@ -75,7 +75,8 @@ export function SignInProgress({
               </span>
             )}
           </span>
-          {j.url && j.phase !== "complete" && (
+          {/* a stopped sign-in has given its browser back: Resume opens a new one */}
+          {j.url && j.phase === "browser" && (
             <a
               className={`${SMALL_BUTTON} border hover:bg-accent`}
               href={j.url}

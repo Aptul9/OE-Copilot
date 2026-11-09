@@ -1,13 +1,15 @@
 "use client";
 import { useState, type ReactNode } from "react";
-export const initials = (name: string) =>
-  name
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
+// The calendar's rule (iniziali, web-ts lib/oe/logic.ts), so a company without a logo shows the same letters on both
+// sites: "agap2" -> "AG", "Beta Servizi" -> "BS", "a.b@x" -> "AB"
+export function initials(name: string): string {
+  const s = name.split("·")[0].trim().split("@")[0];
+  const words = s.split(/[\s._\-+]/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return s.slice(0, 2).toUpperCase();
+}
+// the calendar's colour of an account with no calendar of its own (MicrosoftAccounts.tsx)
+const NO_LOGO = "#64748b";
 // The company logo in a white circle, as in the calendar sidebar; initials without one. The one picture of an account
 // wherever it shows: Microsoft accounts in both apps, the account menu and the settings of TeamsRelay. children: a badge
 // on its edge (the presence dot of TeamsRelay).
@@ -39,7 +41,10 @@ export function Logo({
             onError={() => setBroken(src)}
           />
         ) : (
-          <span className="grid size-full place-items-center bg-primary text-[10px] font-bold text-primary-foreground">
+          <span
+            className="grid size-full place-items-center text-[10px] leading-none font-extrabold text-white"
+            style={{ background: NO_LOGO }}
+          >
             {initials(name)}
           </span>
         )}

@@ -203,3 +203,13 @@ describe("control API of the shared accounts", () => {
     expect(String(e)).not.toMatch(/secret-key/);
   });
 });
+
+it("forwards sign-in dismissal without requiring capabilities", async () => {
+  const request = { operation: "signin-cancel", account: "failed@example.com", id: "failed-signin" };
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    expect(JSON.parse(String(options?.body))).toEqual(request);
+    return Response.json({ ok: true });
+  });
+  await expect(directory({ url: "http://broker", key: "key" }, fetcher as typeof fetch).set(request)).resolves.toEqual({ ok: true });
+  expect(fetcher).toHaveBeenCalledOnce();
+});

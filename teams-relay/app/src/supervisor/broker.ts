@@ -58,6 +58,7 @@ function setBody(body: unknown) {
   const b = (body ?? {}) as Record<string, unknown>;
   if (typeof b.account !== "string")
     throw new AccountError(400, "account: an address");
+  if (b.operation === "signin-cancel") return { operation: b.operation, account: b.account, id: b.id };
   if (b.operation === "connect") return { operation: b.operation, account: b.account, capabilities: b.capabilities };
   if (b.operation === "signin-progress") return { operation: b.operation, account: b.account, id: b.id, slot: b.slot, phase: b.phase, url: b.url, error: b.error };
   if (

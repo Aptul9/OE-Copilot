@@ -108,7 +108,7 @@ it("renders common add, remove and loading/error states", () => {
       onToggle: () => {},
       loading: true,
       error: "Failed",
-      pending: "a@b",
+      busy: ["a@b|*"],
     }),
   );
   for (const text of [
@@ -252,5 +252,34 @@ describe("one line per account", () => {
     );
     expect(html.indexOf("FORM")).toBeGreaterThan(html.indexOf('data-account="b@x"'));
     expect(html.match(/FORM/g)).toHaveLength(1);
+  });
+});
+
+describe("changes do not block the panel", () => {
+  const rows = buildAccountRows(
+    [
+      { account: "a@x", capabilities: ["mail", "chat"], status: "ok", calls: true, state: "ok" },
+      { account: "b@x", capabilities: ["mail"], status: "ok" },
+    ],
+    [],
+  );
+  const render = (busy: string[]) =>
+    renderToStaticMarkup(createElement(AccountPanel, { rows, busy, onToggle: () => {}, onCalls: () => {}, onRemove: () => {} }));
+  const button = (html: string, label: string) => html.match(new RegExp('<button[^>]*aria-label="' + label + '"[^>]*>'))![0];
+  it("a change on one switch locks that switch only, with a spinner; other switches and accounts stay usable", () => {
+    const html = render(["a@x|calendar"]);
+    expect(button(html, "Calendar of a@x")).toContain('aria-busy="true"');
+    expect(button(html, "Calendar of a@x")).toContain('disabled=""');
+    for (const other of ["Mail of a@x", "Teams of a@x", "Calls of a@x", "Mail of b@x", "Calendar of b@x", "Remove a@x", "Remove b@x"])
+      expect(button(html, other)).not.toContain('disabled=""');
+    expect(html).toContain("Add account");
+    expect(html.match(/<button[^>]*disabled=""[^>]*>[^<]*Add account/)).toBeNull();
+  });
+  it("a removal on its way locks its own row only", () => {
+    const html = render(["a@x|*"]);
+    for (const own of ["Mail of a@x", "Calendar of a@x", "Teams of a@x", "Calls of a@x", "Remove a@x"])
+      expect(button(html, own)).toContain('disabled=""');
+    for (const other of ["Mail of b@x", "Calendar of b@x", "Remove b@x"])
+      expect(button(html, other)).not.toContain('disabled=""');
   });
 });

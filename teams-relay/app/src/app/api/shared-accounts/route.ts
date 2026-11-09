@@ -186,6 +186,8 @@ export const POST = route(async (req) => {
   }
   const dir = directoryClient();
   await setSharedCapability(dir, account, capability as Capability, on);
+  // mail and calendar change no Teams slot: no pass, which waits in the queue of every slot's changes
+  if (capability !== "chat") return Response.json(await listFor(user.id));
   const r = await syncSharedAccounts({
     ctl: controlClient(),
     db,

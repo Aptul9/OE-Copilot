@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Management,
   type AccountTransport,
@@ -12,8 +12,16 @@ export function MicrosoftAccounts({
   initialAccount,
 }: { onAdd?: () => void; initialAccount?: string } = {}) {
   const oe = useOe();
-  const transport = useMemo<AccountTransport>(
-    () => ({
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const transport = useMemo<AccountTransport>(() => {
+    // the calendars reload in the background, once for a burst of changes: a switch never waits for it
+    const refresh = () => {
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        void oe.aggiornaCalendari().then(() => oe.ricarica());
+      }, 800);
+    };
+    return {
       load: async () => {
         const r = await api("get_condivisione_microsoft");
         if (!r.ok) throw Error(r.error || "Accounts unavailable");
@@ -56,14 +64,12 @@ export function MicrosoftAccounts({
           : before.filter((c) => c !== cap);
         const r = await api("set_condivisione_microsoft", account, caps);
         if (!r.ok) throw Error(r.error);
-        await oe.aggiornaCalendari();
-        oe.ricarica();
+        refresh();
       },
       remove: async (account) => {
         const r = await api("manage_microsoft", account, "remove");
         if (!r.ok) throw Error(r.error);
-        await oe.aggiornaCalendari();
-        oe.ricarica();
+        refresh();
       },
       setCalls: async (account, on) => {
         const r = await api("manage_microsoft", account, "calls", on);
@@ -74,12 +80,9 @@ export function MicrosoftAccounts({
         const r = await api("connect_microsoft", account, capabilities);
         if (!r.ok) throw Error(r.error || "Sign-in failed");
       },
-      connected: () => {
-        void oe.aggiornaCalendari();
-        oe.ricarica();
-      },
-    }),
-    [oe, onAdd],
-  );
+      connected: refresh,
+    };
+  }, [oe, onAdd]);
+  useEffect(() => () => clearTimeout(timer.current), []);
   return <Management transport={transport} initialAccount={initialAccount} />;
 }

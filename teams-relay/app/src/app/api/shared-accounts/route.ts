@@ -22,6 +22,7 @@ import {
 //   POST /api/shared-accounts {account, capability, on}        the same, after the change and the pass that follows it;
 //                                                              one service per change, applied to the list as it is now
 //   POST /api/shared-accounts {account, operation: "calls", on} calls of its Teams account without a browser on or off
+//   POST /api/shared-accounts {account, operation: "signin-cancel", id} a guided sign-in stopped, its slot given back
 
 const OFF = { enabled: false, addUrl: "", accounts: [], teamsOnly: [] };
 
@@ -81,9 +82,34 @@ export const POST = route(async (req) => {
   const db = appDb();
   const owner = sharedOwnerId(db);
   if (owner !== user.id) throw new HttpError(404, "Not found");
-  const { account, capability, on, operation, capabilities } = await body(req);
+  const { account, capability, on, operation, capabilities, id } = await body(req);
   if (typeof account !== "string" || !account.includes("@"))
     throw new HttpError(400, "account must be an address");
+  if (operation === "signin-cancel") {
+    if (typeof id !== "string") throw new HttpError(400, "id required");
+    const result = await directoryClient().set({
+      operation: "signin-cancel",
+      account,
+      id,
+    });
+    if (!(result as { ok?: boolean })?.ok)
+      throw new HttpError(
+        409,
+        String(
+          (result as { errore?: string })?.errore || "Sign-in not cancelled",
+        ),
+      );
+    // the slot of the sign-in is given back now, not at the next minute's pass
+    await syncSharedAccounts({
+      ctl: controlClient(),
+      db,
+      dir: directoryClient(),
+      dataDir: config.dataDir,
+      perUser: config.accountsPerUser,
+      owner,
+    });
+    return Response.json(await listFor(user.id));
+  }
   if (operation === "connect") {
     if (
       !Array.isArray(capabilities) ||

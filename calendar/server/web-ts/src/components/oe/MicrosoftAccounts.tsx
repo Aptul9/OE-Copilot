@@ -83,6 +83,10 @@ export function MicrosoftAccounts({
         const r = await api("connect_microsoft", account, capabilities);
         if (!r.ok) throw Error(r.error || "Sign-in failed");
       },
+      cancel: async (account, id) => {
+        const r = await api("cancel_microsoft_signin", account, id);
+        if (!r.ok) throw Error(r.error || "Sign-in not cancelled");
+      },
       connected: refresh,
     };
   }, [oe, onAdd]);

@@ -11,7 +11,13 @@ export type SignIn = {
   url?: string;
   error?: string;
   route?: string;
+  // when it stopped (blocked): TeamsRelay gives back a slot it claimed for the sign-in only up to then
+  ended?: number;
 };
+
+// a sign-in not finished in this time stops; its browser slot is given back
+export const SIGNIN_TIMEOUT_S = 300;
+export const CANCELLED = "Connection cancelled.";
 
 export class SignIns {
   private readonly file: string;
@@ -32,11 +38,12 @@ export class SignIns {
     return this.read().map((j) =>
       j.phase !== "complete" &&
       j.phase !== "blocked" &&
-      this.now() - j.created > 1800
+      this.now() - j.created > SIGNIN_TIMEOUT_S
         ? {
             ...j,
             phase: "blocked",
             error: "Sign-in timed out. Resume when ready.",
+            ended: j.created + SIGNIN_TIMEOUT_S,
           }
         : j,
     );
@@ -87,8 +94,22 @@ export class SignIns {
     const jobs = this.read();
     const j = jobs.find((j) => j.id === id);
     if (!j) throw new Error("Sign-in request not found");
+    if (patch.phase === "blocked" && j.phase !== "blocked" && !patch.ended)
+      patch = { ...patch, ended: this.now() };
     Object.assign(j, patch);
     this.save(jobs);
     return j;
+  }
+  // The owner stops a sign-in, running or already stopped: it no longer shows, and its slot is given back. A finished one
+  // stays as it is.
+  cancel(id: unknown, account: unknown): SignIn {
+    const j = this.list().find((j) => j.id === id && j.account === account);
+    if (!j) throw new Error("Sign-in request not found");
+    if (j.phase === "complete") throw new Error("Sign-in already complete");
+    return this.update(j.id, {
+      phase: "blocked",
+      error: CANCELLED,
+      ended: j.phase === "blocked" ? (j.ended ?? this.now()) : this.now(),
+    });
   }
 }

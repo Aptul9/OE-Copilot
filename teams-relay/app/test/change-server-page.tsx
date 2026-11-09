@@ -42,6 +42,7 @@ function Menu() {
   return (
     <AccountMenu
       user={{ name: "Test User", email: "test.user@contoso.example", role: "user" }}
+      names={{ enabled: false, labels: null, signins: [] }}
       accounts={[account]}
       current={account}
       unreadOf={() => ({ chats: 0, notifications: 0, calls: 0 })}

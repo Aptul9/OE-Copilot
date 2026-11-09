@@ -18,14 +18,19 @@ export type SignIn = {
   url?: string;
   error?: string;
   route?: string;
+  slot?: number;
+  ended?: number;
 };
 const SMALL_BUTTON = `inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors pointer-coarse:h-11 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${focus}`;
 export function SignInProgress({
   signins,
   onConnect,
+  onCancel,
 }: {
   signins: SignIn[];
   onConnect: (account: string, capabilities: Capability[]) => void;
+  // stops a running sign-in, or takes a stopped one off the list
+  onCancel?: (signin: SignIn) => void;
 }) {
   return (
     <>
@@ -93,6 +98,17 @@ export function SignInProgress({
                 Resume connection
               </button>
             )}
+          {onCancel && j.phase !== "complete" && (
+            <button
+              className={`${SMALL_BUTTON} border text-muted-foreground hover:bg-destructive/10 hover:text-destructive`}
+              type="button"
+              aria-label={`${j.phase === "blocked" ? "Dismiss" : "Cancel"} the sign-in of ${j.account}`}
+              onClick={() => onCancel(j)}
+            >
+              <XIcon aria-hidden="true" className="size-3.5" />
+              {j.phase === "blocked" ? "Dismiss" : "Cancel"}
+            </button>
+          )}
         </div>
       ))}
     </>
@@ -100,12 +116,14 @@ export function SignInProgress({
 }
 export function ConnectForm({
   onConnect,
+  onCancel,
   onClose,
   signins = [],
   initial = "",
   pending = false,
 }: {
   onConnect: (account: string, capabilities: Capability[]) => void;
+  onCancel?: (signin: SignIn) => void;
   onClose?: () => void;
   signins?: SignIn[];
   initial?: string;
@@ -202,7 +220,7 @@ export function ConnectForm({
         Saved sessions are reused first. If Microsoft asks, open the sign-in
         link that appears here once. Existing services stay connected.
       </p>
-      <SignInProgress signins={signins} onConnect={onConnect} />
+      <SignInProgress signins={signins} onConnect={onConnect} onCancel={onCancel} />
     </div>
   );
 }

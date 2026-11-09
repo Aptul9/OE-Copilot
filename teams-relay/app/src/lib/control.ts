@@ -66,7 +66,7 @@ export function controlClient(socket = config.controlSocket, binding: (n: number
 // release; the feature is off.
 export interface DirectoryClient {
   list(): Promise<unknown | null>;
-  set(body: { account: string; capabilities: string[] } | { account: string; enabled: false } | { account: string; operation: "remove" | "chat"; on?: boolean } | { account: string; operation: "connect" | "signin-progress"; capabilities?: string[]; id?: string; phase?: string; slot?: number; url?: string; error?: string }): Promise<unknown | null>;
+  set(body: { account: string; capabilities: string[] } | { account: string; enabled: false } | { account: string; operation: "remove" | "chat"; on?: boolean } | { account: string; operation: "connect" | "signin-progress" | "signin-cancel"; capabilities?: string[]; id?: string; phase?: string; slot?: number; url?: string; error?: string }): Promise<unknown | null>;
   connect?(body: { id: string; account: string; slot: number }): Promise<{ ok: boolean; interaction?: boolean; errore?: string; route?: string }>;
   report(body: { accounts: unknown[]; others: unknown[]; results?: { id: string; error?: string }[] }): Promise<unknown | null>;
 }

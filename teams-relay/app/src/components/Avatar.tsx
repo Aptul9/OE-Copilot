@@ -11,7 +11,7 @@ function hue(s: string): number {
 }
 
 // Colours of Teams: green available, red busy or do not disturb, yellow away, grey offline, purple out of office
-const PRESENCE_DOT: Record<Presence, string> = {
+export const PRESENCE_DOT: Record<Presence, string> = {
   available: "bg-emerald-500",
   busy: "bg-red-500",
   dnd: "bg-red-500",

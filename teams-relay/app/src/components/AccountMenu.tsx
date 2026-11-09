@@ -4,7 +4,8 @@ import { CheckIcon, ChevronsUpDownIcon, ClockIcon, LaptopIcon, LogOutIcon, Monit
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { cn } from "cn";
-import { Avatar, LogoTile } from "./Avatar";
+import { AccountLogo, identityOf, type Identity, type SharedNames } from "./AccountIdentity";
+import { LogoTile } from "./Avatar";
 import { relayHost } from "./RelayToken";
 import { MissedBadge, UnreadBadges } from "./UnreadBadges";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { accName, capped, checkLine, idleChecked, lastCheck, relayOffline, signedOut, statusText, type Account, type Unread } from "@/lib/client";
+import { capped, checkLine, idleChecked, lastCheck, relayOffline, signedOut, statusText, type Account, type Unread } from "@/lib/client";
+import { runningSignIn } from "@/shared/accounts/model";
 
 // between two checks an account checked every N hours knows only what its last check found; an account on another
 // computer needs a sign-in only when its relay says so
@@ -55,16 +57,20 @@ function accState(a: Account): { text: string; warn: boolean } | null {
   return null;
 }
 
-// Who the account is: the accounts of one person share the name
-const accIdentity = (a: Account) => [a.email, a.tenant].filter(Boolean).join(" · ");
+// A slot a guided sign-in of Microsoft accounts runs in: what that sign-in is doing, not the slot's own state
+function signInState(id: Identity): { text: string; warn: boolean } | null {
+  if (!id.signin) return null;
+  return runningSignIn(id.signin) ? { text: "Signing in…", warn: false } : { text: "Sign-in stopped", warn: true };
+}
 
-// The line under the name on the account menu button: what the account is doing, else who it is
-function accSub(a: Account): { text: string; warn: boolean } {
-  return accState(a) ?? { text: accIdentity(a), warn: false };
+// The line under the name on the account menu button: what the account is doing, else its address
+function accSub(a: Account, id: Identity): { text: string; warn: boolean } {
+  return signInState(id) ?? accState(a) ?? { text: id.address, warn: false };
 }
 
 // The line under the name in the menu, whose status stands on the right: only what the status does not say
-function menuState(a: Account): { text: string; warn: boolean } | null {
+function menuState(a: Account, id: Identity): { text: string; warn: boolean } | null {
+  if (id.signin) return signInState(id);
   if (a.stopped) return { text: "Still signed in", warn: false };
   if (idleChecked(a) && !needsLogin(a)) return a.checked ? { text: lastCheck(a), warn: a.checkResult === "failed" } : null;
   if (a.checking && a.teams !== "login") return null;
@@ -97,13 +103,12 @@ function AccountStatus({ a }: { a: Account }) {
   );
 }
 
-// Name, who it is and what it is doing, for the lists of accounts (menu, Settings)
-export function AccountLines({ a, state = accState(a) }: { a: Account; state?: { text: string; warn: boolean } | null }) {
-  const who = accIdentity(a);
+// Name, address and what it is doing, for the lists of accounts (menu, Settings): the name and address of Microsoft accounts
+export function AccountLines({ a, id, state = signInState(id) ?? accState(a) }: { a: Account; id: Identity; state?: { text: string; warn: boolean } | null }) {
   return (
     <div className="min-w-0 flex-1">
-      <div className="truncate text-sm font-medium">{accName(a)}</div>
-      {who && <div className="truncate text-xs text-muted-foreground">{who}</div>}
+      <div className="truncate text-sm font-medium">{id.name}</div>
+      {id.address && id.address !== id.name && <div className="truncate text-xs text-muted-foreground">{id.address}</div>}
       {state && <div className={cn("truncate text-xs", state.warn ? "text-destructive" : "text-muted-foreground")}>{state.text}</div>}
     </div>
   );
@@ -123,13 +128,17 @@ export function AccountMenu({
   adding,
   onSelect,
   onAdd,
+  addHref,
   onAddRelay,
   onOpenDesktop,
   onRemove,
   onSignOut,
   appPage,
+  names,
 }: {
   user: { name: string; email: string; role: string };
+  // the names and logos of the calendar, and the guided sign-ins running (useSharedNames)
+  names: SharedNames;
   accounts: Account[] | null;
   current: Account | undefined;
   unreadOf: (a: Account) => Unread;
@@ -140,6 +149,8 @@ export function AccountMenu({
   adding: boolean;
   onSelect: (slot: number) => void;
   onAdd: () => void;
+  // with the shared accounts, a new account is added once for mail, calendar and Teams, in Microsoft accounts of Settings
+  addHref?: string;
   // an account whose browser runs on another computer, joined by the relay there
   onAddRelay: () => void;
   onOpenDesktop: (slot: number) => void;
@@ -150,6 +161,7 @@ export function AccountMenu({
 }) {
   // the missed calls among what waits in the other accounts, on a red count of their own
   const otherCalls = (accounts ?? []).reduce((n, a) => (a.slot === current?.slot ? n : n + unreadOf(a).calls), 0);
+  const currentId = current ? identityOf(current, names) : null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -158,10 +170,10 @@ export function AccountMenu({
           aria-label={others ? `Accounts and settings, ${others} unread in other accounts` : "Accounts and settings"}
           className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-1.5 text-left outline-none transition-colors hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50 data-[state=open]:bg-sidebar-accent"
         >
-          {current ? <Avatar name={accName(current)} av={current.av} acc={current.slot} presence={current.presence} className="size-9" /> : <LogoTile />}
+          {currentId ? <AccountLogo id={currentId} presence={current?.presence} className="size-9" /> : <LogoTile />}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{current ? current.tenant || accName(current) : "TeamsRelay"}</div>
-            <div className="truncate text-xs text-muted-foreground">{current ? accSub(current).text : user.email}</div>
+            <div className="truncate text-sm font-semibold">{currentId ? currentId.name : "TeamsRelay"}</div>
+            <div className="truncate text-xs text-muted-foreground">{current && currentId ? accSub(current, currentId).text : user.email}</div>
           </div>
           {others - otherCalls > 0 && (
             <Badge className="h-5 min-w-5 rounded-full px-1.5 tabular-nums" title={`${others - otherCalls} unread in your other accounts`}>
@@ -175,19 +187,31 @@ export function AccountMenu({
       <DropdownMenuContent align="start" className="w-[22rem] max-w-[calc(100vw-1rem)]">
         <DropdownMenuLabel>Teams accounts</DropdownMenuLabel>
         <DropdownMenuGroup>
-          {(accounts ?? []).map((a) => (
-            <DropdownMenuItem key={a.slot} onSelect={() => onSelect(a.slot)} className="gap-3 py-2">
-              <Avatar name={accName(a)} av={a.av} acc={a.slot} className={cn("size-8", a.stopped && "opacity-50 grayscale")} />
-              <AccountLines a={a} state={menuState(a)} />
-              <UnreadBadges u={unreadOf(a)} />
-              {a.slot === current?.slot && <CheckIcon className="text-primary" />}
-              <AccountStatus a={a} />
+          {(accounts ?? []).map((a) => {
+            const id = identityOf(a, names);
+            return (
+              <DropdownMenuItem key={a.slot} onSelect={() => onSelect(a.slot)} className="gap-3 py-2">
+                <AccountLogo id={id} faded={a.stopped} className="size-8" />
+                <AccountLines a={a} id={id} state={menuState(a, id)} />
+                <UnreadBadges u={unreadOf(a)} />
+                {a.slot === current?.slot && <CheckIcon className="text-primary" />}
+                {id.signin && runningSignIn(id.signin) ? <Spinner /> : <AccountStatus a={a} />}
+              </DropdownMenuItem>
+            );
+          })}
+          {addHref ? (
+            <DropdownMenuItem asChild disabled={!canAdd}>
+              <Link href={addHref}>
+                <PlusIcon />
+                {addLabel}
+              </Link>
             </DropdownMenuItem>
-          ))}
-          <DropdownMenuItem disabled={!canAdd || adding} onSelect={onAdd}>
-            {adding ? <Spinner /> : <PlusIcon />}
-            {adding ? "Starting the browser…" : addLabel}
-          </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem disabled={!canAdd || adding} onSelect={onAdd}>
+              {adding ? <Spinner /> : <PlusIcon />}
+              {adding ? "Starting the browser…" : addLabel}
+            </DropdownMenuItem>
+          )}
           {canAdd && (
             <DropdownMenuItem disabled={adding} onSelect={onAddRelay}>
               <LaptopIcon />

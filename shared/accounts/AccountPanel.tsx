@@ -14,6 +14,7 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react";
+import { Logo } from "./Identity";
 export type Capability = "mail" | "calendar" | "chat";
 export type AccountRow = {
   account: string;
@@ -28,6 +29,10 @@ export type AccountRow = {
   logo?: string;
   // the mailbox the company's meetings are forwarded into, when the account has no calendar of its own
   via?: string;
+  // the TeamsRelay slot of a Teams account not signed in yet (no address): a guided sign-in may be running in it
+  slot?: number;
+  // an account being signed in for the first time: nothing to switch or remove yet, its sign-in has a Cancel
+  pending?: boolean;
 };
 export const SERVICES: {
   cap: Capability;
@@ -55,38 +60,6 @@ export const focus =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 // 32 px with a mouse, 44 px on touch screens
 export const ICON_BUTTON = `inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors pointer-coarse:size-11 disabled:cursor-not-allowed motion-reduce:transition-none ${focus}`;
-const initials = (name: string) =>
-  name
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-// the company logo in a white circle, as in the calendar sidebar; initials without one
-export function Logo({ name, src }: { name: string; src?: string }) {
-  const [broken, setBroken] = useState(false);
-  return (
-    <span
-      aria-hidden="true"
-      className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-white ring-1 ring-black/10"
-    >
-      {src && !broken ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt=""
-          className="size-full object-contain p-[16%]"
-          onError={() => setBroken(true)}
-        />
-      ) : (
-        <span className="grid size-full place-items-center bg-primary text-[10px] font-bold text-primary-foreground">
-          {initials(name)}
-        </span>
-      )}
-    </span>
-  );
-}
 function ServiceToggle({
   label,
   name,
@@ -249,7 +222,7 @@ export function AccountPanel({
               aria-busy={changing}
               className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
             >
-              {renderLogo ? renderLogo(row) : <Logo name={name} src={row.logo} />}
+              {renderLogo && !row.pending ? renderLogo(row) : <Logo name={name} src={row.logo} />}
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 text-sm font-medium">
                   <span className="truncate">{name}</span>
@@ -345,16 +318,20 @@ export function AccountPanel({
                     <PlugZapIcon aria-hidden="true" className="size-4" />
                   </button>
                 )}
-                <button
-                  type="button"
-                  className={`${ICON_BUTTON} text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50`}
-                  aria-label={`Remove ${row.account}`}
-                  title="Remove account"
-                  disabled={locked}
-                  onClick={() => setConfirm(row.account)}
-                >
-                  <Trash2Icon aria-hidden="true" className="size-4" />
-                </button>
+                {!row.pending ? (
+                  <button
+                    type="button"
+                    className={`${ICON_BUTTON} text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50`}
+                    aria-label={`Remove ${row.account}`}
+                    title="Remove account"
+                    disabled={locked}
+                    onClick={() => setConfirm(row.account)}
+                  >
+                    <Trash2Icon aria-hidden="true" className="size-4" />
+                  </button>
+                ) : (
+                  <span aria-hidden="true" className="size-8 shrink-0 pointer-coarse:size-11" />
+                )}
               </div>
               {expanded === row.account && inline && (
                 <div className="order-last basis-full">{inline}</div>

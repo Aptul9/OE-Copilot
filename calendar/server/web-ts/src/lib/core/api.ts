@@ -433,6 +433,14 @@ export const apiTs = {
       return r.ok ? { ok: true } : { ok: false, error: String(r.errore || "Sign-in could not start") };
     } catch (e) { return { ok: false, error: messaggio(e) }; }
   },
+  /** Ferma un accesso guidato in corso (o ne toglie uno fermo dall'elenco): TeamsRelay rende lo slot che aveva preso. */
+  async cancel_microsoft_signin(account: unknown, id: unknown) {
+    try {
+      if (typeof account !== "string" || typeof id !== "string") throw new ErroreValore("Invalid sign-in");
+      const r = await invia("/api/auth/shared", { account, id, operation: "signin-cancel" });
+      return r.ok ? { ok: true } : { ok: false, error: String(r.errore || "Sign-in not cancelled") };
+    } catch (e) { return { ok: false, error: messaggio(e) }; }
+  },
   async manage_microsoft(account: unknown, operation: unknown, on?: unknown) {
     try {
       if (typeof account !== "string" || !["remove", "chat", "calls"].includes(String(operation))) throw new ErroreValore("Invalid operation");

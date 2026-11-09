@@ -1,4 +1,5 @@
 import type { AccountRow, Capability } from "./AccountPanel";
+import type { SignIn } from "./ConnectForm";
 // The name and logo of each address as the calendar sidebar shows them, and the companies whose meetings are forwarded into
 // another mailbox (company name to that mailbox's name). Logos are URLs of the calendar, or data URLs in TeamsRelay.
 export type AccountLabels = {
@@ -6,12 +7,21 @@ export type AccountLabels = {
   logos?: Record<string, string>;
   forwarded?: Record<string, string>;
 };
+// The name and logo of an address as the calendar shows them, the same in every list of accounts; none for an address
+// the calendar has no name for
+export function labelFor(
+  address: string,
+  labels?: AccountLabels | null,
+): { name?: string; logo?: string } {
+  const name = labels?.names?.[address.trim().toLowerCase()];
+  return name ? { name, logo: labels?.logos?.[name] } : {};
+}
 function labelled(rows: AccountRow[], labels?: AccountLabels): AccountRow[] {
   for (const row of rows) {
-    const name = labels?.names?.[row.account];
+    const { name, logo } = labelFor(row.account, labels);
     if (!name) continue;
     row.name = name;
-    row.logo = labels?.logos?.[name];
+    row.logo = logo;
     const via = labels?.forwarded?.[name];
     if (via && !row.capabilities.includes("calendar")) row.via = via;
   }
@@ -85,9 +95,59 @@ export function buildAccountRows(
           calendar: "Connect mailbox first",
         },
         calls,
+        ...(t.email.trim() ? {} : { slot: t.slot }),
       });
   }
   return labelled([...rows.values()], labels);
+}
+
+export const runningSignIn = (j: SignIn) =>
+  j.phase === "queued" || j.phase === "browser";
+// what a list of accounts shows of a sign-in: not a finished one, nor one the owner cancelled
+export const shownSignIn = (j: SignIn) =>
+  j.phase !== "complete" &&
+  !(j.phase === "blocked" && /cancelled/i.test(j.error ?? ""));
+// The guided sign-in a TeamsRelay slot is for: running, or stopped a moment ago (TeamsRelay gives the slot back at its
+// next pass, within a minute)
+export function signInOfSlot(
+  slot: number,
+  signins: SignIn[] = [],
+  now = Date.now() / 1000,
+): SignIn | undefined {
+  return signins.find(
+    (j) =>
+      j.slot === slot &&
+      (runningSignIn(j) ||
+        (j.phase === "blocked" && now - (j.ended ?? 0) < 180)),
+  );
+}
+const FINISH_FIRST = "Finish or cancel the sign-in first";
+// The rows as shown: a Teams slot a sign-in runs in is no account of its own, and an address being signed in for the
+// first time shows as one row, with nothing to switch until it is in
+export function withSignIns(
+  rows: AccountRow[],
+  signins: SignIn[] = [],
+  now = Date.now() / 1000,
+): AccountRow[] {
+  const kept = rows.filter((r) => !(r.slot && signInOfSlot(r.slot, signins, now)));
+  const pending = signins
+    .filter(
+      (j) => runningSignIn(j) && !kept.some((r) => r.account === j.account),
+    )
+    .map(
+      (j): AccountRow => ({
+        account: j.account,
+        capabilities: j.capabilities,
+        status: "Signing in",
+        pending: true,
+        unavailable: {
+          mail: FINISH_FIRST,
+          calendar: FINISH_FIRST,
+          chat: FINISH_FIRST,
+        },
+      }),
+    );
+  return [...kept, ...pending];
 }
 
 export function validTeamsReport(at: number, now = Date.now() / 1000): boolean {

@@ -4,10 +4,9 @@ import { BellRingIcon, HeadphonesIcon, KeyRoundIcon, LaptopIcon, LogOutIcon, Mes
 import { useTheme } from "next-themes";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { cn } from "cn";
+import { AccountLogo, identityOf, useSharedNames } from "./AccountIdentity";
 import { AccountLines } from "./AccountMenu";
 import { AiClients } from "./AiClients";
-import { Avatar } from "./Avatar";
 import { PageHeader } from "./PageHeader";
 import { relayHost, RelayTokenDialog } from "./RelayToken";
 import { SharedAccounts } from "./SharedAccounts";
@@ -67,6 +66,7 @@ const fetchAccounts = () =>
 // Each Teams account of the user: always on, or checked every 1, 2 or 4 hours (its browser runs only during a check)
 function TeamsAccounts() {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
+  const names = useSharedNames();
   const [saving, setSaving] = useState(0);
   // a new token of an account on another computer, shown once, with the address of the server its relay joins
   const [token, setToken] = useState<{ token: string; server: string } | null>(null);
@@ -162,8 +162,8 @@ function TeamsAccounts() {
           <div className="divide-y">
             {accounts.map((a) => (
               <div key={a.slot} className="flex flex-wrap items-center gap-3 py-3 first:pt-0 last:pb-0">
-                <Avatar name={accName(a)} av={a.av} acc={a.slot} className={cn("size-9", a.stopped && "opacity-50 grayscale")} />
-                <AccountLines a={a} />
+                <AccountLogo id={identityOf(a, names)} faded={a.stopped} className="size-9" />
+                <AccountLines a={a} id={identityOf(a, names)} />
                 {a.relay ? (
                   <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
                     <span className="text-sm text-muted-foreground">Runs on {relayHost(a)}</span>
@@ -237,6 +237,8 @@ function TeamsAccounts() {
 export function Settings({ user, passwordManaged }: { user: { name: string; email: string; role: string }; passwordManaged: boolean }) {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(noSubscribe, () => true, () => false);
+  // /settings?add-account: "Add a Teams account" of the account menu, the form to add one open in Microsoft accounts
+  const adding = useSyncExternalStore(noSubscribe, () => new URLSearchParams(window.location.search).has("add-account"), () => false);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -406,7 +408,7 @@ export function Settings({ user, passwordManaged }: { user: { name: string; emai
           </CardContent>
         </Card>
 
-        <SharedAccounts />
+        <SharedAccounts key={String(adding)} adding={adding} />
         <details><summary className="cursor-pointer text-sm text-muted-foreground">Advanced Teams settings: run mode and relay tokens</summary><TeamsAccounts /></details>
         <AiClients />
 

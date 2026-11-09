@@ -113,6 +113,28 @@ describe("a pass over the shared accounts", () => {
     await syncSharedAccounts(deps({dir:{...directory,connect:async()=>({ok:false,interaction:true})}}));
     expect(calls).not.toContain(`stop ${slot}`);
   });
+  it("gives back a slot claimed for a sign-in that stopped before anyone signed in to it", async () => {
+    const slot = claimSlot(db, OWNER, { perUser: null });
+    const now = Math.floor(Date.now() / 1000);
+    const job = { id: "bip", account: "new@example.com", capabilities: ["mail", "chat"], phase: "blocked", slot, created: now - 60, ended: now + 5 };
+    await syncSharedAccounts(deps({ dir: { ...dir({ list: async () => ({ ok: true, accounts: [], signins: [job] }) }), connect: async () => ({ ok: false, interaction: true }) } }));
+    expect(calls).toEqual([`stop ${slot}`, `wipe ${slot}`]);
+    expect(slotRow(db, slot)).toBeNull();
+  });
+  it("never gives back a slot claimed after the sign-in ended, nor one signed in to an account", async () => {
+    const later = claimSlot(db, OWNER, { perUser: null });
+    const signedIn = claimSlot(db, OWNER, { perUser: null });
+    identities[signedIn] = "new@example.com";
+    const now = Math.floor(Date.now() / 1000);
+    const jobs = [
+      { id: "old", account: "old@example.com", capabilities: ["mail"], phase: "blocked", slot: later, created: now - 1000, ended: now - 700 },
+      { id: "new", account: "new@example.com", capabilities: ["mail"], phase: "blocked", slot: signedIn, created: now - 60, ended: now + 5 },
+    ];
+    await syncSharedAccounts(deps({ dir: { ...dir({ list: async () => ({ ok: true, accounts: [], signins: jobs }) }), connect: async () => ({ ok: false, interaction: true }) } }));
+    expect(calls).toEqual([]);
+    expect(slotRow(db, later)?.owner_id).toBe(OWNER);
+    expect(slotRow(db, signedIn)?.owner_id).toBe(OWNER);
+  });
   it("queues one automatic session repair without enabling services the owner left off", async () => {
     accounts = [{ account: "expired@example.com", shared: { capabilities: ["mail"], origin: "outlook-spa" }, status: "errore", message: "Sessione del browser scaduta" }];
     let signins: { account: string; phase: string }[] = [];

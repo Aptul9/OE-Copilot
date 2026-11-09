@@ -3,6 +3,7 @@ import { nowSeconds, type Agent } from "../context";
 import { imageKey } from "../logic/files";
 import { extraOf } from "../logic/messages";
 import { errorText, log } from "../log";
+import { perSlot } from "../slot-scope";
 import { fetchChatMessages, getTeamsAuth, markConversationRead, resolveConversationId } from "../teams/chatsvc";
 import { readMessages } from "../teams/scripts/conversation";
 import { SEL, TEXTS } from "../teams/selectors";
@@ -58,13 +59,13 @@ export async function readOpenMessages(a: Agent, chat: string): Promise<SavedMes
   return out;
 }
 
-const recentlyReadChats = new Map<string, { preview: string; until: number }>();
+const recentlyReadChats = perSlot(() => new Map<string, { preview: string; until: number }>());
 
 export function isRecentlyRead(chat: string, preview: string): boolean {
-  const entry = recentlyReadChats.get(chat);
+  const entry = recentlyReadChats().get(chat);
   if (!entry) return false;
   if (Date.now() > entry.until || (preview && entry.preview && preview !== entry.preview)) {
-    recentlyReadChats.delete(chat);
+    recentlyReadChats().delete(chat);
     return false;
   }
   return true;
@@ -73,7 +74,7 @@ export function isRecentlyRead(chat: string, preview: string): boolean {
 export async function markReadViaApi(a: Agent, chat: string): Promise<void> {
   try {
     const entry = a.store.chats().find((c) => c.name === chat);
-    recentlyReadChats.set(chat, { preview: entry?.preview ?? "", until: Date.now() + 20_000 });
+    recentlyReadChats().set(chat, { preview: entry?.preview ?? "", until: Date.now() + 20_000 });
     a.store.markChatRead(chat);
 
     const page = a.tp?.page;
@@ -91,15 +92,15 @@ export async function markReadViaApi(a: Agent, chat: string): Promise<void> {
 
 // Chats chatsvc saved at the last try: only these can skip Teams. Any other chat is read from the page, or it stays as
 // it was saved.
-const savedByApi = new Set<string>();
+const savedByApi = perSlot(() => new Set<string>());
 
-export const servedByApi = (chat: string) => savedByApi.has(chat);
+export const servedByApi = (chat: string) => savedByApi().has(chat);
 
 // Fast path: fetch messages directly via chatsvc API without requiring DOM navigation
 export async function saveChatViaApi(a: Agent, chat: string): Promise<boolean> {
   const saved = await saveThroughApi(a, chat);
-  if (saved) savedByApi.add(chat);
-  else savedByApi.delete(chat);
+  if (saved) savedByApi().add(chat);
+  else savedByApi().delete(chat);
   return saved;
 }
 

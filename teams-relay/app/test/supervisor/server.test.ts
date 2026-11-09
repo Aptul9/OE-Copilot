@@ -46,6 +46,7 @@ function accounts() {
       browserEnv: {},
       agentEnv: {},
       wlrctl: "wlrctl",
+      lightHost: false,
     },
     { log: () => undefined, process: (name) => fakeProcess(name, calls), focus: async () => true },
   );

@@ -1,5 +1,6 @@
 // One line per event: "<prefix>: <message> key=value ...". Prefixes are stable and listed in
 // docs/operations.md, so the container log can be searched by them.
+import { slotPrefix } from "./slot-scope";
 
 export type Fields = Record<string, string | number | boolean | null | undefined>;
 
@@ -26,9 +27,9 @@ export function errorText(e: unknown): string {
 
 export const log = {
   info(prefix: string, message: string, fields?: Fields) {
-    console.log(format(prefix, message, fields));
+    console.log(slotPrefix() + format(prefix, message, fields));
   },
   warn(prefix: string, message: string, fields?: Fields) {
-    console.error(format(prefix, message, fields));
+    console.error(slotPrefix() + format(prefix, message, fields));
   },
 };

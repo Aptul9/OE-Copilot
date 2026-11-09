@@ -89,6 +89,35 @@ describe("light agent", () => {
     expect(api.keepActive).toHaveBeenCalledOnce();
   });
 
+  it("leaves the process signals to the light host when it is given a signal", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { l, api } = setup(() => []);
+    l.config.nativeCalls = true;
+    const stop = new AbortController();
+    api.chats.mockImplementation(async () => { stop.abort(); return []; });
+    const before = [process.listenerCount("SIGTERM"), process.listenerCount("SIGINT")];
+    await runLight(l, stop.signal);
+    expect([process.listenerCount("SIGTERM"), process.listenerCount("SIGINT")]).toEqual(before);
+    expect(api.chats).toHaveBeenCalled();
+  });
+
+  it("stops the calling worker as soon as the light host aborts the slot, before the read in progress ends", async () => {
+    const { l, api } = setup(() => []);
+    const stop = new AbortController();
+    const calls = { stop: vi.fn(), schedule: vi.fn(), start: vi.fn() };
+    l.config.nativeCalls = true;
+    l.calls = calls as unknown as Light["calls"];
+    let release = () => {};
+    api.chats.mockImplementation(() => new Promise<CsaChat[]>((resolve) => (release = () => resolve([]))));
+    const run = runLight(l, stop.signal);
+    await vi.waitFor(() => expect(api.chats).toHaveBeenCalled());
+    stop.abort();
+    expect(calls.stop).toHaveBeenCalledOnce();
+    release();
+    await run;
+  });
+
   it("saves the list with names, presence and the chat with yourself, and pushes only messages after the first read", async () => {
     let chats = [oneToOne("19:anna@unq.gbl.spaces", "anna", "hello", 30)];
     const { l, store, notifier, api } = setup(() => chats);

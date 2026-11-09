@@ -16,7 +16,7 @@ const BROKER = { SHARED_BROKER_URL: "http://oe-copilot-agent:8180", SHARED_BROKE
 const MARIO = { account: "mario@example.com", region: "amer" };
 
 function cfg(env: Record<string, string> = BROKER): AccountsConfig {
-  return { ...loadConfig({ ...env, NATIVE_CALLS: "1" }).accounts, profilesDir: path.join(tempDir(), "profiles"), node: "node" };
+  return { ...loadConfig({ ...env, NATIVE_CALLS: "1" }).accounts, lightHost: false, profilesDir: path.join(tempDir(), "profiles"), node: "node" };
 }
 
 describe("broker configuration", () => {

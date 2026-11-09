@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AccountError, Accounts, agentCommand, browserCommand, lightCommand, type AccountsConfig } from "@/supervisor/accounts";
+import type { Command } from "@/supervisor/process";
 import { tempDir } from "../helpers";
 import { fakeProcess } from "./fakes";
 
@@ -27,6 +28,7 @@ beforeEach(() => {
     browserEnv: { TZ: "Europe/Rome", LANG: "en_US.UTF-8" },
     agentEnv: { TZ: "Europe/Rome", VAPID_SUBJECT: "mailto:me@example.com", NTFY_ENABLED: "0" },
     wlrctl: "wlrctl",
+    lightHost: false,
   };
   fs.mkdirSync(cfg.profilesDir);
   calls = [];
@@ -155,6 +157,44 @@ describe("light accounts", () => {
     await expect(a.wipe(3)).rejects.toMatchObject({ status: 409 });
     expect(a.status()[0]).toMatchObject({ account: 3, light: { running: true }, agent: { running: false } });
   });
+});
+
+describe("light host", () => {
+  function hosted() {
+    const commands: Command[] = [];
+    const lightHost = {
+      slot: (n: number, command: () => Command) => {
+        const p = fakeProcess(`light-${n}`, calls);
+        const start = p.start.bind(p);
+        p.start = () => {
+          commands.push(command());
+          start();
+        };
+        return p;
+      },
+    };
+    return { commands, a: new Accounts({ ...cfg, lightHost: true }, { log: () => undefined, process: (name) => fakeProcess(name, calls), lightHost }) };
+  }
+
+  it("runs the light agent of a slot on the host, with the command of a single light process", async () => {
+    const { a, commands } = hosted();
+
+    await a.light(2);
+
+    expect(calls).toEqual(["start light-2"]);
+    expect(commands).toEqual([lightCommand(2, cfg)]);
+  });
+
+  it("stops the slot on the host with its account", async () => {
+    const { a } = hosted();
+    await a.light(2);
+    calls.length = 0;
+
+    await a.stop(2);
+
+    expect(calls).toEqual(["stop light-2", "stop agent-2", "stop browser-2"]);
+  });
+
 });
 
 describe("Accounts", () => {

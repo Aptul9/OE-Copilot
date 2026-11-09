@@ -3,6 +3,7 @@ import type { BrowserContext, Page } from "playwright-core";
 import { REACTION_EMOJI, type Reaction, type ReadBy } from "@/shared/slot-db/rows";
 import { extraOf } from "../logic/messages";
 import { errorText, log } from "../log";
+import { perSlot } from "../slot-scope";
 import type { SavedMessage } from "../store/slot-store";
 import { readMsalEntries } from "./scripts/tokens";
 
@@ -130,13 +131,13 @@ export async function getTeamsAuth(context: BrowserContext | null | undefined, p
 }
 
 // Cache of chat name (lowercase) -> conversation ID, and message ID -> conversation ID
-const convCache = new Map<string, { id: string; expiresAt: number }>();
-const midConvCache = new Map<string, string>();
-const lastMsgByConv = new Map<string, { id: string; cmid: string }>();
-let lastIdbSyncAt = 0;
+const convCaches = perSlot(() => new Map<string, { id: string; expiresAt: number }>());
+const midConvCaches = perSlot(() => new Map<string, string>());
+const lastMsgs = perSlot(() => new Map<string, { id: string; cmid: string }>());
+const idbSync = perSlot(() => ({ at: 0 }));
 // Names not to look up until the time given: not found (each look-up reads the whole IndexedDB of Teams), or shared by
 // two conversations (a message must not reach the wrong one). The Teams page serves those chats.
-const unresolved = new Map<string, number>();
+const unresolvedNames = perSlot(() => new Map<string, number>());
 const UNRESOLVED_MS = 60_000;
 const FORCED_SYNC_GAP_MS = 5_000;
 
@@ -144,14 +145,14 @@ function cacheTitle(title: string | undefined | null, id: string, ttlMs = 15 * 6
   const clean = (title || "").trim();
   if (!clean || !id) return;
   const exp = Date.now() + ttlMs;
-  convCache.set(clean, { id, expiresAt: exp });
-  convCache.set(clean.toLowerCase(), { id, expiresAt: exp });
+  convCaches().set(clean, { id, expiresAt: exp });
+  convCaches().set(clean.toLowerCase(), { id, expiresAt: exp });
 }
 
 // Read conversation title->id and mid->convId mappings directly from Teams Web IndexedDB in the browser
 export async function syncIndexedDbMappings(page: Page, force = false): Promise<void> {
-  if (Date.now() - lastIdbSyncAt < (force ? FORCED_SYNC_GAP_MS : 20_000)) return;
-  lastIdbSyncAt = Date.now();
+  if (Date.now() - idbSync().at < (force ? FORCED_SYNC_GAP_MS : 20_000)) return;
+  idbSync().at = Date.now();
   try {
     const res = await page.evaluate(async () => {
       if (typeof indexedDB === "undefined" || typeof indexedDB.databases !== "function") return null;
@@ -236,14 +237,14 @@ export async function syncIndexedDbMappings(page: Page, force = false): Promise<
           if ((idsOf.get(low)?.size ?? 0) === 1) {
             cacheTitle(t, c.id);
           } else {
-            convCache.delete(t.trim());
-            convCache.delete(low);
-            unresolved.set(low, Date.now() + 15 * 60_000);
+            convCaches().delete(t.trim());
+            convCaches().delete(low);
+            unresolvedNames().set(low, Date.now() + 15 * 60_000);
           }
         }
       }
       for (const m of res.mids ?? []) {
-        midConvCache.set(m.mid, m.cid);
+        midConvCaches().set(m.mid, m.cid);
       }
     }
   } catch {
@@ -253,7 +254,7 @@ export async function syncIndexedDbMappings(page: Page, force = false): Promise<
 
 // The conversation of a chat name already known, without asking Teams; null otherwise
 export function cachedConversationId(chat: string): string | null {
-  const hit = convCache.get(chat) ?? convCache.get(chat.trim().toLowerCase());
+  const hit = convCaches().get(chat) ?? convCaches().get(chat.trim().toLowerCase());
   return hit && Date.now() < hit.expiresAt ? hit.id : null;
 }
 
@@ -263,33 +264,33 @@ export async function resolveConversationId(auth: TeamsAuth, page: Page, chat: s
   if (/\(You\)$/i.test(chat.trim())) return "48:notes";
 
   // 2. Known mid -> convId
-  if (mid && midConvCache.has(mid)) {
-    const cid = midConvCache.get(mid)!;
+  if (mid && midConvCaches().has(mid)) {
+    const cid = midConvCaches().get(mid)!;
     cacheTitle(chat, cid);
     return cid;
   }
 
   // 3. Cache lookup (case-insensitive)
-  const hit = convCache.get(chat) ?? convCache.get(chat.trim().toLowerCase());
+  const hit = convCaches().get(chat) ?? convCaches().get(chat.trim().toLowerCase());
   if (hit && Date.now() < hit.expiresAt) return hit.id;
 
   const low = chat.trim().toLowerCase();
-  if ((unresolved.get(low) ?? 0) > Date.now()) return null;
+  if ((unresolvedNames().get(low) ?? 0) > Date.now()) return null;
 
   // 4. Sync IndexedDB mappings from the browser
   await syncIndexedDbMappings(page);
-  if (mid && midConvCache.has(mid)) {
-    const cid = midConvCache.get(mid)!;
+  if (mid && midConvCaches().has(mid)) {
+    const cid = midConvCaches().get(mid)!;
     cacheTitle(chat, cid);
     return cid;
   }
-  const hitAfterIdb = convCache.get(chat) ?? convCache.get(chat.trim().toLowerCase());
+  const hitAfterIdb = convCaches().get(chat) ?? convCaches().get(chat.trim().toLowerCase());
   if (hitAfterIdb && Date.now() < hitAfterIdb.expiresAt) return hitAfterIdb.id;
 
   // 5. Force re-sync IndexedDB once if not found (in case a new chat just appeared)
   await syncIndexedDbMappings(page, true);
-  if ((unresolved.get(low) ?? 0) > Date.now()) return null;
-  const hitForceIdb = convCache.get(chat) ?? convCache.get(low);
+  if ((unresolvedNames().get(low) ?? 0) > Date.now()) return null;
+  const hitForceIdb = convCaches().get(chat) ?? convCaches().get(low);
   if (hitForceIdb && Date.now() < hitForceIdb.expiresAt) return hitForceIdb.id;
 
   // 6. API directory lookup (matches group/meeting topics + 1:1 lastMessage sender names)
@@ -337,7 +338,7 @@ export async function resolveConversationId(auth: TeamsAuth, page: Page, chat: s
     log.warn("chatsvc", `resolveConversationId failed: ${errorText(e)}`, { chat });
   }
 
-  unresolved.set(low, Date.now() + UNRESOLVED_MS);
+  unresolvedNames().set(low, Date.now() + UNRESOLVED_MS);
   return null;
 }
 
@@ -370,13 +371,13 @@ type OptimisticPatch = {
   edited: Map<string, { text: string; html: string; expiresAt: number }>;
   deleted: Map<string, number>;
 };
-const optimisticByConv = new Map<string, OptimisticPatch>();
+const optimisticPatches = perSlot(() => new Map<string, OptimisticPatch>());
 
 function getOptimistic(convId: string): OptimisticPatch {
-  let p = optimisticByConv.get(convId);
+  let p = optimisticPatches().get(convId);
   if (!p) {
     p = { added: new Map(), edited: new Map(), deleted: new Map() };
-    optimisticByConv.set(convId, p);
+    optimisticPatches().set(convId, p);
   }
   return p;
 }
@@ -513,13 +514,13 @@ export async function fetchChatMessages(
     const recent = rawList.slice(-40);
     const lastRaw = recent.at(-1);
     if (lastRaw?.id) {
-      lastMsgByConv.set(convId, { id: String(lastRaw.id), cmid: String(lastRaw.clientmessageid || lastRaw.id) });
+      lastMsgs().set(convId, { id: String(lastRaw.id), cmid: String(lastRaw.clientmessageid || lastRaw.id) });
     }
 
     const myMids: string[] = [];
     for (const m of recent) {
       const mid = String(m.id || m.clientmessageid || "");
-      if (mid) midConvCache.set(mid, convId);
+      if (mid) midConvCaches().set(mid, convId);
       const mine = convId === "48:notes" || Boolean(auth.oid && String(m.from || "").toLowerCase().includes(auth.oid.toLowerCase()));
       if (mine && mid) myMids.push(mid);
     }
@@ -649,7 +650,7 @@ export async function sendTextMessage(auth: TeamsAuth, convId: string, text: str
 
   const json = (await resp.json().catch(() => ({}))) as { OriginalArrivalTime?: number };
   const id = json.OriginalArrivalTime ? String(json.OriginalArrivalTime) : String(Date.now());
-  midConvCache.set(id, convId);
+  midConvCaches().set(id, convId);
   getOptimistic(convId).added.set(id, {
     msg: {
       mid: id,
@@ -722,7 +723,7 @@ export async function sendMentionsMessage(
   }
   const json = (await resp.json().catch(() => ({}))) as { OriginalArrivalTime?: number };
   const id = json.OriginalArrivalTime ? String(json.OriginalArrivalTime) : String(Date.now());
-  midConvCache.set(id, convId);
+  midConvCaches().set(id, convId);
   return { ok: true, id };
 }
 
@@ -800,7 +801,7 @@ export async function replyTextMessage(auth: TeamsAuth, convId: string, mid: str
 
   const json = (await resp.json().catch(() => ({}))) as { OriginalArrivalTime?: number };
   const id = json.OriginalArrivalTime ? String(json.OriginalArrivalTime) : String(Date.now());
-  midConvCache.set(id, convId);
+  midConvCaches().set(id, convId);
   getOptimistic(convId).added.set(id, {
     msg: {
       mid: id,
@@ -1035,13 +1036,13 @@ export async function sendImageMessage(auth: TeamsAuth, convId: string, imageBuf
   if (!resp.ok) return { ok: false };
   const json = (await resp.json().catch(() => ({}))) as { OriginalArrivalTime?: number };
   const id = json.OriginalArrivalTime ? String(json.OriginalArrivalTime) : undefined;
-  if (id) midConvCache.set(id, convId);
+  if (id) midConvCaches().set(id, convId);
   return { ok: true, id };
 }
 
 export async function markConversationRead(auth: TeamsAuth, convId: string, fallbackMid?: string): Promise<boolean> {
   try {
-    let last = lastMsgByConv.get(convId);
+    let last = lastMsgs().get(convId);
     if (!last) {
       const getUrl = `${SERVER}/api/chatsvc/${auth.region}/v1/users/ME/conversations/${encodeURIComponent(convId)}/messages?view=msnp24Equivalent&pageSize=1`;
       const getResp = await chatsvc(auth, getUrl, {

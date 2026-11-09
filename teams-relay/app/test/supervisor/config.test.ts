@@ -25,6 +25,13 @@ describe("loadConfig", () => {
     });
   });
 
+  it("runs the light slots in one host unless LIGHT_HOST is 0", () => {
+    expect(loadConfig({}).accounts.lightHost).toBe(true);
+    expect(loadConfig({ LIGHT_HOST: "1" }).accounts.lightHost).toBe(true);
+    expect(loadConfig({ LIGHT_HOST: "0" }).accounts.lightHost).toBe(false);
+    expect(() => loadConfig({ LIGHT_HOST: "yes" })).toThrow(/LIGHT_HOST/);
+  });
+
   it("passes time zone and language to the browsers, time zone and push settings to the agents", () => {
     const c = loadConfig({ TZ: "Europe/Rome", LANG: "en_US.UTF-8", VAPID_SUBJECT: "mailto:a@b.example", NTFY_ENABLED: "1", NTFY_TOPIC: "t", NTFY_URL: "", OTHER: "x" });
 

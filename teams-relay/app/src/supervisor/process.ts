@@ -5,7 +5,7 @@ export type Command = { file: string; args: string[]; env?: Record<string, strin
 
 export type Timing = { minDelayMs: number; maxDelayMs: number; stableMs: number; stopGraceMs: number };
 
-const TIMING: Timing = { minDelayMs: 1000, maxDelayMs: 60_000, stableMs: 300_000, stopGraceMs: 30_000 };
+export const TIMING: Timing = { minDelayMs: 1000, maxDelayMs: 60_000, stableMs: 300_000, stopGraceMs: 30_000 };
 
 // Delay before starting again a process that ran for upForMs: doubles with every exit that follows a short run,
 // back to the minimum after a run of stableMs or longer.
@@ -107,7 +107,7 @@ export class Supervised {
   }
 }
 
-function signal(child: ChildProcess, sig: NodeJS.Signals) {
+export function signal(child: ChildProcess, sig: NodeJS.Signals) {
   try {
     // the whole group; Windows has no process groups (tests only)
     if (process.platform === "win32" || !child.pid) child.kill(sig);

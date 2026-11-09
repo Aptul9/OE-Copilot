@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { format } from "../agent/log";
 import { brokerEnv, type BrokerBinding, type SharedBroker } from "./broker";
+import { forkHost, LightHost, type LightHostLike } from "./light-host";
 import { Supervised, type Command } from "./process";
 
 export type AccountsConfig = {
@@ -33,6 +34,8 @@ export type AccountsConfig = {
   browserEnv: Record<string, string>;
   agentEnv: Record<string, string>;
   wlrctl: string;
+  // every light slot in one process (src/supervisor/light-host.ts); false: one process per slot
+  lightHost: boolean;
 };
 
 export class AccountError extends Error {
@@ -139,6 +142,7 @@ type Deps = {
   process?: (name: string, command: () => Command, output?: (line: string) => void) => ProcessLike;
   // brings the window of account N to the front of the desktop
   focus?: (n: number) => Promise<boolean>;
+  lightHost?: LightHostLike;
 };
 
 type Account = { browser: ProcessLike; agent: ProcessLike; light: ProcessLike };
@@ -152,6 +156,7 @@ export class Accounts {
   private readonly queues = new Map<number, Promise<unknown>>();
   private readonly makeProcess: NonNullable<Deps["process"]>;
   private readonly focus: NonNullable<Deps["focus"]>;
+  private readonly host: LightHostLike | null;
 
   constructor(
     private readonly cfg: AccountsConfig,
@@ -159,6 +164,9 @@ export class Accounts {
   ) {
     this.makeProcess = deps.process ?? ((name, command, output) => new Supervised(name, command, { log: (m) => this.say(m), output }));
     this.focus = deps.focus ?? ((n) => focusWindow(n, cfg));
+    // the slots bring their own environment; the host only needs what any agent process gets
+    const hostEnv = { PATH, HOME: "/root", NODE_ENV: "production", ...cfg.agentEnv };
+    this.host = !cfg.lightHost ? null : (deps.lightHost ?? new LightHost(() => forkHost(cfg.lightScript, cfg.node, hostEnv, (line) => deps.log(line)), (m) => this.say(m)));
   }
 
   start(n: number) {
@@ -289,7 +297,8 @@ export class Accounts {
     if (!a) {
       const browser = this.makeProcess(`browser-${n}`, () => browserCommand(n, this.cfg));
       const agent = this.makeProcess(`agent-${n}`, () => agentCommand(n, this.cfg), (line) => this.deps.log(`[${n}] ${line}`));
-      const light = this.makeProcess(`light-${n}`, () => lightCommand(n, this.cfg, this.bindings.get(n)), (line) => this.deps.log(`[${n}] ${line}`));
+      const lightOf = () => lightCommand(n, this.cfg, this.bindings.get(n));
+      const light = this.host ? this.host.slot(n, lightOf) : this.makeProcess(`light-${n}`, lightOf, (line) => this.deps.log(`[${n}] ${line}`));
       a = { browser, agent, light };
       this.accounts.set(n, a);
     }

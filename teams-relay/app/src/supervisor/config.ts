@@ -20,6 +20,8 @@ const Env = z.object({
   CHROMIUM: z.string().default("/usr/bin/chromium"),
   AGENT_SCRIPT: z.string().default("/app/agent.cjs"),
   LIGHT_SCRIPT: z.string().default("/app/light.cjs"),
+  // 0: one light process per slot, as before the light host
+  LIGHT_HOST: z.enum(["0", "1"]).default("1"),
 });
 
 // passed on as they are, when set. PULSE_RUNTIME_PATH: where the image runs PulseAudio (/defaults/native), the sound of
@@ -56,6 +58,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       browserEnv: pick(BROWSER_ENV),
       agentEnv: pick(AGENT_ENV),
       wlrctl: "wlrctl",
+      lightHost: e.LIGHT_HOST === "1",
     },
   };
 }

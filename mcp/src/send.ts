@@ -95,6 +95,9 @@ export interface SendOptions {
   to?: Recipients;
   cc?: Recipients;
   bcc?: Recipients;
+  reply_to?: Recipients;
+  /** Reply and reply-all: to and cc are added to the recipients Outlook proposes instead of replacing them. */
+  add_recipients?: boolean;
   subject?: string;
   body?: string;
   is_html?: boolean;
@@ -129,18 +132,27 @@ async function viaDraft(o: Outlook, account: string | undefined, targetId: strin
   const excluded = addressSet(opt.exclude_recipients);
   const to = parseRecipients(opt.to);
   const cc = parseRecipients(opt.cc);
-  let toR: Obj[] = to.length ? to : (draft.ToRecipients ?? []);
-  let ccR: Obj[] =
-    opt.replace_cc || action !== "createreplyall" ? (cc.length ? cc : opt.replace_cc ? [] : (draft.CcRecipients ?? [])) : mergeRecipients(draft.CcRecipients, cc);
+  let toR: Obj[] = opt.add_recipients ? mergeRecipients(draft.ToRecipients, to) : to.length ? to : (draft.ToRecipients ?? []);
+  let ccR: Obj[] = opt.add_recipients
+    ? mergeRecipients(draft.CcRecipients, cc)
+    : opt.replace_cc || action !== "createreplyall"
+      ? cc.length
+        ? cc
+        : opt.replace_cc
+          ? []
+          : (draft.CcRecipients ?? [])
+      : mergeRecipients(draft.CcRecipients, cc);
   let bccR = mergeRecipients(draft.BccRecipients, parseRecipients(opt.bcc));
   toR = withoutExcluded(toR, excluded);
-  ccR = withoutExcluded(ccR, excluded);
+  ccR = withoutExcluded(ccR, opt.add_recipients ? new Set([...excluded, ...toR.map(addr)]) : excluded);
   bccR = withoutExcluded(bccR, excluded);
   if (!toR.length && !opt.save_as_draft) {
     await o.request(account, draftPath, "DELETE");
     throw new Error("No 'To' recipients left after applying recipient filters. Specify 'to' explicitly.");
   }
   const patch: Obj = { ToRecipients: toR, CcRecipients: ccR, BccRecipients: bccR };
+  const replyTo = parseRecipients(opt.reply_to);
+  if (replyTo.length) patch.ReplyTo = replyTo;
   if (opt.subject?.trim()) patch.Subject = opt.subject.trim();
   const imp = importanceOf(opt.importance);
   if (imp) patch.Importance = imp;
@@ -182,6 +194,8 @@ export async function sendEmail(o: Outlook, account: string | undefined, opt: Se
   };
   if (ccR.length) message.CcRecipients = ccR;
   if (bccR.length) message.BccRecipients = bccR;
+  const replyTo = parseRecipients(opt.reply_to);
+  if (replyTo.length) message.ReplyTo = replyTo;
   const imp = importanceOf(opt.importance);
   if (imp) message.Importance = imp;
   const atts = attachmentObjects(opt.attachments, opt.files);
@@ -194,6 +208,74 @@ export async function sendEmail(o: Outlook, account: string | undefined, opt: Se
   if (atts.length) message.Attachments = atts;
   await o.request(account, "me/sendmail", "POST", { Message: message, SaveToSentItems: "true" });
   return { status: "sent", ...summary };
+}
+
+// Outlook puts the quoted original of a reply or forward after this marker; edits keep everything from it on.
+// Stored drafts carry the id with an x_ prefix.
+const QUOTE = /<div id="appendonsend"><\/div>|<hr[^>]*>\s*<div[^>]*id="(?:x_)?divRplyFwdMsg"|<div[^>]*id="(?:x_)?divRplyFwdMsg"/i;
+
+/** New author text over an existing draft body; the quoted original and the HTML head survive. */
+export function replaceDraftBody(body: Obj | undefined, text: string): Obj {
+  const html = String(body?.Content ?? "");
+  const at = String(body?.ContentType).toLowerCase() === "html" ? html.search(QUOTE) : -1;
+  if (at < 0) return { ContentType: looksLikeHtml(text) ? "HTML" : "Text", Content: text };
+  const open = /<body[^>]*>/i.exec(html.slice(0, at));
+  const head = open ? html.slice(0, open.index + open[0].length) : "";
+  return { ContentType: "HTML", Content: head + formatBodyForHtml(text) + html.slice(at) };
+}
+
+export interface DraftUpdate {
+  to?: Recipients;
+  cc?: Recipients;
+  bcc?: Recipients;
+  reply_to?: Recipients;
+  subject?: string;
+  body?: string;
+  files?: InlineFile[];
+}
+
+async function loadDraft(o: Outlook, account: string | undefined, id: string): Promise<Obj> {
+  const d = await o.request(account, `me/messages/${q(id)}?$select=IsDraft,Subject,Body,ToRecipients,CcRecipients,BccRecipients`);
+  if (!d.IsDraft) throw new Error("Message is not a draft");
+  return d;
+}
+
+const draftResult = (status: SendResult["status"], id: string | null, d: Obj): SendResult => ({
+  status,
+  draft_id: id,
+  subject: String(d.Subject ?? ""),
+  to: addrList(d.ToRecipients ?? []),
+  cc: addrList(d.CcRecipients ?? []),
+  bcc: addrList(d.BccRecipients ?? []),
+});
+
+/** Recipient lists given replace the draft's; text replaces the author part and keeps the quoted original; files are added. */
+export async function updateDraft(o: Outlook, account: string | undefined, id: string, opt: DraftUpdate): Promise<SendResult> {
+  const atts = attachmentObjects([], opt.files);
+  const d = await loadDraft(o, account, id);
+  const patch: Obj = {};
+  if (opt.to) patch.ToRecipients = parseRecipients(opt.to);
+  if (opt.cc) patch.CcRecipients = parseRecipients(opt.cc);
+  if (opt.bcc) patch.BccRecipients = parseRecipients(opt.bcc);
+  if (opt.reply_to) patch.ReplyTo = parseRecipients(opt.reply_to);
+  if (opt.subject !== undefined) patch.Subject = opt.subject;
+  if (opt.body !== undefined) patch.Body = replaceDraftBody(d.Body, opt.body);
+  const after = Object.keys(patch).length ? await o.request(account, `me/messages/${q(id)}`, "PATCH", patch) : d;
+  for (const a of atts) await o.request(account, `me/messages/${q(id)}/attachments`, "POST", a);
+  return draftResult("draft", id, { ...d, ...patch, ...after });
+}
+
+export async function sendDraft(o: Outlook, account: string | undefined, id: string): Promise<SendResult> {
+  const d = await loadDraft(o, account, id);
+  if (!d.ToRecipients?.length && !d.CcRecipients?.length && !d.BccRecipients?.length) throw new Error("Draft has no recipients");
+  await o.request(account, `me/messages/${q(id)}/send`, "POST");
+  return draftResult("sent", null, d);
+}
+
+export async function deleteDraft(o: Outlook, account: string | undefined, id: string): Promise<{ status: "deleted" }> {
+  await loadDraft(o, account, id);
+  await o.request(account, `me/messages/${q(id)}`, "DELETE");
+  return { status: "deleted" };
 }
 
 export const MANAGE_ACTIONS = ["mark_read", "mark_unread", "flag", "unflag", "archive", "delete", "move"] as const;

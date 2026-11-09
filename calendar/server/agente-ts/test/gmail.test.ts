@@ -103,6 +103,26 @@ describe("Gmail credential-owned gateway", () => {
     expect(calls).toHaveLength(4);
   });
 
+  it("replaces and sends an existing draft by id; refuses extra fields and bad ids before network", async () => {
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const { service } = setup(async (input, init) => {
+      calls.push({ url: String(input), method: init?.method ?? "GET", body: init?.body ? JSON.parse(String(init.body)) : null });
+      return response({ id: "d1", message: { id: "m1", threadId: "t1" } });
+    });
+    const raw = Buffer.from("Subject: draft\r\n\r\nv2").toString("base64url");
+    await service.write({ account: ACCOUNT, action: "update_draft", draft_id: "d1", raw, thread_id: "t1", confirm: true });
+    expect(calls[0]).toMatchObject({ method: "PUT", body: { id: "d1", message: { raw, threadId: "t1" } } });
+    expect(calls[0]?.url).toMatch(/\/drafts\/d1$/);
+    await service.write({ account: ACCOUNT, action: "send_draft", draft_id: "d1", confirm: true });
+    expect(calls[1]).toMatchObject({ method: "POST", body: { id: "d1" } });
+    expect(calls[1]?.url).toMatch(/\/drafts\/send$/);
+    await expect(service.write({ account: ACCOUNT, action: "send_draft", draft_id: "../x", confirm: true })).rejects.toThrow(/id/);
+    await expect(service.write({ account: ACCOUNT, action: "send_draft", draft_id: "d1", raw, confirm: true })).rejects.toThrow(/unexpected/);
+    await expect(service.write({ account: ACCOUNT, action: "send", draft_id: "d1", raw, confirm: true })).rejects.toThrow(/unexpected/);
+    await expect(service.write({ account: ACCOUNT, action: "send_draft", draft_id: "d1" })).rejects.toThrow(/confirm/);
+    expect(calls).toHaveLength(2);
+  });
+
   it("rejects redirects and oversized responses without exposing body or token", async () => {
     let large = false;
     const { service } = setup(async () => large ? new Response("huge", { headers: { "Content-Length": "999999999" } }) : new Response(null, { status: 302, headers: { Location: "https://evil.test/" } }));

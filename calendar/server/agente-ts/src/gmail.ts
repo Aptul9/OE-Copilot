@@ -126,11 +126,20 @@ export class GmailGateway {
     if (data.confirm !== true) throw new GmailError("confirm: true required", 400);
     const account = email(data.account);
     const action = data.action;
-    if (action === "send" || action === "draft") {
-      if (Object.keys(data).some(k => !["account", "action", "confirm", "raw", "thread_id"].includes(k))) throw new GmailError("unexpected Gmail send field", 400);
+    if (action === "send" || action === "draft" || action === "update_draft") {
+      const fields = ["account", "action", "confirm", "raw", "thread_id", ...(action === "update_draft" ? ["draft_id"] : [])];
+      if (Object.keys(data).some(k => !fields.includes(k))) throw new GmailError("unexpected Gmail send field", 400);
       if (typeof data.raw !== "string" || data.raw.length > MAX_BYTES || !/^[A-Za-z0-9_-]+={0,2}$/.test(data.raw)) throw new GmailError("raw must be base64url RFC2822 MIME within size limit", 400);
       const message = { raw: data.raw, ...(data.thread_id ? { threadId: identifier(data.thread_id) } : {}) };
+      if (action === "update_draft") {
+        const id = identifier(data.draft_id);
+        return this.request(account, `drafts/${id}`, "PUT", { id, message });
+      }
       return this.request(account, action === "send" ? "messages/send" : "drafts", "POST", action === "send" ? message : { message });
+    }
+    if (action === "send_draft") {
+      if (Object.keys(data).some(k => !["account", "action", "confirm", "draft_id"].includes(k))) throw new GmailError("unexpected draft field", 400);
+      return this.request(account, "drafts/send", "POST", { id: identifier(data.draft_id) });
     }
     if (action === "delete_draft") {
       if (Object.keys(data).some(k => !["account", "action", "confirm", "draft_id"].includes(k))) throw new GmailError("unexpected draft field", 400);

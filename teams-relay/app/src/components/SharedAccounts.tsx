@@ -4,7 +4,7 @@ import {
   Management,
   type AccountTransport,
 } from "@/shared/accounts/Management";
-import { buildAccountRows } from "@/shared/accounts/model";
+import { buildAccountRows, type AccountLabels } from "@/shared/accounts/model";
 import { call, post } from "@/lib/client";
 import type { SignIn } from "@/shared/accounts/ConnectForm";
 type List = {
@@ -29,6 +29,7 @@ type List = {
   }[];
   commands?: { account: string; error?: string }[];
   signins?: SignIn[];
+  labels?: AccountLabels | null;
   error?: string;
 };
 export function SharedAccounts({ onChange }: { onChange?: () => void }) {
@@ -49,6 +50,8 @@ export function SharedAccounts({ onChange }: { onChange?: () => void }) {
               ...t,
               state: t.running ? t.teams : "stopped",
             })),
+            true,
+            l.labels ?? undefined,
           ),
           commands: l.commands,
           signins: l.signins,

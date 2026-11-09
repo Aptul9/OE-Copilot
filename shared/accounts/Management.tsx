@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState, useRef } from "react";
 import { AccountPanel, type AccountRow, type Capability } from "./AccountPanel";
-import { ConnectForm, type SignIn } from "./ConnectForm";
+import { ConnectForm, SignInProgress, type SignIn } from "./ConnectForm";
 export type Snapshot = {
   rows: AccountRow[];
   commands?: { account: string; error?: string }[];
@@ -78,19 +78,53 @@ export function Management({
     }
   }
   const queued = snapshot.commands?.[0]?.account;
+  const rows: AccountRow[] = [
+    ...snapshot.rows,
+    ...(snapshot.commands ?? [])
+      .filter((c) => !snapshot.rows.some((r) => r.account === c.account))
+      .map((c) => ({
+        account: c.account,
+        capabilities: [],
+        status: c.error ? "Operation failed" : "Removal pending",
+        message: c.error,
+      })),
+  ];
+  const open = (snapshot.signins ?? []).filter((j) => j.phase !== "complete");
+  const onConnect = (account: string, caps: Capability[]) =>
+    void action(account, () => transport.connect!(account, caps));
+  // the form opens under the row it was asked from; "Add account" opens it at the top
+  const expanded =
+    connecting && rows.some((r) => r.account === connecting)
+      ? connecting
+      : open.find((j) => rows.some((r) => r.account === j.account))?.account;
+  const atTop = transport.connect && connecting !== null && !(connecting && expanded === connecting);
+  const orphan = open.filter((j) => !rows.some((r) => r.account === j.account));
+  const close = () => setConnecting(null);
   return (
     <AccountPanel
-      rows={[
-        ...snapshot.rows,
-        ...(snapshot.commands ?? [])
-          .filter((c) => !snapshot.rows.some((r) => r.account === c.account))
-          .map((c) => ({
-            account: c.account,
-            capabilities: [],
-            status: c.error ? "Operation failed" : "Removal pending",
-            message: c.error,
-          })),
-      ]}
+      rows={rows}
+      expanded={expanded}
+      inline={
+        transport.connect && expanded ? (
+          connecting === expanded ? (
+            <ConnectForm
+              key={expanded}
+              initial={expanded}
+              pending={!!pending}
+              signins={open.filter((j) => j.account === expanded)}
+              onConnect={onConnect}
+              onClose={close}
+            />
+          ) : (
+            <div className="space-y-1">
+              <SignInProgress
+                signins={open.filter((j) => j.account === expanded)}
+                onConnect={onConnect}
+              />
+            </div>
+          )
+        ) : undefined
+      }
       loading={loading}
       pending={pending || queued}
       error={error}
@@ -99,7 +133,9 @@ export function Management({
         ?.filter((j) => j.phase === "queued" || j.phase === "browser")
         .map((j) => j.account)}
       onReconnect={
-        transport.connect ? (account) => setConnecting(account) : undefined
+        transport.connect
+          ? (account) => setConnecting(connecting === account ? null : account)
+          : undefined
       }
       onAdd={() => {
         if (transport.connect) {
@@ -125,19 +161,22 @@ export function Management({
       onToggle={(a, c, on) => void action(a, () => transport.toggle(a, c, on))}
       onRemove={(a) => void action(a, () => transport.remove(a))}
     >
-      {transport.connect &&
-        (connecting !== null ||
-          snapshot.signins?.some((j) => j.phase !== "complete")) && (
-          <ConnectForm
-            key={connecting}
-            initial={connecting ?? ""}
-            pending={!!pending}
-            signins={snapshot.signins}
-            onConnect={(account, caps) =>
-              void action(account, () => transport.connect!(account, caps))
-            }
-          />
-        )}
+      {(atTop || (transport.connect && orphan.length > 0)) && (
+        <div className="space-y-1 border-b p-2">
+          {atTop ? (
+            <ConnectForm
+              key={connecting ?? ""}
+              initial={connecting ?? ""}
+              pending={!!pending}
+              signins={orphan}
+              onConnect={onConnect}
+              onClose={close}
+            />
+          ) : (
+            <SignInProgress signins={orphan} onConnect={onConnect} />
+          )}
+        </div>
+      )}
     </AccountPanel>
   );
 }

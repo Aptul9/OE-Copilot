@@ -393,6 +393,30 @@ describe("shared management commands", () => {
     };
     expect(state.commands).toEqual([]);
   });
+  it("keeps the calendar's names and logos from the full key only, and gives them to TeamsRelay with the list", async () => {
+    const { chiama } = await avvia();
+    const labels = {
+      names: { "On@Example.com": "NPO" },
+      logos: { NPO: "data:image/png;base64,iVBORw==" },
+      forwarded: { NPO: "Bandpey" },
+    };
+    expect((await chiama("/api/auth/shared/labels", "stretta", labels)).status).toBe(401);
+    for (const bad of [
+      { ...labels, extra: 1 },
+      { ...labels, logos: { NPO: "https://example.com/x.png" } },
+      { ...labels, logos: { NPO: "data:text/html;base64,PGI+" } },
+      { ...labels, names: { nope: "NPO" } },
+      { ...labels, names: { "a@example.com": "a\nb" } },
+    ])
+      expect((await chiama("/api/auth/shared/labels", "piena", bad)).status).toBe(400);
+    expect(((await (await chiama("/api/auth/shared", "stretta")).json()) as { labels: unknown }).labels).toBeNull();
+    expect((await chiama("/api/auth/shared/labels", "piena", labels)).status).toBe(200);
+    expect(((await (await chiama("/api/auth/shared", "stretta")).json()) as { labels: unknown }).labels).toEqual({
+      names: { "on@example.com": "NPO" },
+      logos: { NPO: "data:image/png;base64,iVBORw==" },
+      forwarded: { NPO: "Bandpey" },
+    });
+  });
   it("queues a calls switch only for an account the report says can switch calls", async () => {
     const { chiama } = await avvia();
     await chiama("/api/auth/shared/teams", "stretta", {

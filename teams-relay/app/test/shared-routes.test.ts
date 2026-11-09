@@ -280,6 +280,16 @@ describe("one list of accounts", () => {
     expect(sets).toEqual([]);
   });
 
+  it("mail or calendar changes the list only: no Teams slot is touched, no pass waits in the slot queue", async () => {
+    const list = vi.spyOn(directoryClient(), "list");
+    const res = await post({ account: "mario@example.com", capability: "calendar", on: true });
+    expect(res.status).toBe(200);
+    expect(sets).toEqual([{ account: "mario@example.com", capabilities: ["mail", "calendar", "chat"] }]);
+    expect(calls).toEqual([]);
+    // one read to change the list, one for the answer: no third read of a pass
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
   it("the owner switches Teams on for a mailbox: a new slot runs on it", async () => {
     const r = (await (
       await post({

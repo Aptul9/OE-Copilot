@@ -95,6 +95,7 @@ function ServiceToggle({
   hint,
   dashed,
   disabled,
+  saving,
   onClick,
 }: {
   label: string;
@@ -104,6 +105,8 @@ function ServiceToggle({
   hint: string;
   dashed?: boolean;
   disabled?: boolean;
+  // the change is on its way: the switch already shows the state asked, with a spinner, and takes no second click
+  saving?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -111,9 +114,10 @@ function ServiceToggle({
       type="button"
       role="switch"
       aria-checked={on}
+      aria-busy={saving || undefined}
       aria-label={`${label} of ${name}`}
-      title={hint}
-      disabled={disabled}
+      title={saving ? `${label}: saving...` : hint}
+      disabled={disabled || saving}
       onClick={onClick}
       className={`${ICON_BUTTON} ${
         on
@@ -121,15 +125,19 @@ function ServiceToggle({
           : dashed
             ? "border border-dashed border-primary/60 text-primary"
             : "border text-muted-foreground hover:bg-accent hover:text-foreground"
-      } ${disabled && !dashed ? "opacity-40" : ""}`}
+      } ${disabled && !dashed && !saving ? "opacity-40" : ""}`}
     >
-      <Icon aria-hidden={true} className="size-4" />
+      {saving ? (
+        <LoaderCircleIcon aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Icon aria-hidden={true} className="size-4" />
+      )}
     </button>
   );
 }
 export function AccountPanel({
   rows,
-  pending,
+  busy = [],
   error,
   onToggle,
   onRemove,
@@ -144,7 +152,8 @@ export function AccountPanel({
   inline,
 }: {
   rows: AccountRow[];
-  pending?: string;
+  // changes on their way: "account|mail", "account|calendar", "account|chat", "account|calls", or "account|*" for the whole row
+  busy?: string[];
   error?: string;
   onToggle: (account: string, cap: Capability, on: boolean) => void;
   onRemove?: (account: string) => void;
@@ -171,7 +180,7 @@ export function AccountPanel({
         <button
           type="button"
           className={`inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:h-11 motion-reduce:transition-none ${focus}`}
-          disabled={!!pending || loading}
+          disabled={loading}
           onClick={onAdd}
         >
           <PlusIcon aria-hidden="true" className="size-3.5" />
@@ -217,29 +226,31 @@ export function AccountPanel({
       <ul className="divide-y">
         {rows.map((row) => {
           const name = row.name ?? row.account;
-          const busy =
-            pending === row.account || busyAccounts.includes(row.account);
-          const status =
-            pending === row.account
-              ? "Saving..."
-              : busyAccounts.includes(row.account)
-                ? "Connecting services..."
-                : row.status;
-          const tone = busy ? "info" : toneOf(row.status, row.message);
+          const locked = busy.includes(`${row.account}|*`);
+          const saving = (what: string) =>
+            locked || busy.includes(`${row.account}|${what}`);
+          const changing = locked || busy.some((k) => k.startsWith(`${row.account}|`));
+          const rowBusy = locked || busyAccounts.includes(row.account);
+          const status = locked
+            ? "Saving..."
+            : busyAccounts.includes(row.account)
+              ? "Connecting services..."
+              : row.status;
+          const tone = rowBusy ? "info" : toneOf(row.status, row.message);
           const teamsOn = row.capabilities.includes("chat");
           const showCalls = teamsOn && !!onCalls && row.calls !== undefined;
           return (
             <li
               key={row.account}
               data-account={row.account}
-              aria-busy={pending === row.account}
+              aria-busy={changing}
               className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
             >
               <Logo name={name} src={row.logo} />
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 text-sm font-medium">
                   <span className="truncate">{name}</span>
-                  {busy ? (
+                  {rowBusy ? (
                     <LoaderCircleIcon
                       aria-hidden="true"
                       className="size-3 shrink-0 animate-spin text-primary motion-reduce:animate-none"
@@ -292,10 +303,9 @@ export function AccountPanel({
                             ? `${label}: ${reason}`
                             : `${label}: ${on ? "on" : "off"}`
                       }
+                      saving={saving(cap)}
                       disabled={
-                        !!pending ||
-                        !!reason ||
-                        (busyAccounts.includes(row.account) && !on)
+                        !!reason || (busyAccounts.includes(row.account) && !on)
                       }
                       onClick={() => onToggle(row.account, cap, !on)}
                     />
@@ -312,7 +322,7 @@ export function AccountPanel({
                         ? "Teams calls: on. Rings and is answered in the app."
                         : "Teams calls: off. Messages only: no ringing. Notifications and AI (MCP) access to the chats keep working."
                     }
-                    disabled={!!pending}
+                    saving={saving("calls")}
                     onClick={() => onCalls(row.account, !row.calls)}
                   />
                 ) : (
@@ -337,7 +347,7 @@ export function AccountPanel({
                   className={`${ICON_BUTTON} text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50`}
                   aria-label={`Remove ${row.account}`}
                   title="Remove account"
-                  disabled={!!pending}
+                  disabled={locked}
                   onClick={() => setConfirm(row.account)}
                 >
                   <Trash2Icon aria-hidden="true" className="size-4" />
@@ -366,7 +376,7 @@ export function AccountPanel({
                   <button
                     type="button"
                     className={`h-8 rounded-lg border bg-background px-3 hover:bg-accent pointer-coarse:h-11 ${focus}`}
-                    disabled={!!pending}
+                    disabled={locked}
                     onClick={() => setConfirm("")}
                   >
                     Cancel
@@ -374,7 +384,7 @@ export function AccountPanel({
                   <button
                     type="button"
                     className={`inline-flex h-8 items-center gap-1.5 rounded-lg bg-destructive px-3 font-medium text-white hover:bg-destructive/90 disabled:opacity-50 pointer-coarse:h-11 ${focus}`}
-                    disabled={!!pending}
+                    disabled={locked}
                     onClick={() => onRemove?.(row.account)}
                   >
                     <Trash2Icon aria-hidden="true" className="size-3.5" />

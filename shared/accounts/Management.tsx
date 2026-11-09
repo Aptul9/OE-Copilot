@@ -4,7 +4,7 @@ import { AccountPanel, type AccountRow, type Capability } from "./AccountPanel";
 import { ConnectForm, SignInProgress, type SignIn } from "./ConnectForm";
 export type Snapshot = {
   rows: AccountRow[];
-  commands?: { account: string; error?: string }[];
+  commands?: { account: string; operation?: string; on?: boolean; error?: string }[];
   signins?: SignIn[];
 };
 export type AccountTransport = {
@@ -30,16 +30,22 @@ export function Management({
   }, [transport]);
   const [snapshot, setSnapshot] = useState<Snapshot>({ rows: [] });
   const [loading, setLoading] = useState(true);
-  const [pending, setPending] = useState("");
+  // the changes on their way, "account|switch" to the state asked: each locks only its own switch, the others stay usable
+  const [inflight, setInflight] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [connecting, setConnecting] = useState<string | null>(
     initialAccount ?? null,
   );
   const completed = useRef(new Set<string>());
+  // reads overlap while changes run: only the latest one asked is shown
+  const asked = useRef(0);
+  const chains = useRef(new Map<string, Promise<void>>());
   const load = useCallback(async () => {
+    const n = ++asked.current;
     try {
       const next = await current.current.load();
+      if (n !== asked.current) return;
       setSnapshot(next);
       const fresh =
         next.signins?.filter(
@@ -47,9 +53,10 @@ export function Management({
         ) ?? [];
       for (const job of fresh) completed.current.add(job.id);
       if (fresh.length) current.current.connected?.();
-      setError(next.commands?.find((c) => c.error)?.error ?? "");
+      const failed = next.commands?.find((c) => c.error);
+      setError(failed ? `${failed.account}: ${failed.error}` : "");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (n === asked.current) setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -59,28 +66,70 @@ export function Management({
     const timer = setInterval(() => void load(), 15000);
     return () => clearInterval(timer);
   }, [load]);
+  const mark = (key: string, value?: boolean) =>
+    setInflight((m) => {
+      const next = { ...m };
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+      return next;
+    });
   async function action(
     account: string,
+    what: Capability | "calls" | "remove" | "connect",
+    target: boolean,
     fn: () => Promise<unknown>,
     done = "Request accepted. Pending Teams operations apply on the next sync.",
   ) {
-    setPending(account);
+    const key = `${account}|${what}`;
+    mark(key, target);
     setError("");
-    setFeedback("");
-    try {
-      await fn();
-      await load();
-      setFeedback(done);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setPending("");
-    }
+    // accounts change in parallel; one account's changes run one after the other, since each writes its whole list of services
+    const before = chains.current.get(account) ?? Promise.resolve();
+    const run = before.then(async () => {
+      try {
+        await fn();
+        setFeedback(done);
+        await load();
+      } catch (e) {
+        setError(`${account}: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        mark(key);
+      }
+    });
+    chains.current.set(account, run);
+    await run;
+    if (chains.current.get(account) === run) chains.current.delete(account);
   }
-  const queued = snapshot.commands?.[0]?.account;
+  const commands = snapshot.commands ?? [];
+  // a queued agent command locks its own switch (or the whole row for a removal) until TeamsRelay applies it
+  const busy = [
+    ...Object.keys(inflight).map((k) => k.replace(/\|remove$/, "|*")),
+    ...commands
+      .filter((c) => !c.error)
+      .map((c) => `${c.account}|${c.operation === "chat" || c.operation === "calls" ? c.operation : "*"}`),
+  ];
+  const shown = (row: AccountRow): AccountRow => {
+    const caps = new Set(row.capabilities);
+    let calls = row.calls;
+    const want = (what: string, on: boolean) => {
+      if (what === "calls") calls = calls === undefined ? undefined : on;
+      else if (what === "mail" || what === "calendar" || what === "chat") {
+        if (on) caps.add(what);
+        else caps.delete(what);
+      }
+    };
+    for (const c of commands)
+      if (c.account === row.account && !c.error && typeof c.on === "boolean")
+        want(c.operation ?? "", c.on);
+    for (const [k, on] of Object.entries(inflight)) {
+      const cut = k.lastIndexOf("|");
+      if (k.slice(0, cut) === row.account) want(k.slice(cut + 1), on);
+    }
+    return { ...row, capabilities: [...caps], calls };
+  };
   const rows: AccountRow[] = [
-    ...snapshot.rows,
-    ...(snapshot.commands ?? [])
+    ...snapshot.rows.map(shown),
+    ...commands
       .filter((c) => !snapshot.rows.some((r) => r.account === c.account))
       .map((c) => ({
         account: c.account,
@@ -90,8 +139,9 @@ export function Management({
       })),
   ];
   const open = (snapshot.signins ?? []).filter((j) => j.phase !== "complete");
+  const connectingNow = (account: string) => `${account}|connect` in inflight;
   const onConnect = (account: string, caps: Capability[]) =>
-    void action(account, () => transport.connect!(account, caps));
+    void action(account, "connect", true, () => transport.connect!(account, caps));
   // the form opens under the row it was asked from; "Add account" opens it at the top
   const expanded =
     connecting && rows.some((r) => r.account === connecting)
@@ -110,7 +160,7 @@ export function Management({
             <ConnectForm
               key={expanded}
               initial={expanded}
-              pending={!!pending}
+              pending={connectingNow(expanded)}
               signins={open.filter((j) => j.account === expanded)}
               onConnect={onConnect}
               onClose={close}
@@ -126,9 +176,9 @@ export function Management({
         ) : undefined
       }
       loading={loading}
-      pending={pending || queued}
+      busy={busy}
       error={error}
-      feedback={queued ? "Applying account operation..." : feedback}
+      feedback={feedback}
       busyAccounts={snapshot.signins
         ?.filter((j) => j.phase === "queued" || j.phase === "browser")
         .map((j) => j.account)}
@@ -153,13 +203,17 @@ export function Management({
           ? (a, on) =>
               void action(
                 a,
+                "calls",
+                on,
                 () => transport.setCalls!(a, on),
                 `Calls ${on ? "on" : "off"} for ${a}. Applies within a minute.`,
               )
           : undefined
       }
-      onToggle={(a, c, on) => void action(a, () => transport.toggle(a, c, on))}
-      onRemove={(a) => void action(a, () => transport.remove(a))}
+      onToggle={(a, c, on) =>
+        void action(a, c, on, () => transport.toggle(a, c, on), `${a}: saved.`)
+      }
+      onRemove={(a) => void action(a, "remove", true, () => transport.remove(a))}
     >
       {(atTop || (transport.connect && orphan.length > 0)) && (
         <div className="space-y-1 border-b p-2">
@@ -167,7 +221,11 @@ export function Management({
             <ConnectForm
               key={connecting ?? ""}
               initial={connecting ?? ""}
-              pending={!!pending}
+              pending={Object.keys(inflight).some(
+                (k) =>
+                  k.endsWith("|connect") &&
+                  !rows.some((r) => k === `${r.account}|connect`),
+              )}
               signins={orphan}
               onConnect={onConnect}
               onClose={close}

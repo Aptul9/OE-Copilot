@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { windowsBrowserArgs } from "./browser-identity";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { errorText, log } from "@/agent/log";
@@ -45,11 +46,11 @@ export function loadPlaywrightMcp(): McpModule {
   const mcp = req("@playwright/mcp") as { createConnection(config: object, getContext: () => Promise<unknown>): Promise<McpServer> };
   const mcpDir = path.dirname(req.resolve("@playwright/mcp/package.json"));
   const { chromium } = req(req.resolve("playwright-core", { paths: [mcpDir] })) as {
-    chromium: { launchPersistentContext(dir: string, o: { channel: string; headless: boolean }): Promise<AiContext> };
+    chromium: { launchPersistentContext(dir: string, o: { channel: string; headless: boolean; args: string[] }): Promise<AiContext> };
   };
   return {
     createConnection: (c, getContext) => mcp.createConnection(c, getContext),
-    launch: (profileDir, channel) => chromium.launchPersistentContext(profileDir, { channel, headless: false }),
+    launch: (profileDir, channel) => chromium.launchPersistentContext(profileDir, { channel, headless: false, args: windowsBrowserArgs() }),
   };
 }
 

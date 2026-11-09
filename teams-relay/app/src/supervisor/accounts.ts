@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { windowsBrowserArgs } from "../local/browser-identity";
 import fs from "node:fs";
 import path from "node:path";
 import { format } from "../agent/log";
@@ -72,6 +73,7 @@ export function browserCommand(n: number, cfg: AccountsConfig): Command {
   return {
     file: cfg.chromium,
     args: [
+      ...windowsBrowserArgs(),
       "--ozone-platform=wayland",
       `--class=teamsrelay-${n}`,
       `--remote-debugging-port=${cfg.cdpBasePort + n}`,

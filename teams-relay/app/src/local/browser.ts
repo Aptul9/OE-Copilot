@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { windowsBrowserArgs } from "./browser-identity";
 import { chromium, type BrowserContext } from "playwright-core";
 import { hostOf, pickTeamsPage } from "@/agent/logic/hosts";
 import { errorText, log } from "@/agent/log";
@@ -35,7 +36,7 @@ export async function launchBrowser(o: LaunchOptions): Promise<BrowserContext> {
     // Playwright adds --no-sandbox otherwise; this browser renders whatever arrives in Teams
     chromiumSandbox: true,
     ignoreDefaultArgs: KEEP_UPDATING,
-    args: ["--window-size=1280,1000", "--accept-lang=en-US", ...(o.extraArgs ?? [])],
+    args: ["--window-size=1280,1000", "--accept-lang=en-US", ...windowsBrowserArgs(), ...(o.extraArgs ?? [])],
   });
   const browser = context.browser();
   if (browser) await grantNotifications(browser).catch(() => undefined);

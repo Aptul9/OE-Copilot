@@ -28,6 +28,12 @@ const Env = z.object({
   SHARED_BROKER_REGION: z.string().regex(/^[a-z][a-z0-9]{1,15}$/).optional(),
   // seconds between two reads of the chat list of a light account (src/agent/light)
   LIGHT_POLL: z.coerce.number().int().min(15).max(3600).default(60),
+  // calls answered from the app (src/agent/light/native-calls.ts): the calling worker, and the audio socket of the
+  // web app it plays to, else built from the domain
+  NATIVE_CALLS: z.string().optional(),
+  CALLING_HOST: z.string().default("/app/calling-live-host.mjs"),
+  CALL_AUDIO_URL: z.string().optional(),
+  DOMAIN: z.string().optional(),
 });
 
 export type Config = AgentSettings & PushSettings & {
@@ -44,6 +50,11 @@ export type Config = AgentSettings & PushSettings & {
   lightPoll: number;
   // the status history of the status pages, next to app.db (src/shared/status-db.ts)
   statusDb: string;
+  // the environment this was read from: the calling worker starts on it (in the light host the slots share one process.env)
+  env: Record<string, string>;
+  nativeCalls: boolean;
+  callingHost: string;
+  callAudioUrl: string;
 };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): Config {
@@ -63,6 +74,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     lightTokenFile: path.join(dataDir, "light-token.json"),
     lightPoll: e.LIGHT_POLL,
     statusDb: path.join(path.dirname(e.APP_DB), "status.db"),
+    env: Object.fromEntries(Object.entries(env).filter((p): p is [string, string] => p[1] !== undefined)),
+    nativeCalls: e.NATIVE_CALLS === "1",
+    callingHost: e.CALLING_HOST,
+    callAudioUrl: e.CALL_AUDIO_URL ?? `wss://${e.DOMAIN}/api/call/audio/socket?a=${e.ACCOUNT}`,
     ...pushSettings(e),
     desktop:
       e.DESKTOP_PORT && e.DESKTOP_UID !== undefined && e.DESKTOP_GID !== undefined && e.DESKTOP_APP_ID && e.XDG_RUNTIME_DIR && e.WAYLAND_DISPLAY

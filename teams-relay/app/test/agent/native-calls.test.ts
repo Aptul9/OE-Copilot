@@ -7,6 +7,7 @@ const spawn = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ fork: spawn }));
 import { NativeCalls } from '@/agent/light/native-calls';
 import type { Light } from '@/agent/light/context';
+import { inSlot } from '@/agent/slot-scope';
 import { STATE } from '@/shared/slot-db/state';
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 describe('native calling parent', () => {
@@ -17,9 +18,11 @@ describe('native calling parent', () => {
   vi.stubGlobal('fetch',vi.fn(async()=>Response.json({tokens:{skypeToken:'test'},regionGtms:{}})));
   const notifier={call:vi.fn(async()=>1)};
   const store={setState:(k:string,v:string)=>state.set(k,v),addCall:vi.fn()};
-  const l={config:{lightTokenFile:path.join(dir,'light-token.json'),slot:7},me:{oid:'owned',name:'Owner'},token:{accessToken:async()=> 'access'},list:{members:new Map([['thread',['8:orgid:peer']]]),names:new Map([['thread','Peer']])},store,notifier} as unknown as Light;
+  const l={config:{lightTokenFile:path.join(dir,'light-token.json'),slot:7,callingHost:'/opt/calling-host.mjs',callAudioUrl:'wss://relay.example/api/call/audio/socket?a=7',env:{ACCOUNT:'7',DOMAIN:'relay.example'}},me:{oid:'owned',name:'Owner'},token:{accessToken:async()=> 'access'},list:{members:new Map([['thread',['8:orgid:peer']]]),names:new Map([['thread','Peer']])},store,notifier} as unknown as Light;
   const calls=new NativeCalls(l);await calls.start();
+  expect(spawn.mock.calls[0][0]).toBe('/opt/calling-host.mjs');
   expect(spawn.mock.calls[0][1]).toEqual(['--mode=serve']);
+  expect(spawn.mock.calls[0][2].env).toMatchObject({ ACCOUNT: '7', DOMAIN: 'relay.example', CALL_AUDIO_URL: 'wss://relay.example/api/call/audio/socket?a=7', CALLING_OID: 'owned' });
   child.emit('message',{stage:'worker-ready'});expect(state.get(STATE.callAudio)).toBe('1');
   child.emit('message',{call:{caller:'8:orgid:peer',since:123,seen:124,ringing:true,active:false}});
   expect(JSON.parse(state.get(STATE.call)! ).caller).toBe('Peer');expect(notifier.call).toHaveBeenCalledWith('Peer','ringing',123);
@@ -29,5 +32,18 @@ describe('native calling parent', () => {
   expect(store.addCall).toHaveBeenCalledTimes(1);
   const token=fs.readFileSync(path.join(dir,'calling-audio-token'),'utf8');expect(token).toHaveLength(64);
   calls.stop();child.emit('exit',0);expect(state.get(STATE.callAudio)).toBe('0');
+ });
+ it('keeps the slot of the light host in what a message from the child logs', async () => {
+  const dir=tempDir();
+  const child=Object.assign(new EventEmitter(),{connected:true,send:vi.fn(),kill:vi.fn(),exitCode:null,signalCode:null});
+  spawn.mockReturnValue(child);
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({tokens:{skypeToken:'test'},regionGtms:{}})));
+  const l={config:{lightTokenFile:path.join(dir,'light-token.json'),slot:6,callingHost:'/opt/calling-host.mjs',callAudioUrl:'',env:{}},me:{oid:'owned',name:'Owner'},token:{accessToken:async()=> 'access'},list:{members:new Map(),names:new Map()},store:{setState:vi.fn()},notifier:{}} as unknown as Light;
+  const calls=new NativeCalls(l);
+  await inSlot(6,()=>calls.start());
+  const err=vi.spyOn(console,'error').mockImplementation(()=>undefined);
+  child.emit('message',{error:'worker said no'});
+  expect(err).toHaveBeenCalledWith('[6] calling: worker said no');
+  calls.stop();
  });
 });

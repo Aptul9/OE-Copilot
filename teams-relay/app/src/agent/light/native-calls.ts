@@ -1,3 +1,4 @@
+import { AsyncResource } from 'node:async_hooks';
 import { fork, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,13 +37,15 @@ export class NativeCalls {
       if (!deleted.ok && deleted.status !== 404) throw new Error(`calling cleanup ${deleted.status}`);
       fs.unlinkSync(marker);
     }
-    const child = fork(process.env.CALLING_HOST ?? '/app/calling-live-host.mjs', ['--mode=serve'], {
-      env: { ...process.env, HOST_STATE: dir, HOST_BUNDLES: '/app/calling', WRTC_DIR: '/app', CALLING_OID: l.me.oid, CALLING_NAME: l.me.name, CALL_AUDIO_TOKEN_FILE: audioToken, CALL_AUDIO_URL: process.env.CALL_AUDIO_URL ?? `wss://${process.env.DOMAIN}/api/call/audio/socket?a=${l.config.slot}`, CALL_AUDIO_INTERNAL: '1' },
+    const env: Record<string, string> = { ...l.config.env, HOST_STATE: dir, HOST_BUNDLES: '/app/calling', WRTC_DIR: '/app', CALLING_OID: l.me.oid, CALLING_NAME: l.me.name, CALL_AUDIO_TOKEN_FILE: audioToken, CALL_AUDIO_URL: l.config.callAudioUrl, CALL_AUDIO_INTERNAL: '1' };
+    const child = fork(l.config.callingHost, ['--mode=serve'], {
+      env: env as NodeJS.ProcessEnv,
       stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
     });
     this.child = child;
     child.on("error", () => { this.child = null; });
-    child.on('message', (message: unknown) => {
+    // bound, so the logs and the store writes of a message keep the slot of the light host
+    child.on('message', AsyncResource.bind((message: unknown) => {
       const m = message as { stage?: string; refreshToken?: boolean; command?: number; ok?: boolean; error?: string; call?: { caller: string; since: number; seen: number; ringing: boolean; active: boolean; ended?: boolean; answered?: boolean; muted: boolean } };
       if (m.refreshToken) {
         void (async () => {
@@ -70,14 +73,14 @@ export class NativeCalls {
         if (c.ringing && this.notified !== c.since) { this.notified = c.since; void l.notifier.call(c.caller, 'ringing', c.since); }
         if (!c.ringing && this.notified === c.since) { this.notified = 0; void l.notifier.call(c.caller, 'ended', c.since, 0, c.active); }
       }
-    });
-    child.once('exit', () => {
+    }));
+    child.once('exit', AsyncResource.bind(() => {
       this.child = null; l.store.setState(STATE.callAudio, '0');
       const ended = { caller: '', since: 0, seen: Date.now(), ringing: false, active: false };
       l.store.setState(STATE.call, JSON.stringify(ended)); l.store.setState(STATE.inCall, JSON.stringify(ended));
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.resolve(false); } this.pending.clear();
       if (!this.stopped) this.retry();
-    });
+    }));
   }
   schedule() { this.retry(); }
   private retry() {

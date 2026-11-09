@@ -89,6 +89,19 @@ describe("light agent", () => {
     expect(api.keepActive).toHaveBeenCalledOnce();
   });
 
+  it("leaves the process signals to the light host when it is given a signal", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { l, api } = setup(() => []);
+    l.config.nativeCalls = true;
+    const stop = new AbortController();
+    api.chats.mockImplementation(async () => { stop.abort(); return []; });
+    const before = [process.listenerCount("SIGTERM"), process.listenerCount("SIGINT")];
+    await runLight(l, stop.signal);
+    expect([process.listenerCount("SIGTERM"), process.listenerCount("SIGINT")]).toEqual(before);
+    expect(api.chats).toHaveBeenCalled();
+  });
+
   it("saves the list with names, presence and the chat with yourself, and pushes only messages after the first read", async () => {
     let chats = [oneToOne("19:anna@unq.gbl.spaces", "anna", "hello", 30)];
     const { l, store, notifier, api } = setup(() => chats);

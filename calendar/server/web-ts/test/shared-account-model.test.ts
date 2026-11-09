@@ -283,3 +283,12 @@ describe("changes do not block the panel", () => {
       expect(button(html, other)).not.toContain('disabled=""');
   });
 });
+
+it("an app's own logo control replaces the plain logo on every row", () => {
+  const rows = buildAccountRows([{ account: "a@x", capabilities: ["mail"], status: "ok" }], [], true, { names: { "a@x": "Alfa" } });
+  const html = renderToStaticMarkup(
+    createElement(AccountPanel, { rows, onToggle: () => {}, renderLogo: (r) => createElement("button", { "data-logo-apri": r.name }, "logo") }),
+  );
+  expect(html).toContain('data-logo-apri="Alfa"');
+  expect(html).not.toContain("ring-black/10");
+});

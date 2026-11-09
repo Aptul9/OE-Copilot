@@ -150,6 +150,7 @@ export function AccountPanel({
   busyAccounts = [],
   expanded,
   inline,
+  renderLogo,
 }: {
   rows: AccountRow[];
   // changes on their way: "account|mail", "account|calendar", "account|chat", "account|calls", or "account|*" for the whole row
@@ -167,6 +168,8 @@ export function AccountPanel({
   // the account whose row shows `inline` under it (its connection form and progress)
   expanded?: string;
   inline?: ReactNode;
+  // the app's own logo control, where the logo can be changed (the calendar's); without it the logo only shows
+  renderLogo?: (row: AccountRow) => ReactNode;
 }) {
   const [confirm, setConfirm] = useState("");
   return (
@@ -246,7 +249,7 @@ export function AccountPanel({
               aria-busy={changing}
               className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
             >
-              <Logo name={name} src={row.logo} />
+              {renderLogo ? renderLogo(row) : <Logo name={name} src={row.logo} />}
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 text-sm font-medium">
                   <span className="truncate">{name}</span>

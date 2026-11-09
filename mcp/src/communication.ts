@@ -177,10 +177,15 @@ export class Communication {
     const provider = id.slice(0, split);
     const native = id.slice(split + 1);
     let found: any;
-    if (provider === "outlook")
+    if (provider === "outlook") {
       found = (await this.outlook.tokens.accounts()).find(
         (v) => v.upn === native,
       );
+      // A row the broker sent within two minutes of expiry is not cached, and the cache does not reload for it.
+      found ??= (await this.outlook.tokens.accounts(true)).find(
+        (v) => v.upn === native,
+      );
+    }
     else if ((provider === "gmail" || provider === "gchat") && this.google)
       found = (
         await this.google("/api/communication/google/accounts")

@@ -138,6 +138,24 @@ test("Outlook service mode refuses every compose tool explicitly", async () => {
     await assert.rejects(c.email(outlookAccount, op, { message_id: handle(OUT, "email", "m1"), draft_id: handle(OUT, "email_draft", "d1") }), (e: any) => e.code === "UNSUPPORTED_CAPABILITY");
 });
 
+test("exact Outlook account missing from the token cache reloads the broker once", async () => {
+  let loads = 0;
+  const now = Math.floor(Date.now() / 1000);
+  const t = (upn: string, exp: number) => `e30.${Buffer.from(JSON.stringify({ upn, aud: "https://outlook.office.com", exp, scp: "Mail.ReadWrite" })).toString("base64url")}.sig`;
+  const { Tokens } = await import("../src/tokens.ts");
+  const { Outlook } = await import("../src/api.ts");
+  // first load: b@x.it has under two minutes left and is dropped; second load: renewed
+  const tokens = new Tokens(async () => {
+    loads++;
+    return { account: [{ upn: "a@x.it", token: t("a@x.it", now + 3600) }, { upn: "b@x.it", token: t("b@x.it", now + (loads === 1 ? 60 : 3600)) }] };
+  });
+  const c = new Communication(new Outlook(tokens), teams, undefined, undefined);
+  assert.equal((await c.account("outlook:a@x.it")).native, "a@x.it");
+  assert.equal((await c.account("outlook:b@x.it")).native, "b@x.it");
+  assert.equal(loads, 2);
+  await assert.rejects(c.account("outlook:none@x.it"), /Unknown exact/);
+});
+
 // Fake agent: Gmail reads by path, writes recorded with their decoded MIME.
 function gmail(messages: Record<string, any>, drafts: Record<string, any> = {}) {
   const writes: any[] = [];

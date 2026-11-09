@@ -130,12 +130,12 @@ it("renders accessible trash target", () => {
   );
   expect(html).toContain('aria-label="Remove a@b"');
   expect(html).toContain('title="Remove account"');
-  expect(html).toContain("min-w-11");
+  expect(html).toContain("pointer-coarse:size-11");
   expect(html).toContain("<svg");
 });
 
 describe("service switches, calls option and status", () => {
-  it("shows an icon, a label and an On/Off word for each service, not color alone", () => {
+  it("shows each service as an icon switch with its state in words, not color alone", () => {
     const html = renderToStaticMarkup(
       createElement(AccountPanel, {
         rows: [{ account: "a@b", capabilities: ["mail"], status: "Connected" }],
@@ -143,8 +143,9 @@ describe("service switches, calls option and status", () => {
       }),
     );
     expect(html.match(/<svg/g)!.length).toBeGreaterThanOrEqual(5);
-    expect(html).toContain(">On<");
-    expect(html.match(/>Off</g)).toHaveLength(2);
+    expect(html).toContain('title="Mail: on"');
+    expect(html).toContain('title="Calendar: off"');
+    expect(html).toContain('title="Teams: off"');
   });
   it("offers the calls switch only for a Teams account that reports one, and only with Teams on", () => {
     const render = (row: object, onCalls?: () => void) =>
@@ -205,5 +206,51 @@ describe("service switches, calls option and status", () => {
       false,
     );
     expect(stale.calls).toBeUndefined();
+  });
+});
+
+describe("one line per account", () => {
+  const labels = {
+    names: { "me@npo.example": "NPO", "me@bandpey.example": "Bandpey" },
+    logos: { NPO: "/logos/npo.png" },
+    forwarded: { NPO: "Bandpey" },
+  };
+  it("names, logos and forwarded calendars come from the calendar labels; rows sort by name", () => {
+    const rows = buildAccountRows(
+      [{ account: "me@bandpey.example", capabilities: ["mail", "calendar"], status: "ok" }],
+      [{ email: "me@npo.example", slot: 1, state: "ok" }],
+      true,
+      labels,
+    );
+    expect(rows.map((r) => [r.name, r.logo, r.via])).toEqual([
+      ["Bandpey", undefined, undefined],
+      ["NPO", "/logos/npo.png", "Bandpey"],
+    ]);
+    const plain = buildAccountRows([{ account: "z@x", capabilities: [], status: "ok" }], []);
+    expect(plain[0].name).toBeUndefined();
+  });
+  it("renders a single row with logo, name, address and the forwarded calendar marked, without a separate entry", () => {
+    const rows = buildAccountRows([], [{ email: "me@npo.example", slot: 1, state: "ok" }], true, labels);
+    const html = renderToStaticMarkup(createElement(AccountPanel, { rows, onToggle: () => {}, onReconnect: () => {} }));
+    expect(html.match(/data-account=/g)).toHaveLength(1);
+    expect(html).toContain('src="/logos/npo.png"');
+    expect(html).toContain(">NPO<");
+    expect(html).toContain("me@npo.example");
+    expect(html).toContain("Calendar: arrives forwarded via Bandpey");
+    expect(html).toContain('aria-label="Connect services of NPO"');
+  });
+  it("shows the inline area only under the expanded row", () => {
+    const rows = buildAccountRows(
+      [
+        { account: "a@x", capabilities: ["mail"], status: "ok" },
+        { account: "b@x", capabilities: ["mail"], status: "ok" },
+      ],
+      [],
+    );
+    const html = renderToStaticMarkup(
+      createElement(AccountPanel, { rows, onToggle: () => {}, expanded: "b@x", inline: createElement("i", null, "FORM") }),
+    );
+    expect(html.indexOf("FORM")).toBeGreaterThan(html.indexOf('data-account="b@x"'));
+    expect(html.match(/FORM/g)).toHaveLength(1);
   });
 });

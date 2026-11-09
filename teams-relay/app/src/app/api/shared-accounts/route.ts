@@ -66,6 +66,8 @@ async function listFor(userId: string) {
     teamsOnly,
     commands: (raw as { commands?: unknown[] }).commands ?? [],
     signins: (raw as { signins?: unknown[] }).signins ?? [],
+    // names and logos as the calendar shows them, sent there by its gateway
+    labels: (raw as { labels?: unknown }).labels ?? null,
   };
 }
 

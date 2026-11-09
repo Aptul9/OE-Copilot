@@ -212,7 +212,7 @@ export type Metodi = {
   rimuovi_casella: [[string], Esito & { account?: string }];
   connect_microsoft: [[string, CapacitaCondivisa[]], Esito];
   manage_microsoft: [[string, "remove" | "chat" | "calls", boolean?], Esito & {pending?:boolean}];
-  get_condivisione_microsoft: [[], Esito & { accounts: AccountCondiviso[]; teamsOnly: SoloTeams[]; teamsAt: number; commands?: {id:string;account:string;operation:string;error?:string}[]; signins?: import("@/shared/accounts/ConnectForm").SignIn[] }];
+  get_condivisione_microsoft: [[], Esito & { labels?: import("@/shared/accounts/model").AccountLabels; accounts: AccountCondiviso[]; teamsOnly: SoloTeams[]; teamsAt: number; commands?: {id:string;account:string;operation:string;error?:string}[]; signins?: import("@/shared/accounts/ConnectForm").SignIn[] }];
   set_condivisione_microsoft: [[string, CapacitaCondivisa[] | null], Esito & { account?: string; shared?: Condivisione }];
   inizia_accesso_microsoft: [
     [string?, ("microsoft" | "google")?, ("device" | "pkce")?],

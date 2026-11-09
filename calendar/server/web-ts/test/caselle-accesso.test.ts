@@ -15,12 +15,15 @@ const NASCOSTA = "collega@serco.example";
 let dati: string;
 let server: http.Server;
 let ricevuti: unknown[];
+let etichette: unknown[];
 let reportAt = 1_790_000_000;
 let browserEmail = "anna@contoso.example";
 
 beforeEach(async () => {
   dati = cartellaDati();
   ricevuti = [];
+  etichette = [];
+  delete (globalThis as { __oeEtichette?: unknown }).__oeEtichette;
   reportAt = 1_790_000_000;
   browserEmail = "anna@contoso.example";
   fs.writeFileSync(
@@ -57,6 +60,15 @@ beforeEach(async () => {
         ricevuti.push(r);
         if (r.account !== SERCO) return json({ ok: false, errore: "Casella non trovata" });
         json({ ok: true, account: SERCO, shared: r.enabled === false ? null : { capabilities: r.capabilities, origin: "mobile" } });
+      });
+      return;
+    }
+    if (req.method === "POST" && req.url === "/api/auth/shared/labels") {
+      let corpo = "";
+      req.on("data", (c) => (corpo += c));
+      req.on("end", () => {
+        etichette.push(JSON.parse(corpo));
+        json({ ok: true });
       });
       return;
     }
@@ -118,7 +130,32 @@ describe("finestra Account", () => {
       ],
       teamsOnly: [{ email: browserEmail, slot: 4, state: "ok", detail: "green" }],
       teamsAt: reportAt,
+      labels: { names: { [SERCO]: "Serco", [BANDPEY]: "Bandpey", [browserEmail]: "Contoso" }, logos: {}, forwarded: {} },
     });
+  });
+
+  it("get_condivisione_microsoft: nome e logo come nella barra, azienda inoltrata con la sua casella; all'agente i loghi come data URL, una volta sola", async () => {
+    fs.writeFileSync(
+      `${dati}/personalizzazione.json`,
+      JSON.stringify({
+        nomi_per_dominio: { "contoso.example": "Zurich" },
+        aziende_inoltrate: { Zurich: { via: BANDPEY, prefisso: "^ZU:" } },
+        interfaccia: { loghi: { Zurich: "logos/zurich.png" } },
+      }),
+    );
+    fs.mkdirSync(`${dati}/logos`, { recursive: true });
+    fs.writeFileSync(`${dati}/logos/zurich.png`, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const r = (await chiama("get_condivisione_microsoft", [])) as { labels: unknown };
+    expect(r.labels).toEqual({
+      names: { [SERCO]: "Serco", [BANDPEY]: "Bandpey", [browserEmail]: "Zurich" },
+      logos: { Zurich: "/logos/zurich.png" },
+      forwarded: { Zurich: "Bandpey" },
+    });
+    expect(etichette).toEqual([
+      { names: { [SERCO]: "Serco", [BANDPEY]: "Bandpey", [browserEmail]: "Zurich" }, logos: { Zurich: "data:image/png;base64,iVBORw==" }, forwarded: { Zurich: "Bandpey" } },
+    ]);
+    await chiama("get_condivisione_microsoft", []);
+    expect(etichette).toHaveLength(1);
   });
 
   it("set_condivisione_microsoft: tutto spento è un elenco vuoto, non lo spegnimento", async () => {

@@ -21,6 +21,7 @@ import {
   rinominaNeiGruppi,
 } from "./stato";
 import { personalizzazione } from "./personalizzazione";
+import { aggiornaEtichette, etichetteAccount, indirizziElenco, mandaEtichette } from "./etichette";
 
 // I metodi di app.Api che il servizio Python ui esponeva alla pagina, scritti qui (era app.py, fino al commit 142e789): la lettura e la
 // scrittura. Il gateway li serve da sé. Ogni metodo riceve gli argomenti della lista JSON e restituisce quello che finisce nel corpo della risposta.
@@ -115,6 +116,7 @@ export const apiTs = {
     // Dopo le caselle, non prima: il pallino di un'azienda inoltrata dipende da com'è andata la lettura della casella che ne ospita le copie.
     // I calendari da link e locali restano leggibili anche senza le caselle.
     const extra = calendariExtra(cfg);
+    void aggiornaEtichette(() => chiedi("/api/auth/shared"));
     console.info(`get_calendars: ${cals.length} delle caselle + ${extra.length} extra in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     // Ordine scelto dall'utente per nome mostrato; stabile per il resto
     const calendars = [...cals, ...extra].sort((a, b) => ordineCalendario(a.alias || a.account || "") - ordineCalendario(b.alias || b.account || ""));
@@ -440,8 +442,11 @@ export const apiTs = {
     try {
       const r = await chiedi("/api/auth/shared");
       if (!r.ok) return { ok: false, accounts: [], teamsOnly: [], teamsAt: 0, error: String(r.errore || "Stato degli account non letto") };
+      const labels = etichetteAccount(indirizziElenco(r));
+      await mandaEtichette(labels);
       return {
         ok: true,
+        labels,
         accounts: Array.isArray(r.accounts) ? r.accounts : [],
         teamsOnly: Array.isArray(r.teamsOnly) ? r.teamsOnly : [],
         commands: Array.isArray(r.commands) ? r.commands : [],

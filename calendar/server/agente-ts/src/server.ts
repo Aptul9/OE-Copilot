@@ -23,6 +23,7 @@ import { CalendarioDiretto, GestoreToken } from "./diretto.ts";
 import { GoogleCommunication } from "./google-communication.ts";
 import { richiestaCondivisione, identitaDaToken, attivaCondivisione } from "./shared-provisioning.ts";
 import { ErroreRapportoTeams, leggiRapportoTeams, rapportoValido, type RapportoTeams } from "./shared-teams.ts";
+import { caricaEtichette, ErroreEtichette, leggiEtichette, salvaEtichette } from "./shared-labels.ts";
 import { GoogleChatError } from "./gchat.ts";
 import { GmailError } from "./gmail.ts";
 import { ErroreSessioneGoogle } from "./google-web.ts";
@@ -351,7 +352,7 @@ export class Agente {
   private async post(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const { percorso, query } = analizzaTarget(req.url ?? "");
     if (!this.autorizzato(req) && !this.autorizzatoTeams(req, "POST", percorso, query)) return this.invia(req, res, 401, { errore: "non autorizzato" });
-    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/auth/shared", "/api/auth/shared/teams", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
+    if (!["/api/ics", "/api/auth/inizio", "/api/auth/completa", "/api/auth/controlla", "/api/auth/rimuovi", "/api/auth/shared", "/api/auth/shared/teams", "/api/auth/shared/labels", "/api/communication/read", "/api/communication/gmail/read", "/api/communication/gmail/write", "/api/communication/gchat/read", "/api/communication/gchat/write"].includes(percorso)) {
       return this.invia(req, res, 404, { errore: "sconosciuto" });
     }
     const dichiarata = req.headers["content-length"] || "0";
@@ -521,6 +522,15 @@ export class Agente {
         );
       }
       return this.invia(req, res, 200, esito);
+    }
+    if (percorso === "/api/auth/shared/labels") {
+      if (!this.o.tokens) return this.invia(req, res, 400, { ok: false, errore: "Token store unavailable" });
+      try {
+        salvaEtichette(this.o.tokens.percorso + ".labels.json", leggiEtichette(leggiJson(corpo)));
+      } catch (e) {
+        return this.invia(req, res, 400, { ok: false, errore: e instanceof ErroreEtichette ? e.message : "invalid JSON" });
+      }
+      return this.invia(req, res, 200, { ok: true });
     }
     if (percorso === "/api/auth/shared/teams") {
       let dati: unknown;
@@ -767,6 +777,7 @@ export class Agente {
         commands: this.o.tokens
           ? readCommands(this.o.tokens.percorso + ".commands.json")
           : [],
+        labels: this.o.tokens ? caricaEtichette(this.o.tokens.percorso + ".labels.json") : null,
       });
     }
     if (percorso === "/api/auth/stato") {

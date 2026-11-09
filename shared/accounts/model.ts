@@ -1,4 +1,27 @@
 import type { AccountRow, Capability } from "./AccountPanel";
+// The name and logo of each address as the calendar sidebar shows them, and the companies whose meetings are forwarded into
+// another mailbox (company name to that mailbox's name). Logos are URLs of the calendar, or data URLs in TeamsRelay.
+export type AccountLabels = {
+  names?: Record<string, string>;
+  logos?: Record<string, string>;
+  forwarded?: Record<string, string>;
+};
+function labelled(rows: AccountRow[], labels?: AccountLabels): AccountRow[] {
+  for (const row of rows) {
+    const name = labels?.names?.[row.account];
+    if (!name) continue;
+    row.name = name;
+    row.logo = labels?.logos?.[name];
+    const via = labels?.forwarded?.[name];
+    if (via && !row.capabilities.includes("calendar")) row.via = via;
+  }
+  return rows.sort(
+    (a, b) =>
+      (a.name ?? a.account).localeCompare(b.name ?? b.account, undefined, {
+        sensitivity: "base",
+      }) || a.account.localeCompare(b.account),
+  );
+}
 export function buildAccountRows(
   accounts: {
     account: string;
@@ -15,6 +38,7 @@ export function buildAccountRows(
     calls?: boolean | null;
   }[],
   reportValid = true,
+  labels?: AccountLabels,
 ): AccountRow[] {
   const rows = new Map<string, AccountRow>();
   for (const a of accounts) {
@@ -63,7 +87,7 @@ export function buildAccountRows(
         calls,
       });
   }
-  return [...rows.values()].sort((a, b) => a.account.localeCompare(b.account));
+  return labelled([...rows.values()], labels);
 }
 
 export function validTeamsReport(at: number, now = Date.now() / 1000): boolean {

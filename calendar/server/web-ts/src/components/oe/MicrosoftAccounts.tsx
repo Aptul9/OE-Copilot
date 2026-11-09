@@ -29,6 +29,7 @@ export function MicrosoftAccounts({
             })),
             r.teamsOnly,
             validTeamsReport(r.teamsAt),
+            r.labels,
           ),
           commands: r.commands,
           signins: r.signins,

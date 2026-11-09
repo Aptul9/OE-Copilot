@@ -59,7 +59,7 @@ const TIPI: Record<string, string> = {
  * Il logo `nome` della prima cartella che lo ha. Si risolvono i percorsi veri, collegamenti compresi, e il file deve restare
  * dentro la cartella: un nome con .., un nome assoluto o un collegamento che esce non passano. Solo file normali.
  */
-async function leggiLogo(nome: string, cartelle: string[]): Promise<{ dati: Uint8Array<ArrayBuffer>; tipo: string } | null> {
+export async function leggiLogo(nome: string, cartelle: string[]): Promise<{ dati: Uint8Array<ArrayBuffer>; tipo: string } | null> {
   for (const cartella of cartelle) {
     try {
       const radice = await realpath(cartella);

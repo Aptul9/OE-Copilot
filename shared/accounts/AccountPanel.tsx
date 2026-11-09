@@ -2,7 +2,6 @@
 import { useState } from "react";
 import type { ComponentType, ReactNode } from "react";
 import {
-  AtSignIcon,
   CalendarDaysIcon,
   CheckIcon,
   LoaderCircleIcon,
@@ -24,6 +23,11 @@ export type AccountRow = {
   unavailable?: Partial<Record<Capability, string>>;
   // Teams calls of an account without a browser; undefined when calls cannot be switched for it
   calls?: boolean;
+  // the name and logo the calendar sidebar shows for this address
+  name?: string;
+  logo?: string;
+  // the mailbox the company's meetings are forwarded into, when the account has no calendar of its own
+  via?: string;
 };
 export const SERVICES: {
   cap: Capability;
@@ -47,26 +51,80 @@ function toneOf(status: string, message?: string): Tone {
   if (/pending|starting|login/i.test(status)) return "info";
   return "ok";
 }
-const focus =
+export const focus =
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
-function Switch({ on }: { on: boolean }) {
+// 32 px with a mouse, 44 px on touch screens
+export const ICON_BUTTON = `inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors pointer-coarse:size-11 disabled:cursor-not-allowed motion-reduce:transition-none ${focus}`;
+const initials = (name: string) =>
+  name
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+// the company logo in a white circle, as in the calendar sidebar; initials without one
+export function Logo({ name, src }: { name: string; src?: string }) {
+  const [broken, setBroken] = useState(false);
   return (
     <span
       aria-hidden="true"
-      className={`flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors motion-reduce:transition-none ${on ? "justify-end bg-primary" : "justify-start bg-muted-foreground/30"}`}
+      className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-white ring-1 ring-black/10"
     >
-      <span className="size-4 rounded-full bg-background shadow-sm" />
+      {src && !broken ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          className="size-full object-contain p-[16%]"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <span className="grid size-full place-items-center bg-primary text-[10px] font-bold text-primary-foreground">
+          {initials(name)}
+        </span>
+      )}
     </span>
   );
 }
-function IconBox({ on, children }: { on: boolean; children: ReactNode }) {
+function ServiceToggle({
+  label,
+  name,
+  Icon,
+  on,
+  hint,
+  dashed,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  name: string;
+  Icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  on: boolean;
+  hint: string;
+  dashed?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <span
-      aria-hidden="true"
-      className={`flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors motion-reduce:transition-none ${on ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={`${label} of ${name}`}
+      title={hint}
+      disabled={disabled}
+      onClick={onClick}
+      className={`${ICON_BUTTON} ${
+        on
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : dashed
+            ? "border border-dashed border-primary/60 text-primary"
+            : "border text-muted-foreground hover:bg-accent hover:text-foreground"
+      } ${disabled && !dashed ? "opacity-40" : ""}`}
     >
-      {children}
-    </span>
+      <Icon aria-hidden={true} className="size-4" />
+    </button>
   );
 }
 export function AccountPanel({
@@ -82,6 +140,8 @@ export function AccountPanel({
   onReconnect,
   onCalls,
   busyAccounts = [],
+  expanded,
+  inline,
 }: {
   rows: AccountRow[];
   pending?: string;
@@ -95,36 +155,26 @@ export function AccountPanel({
   onReconnect?: (account: string) => void;
   onCalls?: (account: string, on: boolean) => void;
   busyAccounts?: string[];
+  // the account whose row shows `inline` under it (its connection form and progress)
+  expanded?: string;
+  inline?: ReactNode;
 }) {
   const [confirm, setConfirm] = useState("");
   return (
     <section
-      className="overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm"
+      className="overflow-hidden rounded-xl border bg-card text-card-foreground"
       data-account-panel
       aria-label="Microsoft accounts"
     >
-      <header className="flex flex-wrap items-start justify-between gap-3 border-b p-4 sm:p-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
-          >
-            <AtSignIcon className="size-5" />
-          </span>
-          <div className="min-w-0">
-            <h2 className="text-base font-semibold">Microsoft accounts</h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              Mail, calendar and Teams. Same accounts in both apps.
-            </p>
-          </div>
-        </div>
+      <header className="flex items-center justify-between gap-3 border-b px-3 py-2">
+        <h2 className="text-sm font-semibold">Microsoft accounts</h2>
         <button
           type="button"
-          className={`inline-flex min-h-11 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${focus}`}
+          className={`inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 pointer-coarse:h-11 motion-reduce:transition-none ${focus}`}
           disabled={!!pending || loading}
           onClick={onAdd}
         >
-          <PlusIcon aria-hidden="true" className="size-4" />
+          <PlusIcon aria-hidden="true" className="size-3.5" />
           Add account
         </button>
       </header>
@@ -132,23 +182,20 @@ export function AccountPanel({
       {error && (
         <p
           role="alert"
-          className="flex items-start gap-2 border-b bg-destructive/10 p-4 text-sm text-destructive"
+          className="flex items-start gap-2 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
         >
-          <TriangleAlertIcon
-            aria-hidden="true"
-            className="mt-0.5 size-4 shrink-0"
-          />
+          <TriangleAlertIcon aria-hidden="true" className="size-3.5 shrink-0" />
           {error}
         </p>
       )}
       {loading && (
         <p
           role="status"
-          className="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+          className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground"
         >
           <LoaderCircleIcon
             aria-hidden="true"
-            className="size-4 animate-spin motion-reduce:animate-none"
+            className="size-3.5 animate-spin motion-reduce:animate-none"
           />
           Loading accounts...
         </p>
@@ -156,28 +203,20 @@ export function AccountPanel({
       {feedback && (
         <p
           role="status"
-          className="flex items-center gap-2 border-b bg-muted/40 px-4 py-3 text-sm"
+          className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2 text-xs"
         >
-          <CheckIcon
-            aria-hidden="true"
-            className="size-4 shrink-0 text-success"
-          />
+          <CheckIcon aria-hidden="true" className="size-3.5 shrink-0 text-success" />
           {feedback}
         </p>
       )}
       {!loading && !rows.length && (
-        <div className="flex flex-col items-center gap-2 p-8 text-center">
-          <IconBox on={false}>
-            <AtSignIcon className="size-4" />
-          </IconBox>
-          <p className="text-sm font-medium">No accounts connected</p>
-          <p className="text-sm text-muted-foreground">
-            Add a Microsoft account to read its mail, calendar and Teams chats.
-          </p>
-        </div>
+        <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+          No accounts connected.
+        </p>
       )}
       <ul className="divide-y">
         {rows.map((row) => {
+          const name = row.name ?? row.account;
           const busy =
             pending === row.account || busyAccounts.includes(row.account);
           const status =
@@ -188,185 +227,159 @@ export function AccountPanel({
                 : row.status;
           const tone = busy ? "info" : toneOf(row.status, row.message);
           const teamsOn = row.capabilities.includes("chat");
+          const showCalls = teamsOn && !!onCalls && row.calls !== undefined;
           return (
             <li
               key={row.account}
               data-account={row.account}
               aria-busy={pending === row.account}
-              className="p-4 sm:p-5"
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
             >
-              <div className="flex items-start gap-3">
-                <span
-                  aria-hidden="true"
-                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold uppercase text-primary"
+              <Logo name={name} src={row.logo} />
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <span className="truncate">{name}</span>
+                  {busy ? (
+                    <LoaderCircleIcon
+                      aria-hidden="true"
+                      className="size-3 shrink-0 animate-spin text-primary motion-reduce:animate-none"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      title={status}
+                      className={`size-1.5 shrink-0 rounded-full ${DOT[tone]}`}
+                    />
+                  )}
+                </p>
+                <p
+                  role="status"
+                  className="truncate text-xs text-muted-foreground"
+                  title={[row.account, status, row.message].filter(Boolean).join(" · ")}
                 >
-                  {row.account.slice(0, 1)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="break-all text-sm font-medium">{row.account}</p>
-                  <p
-                    role="status"
-                    className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground"
-                  >
-                    {busy ? (
-                      <LoaderCircleIcon
-                        aria-hidden="true"
-                        className="size-3 animate-spin motion-reduce:animate-none"
-                      />
-                    ) : (
-                      <span
-                        aria-hidden="true"
-                        className={`size-2 rounded-full ${DOT[tone]}`}
-                      />
-                    )}
-                    {status}
-                  </p>
-                  {row.message && (
-                    <p className="mt-1 text-xs text-destructive">
-                      {row.message}
-                    </p>
+                  {row.name ? row.account : ""}
+                  {tone === "ok" ? (
+                    <span className="sr-only"> {status}</span>
+                  ) : (
+                    <span className={tone === "warn" ? "text-destructive" : ""}>
+                      {row.name ? " · " : ""}
+                      {status}
+                    </span>
                   )}
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {onReconnect && (
-                    <button
-                      type="button"
-                      className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 motion-reduce:transition-none ${focus}`}
-                      title="Connect services or sign in again"
-                      onClick={() => onReconnect(row.account)}
-                    >
-                      <PlugZapIcon aria-hidden="true" className="size-4" />
-                      <span className="hidden sm:inline">Connect services</span>
-                      <span className="sr-only sm:hidden">
-                        Connect services / sign in again
-                      </span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${focus}`}
-                    aria-label={`Remove ${row.account}`}
-                    title="Remove account"
-                    disabled={!!pending}
-                    onClick={() => setConfirm(row.account)}
-                  >
-                    <Trash2Icon aria-hidden="true" className="size-5" />
-                  </button>
-                </div>
+                </p>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              <div
+                role="group"
+                aria-label={`Services of ${name}`}
+                className="order-last flex basis-full items-center gap-1 pl-10 sm:order-none sm:basis-auto sm:pl-0"
+              >
                 {SERVICES.map(({ cap, label, Icon }) => {
                   const on = row.capabilities.includes(cap);
+                  const via = cap === "calendar" && !on ? row.via : undefined;
                   const reason = row.unavailable?.[cap];
                   return (
-                    <div key={cap}>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={on}
-                        aria-label={`${label} of ${row.account}`}
-                        title={reason}
-                        disabled={
-                          !!pending ||
-                          !!reason ||
-                          (busyAccounts.includes(row.account) && !on)
-                        }
-                        onClick={() => onToggle(row.account, cap, !on)}
-                        className={`flex min-h-14 w-full items-center gap-3 rounded-xl border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${focus} ${on ? "border-primary/40 bg-primary/5 hover:bg-primary/10" : "bg-background hover:bg-accent"}`}
-                      >
-                        <IconBox on={on}>
-                          <Icon aria-hidden={true} className="size-4" />
-                        </IconBox>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium">
-                            {label}
-                          </span>
-                          <span className="block text-xs text-muted-foreground">
-                            {reason ? "Unavailable" : on ? "On" : "Off"}
-                          </span>
-                        </span>
-                        <Switch on={on} />
-                      </button>
-                      {reason && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {reason}
-                        </p>
-                      )}
-                    </div>
+                    <ServiceToggle
+                      key={cap}
+                      label={label}
+                      name={name}
+                      Icon={Icon}
+                      on={on}
+                      dashed={!!via}
+                      hint={
+                        via
+                          ? `${label}: arrives forwarded via ${via}. Connect services to read it directly.`
+                          : reason
+                            ? `${label}: ${reason}`
+                            : `${label}: ${on ? "on" : "off"}`
+                      }
+                      disabled={
+                        !!pending ||
+                        !!reason ||
+                        (busyAccounts.includes(row.account) && !on)
+                      }
+                      onClick={() => onToggle(row.account, cap, !on)}
+                    />
                   );
                 })}
-              </div>
-              {teamsOn && onCalls && row.calls !== undefined && (
-                <div
-                  data-teams-options
-                  className="mt-2 flex items-center gap-3 rounded-xl border border-dashed bg-muted/40 p-2.5"
-                >
-                  <IconBox on={row.calls}>
-                    {row.calls ? (
-                      <PhoneIcon aria-hidden="true" className="size-4" />
-                    ) : (
-                      <PhoneOffIcon aria-hidden="true" className="size-4" />
-                    )}
-                  </IconBox>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">Teams calls</p>
-                    <p className="text-xs text-muted-foreground">
-                      {row.calls
-                        ? "Rings and is answered in the app."
-                        : "Messages only: no ringing. Notifications and AI (MCP) access to the chats keep working."}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={row.calls}
-                    aria-label={`Calls of ${row.account}`}
+                {showCalls ? (
+                  <ServiceToggle
+                    label="Calls"
+                    name={name}
+                    Icon={row.calls ? PhoneIcon : PhoneOffIcon}
+                    on={!!row.calls}
+                    hint={
+                      row.calls
+                        ? "Teams calls: on. Rings and is answered in the app."
+                        : "Teams calls: off. Messages only: no ringing. Notifications and AI (MCP) access to the chats keep working."
+                    }
                     disabled={!!pending}
                     onClick={() => onCalls(row.account, !row.calls)}
-                    className={`flex min-h-11 min-w-11 items-center justify-center rounded-lg transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${focus}`}
+                  />
+                ) : (
+                  <span aria-hidden="true" className="size-8 shrink-0 pointer-coarse:size-11" />
+                )}
+              </div>
+              <div className="flex items-center">
+                {onReconnect && (
+                  <button
+                    type="button"
+                    className={`${ICON_BUTTON} ${tone === "warn" ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
+                    aria-label={`Connect services of ${name}`}
+                    aria-expanded={expanded === row.account}
+                    title="Connect services or sign in again"
+                    onClick={() => onReconnect(row.account)}
                   >
-                    <Switch on={row.calls} />
+                    <PlugZapIcon aria-hidden="true" className="size-4" />
                   </button>
-                </div>
+                )}
+                <button
+                  type="button"
+                  className={`${ICON_BUTTON} text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50`}
+                  aria-label={`Remove ${row.account}`}
+                  title="Remove account"
+                  disabled={!!pending}
+                  onClick={() => setConfirm(row.account)}
+                >
+                  <Trash2Icon aria-hidden="true" className="size-4" />
+                </button>
+              </div>
+              {expanded === row.account && inline && (
+                <div className="order-last basis-full">{inline}</div>
               )}
               {confirm === row.account && (
                 <div
                   role="alertdialog"
                   aria-modal="false"
                   aria-label={"Remove " + row.account}
-                  className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
+                  className="order-last flex basis-full flex-wrap items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs"
                 >
-                  <div className="flex items-start gap-3">
-                    <TriangleAlertIcon
-                      aria-hidden="true"
-                      className="mt-0.5 size-5 shrink-0 text-destructive"
-                    />
-                    <p className="text-sm">
-                      Remove {row.account}? Saved mail and calendar access,
-                      matching Teams slots and their local data will be deleted
-                      from both apps. Microsoft mailbox contents stay unchanged.
-                      This cannot be undone; adding again requires sign-in.
-                    </p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <button
-                      type="button"
-                      className={`min-h-11 rounded-lg border bg-background px-4 text-sm transition-colors hover:bg-accent motion-reduce:transition-none ${focus}`}
-                      disabled={!!pending}
-                      onClick={() => setConfirm("")}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      className={`inline-flex min-h-11 items-center gap-2 rounded-lg bg-destructive px-4 text-sm font-medium text-white transition-colors hover:bg-destructive/90 disabled:opacity-50 motion-reduce:transition-none ${focus}`}
-                      disabled={!!pending}
-                      onClick={() => onRemove?.(row.account)}
-                    >
-                      <Trash2Icon aria-hidden="true" className="size-4" />
-                      Confirm removal
-                    </button>
-                  </div>
+                  <TriangleAlertIcon
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-destructive"
+                  />
+                  <p className="min-w-0 flex-1">
+                    Remove {row.account}? Saved mail and calendar access,
+                    matching Teams slots and their local data will be deleted
+                    from both apps. Microsoft mailbox contents stay unchanged.
+                    This cannot be undone; adding again requires sign-in.
+                  </p>
+                  <button
+                    type="button"
+                    className={`h-8 rounded-lg border bg-background px-3 hover:bg-accent pointer-coarse:h-11 ${focus}`}
+                    disabled={!!pending}
+                    onClick={() => setConfirm("")}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={`inline-flex h-8 items-center gap-1.5 rounded-lg bg-destructive px-3 font-medium text-white hover:bg-destructive/90 disabled:opacity-50 pointer-coarse:h-11 ${focus}`}
+                    disabled={!!pending}
+                    onClick={() => onRemove?.(row.account)}
+                  >
+                    <Trash2Icon aria-hidden="true" className="size-3.5" />
+                    Confirm removal
+                  </button>
                 </div>
               )}
             </li>

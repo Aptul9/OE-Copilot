@@ -80,7 +80,8 @@ export class NativeCalls {
       }
     }));
     child.once('exit', AsyncResource.bind((code: number | null, signal: NodeJS.Signals | null) => {
-      if (!this.stopped) log.warn('calling', `worker exited (${signal ? `signal ${signal}` : `code ${code}`}), starting again in 10 s`);
+      // exit 0: the worker recycled itself (idle 45 min, calling-live-host.mjs) or ended on a SIGTERM logged where it was sent
+      if (!this.stopped && (signal || code !== 0)) log.warn('calling', `worker exited (${signal ? `signal ${signal}` : `code ${code}`}), starting again in 10 s`);
       this.child = null; l.store.setState(STATE.callAudio, '0');
       const ended = { caller: '', since: 0, seen: Date.now(), ringing: false, active: false };
       l.store.setState(STATE.call, JSON.stringify(ended)); l.store.setState(STATE.inCall, JSON.stringify(ended));
@@ -97,7 +98,12 @@ export class NativeCalls {
     if (!this.child?.connected) return Promise.resolve(false);
     const id = ++this.sequence;
     return new Promise<boolean>(resolve => {
-      const timer = setTimeout(() => { this.pending.delete(id); this.child?.kill("SIGTERM"); resolve(false); }, 30000);
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        log.warn('calling', `worker did not answer ${op} in 30 s, worker ended`);
+        this.child?.kill("SIGTERM");
+        resolve(false);
+      }, 30000);
       this.pending.set(id, { resolve, timer });
       this.child!.send({ id, op, ...args }, error => { if (error) { clearTimeout(timer); this.pending.delete(id); resolve(false); } });
     });

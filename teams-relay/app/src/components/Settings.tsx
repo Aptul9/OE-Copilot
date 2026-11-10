@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AccountLogo, identityOf, useSharedNames } from "./AccountIdentity";
 import { AccountLines } from "./AccountMenu";
 import { AiClients } from "./AiClients";
+import { NotifyMenu, type NotifyChange } from "./NotifyMenu";
 import { PageHeader } from "./PageHeader";
 import { relayHost, RelayTokenDialog } from "./RelayToken";
 import { SharedAccounts } from "./SharedAccounts";
@@ -128,6 +129,24 @@ function TeamsAccounts() {
     }
   }
 
+  // where the notifications of an account go: the box changes at once, and goes back when the server refuses
+  async function setNotify(a: Account, to: NotifyChange) {
+    const before = accounts;
+    setAccounts((list) => list && list.map((x) => (x.slot === a.slot ? { ...x, ...to } : x)));
+    const now = { notifyMobile: a.notifyMobile !== false, notifyDesktop: a.notifyDesktop !== false, ...to };
+    try {
+      await patch(`/api/accounts/${a.slot}`, to, 0);
+      const words = now.notifyMobile && now.notifyDesktop ? "mobile and desktop" : now.notifyMobile ? "mobile only" : now.notifyDesktop ? "desktop only" : "notifications off";
+      toast.success(`${accName(a)}: ${words}`, {
+        id: `notify-${a.slot}`,
+        description: now.notifyMobile || now.notifyDesktop ? "Messages, calls and what a check finds go to those devices." : "Nothing from this account. Sign-in alerts still arrive.",
+      });
+    } catch (e) {
+      setAccounts(before);
+      toast.error(errorText(e, "Notifications not changed"), { id: `notify-${a.slot}` });
+    }
+  }
+
   // the relay of an account on another computer joins with a new token from now on
   async function renewToken(a: Account) {
     setSaving(a.slot);
@@ -150,7 +169,7 @@ function TeamsAccounts() {
           late at most, on a fraction of the memory; calls ring and are answered in the app unless its Calls switch is off. Checked every few hours:
           the account starts, reads its chats and notifications, and stops again, one account at a time; it saves memory, and what it finds arrives
           as one notification per check. Stopped: still signed in, nothing is read. An account on another computer runs there, as long as its relay
-          does.
+          does. Notifications: tick Mobile, Desktop or both; with none ticked the account sends no notifications.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -185,6 +204,7 @@ function TeamsAccounts() {
                         </AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
+                    <NotifyMenu account={a} onChange={(to) => void setNotify(a, to)} />
                   </div>
                 ) : (
                   <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
@@ -217,6 +237,7 @@ function TeamsAccounts() {
                       </Select>
                     )}
                     {a.shared && <span className="w-full text-xs text-muted-foreground sm:w-auto">Signed in once in the calendar as {a.shared}</span>}
+                    <NotifyMenu account={a} onChange={(to) => void setNotify(a, to)} />
                     {a.light && (
                       <label className="flex items-center gap-2 text-sm">
                         <Switch checked={a.calls !== false} onCheckedChange={(on) => void setCalls(a, on)} disabled={saving === a.slot} aria-label={`Calls of ${accName(a)}`} />
@@ -409,7 +430,7 @@ export function Settings({ user, passwordManaged }: { user: { name: string; emai
         </Card>
 
         <SharedAccounts key={String(adding)} adding={adding} />
-        <details><summary className="cursor-pointer text-sm text-muted-foreground">Advanced Teams settings: run mode and relay tokens</summary><TeamsAccounts /></details>
+        <details><summary className="cursor-pointer text-sm text-muted-foreground">Teams accounts: notifications, run mode and relay tokens</summary><TeamsAccounts /></details>
         <AiClients />
 
         <Card>

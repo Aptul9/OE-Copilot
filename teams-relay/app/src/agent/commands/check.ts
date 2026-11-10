@@ -45,7 +45,7 @@ export const check: Handler = async (a) => {
     const pushes: Promise<unknown>[] = missed.map((c) => a.notifier.missedCall(c.caller, c.time));
     if (newChats || newItems) {
       const found = [unread.length > 0 && plural(unread.length, "unread chat", "unread chats"), newItems > 0 && plural(newItems, "new notification", "new notifications")];
-      pushes.push(a.notifier.alert(found.filter(Boolean).join(", "), "Found by the check: open TeamsRelay to read them."));
+      pushes.push(a.notifier.notice(found.filter(Boolean).join(", "), "Found by the check: open TeamsRelay to read them."));
     }
     for (const r of await Promise.allSettled(pushes)) if (r.status === "rejected") log.warn("check", `push: ${errorText(r.reason)}`);
   }

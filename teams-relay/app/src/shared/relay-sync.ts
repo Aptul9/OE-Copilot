@@ -153,6 +153,7 @@ export type HaveBody = z.infer<typeof HaveBody>;
 export const PushBody = z.discriminatedUnion("op", [
   z.object({ op: z.literal("message"), title: text(1000), body: text(20_000), chat: text(1000) }),
   z.object({ op: z.literal("alert"), title: text(1000), body: text(20_000), urgency: z.enum(["very-low", "low", "normal", "high"]) }),
+  z.object({ op: z.literal("notice"), title: text(1000), body: text(20_000), urgency: z.enum(["very-low", "low", "normal", "high"]) }),
   z.object({ op: z.literal("call"), caller: text(1000), state: z.enum(["ringing", "again", "ended"]), since: int, seconds: int }),
   z.object({ op: z.literal("missedCall"), caller: text(1000), time: text(100) }),
 ]);

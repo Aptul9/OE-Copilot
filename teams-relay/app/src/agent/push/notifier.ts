@@ -11,6 +11,7 @@ type Send = (subscription: webpush.PushSubscription, payload: string, options: w
 type Later = (ms: number, fn: () => void) => void;
 export type Ntfy = { url: string; topic: string } | null;
 export type PushTarget = { endpoint: string; sub: string };
+export type Audience = { mobile: boolean; desktop: boolean };
 type Delivery = { urgency: webpush.Urgency; ttl: number; retry: boolean };
 
 // The devices a push goes to: those of the slot owner in app.db (AppStore), those subscribed from the app of the
@@ -22,11 +23,13 @@ export type PushDevices = {
   // the account the notification comes from, for an app that shows more than one: its slot (acc, the app opens
   // it), and its name after the title when the owner has more than one
   account?(me: Identity): { acc: number; label: string };
+  // where the notifications of the account go; absent, everywhere
+  audience?(): Audience;
 };
 
 // What the jobs notify through: the Notifier below, or the web app of the server a local relay joined
 // (ServerNotifier, src/local/server-link.ts), which sends with this Notifier on its side
-export type Notify = Pick<Notifier, "message" | "alert" | "call" | "missedCall" | "deviceCount">;
+export type Notify = Pick<Notifier, "message" | "alert" | "notice" | "call" | "missedCall" | "deviceCount">;
 
 // Retries run on timers, so a push service that answers slowly or not at all never holds up the read loop
 const later: Later = (ms, fn) => void setTimeout(fn, ms).unref();
@@ -36,6 +39,17 @@ const APPLE_PUSH = /^https:\/\/web\.push\.apple\.com\//;
 
 // A phone of the Android app (mobile/), registered through /api/push/fcm: FCM, not Web Push
 export const isPhone = (t: Pick<PushTarget, "endpoint">) => t.endpoint.startsWith("fcm:");
+
+// The side a device is on: the phones of the Android app and the browsers that subscribed from a phone or tablet (kind
+// of the subscription, src/shared/push-subscription.ts) are mobile, every other browser is desktop
+export function deviceSide(t: PushTarget): "mobile" | "desktop" {
+  if (isPhone(t)) return "mobile";
+  try {
+    return (JSON.parse(t.sub) as { kind?: unknown }).kind === "mobile" ? "mobile" : "desktop";
+  } catch {
+    return "desktop";
+  }
+}
 
 // The outcome of one send, handed to took when the push service took it
 function noteTook(ok: boolean, t: PushTarget, took?: (t: PushTarget) => void): boolean {
@@ -79,6 +93,15 @@ export class Notifier {
     this.schedule = o.later ?? later;
   }
 
+  private audience(): Audience {
+    return this.o.devices.audience?.() ?? { mobile: true, desktop: true };
+  }
+
+  private off(): boolean {
+    const a = this.audience();
+    return !a.mobile && !a.desktop;
+  }
+
   // The account the notifications come from, for an app that shows more than one, with the logo of its company
   private account() {
     const me = parseState(Identity, this.o.store.getState(STATE.me));
@@ -92,12 +115,21 @@ export class Notifier {
   async message(title: string, body: string, chat = "") {
     if (!this.recent.allow(body)) return;
     this.o.store.addNotification(title, body);
+    if (this.off()) return;
     await this.ntfy(title, body);
     await this.push(title, body, chat, "high", title, this.now());
   }
 
-  // About the relay itself (Teams signed out, outcome of a check): push and ntfy, no history
+  // About the relay itself (Teams signed out, outcome of a check): push and ntfy to every device, no history
   async alert(title: string, body: string, urgency: webpush.Urgency = "high"): Promise<number> {
+    await this.ntfy(title, body);
+    return this.push(title, body, "", urgency, "", 0, true);
+  }
+
+  // What a job found (a missed call in the Activity feed, what a check found): like a message, through the choice of the
+  // account, and nothing when both sides are off
+  async notice(title: string, body: string, urgency: webpush.Urgency = "high"): Promise<number> {
+    if (this.off()) return 0;
     await this.ntfy(title, body);
     return this.push(title, body, "", urgency);
   }
@@ -108,10 +140,16 @@ export class Notifier {
 
   // Push to every device. Urgency high unless the caller says it can wait: a phone on low battery asks its push
   // service for high only (RFC 8030 section 5.3), and web-push sends normal unless told. Pushes of one `group` (a
-  // chat) share one notification on the device, which keeps the newest (ts, ms).
-  async push(title: string, body: string, chat = "", urgency: webpush.Urgency = "high", group = "", ts = 0): Promise<number> {
+  // chat) share one notification on the device, which keeps the newest (ts, ms). Only the sides the account chose,
+  // unless `everyone`.
+  async push(title: string, body: string, chat = "", urgency: webpush.Urgency = "high", group = "", ts = 0, everyone = false): Promise<number> {
     // tag: the chat it belongs to, per account (the local relay has one, 0)
-    return this.deliver((acc) => ({ title, body: body || "", chat, ...(group && { tag: chatTag(acc, group) }), ...(ts && { ts }) }), { urgency, ttl: PUSH_TTL, retry: true });
+    return this.deliver((acc) => ({ title, body: body || "", chat, ...(group && { tag: chatTag(acc, group) }), ...(ts && { ts }) }), {
+      urgency,
+      ttl: PUSH_TTL,
+      retry: true,
+      everyone,
+    });
   }
 
   // An incoming Teams call, on a notification of its own per account: "ringing" when it starts, "again" every few
@@ -124,6 +162,7 @@ export class Notifier {
   // of notified messages.
   // answered: the call ended because it was answered from the app
   async call(caller: string, state: "ringing" | "again" | "ended", since: number, seconds = 0, answered = false): Promise<number> {
+    if (this.off()) return 0;
     const ringing = state !== "ended";
     const title = ringing ? (caller ? `${caller} is calling` : "Incoming call") : caller ? `Call from ${caller}` : "Call ended";
     const body = ringing ? "Teams call, ringing now" : answered ? "Answered in TeamsRelay" : seconds ? `Ended after ${seconds} s` : "Ended";
@@ -153,6 +192,7 @@ export class Notifier {
   // A missed call the check of an account checked every N hours found in its Teams Activity feed: its browser did not
   // run while the call rang. A notification of its own, which alerts, and ntfy when enabled; time is the one Teams shows.
   async missedCall(caller: string, time: string): Promise<number> {
+    if (this.off()) return 0;
     const title = caller ? `Missed call from ${caller}` : "Missed call";
     const body = `Teams call${time ? ` at ${time}` : ""}, found by the check`;
     await this.ntfy(title, body);
@@ -165,10 +205,11 @@ export class Notifier {
   // could not take now are tried again later when `retry`.
   private async deliver(
     content: (acc: number) => { title: string } & Record<string, unknown>,
-    o: Delivery & { skip?: (t: PushTarget) => boolean; took?: (t: PushTarget) => void },
+    o: Delivery & { skip?: (t: PushTarget) => boolean; took?: (t: PushTarget) => void; everyone?: boolean },
   ): Promise<number> {
     const { vapid, devices, fcm } = this.o;
-    const targets = devices.targets().filter((t) => !o.skip?.(t));
+    const side = o.everyone ? null : this.audience();
+    const targets = devices.targets().filter((t) => !o.skip?.(t) && (!side || side[deviceSide(t)]));
     if (!targets.length) return 0;
     const account = this.account();
     const c = content(account?.acc ?? 0);

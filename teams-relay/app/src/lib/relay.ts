@@ -265,6 +265,7 @@ function relayNotifier(caller: RelayCaller): Notifier {
     targets: () => (holds(slot, added) ? app.targets() : []),
     remove: (endpoint) => app.remove(endpoint),
     account: (me) => app.account(me),
+    audience: () => app.audience(),
   };
   const notifier = new Notifier({ store, devices, vapid, subject: push.vapid.subject, ntfy: push.ntfy, fcm, answerable: true });
   pushers().set(slot, { added, store, notifier });
@@ -290,6 +291,8 @@ export async function relayPush(caller: RelayCaller, b: PushBody): Promise<numbe
       return n.deviceCount();
     case "alert":
       return n.alert(b.title, b.body, b.urgency);
+    case "notice":
+      return n.notice(b.title, b.body, b.urgency);
     case "call":
       return n.call(b.caller, b.state, b.since, b.seconds);
     case "missedCall":

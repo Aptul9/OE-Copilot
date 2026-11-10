@@ -21,7 +21,7 @@ const agent = () =>
   ({
     store,
     notifier: {
-      alert: async (title: string, body: string) => void alerts.push(`${title}: ${body}`),
+      notice: async (title: string, body: string) => void alerts.push(`${title}: ${body}`),
       missedCall: async (caller: string, time: string) => void missed.push([caller, time]),
     } as unknown as Notifier,
   }) as unknown as Agent;

@@ -4,7 +4,7 @@ import type { Identity } from "@/shared/slot-db/state";
 import type { StatusPageRow } from "@/shared/status-db";
 import { accountLabel } from "../logic/notify";
 import { errorText, log } from "../log";
-import { isPhone, type PushDevices, type PushTarget } from "../push/notifier";
+import { isPhone, type Audience, type PushDevices, type PushTarget } from "../push/notifier";
 
 // data/app.db belongs to the web app (users, teams_accounts, push_subscriptions). The agent reads the owner
 // of its slot and the owner's devices, and removes the subscriptions the push service reports as gone. It
@@ -92,6 +92,20 @@ export class AppStore implements PushDevices {
       this.calls = { at: Date.now(), value: row?.calls === undefined || Number(row.calls) > 0 };
     }
     return this.calls.value;
+  }
+
+  // Where the notifications of this account go (teams_accounts.notify_mobile and notify_desktop, on unless switched off
+  // in Settings); on when the row or its columns cannot be read. Read at most every 5 s.
+  private sides = { at: 0, value: { mobile: true, desktop: true } };
+  audience(): Audience {
+    if (Date.now() - this.sides.at > 5_000) {
+      const row = this.use((db) => db.prepare("SELECT * FROM teams_accounts WHERE slot=?").get(this.slot) as { notify_mobile?: number; notify_desktop?: number } | undefined, undefined);
+      this.sides = {
+        at: Date.now(),
+        value: { mobile: row?.notify_mobile === undefined || Number(row.notify_mobile) > 0, desktop: row?.notify_desktop === undefined || Number(row.notify_desktop) > 0 },
+      };
+    }
+    return this.sides.value;
   }
 
   // Every status page of the server (status_pages, src/lib/status-pages.ts), none while the web app has not created the

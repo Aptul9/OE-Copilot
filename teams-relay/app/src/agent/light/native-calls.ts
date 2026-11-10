@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { STATE } from '@/shared/slot-db/state';
 import type { Light } from './context';
 import { SPACES } from './token';
-import { log } from '../log';
+import { errorText, log } from '../log';
 
 // Calling runs outside the light agent: a native WebRTC fault must not stop chat polling.
 export class NativeCalls {
@@ -54,10 +54,13 @@ export class NativeCalls {
           l.token.renewAll();
           const access = await l.token.accessToken(SPACES);
           const response = await fetch('https://teams.microsoft.com/api/authsvc/v1.0/authz', { method: 'POST', headers: { Authorization: `Bearer ${access}`, 'x-ms-client-type': 'web' }, signal: AbortSignal.timeout(15000) });
-          if (!response.ok) throw new Error('calling token refused');
+          if (!response.ok) throw new Error(`calling token refused ${response.status}`);
           fs.writeFileSync(path.join(dir, 'discovery.json'), JSON.stringify(await response.json()), { mode: 0o600 });
           child.send({ tokenUpdated: true });
-        })().catch(() => child.kill('SIGTERM'));
+        })().catch((e: unknown) => {
+          log.warn('calling', `token refresh failed: ${errorText(e)}, worker ended`);
+          child.kill('SIGTERM');
+        });
       }
       if (m.stage === 'worker-ready') l.store.setState(STATE.callAudio, '1');
       if (m.error) log.warn('calling', m.error);
@@ -76,7 +79,8 @@ export class NativeCalls {
         if (!c.ringing && this.notified === c.since) { this.notified = 0; void l.notifier.call(c.caller, 'ended', c.since, 0, c.active); }
       }
     }));
-    child.once('exit', AsyncResource.bind(() => {
+    child.once('exit', AsyncResource.bind((code: number | null, signal: NodeJS.Signals | null) => {
+      if (!this.stopped) log.warn('calling', `worker exited (${signal ? `signal ${signal}` : `code ${code}`}), starting again in 10 s`);
       this.child = null; l.store.setState(STATE.callAudio, '0');
       const ended = { caller: '', since: 0, seen: Date.now(), ringing: false, active: false };
       l.store.setState(STATE.call, JSON.stringify(ended)); l.store.setState(STATE.inCall, JSON.stringify(ended));

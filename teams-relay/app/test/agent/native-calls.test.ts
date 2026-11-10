@@ -46,6 +46,23 @@ describe('native calling parent', () => {
   expect(err).toHaveBeenCalledWith('[6] calling: worker said no');
   calls.stop();
  });
+ it('says why it ends the worker on a failed token refresh, and that a worker it did not stop went away', async () => {
+  const dir=tempDir();
+  const child=Object.assign(new EventEmitter(),{connected:true,send:vi.fn(),kill:vi.fn(),exitCode:null,signalCode:null});
+  spawn.mockReturnValue(child);
+  let authz=0;
+  vi.stubGlobal('fetch',vi.fn(async()=> ++authz===1 ? Response.json({tokens:{skypeToken:'test'},regionGtms:{}}) : new Response('no',{status:403})));
+  const l={config:{lightTokenFile:path.join(dir,'light-token.json'),slot:3,callingHost:'/opt/calling-host.mjs',callAudioUrl:'',env:{}},me:{oid:'owned',name:'Owner'},token:{accessToken:async()=> 'access',renewAll:vi.fn()},list:{members:new Map(),names:new Map()},store:{setState:vi.fn()},notifier:{}} as unknown as Light;
+  const calls=new NativeCalls(l);
+  await inSlot(3,()=>calls.start());
+  const err=vi.spyOn(console,'error').mockImplementation(()=>undefined);
+  child.emit('message',{refreshToken:true});
+  await vi.waitFor(()=>expect(child.kill).toHaveBeenCalledWith('SIGTERM'));
+  expect(err).toHaveBeenCalledWith('[3] calling: token refresh failed: calling token refused 403, worker ended');
+  child.emit('exit',null,'SIGTERM');
+  expect(err).toHaveBeenCalledWith('[3] calling: worker exited (signal SIGTERM), starting again in 10 s');
+  calls.stop();
+ });
  it('starts no worker when it was stopped while it cleaned up the registration of the last one', async () => {
   const dir=tempDir();
   fs.writeFileSync(path.join(dir,'owned-registration.json'),JSON.stringify({endpoint:'0f8fad5b-d9cb-469f-a165-70867728950e',registrar:'https://teams.microsoft.com/registrar/prod/v2/registrations'}));

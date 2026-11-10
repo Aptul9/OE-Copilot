@@ -308,7 +308,7 @@ describe("push subscriptions", () => {
   it("keeps the device a browser subscribed, once, and forgets it on request", async () => {
     expect((await call("/api/push", { method: "POST", body: sub })).json).toEqual({ ok: true, devices: 1 });
     expect((await call("/api/push", { method: "POST", body: sub })).json).toEqual({ ok: true, devices: 1 });
-    expect(JSON.parse(devices.targets()[0].sub)).toEqual({ endpoint: sub.endpoint, keys: sub.keys });
+    expect(JSON.parse(devices.targets()[0].sub)).toEqual({ endpoint: sub.endpoint, keys: sub.keys, kind: "desktop" });
     expect((await call("/api/push", { method: "DELETE", body: { endpoint: sub.endpoint } })).json).toEqual({ ok: true, devices: 0 });
   });
 

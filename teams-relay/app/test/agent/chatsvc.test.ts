@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { BrowserContext, Page } from "playwright-core";
 import {
+  conversationTitles,
   deleteRemoteMessage,
   editTextMessage,
   fetchChatMessages,
@@ -226,7 +227,10 @@ describe("chatsvc", () => {
     const page = {
       url: () => "https://teams.cloud.microsoft/v2/",
       evaluate: vi.fn(async () => ({
-        convs: [{ id: "19:daniele_1on1@unq.gbl.spaces", titles: ["Daniele Fortunio"] }],
+        convs: [
+          { id: "19:daniele_1on1@unq.gbl.spaces", topics: [], chatTitles: [], people: ["Daniele Fortunio"] },
+          { id: "19:meeting_catchup@thread.v2", topics: ["Catch up"], chatTitles: ["Daniele Fortunio"], people: ["Daniele Fortunio"] },
+        ],
         mids: [{ mid: "1793000111222", cid: "19:group_by_mid@thread.v2" }],
       })),
     } as unknown as Page;
@@ -234,7 +238,17 @@ describe("chatsvc", () => {
     await syncIndexedDbMappings(page, true);
     expect(await resolveConversationId(fakeAuth, page, "Samuele Maritato (You)")).toBe("48:notes");
     expect(await resolveConversationId(fakeAuth, page, "Daniele Fortunio")).toBe("19:daniele_1on1@unq.gbl.spaces");
+    expect(await resolveConversationId(fakeAuth, page, "Catch up")).toBe("19:meeting_catchup@thread.v2");
     expect(await resolveConversationId(fakeAuth, page, "Unknown Name", "1793000111222")).toBe("19:group_by_mid@thread.v2");
+  });
+
+  it("names a meeting with one other person by its topic, never by that person", () => {
+    const meeting = { id: "19:meeting_x@thread.v2", topics: ["Catch up"], chatTitles: ["Carla Neri"], people: ["Carla Neri"] };
+    expect(conversationTitles(meeting)).toEqual(["Catch up"]);
+    expect(conversationTitles({ ...meeting, topics: [], chatTitles: [] })).toEqual([]);
+    expect(conversationTitles({ id: "19:a_b@unq.gbl.spaces", topics: [], chatTitles: [], people: ["Carla Neri"] })).toEqual(["Carla Neri"]);
+    expect(conversationTitles({ id: "48:notes", topics: [], chatTitles: [], people: ["Me"] })).toEqual(["Me", "Me (You)"]);
+    expect(conversationTitles({ id: "19:g@thread.v2", topics: [], chatTitles: ["Anna, Bruno"], people: ["Anna", "Bruno"] })).toEqual(["Anna, Bruno"]);
   });
 
   it("fetches and parses chat messages with quotes, emojis, reactions, edits and deletes", async () => {

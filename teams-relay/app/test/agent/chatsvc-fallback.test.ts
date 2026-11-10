@@ -114,8 +114,8 @@ describe("conversation of a chat name", () => {
       url: () => "about:blank",
       evaluate: vi.fn(async () => ({
         convs: [
-          { id: "19:chat@thread.v2", titles: ["Same Name"] },
-          { id: "19:channel@thread.tacv2", titles: ["Same Name"] },
+          { id: "19:chat@thread.v2", topics: [], chatTitles: ["Same Name"], people: [] },
+          { id: "19:channel@thread.tacv2", topics: ["Same Name"], chatTitles: [], people: [] },
         ],
         mids: [],
       })),

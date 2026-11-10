@@ -149,6 +149,20 @@ function cacheTitle(title: string | undefined | null, id: string, ttlMs = 15 * 6
   convCaches().set(clean.toLowerCase(), { id, expiresAt: exp });
 }
 
+// A conversation of the IndexedDB of Teams as the page gives it: its topics, the titles Teams made, the people of its
+// picture
+export type IdbConversation = { id: string; topics: string[]; chatTitles: string[]; people: string[] };
+
+// The names the chat list shows for a conversation: the topic when it has one (meetings and named groups), otherwise
+// the titles Teams made. The other person's name only for a 1:1 chat: a meeting with one other person shows that person
+// in its picture too, and reading it for their name saved the meeting under the 1:1 chat.
+export function conversationTitles(c: IdbConversation): string[] {
+  if (c.topics.length) return c.topics;
+  const oneToOne = c.id.endsWith("@unq.gbl.spaces") || c.id === "48:notes";
+  const person = oneToOne && c.people.length === 1 ? c.people[0] : "";
+  return [...c.chatTitles, ...(person ? [person] : []), ...(person && c.id === "48:notes" ? [`${person} (You)`] : [])];
+}
+
 // Read conversation title->id and mid->convId mappings directly from Teams Web IndexedDB in the browser
 export async function syncIndexedDbMappings(page: Page, force = false): Promise<void> {
   if (Date.now() - idbSync().at < (force ? FORCED_SYNC_GAP_MS : 20_000)) return;
@@ -157,7 +171,7 @@ export async function syncIndexedDbMappings(page: Page, force = false): Promise<
     const res = await page.evaluate(async () => {
       if (typeof indexedDB === "undefined" || typeof indexedDB.databases !== "function") return null;
       const dbs = await indexedDB.databases();
-      const convs: { id: string; titles: string[] }[] = [];
+      const convs: IdbConversation[] = [];
       const mids: { mid: string; cid: string }[] = [];
 
       for (const info of dbs) {
@@ -176,27 +190,19 @@ export async function syncIndexedDbMappings(page: Page, force = false): Promise<
               req.onsuccess = () => resolve((req.result as Array<Record<string, unknown>>) || []);
               req.onerror = () => resolve([]);
             });
+            const texts = (o: Record<string, unknown>, keys: string[]) =>
+              keys.map((k) => (typeof o[k] === "string" ? (o[k] as string).trim() : "")).filter(Boolean);
             for (const r of rows) {
               const id = typeof r?.id === "string" ? r.id : "";
               if (!id) continue;
-              const titles: string[] = [];
-              const tp = (r.threadProperties || {}) as Record<string, unknown>;
               const ct = (r.chatTitle || {}) as Record<string, unknown>;
-              for (const k of ["topic", "spaceThreadTopic", "topicThreadTopic"]) {
-                if (typeof tp[k] === "string" && (tp[k] as string).trim()) titles.push((tp[k] as string).trim());
-              }
-              for (const k of ["shortTitle", "longTitle"]) {
-                if (typeof ct[k] === "string" && (ct[k] as string).trim()) titles.push((ct[k] as string).trim());
-              }
               const users = Array.isArray(ct.avatarUsersInfo) ? (ct.avatarUsersInfo as Array<Record<string, unknown>>) : [];
-              if (users.length === 1 && typeof users[0]?.displayName === "string") {
-                const dn = (users[0].displayName as string).trim();
-                if (dn) {
-                  titles.push(dn);
-                  if (id === "48:notes") titles.push(`${dn} (You)`);
-                }
-              }
-              if (titles.length) convs.push({ id, titles });
+              convs.push({
+                id,
+                topics: texts((r.threadProperties || {}) as Record<string, unknown>, ["topic", "spaceThreadTopic", "topicThreadTopic"]),
+                chatTitles: texts(ct, ["shortTitle", "longTitle"]),
+                people: users.flatMap((u) => texts(u, ["displayName"])),
+              });
             }
           }
           if (dbName.includes(":replychain-manager:") && db.objectStoreNames.contains("replychains-2")) {
@@ -224,14 +230,15 @@ export async function syncIndexedDbMappings(page: Page, force = false): Promise<
     });
 
     if (res && typeof res === "object") {
+      const convs = (res.convs ?? []).map((c) => ({ id: c.id, titles: conversationTitles(c) }));
       const idsOf = new Map<string, Set<string>>();
-      for (const c of res.convs ?? []) {
+      for (const c of convs) {
         for (const t of c.titles) {
           const low = t.trim().toLowerCase();
           idsOf.set(low, (idsOf.get(low) ?? new Set()).add(c.id));
         }
       }
-      for (const c of res.convs ?? []) {
+      for (const c of convs) {
         for (const t of c.titles) {
           const low = t.trim().toLowerCase();
           if ((idsOf.get(low)?.size ?? 0) === 1) {

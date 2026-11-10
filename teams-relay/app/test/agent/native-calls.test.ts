@@ -63,6 +63,28 @@ describe('native calling parent', () => {
   expect(err).toHaveBeenCalledWith('[3] calling: worker exited (signal SIGTERM), starting again in 10 s');
   calls.stop();
  });
+ it('says nothing when the worker recycles itself (exit 0), and says why it ends a worker that does not answer a command', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const dir=tempDir();
+  const child=Object.assign(new EventEmitter(),{connected:true,send:vi.fn(),kill:vi.fn(),exitCode:null,signalCode:null});
+  spawn.mockReturnValue(child);
+  vi.stubGlobal('fetch',vi.fn(async()=>Response.json({tokens:{skypeToken:'test'},regionGtms:{}})));
+  const l={config:{lightTokenFile:path.join(dir,'light-token.json'),slot:2,callingHost:'/opt/calling-host.mjs',callAudioUrl:'',env:{}},me:{oid:'owned',name:'Owner'},token:{accessToken:async()=> 'access'},list:{members:new Map(),names:new Map()},store:{setState:vi.fn()},notifier:{}} as unknown as Light;
+  const calls=new NativeCalls(l);
+  await inSlot(2,()=>calls.start());
+  const err=vi.spyOn(console,'error').mockImplementation(()=>undefined);
+  // fake timers do not carry the slot scope: the line is checked without its [2]
+  const answered=calls.command('answer',{since:1});
+  vi.advanceTimersByTime(30000);
+  expect(await answered).toBe(false);
+  expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+  expect(err).toHaveBeenCalledWith('calling: worker did not answer answer in 30 s, worker ended');
+  err.mockClear();
+  child.emit('exit',0,null);
+  expect(err).not.toHaveBeenCalled();
+  calls.stop();
+  vi.useRealTimers();
+ });
  it('starts no worker when it was stopped while it cleaned up the registration of the last one', async () => {
   const dir=tempDir();
   fs.writeFileSync(path.join(dir,'owned-registration.json'),JSON.stringify({endpoint:'0f8fad5b-d9cb-469f-a165-70867728950e',registrar:'https://teams.microsoft.com/registrar/prod/v2/registrations'}));

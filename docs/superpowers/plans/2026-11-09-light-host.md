@@ -1,7 +1,5 @@
 # Light host Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Run every TeamsRelay light slot in one Node process (`node light.cjs --host`) instead of one process per slot, cutting ~80 MB per extra slot.
 
 **Architecture:** The light bundle gains a host mode driven over the `fork` IPC channel by the supervisor. Per-slot module state is isolated with an `AsyncLocalStorage` slot scope. The supervisor gets a `HostedLight` per slot that implements the existing `ProcessLike`, so `Accounts` keeps its logic; `LIGHT_HOST=0` restores one process per slot.
@@ -13,7 +11,7 @@ Spec: `docs/superpowers/specs/2026-11-09-light-host-design.md`.
 ## Global Constraints
 
 - App root: `teams-relay/app`. Commands run there. Tests: `npx vitest run <file>`; full: `npm run lint && npm run typecheck && npm test`.
-- Comment density and style match the surrounding file: short `//` lines explaining why, no docstrings, no AI mentions anywhere.
+- Comment density and style match the surrounding file: short `//` lines explaining why, no docstrings.
 - Bundle stays one file `dist/light.cjs`; host mode is `node light.cjs --host`. No new bundle, no image change.
 - Single-slot mode (`node light.cjs`, `LIGHT_HOST=0`) must behave exactly as today, including its signal handling and unprefixed log lines.
 - Do not commit; the lead reviews and commits.

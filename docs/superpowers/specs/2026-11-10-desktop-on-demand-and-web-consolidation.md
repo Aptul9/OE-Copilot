@@ -6,7 +6,7 @@ Two parts. Part A (remote desktop started only when a browser is needed) is desi
 
 Measured on `oe-vm`, 2026-11-10, after the light host went live (`docs/superpowers/specs/2026-11-09-light-host-design.md`).
 
-- Container `teams-browsers` (image `teamsrelay-browsers`, 4.71 GB, base `lscr.io/linuxserver/chromium`): 630 MiB. It runs the light host (9 slots), 3 call workers, the supervisor and the whole remote desktop (Selkies, nginx, labwc, PulseAudio, dbus). `supervisor.cjs status` shows browser and agent off for every slot, 0 Chromium processes.
+- Container `teams-browsers` (image `teamsrelay-browsers`, 4.71 GB, base `lscr.io/linuxserver/chromium`): about 525 MiB at rest (520 to 535 over the night, one reading of 630 during activity). It runs the light host (9 slots), 3 call workers, the supervisor and the whole remote desktop (Selkies, nginx, labwc, PulseAudio, dbus). `supervisor.cjs status` shows browser and agent off for every slot, 0 Chromium processes.
 - It cannot be stopped: the light host, the call workers and the supervisor live in it.
 - Summed RSS of the desktop stack: selkies 105 MB, nginx 41, compositor 45, audio and dbus 13 (204 MB). Summed RSS counts shared pages twice; the container-level figure is below.
 - A browser is already on demand in the code: `GET /api/desktop/N` calls `browserOnDemand` (`src/lib/light.ts`), which asks the supervisor to `start` the account; `start` and `signin` in `src/supervisor/server.ts` wait for a `desktop` promise (the Wayland socket) before launching Chromium.
@@ -46,7 +46,7 @@ Container-level cost of the desktop: 99 MiB (195.9 minus 96.6). The 204 MB summe
 - **Rollback switch.** `DESKTOP_ON_DEMAND=0` (default 1): the supervisor calls `ensure()` at boot and never stops the desktop. Plumbed like `LIGHT_HOST`: compose, `deploy/render-env.sh`, `.github/workflows/teams-relay.yml`, repository variable.
 - **Unchanged:** the container healthcheck (`supervisor.cjs status`), the `teams-caddy` route, the image size (4.71 GB), `Accounts`.
 
-Expected result: `teams-browsers` 630 MiB to about 530 MiB while no browser runs; first sign-in about 4 s slower.
+Expected result: `teams-browsers` about 525 MiB to about 425 MiB while no browser runs; first sign-in about 4 s slower.
 
 Not in scope (variant B): moving the light host and call workers into a small separate container and starting the browser container on demand. It would also take the 4.7 GB image off the always-on path, but starting a container from the supervisor needs the docker socket (root on the host) or a host-side helper.
 

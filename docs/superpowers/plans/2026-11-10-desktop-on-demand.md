@@ -1,6 +1,6 @@
 # Desktop on demand Implementation Plan
 
-**Goal:** The remote desktop of `teams-browsers` (Selkies, nginx, compositor, audio) starts when a browser needs it and stops after 10 minutes without one. Idle container memory drops from about 630 MiB to about 530 MiB.
+**Goal:** The remote desktop of `teams-browsers` (Selkies, nginx, compositor, audio) starts when a browser needs it and stops after 10 minutes without one. Idle container memory drops from about 525 MiB to about 425 MiB.
 
 **Architecture:** The image removes the desktop services from the s6-rc boot bundle and drops the supervisor's dependency on them. A `Desktop` controller in the supervisor starts them with `s6-rc -u change` on `signin` and `start`, and stops them with `s6-rc -d change` when no browser has run for `DESKTOP_IDLE_MIN` minutes. `DESKTOP_ON_DEMAND=0` brings the old always-on behaviour back without an image change.
 
@@ -533,7 +533,7 @@ exit "$fail"
 - [ ] **Step 4: merge and deploy.** PR with an empty body; the merge to `main` runs the TeamsRelay workflow. Wait for the run.
 - [ ] **Step 5: after the deploy.**
   - `docker exec teams-browsers s6-rc -a list | grep ^svc-` shows only `svc-cron svc-docker svc-teamsrelay svc-watchdog`.
-  - `docker stats --no-stream teams-browsers`: about 530 MiB or lower (baseline minus about 99 MiB).
+  - `docker stats --no-stream teams-browsers`: about 425 MiB or lower (baseline minus about 99 MiB).
   - 9 light slots running, restarts 0, every slot `teams=ok`, `call_audio` as in the baseline, 0 `fetch: slow`, `slot exited` or `host crashed` lines in 15 minutes.
   - End to end on the real container with an unused slot number: `POST /accounts/99/signin` through the control socket (as in `lazy-desktop.sh`), desktop up, Chromium running, `/desktop/` answers through the public Caddy for a logged-in user, then `stop` and `wipe` of 99, and the desktop stops within about 12 minutes (idle 10 minutes plus one tick).
 - [ ] **Step 6: vault.** Log in `01_Projects/oe-copilot.md`, Traps line for the on-demand desktop and `DESKTOP_ON_DEMAND=0`, decision note, Board card to Done.

@@ -30,4 +30,12 @@
 	handle {
 		reverse_proxy webapp:8090
 	}
+	# the desktop is off while no browser runs: a direct visit lands on the page that starts it
+	handle_errors {
+		@desktopdown {
+			path /desktop/*
+			expression {err.status_code} in [502, 503, 504]
+		}
+		redir @desktopdown /remote 302
+	}
 }

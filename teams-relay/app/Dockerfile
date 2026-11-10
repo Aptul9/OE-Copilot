@@ -38,8 +38,11 @@ RUN apt-get update \
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /agent /app
 COPY docker/browsers/ /
+# The remote desktop starts when a browser needs it (src/supervisor/desktop.ts): out of the boot bundle of s6-rc, still in
+# its database
+RUN cd /etc/s6-overlay/s6-rc.d/user/contents.d && rm -f svc-de svc-selkies svc-nginx svc-xorg svc-pulseaudio svc-xsettingsd svc-dbus
 # fails the build if the agent cannot load its packages or its page scripts in this image
-RUN chmod +x /etc/s6-overlay/s6-rc.d/svc-teamsrelay/run \
+RUN chmod +x /etc/s6-overlay/s6-rc.d/svc-teamsrelay/run /usr/local/bin/desktop-microphone \
  && node /app/agent.cjs --check \
  && node /app/light.cjs --check \
  && node /app/supervisor.cjs --check

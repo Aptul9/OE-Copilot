@@ -12,22 +12,11 @@ import { Accounts } from "./accounts";
 import { directory } from "./broker";
 import { ConfigError } from "@/shared/env";
 import { loadConfig } from "./config";
+import { Desktop } from "./desktop";
 import { controlServer, listen } from "./server";
 import { microsoftSession, outlookProxySession } from "./microsoft-session";
 
 const say = (message: string) => console.log(format("supervisor", message));
-
-async function waitForFile(file: string) {
-  const start = Date.now();
-  let told = false;
-  while (!fs.existsSync(file)) {
-    if (!told && Date.now() - start > 30_000) {
-      say(`waiting for the desktop session (${file})`);
-      told = true;
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-}
 
 function status(socket: string): Promise<number> {
   return new Promise((resolve) => {
@@ -52,9 +41,14 @@ async function main() {
   if (process.argv.includes("--check")) return say("check ok");
   if (process.argv[2] === "status") process.exit(await status(cfg.socket));
   const accounts = new Accounts(cfg.accounts, { log: (line) => console.log(line) });
-  const { XDG_RUNTIME_DIR, WAYLAND_DISPLAY } = cfg.accounts.session;
+  const d = cfg.desktop;
+  const desktop = new Desktop({ socket: d.socket, s6rc: d.s6rc, microphone: d.microphone, idleMs: d.onDemand ? d.idleMs : Infinity, log: say });
+  const desktopError = (e: unknown) => say(`desktop: ${errorText(e)}`);
+  // a release that keeps the desktop up brings it up with the supervisor
+  if (!d.onDemand) desktop.ensure().catch(desktopError);
+  setInterval(() => void desktop.tick(accounts.status().some((a) => a.browser.running)).catch(desktopError), 60_000).unref();
   const broker = cfg.accounts.sharedBroker;
-  const server = controlServer(accounts, { desktop: waitForFile(path.join(XDG_RUNTIME_DIR, WAYLAND_DISPLAY)), log: say, directory: broker ? directory(broker, fetch, cfg.accounts.dataDir, (slot, account) => microsoftSession(cfg.accounts.cdpBasePort + slot, account), slot => outlookProxySession(cfg.accounts.cdpBasePort + slot)) : undefined });
+  const server = controlServer(accounts, { desktop: () => desktop.ensure(), log: say, directory: broker ? directory(broker, fetch, cfg.accounts.dataDir, (slot, account) => microsoftSession(cfg.accounts.cdpBasePort + slot, account), slot => outlookProxySession(cfg.accounts.cdpBasePort + slot)) : undefined });
   if (broker) say(`shared Microsoft accounts from ${new URL(broker.url).host}`);
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
     process.once(signal, () => {

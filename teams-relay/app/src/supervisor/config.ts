@@ -1,3 +1,4 @@
+import path from "node:path";
 import { z } from "zod";
 import { ConfigError, parseEnv } from "@/shared/env";
 import type { AccountsConfig } from "./accounts";
@@ -22,6 +23,13 @@ const Env = z.object({
   LIGHT_SCRIPT: z.string().default("/app/light.cjs"),
   // 0: one light process per slot, as before the light host
   LIGHT_HOST: z.enum(["0", "1"]).default("1"),
+  // the remote desktop starts when a browser needs it and stops after DESKTOP_IDLE_MIN minutes without one; 0: it comes up
+  // with the supervisor and stays (src/supervisor/desktop.ts)
+  DESKTOP_ON_DEMAND: z.enum(["0", "1"]).default("1"),
+  DESKTOP_IDLE_MIN: z.coerce.number().int().min(1).max(1440).default(10),
+  // empty where there is no s6 (tests, a supervisor started by hand): the desktop is taken as running
+  S6_RC: z.string().default("/command/s6-rc"),
+  SELKIES_MICROPHONE_ENABLED: z.string().optional(),
 });
 
 // passed on as they are, when set. PULSE_RUNTIME_PATH: where the image runs PulseAudio (/defaults/native), the sound of
@@ -29,7 +37,8 @@ const Env = z.object({
 const BROWSER_ENV = ["TZ", "LANG", "LANGUAGE", "LC_ALL", "PULSE_RUNTIME_PATH"];
 const AGENT_ENV = ["TZ", "VAPID_SUBJECT", "NTFY_ENABLED", "NTFY_URL", "NTFY_TOPIC", "LIGHT_POLL", "NATIVE_CALLS", "DOMAIN"];
 
-type SupervisorConfig = { socket: string; accounts: AccountsConfig };
+type DesktopSettings = { onDemand: boolean; socket: string; s6rc: string | null; microphone: string | null; idleMs: number };
+type SupervisorConfig = { socket: string; accounts: AccountsConfig; desktop: DesktopSettings };
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): SupervisorConfig {
   const e = parseEnv(Env, env);
@@ -59,6 +68,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       agentEnv: pick(AGENT_ENV),
       wlrctl: "wlrctl",
       lightHost: e.LIGHT_HOST === "1",
+    },
+    desktop: {
+      onDemand: e.DESKTOP_ON_DEMAND === "1",
+      socket: path.join(e.XDG_RUNTIME_DIR, "wayland-0"),
+      // parseEnv reads an empty value as absent, which would give the default
+      s6rc: env.S6_RC === "" ? null : e.S6_RC,
+      microphone: e.SELKIES_MICROPHONE_ENABLED === "true" ? "/usr/local/bin/desktop-microphone" : null,
+      idleMs: e.DESKTOP_IDLE_MIN * 60_000,
     },
   };
 }

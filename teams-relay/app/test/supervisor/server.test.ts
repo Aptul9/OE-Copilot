@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Accounts } from "@/supervisor/accounts";
 import { controlServer, listen, type AccountControl } from "@/supervisor/server";
 import { tempDir } from "../helpers";
@@ -54,7 +54,7 @@ function accounts() {
 
 async function serve(control: AccountControl = accounts()) {
   const desktop = new Promise<void>((resolve) => (desktopUp = resolve));
-  server = controlServer(control, { desktop, log: () => undefined });
+  server = controlServer(control, { desktop: () => desktop, log: () => undefined });
   await listen(server, sock);
 }
 
@@ -81,6 +81,22 @@ describe("control server", () => {
 
     expect((await reply).status).toBe(204);
     expect(calls).toEqual(["start browser-1", "start agent-1"]);
+  });
+
+  it("asks for the desktop on a start and a sign-in only: a light start does not wait for it", async () => {
+    let asked = 0;
+    let open = () => {};
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    server = controlServer(accounts(), { desktop: () => { asked++; return gate; }, log: () => undefined });
+    await listen(server, sock);
+    expect((await request("POST", "/accounts/4/light")).status).toBe(204);
+    expect(asked).toBe(0);
+    const started = request("POST", "/accounts/5/start");
+    const signedIn = request("POST", "/accounts/6/signin");
+    await vi.waitFor(() => expect(asked).toBe(2));
+    open();
+    expect((await started).status).toBe(204);
+    expect((await signedIn).status).toBe(204);
   });
 
   it("shows, stops and wipes an account", async () => {

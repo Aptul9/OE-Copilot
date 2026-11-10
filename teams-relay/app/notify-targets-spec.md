@@ -33,7 +33,7 @@ Each Teams account sends its notifications to the devices its owner picks: the p
 
 ## Runtime
 
-- `AppStore.notifyAudience()` (`src/agent/store/app-store.ts`) returns `{mobile, desktop}` from the slot row, read at most every 5 s like `callsOn()`. A missing row or missing columns read as both on.
+- `AppStore.audience()` (`src/agent/store/app-store.ts`) returns `{mobile, desktop}` from the slot row, read at most every 5 s like `callsOn()`. A missing row or missing columns read as both on.
 - `PushDevices` gets an optional `audience?(): {mobile: boolean; desktop: boolean}`. Absent, both are on: the devices of the local relay (`src/local/devices.ts`) keep notifying everywhere.
 - `Notifier` (`src/agent/push/notifier.ts`):
   - `message()` writes its history row as today, then returns before ntfy and push when both flags are off. `call()`, `missedCall()` and the new `notice()` return at once.
@@ -42,7 +42,7 @@ Each Teams account sends its notifications to the devices its owner picks: the p
   - `alert()` ignores the audience.
 - New `Notifier.notice(title, body, urgency = "high")`: like `alert()`, but through the audience. Two callers that push content through `alert()` today move to it: the missed calls of the Activity feed (`src/agent/jobs/missed-calls.ts`) and the findings of a check (`src/agent/commands/check.ts`, "Found by the check"). Every other `alert()` caller is account health and stays.
 - `Notify` (the `Pick` in `notifier.ts`) gains `notice`. `ServerNotifier` (`src/local/server-link.ts`) implements it with a new push op.
-- `PushBody` (`src/shared/relay-sync.ts`) gains `{op: "notice", title, body, urgency}`. `relayPush` (`src/lib/relay.ts`) handles it with `n.notice(...)`. The `devices` object of `relayNotifier` gains `audience: () => app.notifyAudience()`.
+- `PushBody` (`src/shared/relay-sync.ts`) gains `{op: "notice", title, body, urgency}`. `relayPush` (`src/lib/relay.ts`) handles it with `n.notice(...)`. The `devices` object of `relayNotifier` gains `audience: () => app.audience()`.
 - Version skew: a server of an earlier release refuses the `notice` op of a relay (unknown `op` in `PushBody`), for that push only. Deploy the server first, then update the relays. A relay of an earlier release sends those two pushes as `alert` and reaches every device until it is updated.
 - Calls: `call()` filters like any push. The `phonesRinging` bookkeeping counts only `fcm:` phones and the Safari skip of the "again" pushes (`APPLE_PUSH`) is unchanged: both work on the endpoint, not on the side.
 
@@ -60,7 +60,7 @@ Each Teams account sends its notifications to the devices its owner picks: the p
 - PATCH with a non-boolean: 400, nothing changed.
 - PATCH on a slot of another user: refused by `requireAccount`, as for `calls`.
 - Save fails in the browser: the box is restored, the error is shown.
-- `app.db` unreadable from an agent: `notifyAudience()` returns both on, so a notification is never lost to a read error.
+- `app.db` unreadable from an agent: `audience()` returns both on, so a notification is never lost to a read error.
 
 ## Testing
 
@@ -69,7 +69,7 @@ Vitest, next to `test/light-mode.test.ts`:
 - migration adds both columns with default 1 on an existing `app.db`;
 - `setNotify` writes one column without touching the other;
 - route: 400 for a non-boolean, the values stored, a foreign slot refused;
-- `AppStore.notifyAudience()`: defaults, stored values, the 5 s cache;
+- `AppStore.audience()`: defaults, stored values, the 5 s cache;
 - `deviceKindOf`: iPhone, iPad (as a Mac with touch points), Android Chrome are mobile; Windows Chrome, Mac Safari with no touch points are desktop;
 - `subscriptionOf` stores `kind` from `device`, defaults to desktop when absent or unknown, and the stored JSON still carries `endpoint` and `keys` unchanged;
 - `deviceSide`: `fcm:` is mobile, a subscription of kind mobile is mobile, a subscription without `kind` or with unparsable `sub` is desktop;

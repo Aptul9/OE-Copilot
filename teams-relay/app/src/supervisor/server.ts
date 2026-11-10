@@ -6,8 +6,8 @@ import { bindingOf, type Directory } from "./broker";
 export type AccountControl = Pick<Accounts, "start" | "light" | "stop" | "wipe" | "show" | "status"> & { signin?: Accounts["signin"] };
 
 type Options = {
-  // the desktop session is up: a browser started before it would find no display
-  desktop: Promise<void>;
+  // brings the desktop session up and resolves when it is: a browser started before it would find no display
+  desktop: () => Promise<void>;
   log: (line: string) => void;
   // the list of shared Microsoft accounts of the OE calendar agent; absent without a broker
   directory?: Directory;
@@ -42,12 +42,12 @@ export function controlServer(accounts: AccountControl, { desktop, log, director
     const n = /^\d+$/.test(m[1]) ? Number(m[1]) : Number.NaN;
     switch (m[2]) {
       case "signin":
-        await desktop;
+        await desktop();
         if (!accounts.signin) throw new AccountError(501, "Sign-in browser unavailable");
         await accounts.signin(n);
         return { status: 204 };
       case "start":
-        await desktop;
+        await desktop();
         await accounts.start(n);
         return { status: 204 };
       case "light":

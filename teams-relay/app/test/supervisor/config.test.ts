@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { ConfigError } from "@/shared/env";
 import { loadConfig } from "@/supervisor/config";
@@ -30,6 +31,14 @@ describe("loadConfig", () => {
     expect(loadConfig({ LIGHT_HOST: "1" }).accounts.lightHost).toBe(true);
     expect(loadConfig({ LIGHT_HOST: "0" }).accounts.lightHost).toBe(false);
     expect(() => loadConfig({ LIGHT_HOST: "yes" })).toThrow(/LIGHT_HOST/);
+  });
+
+  it("starts the desktop on demand, after 10 minutes without a browser, unless DESKTOP_ON_DEMAND is 0", () => {
+    expect(loadConfig({}).desktop).toEqual({ onDemand: true, socket: path.join("/config/.XDG", "wayland-0"), s6rc: "/command/s6-rc", microphone: null, idleMs: 600_000 });
+    expect(loadConfig({ DESKTOP_ON_DEMAND: "0" }).desktop.onDemand).toBe(false);
+    expect(loadConfig({ DESKTOP_IDLE_MIN: "3", S6_RC: "" }).desktop).toMatchObject({ idleMs: 180_000, s6rc: null });
+    expect(loadConfig({ SELKIES_MICROPHONE_ENABLED: "true" }).desktop.microphone).toBe("/usr/local/bin/desktop-microphone");
+    expect(() => loadConfig({ DESKTOP_ON_DEMAND: "yes" })).toThrow(/DESKTOP_ON_DEMAND/);
   });
 
   it("passes time zone and language to the browsers, time zone and push settings to the agents", () => {

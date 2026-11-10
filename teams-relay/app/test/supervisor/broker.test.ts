@@ -143,7 +143,7 @@ describe("control API of the shared accounts", () => {
     const sock = socketPath(tempDir());
     const seen: unknown[] = [];
     const accounts = { start: vi.fn(), light: vi.fn(async (_n: number, b: unknown) => void seen.push(b)), stop: vi.fn(), wipe: vi.fn(), show: vi.fn(), status: () => [] };
-    server = controlServer(accounts as unknown as Accounts, { desktop: Promise.resolve(), log: () => undefined });
+    server = controlServer(accounts as unknown as Accounts, { desktop: () => Promise.resolve(), log: () => undefined });
     await listen(server, sock);
     const ctl = controlClient(sock, (n) => (n === 2 ? MARIO : null));
     await ctl.light(2);
@@ -153,7 +153,7 @@ describe("control API of the shared accounts", () => {
 
   it("without a broker the list is off for the web app", async () => {
     const sock = socketPath(tempDir());
-    server = controlServer(new Accounts(cfg({}), { log: () => undefined, process: (n) => fakeProcess(n, []) }), { desktop: Promise.resolve(), log: () => undefined });
+    server = controlServer(new Accounts(cfg({}), { log: () => undefined, process: (n) => fakeProcess(n, []) }), { desktop: () => Promise.resolve(), log: () => undefined });
     await listen(server, sock);
     expect(await directoryClient(sock).list()).toBeNull();
   });
@@ -167,7 +167,7 @@ describe("control API of the shared accounts", () => {
       return Response.json({ ok: true, accounts: [] });
     });
     server = controlServer(new Accounts(cfg({}), { log: () => undefined, process: (n) => fakeProcess(n, []) }), {
-      desktop: Promise.resolve(),
+      desktop: () => Promise.resolve(),
       log: () => undefined,
       directory: directory({ url: BROKER.SHARED_BROKER_URL, key: "secret-key" }, fetchFn as unknown as typeof fetch),
     });
@@ -189,7 +189,7 @@ describe("control API of the shared accounts", () => {
     const sock = socketPath(tempDir());
     let answer: () => Promise<Response> = async () => Response.json({ errore: "non autorizzato" }, { status: 401 });
     server = controlServer(new Accounts(cfg({}), { log: () => undefined, process: (n) => fakeProcess(n, []) }), {
-      desktop: Promise.resolve(),
+      desktop: () => Promise.resolve(),
       log: () => undefined,
       directory: directory({ url: BROKER.SHARED_BROKER_URL, key: "secret-key" }, (() => answer()) as unknown as typeof fetch),
     });

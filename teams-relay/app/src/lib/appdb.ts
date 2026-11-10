@@ -41,6 +41,9 @@ export type Slot = {
   refresh_result: string;
   // a light account rings and answers calls in the app (native calling worker); 0 reads messages only
   calls: number;
+  // where its notifications go: 1 to phones (the Android app, browsers of phones and tablets), 1 to browsers of computers
+  notify_mobile: number;
+  notify_desktop: number;
   // the shared Microsoft account of the OE calendar agent this slot runs on, "" for a slot with its own sign-in
   // (src/lib/shared-accounts.ts), and the chat service region the light agent uses for it
   shared_account: string;
@@ -52,7 +55,7 @@ export type CheckResult = "ok" | "login" | "failed";
 
 // relay_token, the digest of the token of the relay, never leaves the database: rows say only whether there is one
 const SLOT_COLUMNS =
-  "slot, owner_id, added, stopped, started, check_every, check_due, checked, check_result, checking, (relay_token <> '') AS relay, browser_off, light, refreshing, refreshed, refresh_result, calls, shared_account, shared_region";
+  "slot, owner_id, added, stopped, started, check_every, check_due, checked, check_result, checking, (relay_token <> '') AS relay, browser_off, light, refreshing, refreshed, refresh_result, calls, notify_mobile, notify_desktop, shared_account, shared_region";
 
 let shared: Database.Database | null = null;
 
@@ -93,6 +96,8 @@ export function migrateAppSchema(db: Database.Database) {
     ["refreshed", "INTEGER NOT NULL DEFAULT 0"],
     ["refresh_result", "TEXT NOT NULL DEFAULT ''"],
     ["calls", "INTEGER NOT NULL DEFAULT 1"],
+    ["notify_mobile", "INTEGER NOT NULL DEFAULT 1"],
+    ["notify_desktop", "INTEGER NOT NULL DEFAULT 1"],
     ["shared_account", "TEXT NOT NULL DEFAULT ''"],
     ["shared_region", "TEXT NOT NULL DEFAULT ''"],
   ]) {
@@ -193,6 +198,12 @@ export function setLight(db: Database.Database, slot: number, light: boolean) {
 // Calls on or off for one account with no browser: its light agent starts or stops its calling worker
 export function setCalls(db: Database.Database, slot: number, on: boolean) {
   db.prepare("UPDATE teams_accounts SET calls=? WHERE slot=?").run(on ? 1 : 0, slot);
+}
+
+// Where the notifications of one account go; only the sides given change
+export function setNotify(db: Database.Database, slot: number, to: { mobile?: boolean; desktop?: boolean }) {
+  if (to.mobile !== undefined) db.prepare("UPDATE teams_accounts SET notify_mobile=? WHERE slot=?").run(to.mobile ? 1 : 0, slot);
+  if (to.desktop !== undefined) db.prepare("UPDATE teams_accounts SET notify_desktop=? WHERE slot=?").run(to.desktop ? 1 : 0, slot);
 }
 
 export function beginRefresh(db: Database.Database, slot: number, now: number) {

@@ -45,7 +45,7 @@ export async function pushMissedCalls(a: Pick<Agent, "store" | "notifier">): Pro
   const known = new Set([...(told ?? []), ...checked]);
   const fresh = told ? calls.filter((c) => !known.has(c.id)) : [];
   a.store.setState(STATE.callsTold, JSON.stringify(union(calls.map((c) => c.id), told ?? undefined)));
-  const pushes = fresh.map((c) => a.notifier.alert(c.caller ? `Missed call from ${c.caller}` : "Missed call", `Teams call${c.time ? ` at ${c.time}` : ""}, not answered`));
+  const pushes = fresh.map((c) => a.notifier.notice(c.caller ? `Missed call from ${c.caller}` : "Missed call", `Teams call${c.time ? ` at ${c.time}` : ""}, not answered`));
   for (const r of await Promise.allSettled(pushes)) if (r.status === "rejected") log.warn("calls", `push: ${errorText(r.reason)}`);
   if (fresh.length) log.info("calls", "missed", { calls: fresh.length });
   return fresh.length;

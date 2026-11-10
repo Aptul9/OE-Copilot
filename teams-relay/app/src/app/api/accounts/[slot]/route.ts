@@ -1,4 +1,4 @@
-import { appDb, setCalls, slotOwner } from "@/lib/appdb";
+import { appDb, setCalls, setNotify, slotOwner } from "@/lib/appdb";
 import { config } from "@/lib/config";
 import { controlClient, directoryClient } from "@/lib/control";
 import { body, HttpError, route } from "@/lib/http";
@@ -38,15 +38,23 @@ const syncNow = () => {
 // account whose browser runs only while it is checked (3600, 7200, 14400), or 0 for always on. {light: true}: no
 // browser of its own, its browser runs only to sign it in again (src/lib/light.ts); another mode ends it. {calls}: calls
 // of an account with no browser on or off; its light agent starts or stops its calling worker within seconds.
+// {notifyMobile, notifyDesktop}: where its notifications go, one side at a time; any account.
 // A slot on a shared Microsoft account (src/lib/shared-accounts.ts) has no browser mode: on or off is Teams on or off for
 // that account, the same switch as in the calendar; the pass that follows the change runs now.
 export const PATCH = route<Ctx>(async (req, { params }) => {
   const n = await requireAccount(req, (await params).slot);
-  const { running, checkEvery, light, calls } = await body(req);
+  const { running, checkEvery, light, calls, notifyMobile, notifyDesktop } = await body(req);
   if (calls !== undefined) {
     if (typeof calls !== "boolean") throw new HttpError(400, "calls must be true or false");
     setCalls(appDb(), n, calls);
     return Response.json({ ok: true, calls });
+  }
+  if (notifyMobile !== undefined || notifyDesktop !== undefined) {
+    for (const [name, v] of [["notifyMobile", notifyMobile], ["notifyDesktop", notifyDesktop]] as const) {
+      if (v !== undefined && typeof v !== "boolean") throw new HttpError(400, `${name} must be true or false`);
+    }
+    setNotify(appDb(), n, { mobile: notifyMobile as boolean | undefined, desktop: notifyDesktop as boolean | undefined });
+    return Response.json({ ok: true, notifyMobile, notifyDesktop });
   }
   const shared = sharedAccountOf(n, appDb());
   if (shared) {

@@ -637,6 +637,10 @@ export class ServerNotifier implements Notify {
     return this.link.push({ op: "alert", title, body, urgency });
   }
 
+  notice(title: string, body: string, urgency: webpush.Urgency = "high"): Promise<number> {
+    return this.link.push({ op: "notice", title, body, urgency });
+  }
+
   call(caller: string, state: "ringing" | "again" | "ended", since: number, seconds = 0): Promise<number> {
     return this.link.push({ op: "call", caller, state, since, seconds });
   }

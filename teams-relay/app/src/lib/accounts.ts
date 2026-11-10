@@ -60,6 +60,9 @@ export type AccountSummary = {
   light: boolean;
   // calls of an account with no browser switched on in Settings; absent: on
   calls?: boolean;
+  // where its notifications go, on unless switched off in Settings; absent (a server of an earlier release): on
+  notifyMobile?: boolean;
+  notifyDesktop?: boolean;
   refreshing: boolean;
   // the shared Microsoft account of the OE calendar agent this slot runs on (src/lib/shared-accounts.ts), "" for a slot
   // with its own sign-in (absent in the answers of a server of an earlier release)
@@ -126,6 +129,8 @@ export function accountSummary(s: Slot): AccountSummary {
     callAudio: (!!s.relay || !!s.light) && !!d?.callAudio,
     light: !!s.light,
     calls: s.calls !== 0,
+    notifyMobile: s.notify_mobile !== 0,
+    notifyDesktop: s.notify_desktop !== 0,
     refreshing: !!s.refreshing,
     shared: s.shared_account ?? "",
   };

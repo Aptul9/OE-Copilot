@@ -1,5 +1,6 @@
 // Web Push on this device: the service worker receives the notifications the agents send to the user.
 import { chatTag } from "@/agent/logic/notify";
+import { deviceKindOf } from "@/shared/push-subscription";
 import { call, post } from "./client";
 
 export type PushState = "on" | "off" | "unsupported";
@@ -38,7 +39,7 @@ export async function enablePush(): Promise<void> {
   const { key } = await call<{ key: string }>("/api/vapidkey", undefined, 0);
   if (!key) throw new Error("Push keys are not configured on the server.");
   const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) }));
-  await post("/api/push/subscribe", sub.toJSON(), 0);
+  await post("/api/push/subscribe", { ...sub.toJSON(), device: deviceKindOf(navigator.userAgent, navigator.maxTouchPoints) }, 0);
 }
 
 // The notification of a chat on this device, closed once the app shows the chat: its messages are there to read.

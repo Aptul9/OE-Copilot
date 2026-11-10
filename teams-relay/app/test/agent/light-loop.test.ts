@@ -31,6 +31,7 @@ function setup(chats: () => CsaChat[], notifications: () => Notification[] = () 
   const notifier = {
     message: vi.fn(async (title: string, body: string, chat?: string) => void [title, body, chat]),
     alert: vi.fn(async (title: string, body: string) => (void [title, body], 1)),
+    notice: vi.fn(async (title: string, body: string) => (void [title, body], 1)),
     call: vi.fn(),
     missedCall: vi.fn(),
     deviceCount: () => 1,
@@ -238,12 +239,12 @@ describe("light agent", () => {
     let items: Notification[] = [{ activity: { activityId: 1, activityType: "call", activitySubtype: "missedCall", activityTimestamp: iso(90), sourceUserImDisplayName: "Old Caller" }, read: true }];
     const { l, store, notifier } = setup(() => [], () => items);
     await readFeed(l);
-    expect(notifier.alert).not.toHaveBeenCalled();
+    expect(notifier.notice).not.toHaveBeenCalled();
     items = [{ activity: { activityId: 2, activityType: "call", activitySubtype: "missedCall", activityTimestamp: iso(0), sourceUserImDisplayName: "New Caller" }, read: false }, ...items];
     await readFeed(l);
     await readFeed(l);
-    expect(notifier.alert).toHaveBeenCalledTimes(1);
-    expect(notifier.alert.mock.calls[0]?.[0]).toBe("Missed call from New Caller");
+    expect(notifier.notice).toHaveBeenCalledTimes(1);
+    expect(notifier.notice.mock.calls[0]?.[0]).toBe("Missed call from New Caller");
     expect(store.missedCalls().map((c) => c.id)).toEqual(["2", "1"]);
   });
 
@@ -252,7 +253,7 @@ describe("light agent", () => {
     const { l, store, notifier } = setup(() => [], () => [call(3, 2), call(2, 30 * 24 * 60), call(1, 60)]);
     store.setState(STATE.callsTold, JSON.stringify(["1"]));
     await readFeed(l);
-    expect(notifier.alert.mock.calls.map((c) => c[0])).toEqual(["Missed call from Caller 3"]);
+    expect(notifier.notice.mock.calls.map((c) => c[0])).toEqual(["Missed call from Caller 3"]);
   });
 
   it("tells the web app when Microsoft refused the sign-in", async () => {

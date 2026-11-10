@@ -30,7 +30,7 @@ function agent(o: { checkedOnly?: boolean } = {}) {
     health: { cdp: "ok", teams: "ok", overall: "green", ts: 1 },
     railReady: true,
     checkedOnly: () => !!o.checkedOnly,
-    notifier: { alert: async (title: string, body: string) => void alerts.push(`${title}: ${body}`) } as unknown as Notifier,
+    notifier: { notice: async (title: string, body: string) => void alerts.push(`${title}: ${body}`) } as unknown as Notifier,
   } as unknown as Agent;
 }
 

@@ -13,7 +13,7 @@ import { tempDir } from "../helpers";
 let store: SlotStore;
 let alerts: string[];
 
-const agent = () => ({ store, notifier: { alert: async (title: string, body: string) => void alerts.push(`${title}: ${body}`) } as unknown as Notifier }) as unknown as Agent;
+const agent = () => ({ store, notifier: { notice: async (title: string, body: string) => void alerts.push(`${title}: ${body}`) } as unknown as Notifier }) as unknown as Agent;
 
 const mention = (id: string) => ({ id, kind: "mention", actor: "", title: "", emoji: "", preview: "", tm: "", chat: "", channel: false, unread: false, av: "" }) as ActivityEntry;
 const missed = (id: string, caller: string, tm: string) =>
@@ -62,7 +62,7 @@ describe("missed calls of an account always on", () => {
     const failing = {
       store,
       notifier: {
-        alert: async () => {
+        notice: async () => {
           throw new Error("push service down");
         },
       },

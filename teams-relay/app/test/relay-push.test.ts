@@ -108,6 +108,18 @@ describe("a notification of an account on another computer", () => {
     expect(open(key, m.data)).toMatchObject({ body: "Are you there?", chat: "Anna Rossi", acc: slot });
   });
 
+  it("keeps what a job found from an account that is off, and still sends its account health", async () => {
+    process.env.FCM_CREDENTIALS = keyFile;
+    const sentTo = google();
+    await phone("phone-token-relay-off-eeeeeeeee");
+    const { slot, caller } = await relayAccount();
+    appDb().prepare("UPDATE teams_accounts SET notify_mobile=0, notify_desktop=0 WHERE slot=?").run(slot);
+    expect(await relayPush(caller, { op: "notice", title: "Missed call", body: "Teams call, not answered", urgency: "high" })).toBe(0);
+    expect(sentTo("phone-token-relay-off-eeeeeeeee")).toEqual([]);
+    expect(await relayPush(caller, { op: "alert", title: "Teams signed out", body: "Sign in", urgency: "high" })).toBeGreaterThanOrEqual(1);
+    expect(sentTo("phone-token-relay-off-eeeeeeeee")).toHaveLength(1);
+  });
+
   it("rings the phones for a call with Answer: its relay takes the call in Teams there, the sound stays on that computer", async () => {
     process.env.FCM_CREDENTIALS = keyFile;
     const sentTo = google();

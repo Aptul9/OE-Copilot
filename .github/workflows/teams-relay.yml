@@ -96,6 +96,7 @@ jobs:
           TR_NTFY_TOPIC: ${{ vars.NTFY_TOPIC }}
           TR_NATIVE_CALLS: ${{ vars.NATIVE_CALLS }}
           TR_LIGHT_HOST: ${{ vars.LIGHT_HOST }}
+          TR_DESKTOP_ON_DEMAND: ${{ vars.DESKTOP_ON_DEMAND }}
           # shared Microsoft accounts of the calendar agent on the same host: its address, the key it gives this stack
           # (repository secret, the agent's TEAMS_BROKER_KEY too), their owner, where a new one is signed in
           TR_SHARED_BROKER_URL: ${{ vars.SHARED_BROKER_URL }}

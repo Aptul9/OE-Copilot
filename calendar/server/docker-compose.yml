@@ -2,11 +2,12 @@
 # agent = rinnova i token OAuth in stato/tokens.json, legge i calendari e li serve con un'API a chiave.
 name: oe-copilot
 services:
-  # agent = legge i calendari (agente-ts/, TypeScript) e li serve con un'API a chiave
+  # agent = legge i calendari (agente-rs/, Rust) e li serve con un'API a chiave
   # al gateway (rete di compose) e a chi lo interroga dal server o con un tunnel SSH (README.md, sezione 5).
   # Gira senza privilegi come utente 10001: legge /app/fonti.json e aggiorna i token in /stato/tokens.json.
+  # agente-ts/ è la versione TypeScript da cui è tradotto: tiene le prove di riferimento e gli strumenti (confronta-http, costruisci-db).
   agent:
-    build: ./agente-ts
+    build: ./agente-rs
     container_name: oe-copilot-agent
     user: "10001:10001"
     read_only: true
@@ -18,7 +19,7 @@ services:
       - no-new-privileges:true
     environment:
       - API_KEY=${API_KEY}
-      # la chiave stretta di TeamsRelay (agente-ts/src/server.ts, chiaveTeams): l'elenco degli account condivisi e i token della chat,
+      # la chiave stretta di TeamsRelay (agente-rs/agente/src/server.rs, chiave_teams): l'elenco degli account condivisi e i token della chat,
       # niente altro; vuota, TeamsRelay non entra
       - TEAMS_BROKER_KEY=${TEAMS_BROKER_KEY:-}
     volumes:
@@ -34,7 +35,8 @@ services:
       - default
       - teams
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8180/api/salute').then((r) => process.exit(r.status === 401 ? 0 : 1), () => process.exit(1))"]
+      # l'immagine ha solo il binario: /api/salute senza chiave deve rispondere 401
+      test: ["CMD", "/agente", "--salute"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -55,7 +57,7 @@ services:
       - GATEWAY_DB=/dati/gateway.db
       # i metodi dell'API (lib/core) leggono e scrivono la cartella dei dati e chiedono all'agente; i loghi stanno in /dati/logos
       - OE_DATI=/dati
-      # l'agente (servizio agent, in TypeScript) sulla rete di compose
+      # l'agente (servizio agent) sulla rete di compose
       - AGENTE_URL=${AGENTE_URL:-http://agent:8180}
       - AGENTE_CHIAVE=${API_KEY}
       - APP_URL=https://${UI_HOST:-localhost}

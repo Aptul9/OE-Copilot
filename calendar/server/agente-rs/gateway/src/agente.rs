@@ -12,7 +12,6 @@ use oe_nucleo::json::{Json, Mappa};
 use oe_nucleo::ogg;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::OnceLock;
 use std::time::Duration;
 
 // Oltre questi secondi senza segni di vita dal servizio che aggiorna le caselle sul server, i dati non si possono più dare per freschi:
@@ -68,10 +67,12 @@ pub fn id_calendario(indirizzo: &str) -> String {
 }
 
 /// Il client HTTP del gateway verso l'agente e i servizi che non passano dalla guardia (i token della posta, le notifiche): senza i proxy
-/// dell'ambiente, come fetch di Node.
-pub fn client() -> &'static reqwest::Client {
-    static C: OnceLock<reqwest::Client> = OnceLock::new();
-    C.get_or_init(|| reqwest::Client::builder().no_proxy().build().expect("client HTTP"))
+/// dell'ambiente, come fetch di Node. Uno per thread: le connessioni tenute aperte appartengono al runtime che le ha fatte.
+pub fn client() -> reqwest::Client {
+    thread_local! {
+        static C: reqwest::Client = reqwest::Client::builder().no_proxy().build().expect("client HTTP");
+    }
+    C.with(Clone::clone)
 }
 
 /// GET all'agente. -> dati JSON, o Errore::Agente.

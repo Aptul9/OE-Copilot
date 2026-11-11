@@ -3,11 +3,13 @@
 
 pub mod errori;
 pub mod file;
+pub mod gchat;
 pub mod google_web;
 pub mod js;
 pub mod mcas_auth_forms;
 pub mod mcas_outlook;
 pub mod outlook_rest;
+pub mod protobuf;
 pub mod prova_util;
 pub mod sessione_web;
 pub mod signin;

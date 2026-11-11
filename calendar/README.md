@@ -34,7 +34,7 @@ Indice:
 ```
 
 - **agent** (`server/agente-rs/`, Rust): rinnova i token in `stato/tokens.json`, legge i calendari Microsoft e Google via API, li serve con un'API a chiave solo su `127.0.0.1:3180`, ed espande i calendari da link (`POST /api/ics`). È la traduzione di `server/agente-ts/` (TypeScript), che resta con le prove di riferimento e gli strumenti.
-- **gateway** e **caddy-ui** (4.7): accesso, pagina e logica dell'app, con lo stato in `ui-dati/gateway.db`, più l'endpoint MCP `/mcp` per leggere e inviare le email delle caselle Outlook.
+- **gateway** (`server/agente-rs/gateway/`, Rust) e **caddy-ui** (4.7): accesso, pagina e logica dell'app, con lo stato in `ui-dati/gateway.db`, più l'endpoint MCP `/mcp` per leggere e inviare le email delle caselle Outlook.
 - **Google communication**: native Gmail and Google Chat APIs in the agent (`agente-rs/agente/src/gmail.rs`, `agente-rs/rete/src/gchat.rs`), with separate credential storage and confirmed writes. API contract and PC import: [`server/agente-ts/GOOGLE.md`](server/agente-ts/GOOGLE.md). No additional UI screens or MCP tools are included.
 
 Tutti e tre i servizi stanno in `server/docker-compose.yml`, senza profili.
@@ -62,7 +62,7 @@ La prima installazione è a mano, poi aggiorna la Action del proprio repository:
 
 - Linux ARM64 o x86_64 con Docker, il plugin `compose`, `rsync` e `curl`, e circa 512 MB di RAM per i tre servizi.
 - `sslh` da apt porta con sé `apache2`, che prende la porta 80: `apt-get install --no-install-recommends sslh`, o `apache2` va tolto.
-- Il fuso `Europe/Rome` è fisso nel gateway (`server/web-ts/src/lib/core/fuso.ts`) e nell'agente (`TZ` nel Dockerfile): non c'è una variabile. La pagina e l'avviso dell'app mostrano gli orari nel fuso del dispositivo; il testo delle notifiche del browser, scritto dal server, resta in ora di Roma.
+- Il fuso `Europe/Rome` è fisso nel gateway (`server/agente-rs/gateway/src/fuso.rs`, da `server/web-ts/src/lib/core/fuso.ts`) e nell'agente (`TZ` nel Dockerfile): non c'è una variabile. La pagina e l'avviso dell'app mostrano gli orari nel fuso del dispositivo; il testo delle notifiche del browser, scritto dal server, resta in ora di Roma.
 
 ### 4.2 Prendere il codice
 
@@ -144,7 +144,7 @@ La sua chiave pubblica va in `/home/oecopilot/.ssh/authorized_keys`. I secret de
 
 ### 4.7 L'interfaccia nel browser
 
-- **`gateway`** (`server/web-ts/`, Next.js e Better Auth, `127.0.0.1:3190`): accesso, pagina, API (`POST /api/<metodo>`) e loghi. Senza sessione le pagine vanno a `/login` e l'API dà 401. Restano aperti `/login`, `/api/auth/*`, `/salute`, `/disponibilita`, `/api/prenota`, `/condividi/...` e i file statici come `/sw.js`.
+- **`gateway`** (`server/agente-rs/gateway/`, Rust, `127.0.0.1:3190`; la pagina React è l'esportazione statica di `server/web-ts/`, sezione 5 *Il gateway*): accesso, pagina, API (`POST /api/<metodo>`) e loghi. Senza sessione le pagine vanno a `/login` e l'API dà 401. Restano aperti `/login`, `/api/auth/*`, `/salute`, `/disponibilita`, `/api/prenota`, `/condividi/...` e i file statici come `/sw.js`.
 - **`caddy-ui`**: HTTPS, solo su `127.0.0.1:4445`.
 - **`ui-dati/`**: `gateway.db`, cache, loghi e `personalizzazione.json`.
 
@@ -184,8 +184,8 @@ docker logs --tail 5 oe-copilot-gateway    # a deploy finito deve dire: secondo 
 Per ripartire da zero col codice, a gateway fermo (le passkey restano):
 ```bash
 docker stop oe-copilot-gateway
-docker run --rm --user 10001:10001 -v /opt/oe-copilot/ui-dati:/dati oe-copilot-gateway \
-  node -e "new (require('better-sqlite3'))('/dati/gateway.db').exec('DELETE FROM twoFactor; UPDATE user SET twoFactorEnabled = 0')"
+# con sqlite3 della VM, come utente 10001: i file -wal e -shm creati da root il gateway non li aprirebbe (l'immagine non ha né shell né node)
+sudo setpriv --reuid=10001 --regid=10001 --clear-groups sqlite3 /opt/oe-copilot/ui-dati/gateway.db 'DELETE FROM twoFactor; UPDATE user SET twoFactorEnabled = 0'
 docker start oe-copilot-gateway
 ```
 
@@ -207,7 +207,7 @@ docker start oe-copilot-gateway
 
 **Calendari da link.** *Account > Da link e personali*. Si rileggono ogni 30 minuti; una risposta 404 o 410 toglie la copia. Un calendario Google entra col suo link iCal segreto, che vale come una password e resta sul server; se l'amministratore l'ha disattivato, l'account si aggiunge come casella Google (4.4).
 
-**Trappola: solo siti pubblici.** Il gateway scarica (`server/web-ts/src/lib/core/rete-sicura.ts`) solo `http` o `https` sulle porte 80 e 443, da nomi con soli indirizzi pubblici: niente loopback, reti private, link-local (`169.254.169.254`) o CGNAT, anche dopo un reindirizzamento. Un logo: al più 512 KB e 4096 pixel per lato, SVG senza script. Un calendario: al più 8 MiB, che comincia con `BEGIN:VCALENDAR`, con Content-Type assente o `text/calendar`, `text/plain`, `application/octet-stream` (`application/ics` è rifiutato). Vicino agli 8 MiB può superare gli 8.000.000 byte che l'agente accetta.
+**Trappola: solo siti pubblici.** Il gateway scarica (`server/agente-rs/gateway/src/rete_sicura.rs`, da `server/web-ts/src/lib/core/rete-sicura.ts`) solo `http` o `https` sulle porte 80 e 443, da nomi con soli indirizzi pubblici: niente loopback, reti private, link-local (`169.254.169.254`) o CGNAT, anche dopo un reindirizzamento. Un logo: al più 512 KB e 4096 pixel per lato, SVG senza script. Un calendario: al più 8 MiB, che comincia con `BEGIN:VCALENDAR`, con Content-Type assente o `text/calendar`, `text/plain`, `application/octet-stream` (`application/ics` è rifiutato). Vicino agli 8 MiB può superare gli 8.000.000 byte che l'agente accetta.
 
 #### Personalizzazione
 
@@ -246,7 +246,7 @@ Le voci degli avvisi le calcola il nucleo delle app (`app/src-tauri/src/promemor
    ```bash
    node -e "const c=require('crypto');const j=c.generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({format:'jwk'});console.log('VAPID_PUBLIC_KEY='+Buffer.concat([Buffer.from([4]),Buffer.from(j.x,'base64url'),Buffer.from(j.y,'base64url')]).toString('base64url'));console.log('VAPID_PRIVATE_KEY='+j.d)"
    ```
-Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), poi un deploy con la Action `calendar.yml` (4.6). Senza i tre valori, o in un browser senza notifiche, l'interruttore non compare. La chiave privata e gli indirizzi delle iscrizioni (tabella `push_iscrizioni`, al più 20 browser) sono segreti e non finiscono nei log. Prove: `cd server/web-ts && npx vitest run test/promemoria`.
+Le due righe vanno nel `.env` della VM con `VAPID_SUBJECT=mailto:<indirizzo>` (o `https://<sito>`), poi un deploy con la Action `calendar.yml` (4.6). Senza i tre valori, o in un browser senza notifiche, l'interruttore non compare. La chiave privata e gli indirizzi delle iscrizioni (tabella `push_iscrizioni`, al più 20 browser) sono segreti e non finiscono nei log. Prove: `cd server/web-ts && npx vitest run test/promemoria` (TypeScript) e `cd server/agente-rs && cargo test -p oe-gateway promemoria` (Rust).
 
 ### 4.10 Condividere il calendario con un altro OE Copilot
 
@@ -319,6 +319,17 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker. Dal
 
 **Trappola: le occorrenze annullate** (`annullata()` in `server/agente-ts/src/android.ts`, `annullata` in `server/agente-rs/nucleo/src/android.rs`). Una riga di una serie con `eventStatus` 2 annulla l'occorrenza, tranne nelle serie copiate da un flusso (`isOrganizer` 1, `hasAttendeeData` 0): Outlook le segna così anche se sono riunioni normali, e quelle righe prendono la durata della serie. Un annullamento vero ha un invitato, o il titolo "Canceled:" o "Annullato:", che il gateway nasconde.
 
+### Il gateway
+
+`server/agente-rs/gateway/` (crate `oe-gateway`, binario `gateway`) è la traduzione di `server/web-ts/`: stesse strade, stesse variabili d'ambiente e stesso `gateway.db`, nel formato di Better Auth, quindi sessioni, TOTP e passkey restano validi passando da uno all'altro. Il server HTTP è il crate `http` (`oe-http`), lo stesso dell'agente. In più ci sono `UI_STATICA` (la cartella dell'interfaccia, `/ui` nell'immagine) e `PORT` (3000). L'immagine (`agente-rs/gateway.Dockerfile`, contesto `web` = `web-ts/` nel compose) ha il binario statico, l'interfaccia e `logos-predefiniti`; il controllo di salute è `/gateway --salute`.
+
+- **La pagina.** È quella di `web-ts`, esportata in file statici (`OE_ESPORTA=1 npx next build` costruisce solo `app/**/*.esporta.tsx` in `out/`). Il gateway controlla la sessione e scrive i valori che la pagina riceveva dal server in `window.__OE__`, nella testata (`gateway/src/pagine.rs`); `components/PagineEsportate.tsx` li legge, e alla costruzione disegna la pagina con i valori predefiniti. Una pagina nuova vuole il suo `.esporta.tsx` e i suoi valori in `pagine.rs`. `scripts/check.sh calendar` costruisce anche l'esportazione.
+- **Better Auth, solo la parte che la pagina usa**: `get-session`, `sign-in/email`, `sign-out`, `ok`, cinque strade di `two-factor` e sette di `passkey`. Le altre (`sign-up/email` compresa) rispondono 404 invece dell'errore di Better Auth. Una passkey nuova si accetta con l'attestazione `none` o `packed` firmata da sé, quelle che i browser mandano con `attestation: "none"`.
+- **Le prove.** Le unitarie in `gateway/src/`; in `gateway/tests/`: `golden.rs` legge e scrive contro le risposte registrate di `strumenti/golden/` (le stesse di `web-ts/test/golden-*.test.ts`), `accesso.rs` rifà su HTTP vero le prove di `secondo-fattore.test.ts` e `passkey.test.ts` con un autenticatore in software, `servizio.rs` prova le strade (pagine, cancello dell'API, loghi, `verifica-sessione`, disponibilità e prenotazione, link di condivisione, `/mcp` con un Outlook finto). `cd server/agente-rs && cargo test -p oe-gateway`.
+- **Tornare a TypeScript.** Il blocco `gateway` del compose torna a quello di prima: `build: ./web-ts`, controllo di salute in node, senza `read_only`, `tmpfs` e `cap_drop`. `strumenti/aggiorna_server.sh` resta com'è: legge `AGENTE_URL` con `docker inspect`, che vale per tutte e due le immagini.
+
+**Trappola: niente shell nell'immagine.** `docker exec oe-copilot-gateway node ...` o `printenv` non funzionano più: le variabili si leggono con `docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' oe-copilot-gateway`, il database con `sqlite3` della VM come utente 10001 (`sudo setpriv --reuid=10001 --regid=10001 --clear-groups sqlite3 ...`, sezioni 4.7 e 7). `docker run --health-cmd` è in forma shell e su un'immagine senza shell dà sempre non sano: il controllo vale solo in forma `["CMD", ...]`, come nel compose.
+
 ---
 
 ## 6. Il rilevatore degli accessi scaduti
@@ -338,8 +349,7 @@ Il rilevatore che leggeva i log del telefono è stato tolto con il telefono (PR 
 - **Reimportare `config.json` e `local_events.json`** (dopo un ripristino o una correzione a mano), a gateway fermo. I link di condivisione restano.
   ```bash
   docker stop oe-copilot-gateway
-  docker run --rm --user 10001:10001 -v /opt/oe-copilot/ui-dati:/dati oe-copilot-gateway \
-    node -e "new (require('better-sqlite3'))('/dati/gateway.db').exec('DROP TABLE stato_config; DROP TABLE eventi_locali; DROP TABLE stato_meta')"
+  sudo setpriv --reuid=10001 --regid=10001 --clear-groups sqlite3 /opt/oe-copilot/ui-dati/gateway.db 'DROP TABLE stato_config; DROP TABLE eventi_locali; DROP TABLE stato_meta'
   docker start oe-copilot-gateway
   ```
 

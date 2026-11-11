@@ -35,6 +35,22 @@ check_calendar() {
   (cd server/web-ts && install && npm run typecheck && npm test && npm run build)
   step "calendar: agent"
   (cd server/agente-ts && install && npm run typecheck && npm test)
+  step "calendar: agent in Rust"
+  # the TS agent gets mcas-auth-forms.mjs at every deploy, the Rust one has a hand translation that records the hash it follows
+  mcas=$(sha256sum "$root/teams-relay/app/scripts/mcas-auth-forms.mjs" | cut -d' ' -f1)
+  grep -q "sorgente-sha256: $mcas" server/agente-rs/rete/src/mcas_auth_forms.rs \
+    || { echo "teams-relay/app/scripts/mcas-auth-forms.mjs changed: port it to agente-rs/rete/src/mcas_auth_forms.rs, then update its sorgente-sha256" >&2; exit 1; }
+  # the Google Chat schema is in both agents; the Rust golden vectors come from protobufjs over the TS copy
+  cmp server/agente-ts/proto/googlechat.proto server/agente-rs/rete/proto/googlechat.proto
+  # the HTTP goldens live in server/strumenti/golden: the whole server folder is mounted. A Windows GNU toolchain has no C compiler
+  # for ring and the bundled SQLite, hence the Linux Rust image as for teams-relay
+  if [ "$docker" = 1 ]; then
+    docker run --rm -v "$(cd server && (pwd -W 2>/dev/null || pwd)):/server:ro" -w /server/agente-rs -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+  elif command -v cargo >/dev/null; then
+    (cd server/agente-rs && cargo test --locked)
+  else
+    echo "no cargo: agente-rs not tested"
+  fi
   [ "$docker" = 1 ] || return 0
   step "calendar: compose"
   # no service sits behind a profile: the list is what `docker compose up` starts

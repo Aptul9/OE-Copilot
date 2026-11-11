@@ -23,7 +23,25 @@ fn env(nome: &str, base: &str) -> String {
     std::env::var(nome).unwrap_or_else(|_| base.to_string())
 }
 
+/// `agente --salute`: il controllo del compose. L'immagine non ha né node né curl; /api/salute senza chiave risponde 401 se l'agente è su.
+fn salute() -> i32 {
+    use std::io::{Read, Write};
+    let porta = strip(&env("PORTA", "8180")).parse().unwrap_or(8180);
+    let indirizzo = std::net::SocketAddr::from(([127, 0, 0, 1], porta));
+    let attesa = std::time::Duration::from_secs(5);
+    let Ok(mut s) = std::net::TcpStream::connect_timeout(&indirizzo, attesa) else { return 1 };
+    let _ = s.set_read_timeout(Some(attesa));
+    if s.write_all(b"GET /api/salute HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").is_err() {
+        return 1;
+    }
+    let mut testa = [0u8; 12];
+    if s.read_exact(&mut testa).is_ok() && &testa == b"HTTP/1.1 401" { 0 } else { 1 }
+}
+
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--salute") {
+        std::process::exit(salute());
+    }
     let zona = std::env::var("TZ").ok().filter(|z| !z.is_empty()).unwrap_or_else(|| "Europe/Rome".to_string());
     let adesso: Adesso = Rc::new(adesso_vero);
     let registro = registro_su_stderr(&zona, adesso.clone());

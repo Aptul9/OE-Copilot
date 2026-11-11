@@ -728,6 +728,8 @@ dependencies = [
 name = "oe-agente"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "form_urlencoded",
  "indexmap",
  "jiff",
  "oe-nucleo",
@@ -736,6 +738,7 @@ dependencies = [
  "rusqlite",
  "sha2",
  "tokio",
+ "url",
 ]
 
 [[package]]

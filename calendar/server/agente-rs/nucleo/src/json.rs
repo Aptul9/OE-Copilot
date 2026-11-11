@@ -324,6 +324,14 @@ impl Index<&str> for Json {
     }
 }
 
+impl Index<&str> for Mappa {
+    type Output = Json;
+    /// `oggetto[chiave]`, con `Null` al posto di `undefined`.
+    fn index(&self, chiave: &str) -> &Json {
+        self.get(chiave).unwrap_or(&NULL)
+    }
+}
+
 impl Index<usize> for Json {
     type Output = Json;
     fn index(&self, i: usize) -> &Json {

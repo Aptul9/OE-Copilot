@@ -32,7 +32,8 @@ check_calendar() {
   python3 -m py_compile server/strumenti/*.py
   for f in server/strumenti/*.sh; do bash -n "$f"; done
   step "calendar: gateway"
-  (cd server/web-ts && install && npm run typecheck && npm test && npm run build)
+  # the Rust gateway serves the static export of the same pages (agente-rs/gateway.Dockerfile)
+  (cd server/web-ts && install && npm run typecheck && npm test && npm run build && OE_ESPORTA=1 npm run build)
   step "calendar: agent"
   (cd server/agente-ts && install && npm run typecheck && npm test)
   step "calendar: agent in Rust"

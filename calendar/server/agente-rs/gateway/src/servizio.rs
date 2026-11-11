@@ -43,9 +43,10 @@ async fn instrada(r: &mut Richiesta<'_>) -> Resp {
         if dove.is_empty() {
             dove.push('/');
         }
-        if let Some(q) = url.query() {
+        // la query si riscrive come URLSearchParams, come fa Next (next=/x diventa next=%2Fx)
+        if url.query().is_some() {
             dove.push('?');
-            dove.push_str(q);
+            dove.push_str(&form_urlencoded::Serializer::new(String::new()).extend_pairs(url.query_pairs()).finish());
         }
         return Resp::rimando(308, &dove, &[]);
     }

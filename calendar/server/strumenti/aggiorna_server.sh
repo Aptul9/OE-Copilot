@@ -54,7 +54,8 @@ avvia_ui() {
     done
     [ "$stato" = healthy ] || { echo "il servizio oe-copilot-gateway non risponde" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
     if docker container inspect oe-copilot-agente-ts >/dev/null 2>&1; then
-        if url="$(docker exec oe-copilot-gateway printenv AGENTE_URL 2>/dev/null)"; then
+        # dall'ambiente del container, non con docker exec: l'immagine del gateway non ha né shell né printenv
+        if url="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' oe-copilot-gateway 2>/dev/null | sed -n 's/^AGENTE_URL=//p')"; then
             case "$url" in
                 ""|http://agent:8180)
                     docker rm -f oe-copilot-agente-ts >/dev/null && echo "tolto il container oe-copilot-agente-ts: il servizio agente-ts non c'è più, l'agente è agent"

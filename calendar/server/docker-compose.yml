@@ -43,16 +43,29 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Interfaccia web (README.md 4.7). Gateway (web-ts/, Next.js e Better Auth): pagina di
-  # accesso, sessioni, pagina in TypeScript, metodi dell'API e loghi. Senza sessione una pagina rimanda
-  # a /login e l'API risponde 401; con la sessione risponde da sé (POST /api/<metodo>, GET /logos/<file>)
-  # e il resto è 404. Il proprietario nasce da ADMIN_EMAIL e ADMIN_PASSWORD di .env, le sessioni, il
-  # blocco per account e lo stato dell'app stanno in ui-dati/gateway.db. La porta è solo su localhost
-  # (per le prove dal server): ci arriva caddy-ui dalla rete di compose.
+  # Interfaccia web (README.md 4.7). Gateway (agente-rs/gateway, Rust, con l'interfaccia React di web-ts
+  # esportata in file statici): pagina di accesso, sessioni, secondo fattore, metodi dell'API e loghi. Senza
+  # sessione una pagina rimanda a /login e l'API risponde 401; con la sessione risponde da sé (POST
+  # /api/<metodo>, GET /logos/<file>). Il proprietario nasce da ADMIN_EMAIL e ADMIN_PASSWORD di .env, le
+  # sessioni, il blocco per account e lo stato dell'app stanno in ui-dati/gateway.db, nel formato di Better
+  # Auth: tornare a web-ts non perde niente. La porta è solo su localhost (per le prove dal server): ci
+  # arriva caddy-ui dalla rete di compose. web-ts resta la versione TypeScript da cui è tradotto.
   gateway:
-    build: ./web-ts
+    build:
+      context: ./agente-rs
+      dockerfile: gateway.Dockerfile
+      additional_contexts:
+        web: ./web-ts
     container_name: oe-copilot-gateway
     user: "10001:10001"
+    read_only: true
+    # SQLite può aver bisogno di file temporanei: il resto del file system è in sola lettura
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       - GATEWAY_DB=/dati/gateway.db
       # i metodi dell'API (lib/core) leggono e scrivono la cartella dei dati e chiedono all'agente; i loghi stanno in /dati/logos
@@ -77,11 +90,12 @@ services:
     ports:
       - "127.0.0.1:3190:3000"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/salute').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      # l'immagine ha solo il binario: /salute deve rispondere 200
+      test: ["CMD", "/gateway", "--salute"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 10s
     restart: unless-stopped
 
   # HTTPS davanti al gateway. L'indirizzo viene da .env (UI_HOST). Solo localhost: sslh

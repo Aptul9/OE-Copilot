@@ -141,7 +141,7 @@ fn salute_barre_e_metodi() {
         assert_eq!((h.stato, h.testo.as_str()), (200, ""));
         assert_eq!(chiedi("POST", &format!("{}/salute", p.base), &[], None).await.h("allow"), Some("GET, HEAD"));
         let b = get(&format!("{}/login/?next=/a", p.base)).await;
-        assert_eq!((b.stato, b.h("location")), (308, Some("/login?next=/a")));
+        assert_eq!((b.stato, b.h("location")), (308, Some("/login?next=%2Fa")));
         assert_eq!(chiedi("PUT", &format!("{}/api/auth/get-session", p.base), &[], None).await.stato, 405);
         assert_eq!(chiedi("POST", &format!("{}/api/disponibilita", p.base), &[], None).await.stato, 405);
         assert_eq!(get(&format!("{}/api/prenota", p.base)).await.stato, 405);

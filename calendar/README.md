@@ -33,9 +33,9 @@ Indice:
                                         stato/tokens.json
 ```
 
-- **agent** (`server/agente-ts/`): rinnova i token in `stato/tokens.json`, legge i calendari Microsoft e Google via API, li serve con un'API a chiave solo su `127.0.0.1:3180`, ed espande i calendari da link (`POST /api/ics`).
+- **agent** (`server/agente-rs/`, Rust): rinnova i token in `stato/tokens.json`, legge i calendari Microsoft e Google via API, li serve con un'API a chiave solo su `127.0.0.1:3180`, ed espande i calendari da link (`POST /api/ics`). È la traduzione di `server/agente-ts/` (TypeScript), che resta con le prove di riferimento e gli strumenti.
 - **gateway** e **caddy-ui** (4.7): accesso, pagina e logica dell'app, con lo stato in `ui-dati/gateway.db`, più l'endpoint MCP `/mcp` per leggere e inviare le email delle caselle Outlook.
-- **Google communication**: native TypeScript Gmail and Google Chat APIs in the agent, with separate credential storage and confirmed writes. API contract and PC import: [`server/agente-ts/GOOGLE.md`](server/agente-ts/GOOGLE.md). No additional UI screens or MCP tools are included.
+- **Google communication**: native Gmail and Google Chat APIs in the agent (`agente-rs/agente/src/gmail.rs`, `agente-rs/rete/src/gchat.rs`), with separate credential storage and confirmed writes. API contract and PC import: [`server/agente-ts/GOOGLE.md`](server/agente-ts/GOOGLE.md). No additional UI screens or MCP tools are included.
 
 Tutti e tre i servizi stanno in `server/docker-compose.yml`, senza profili.
 
@@ -138,7 +138,7 @@ cd /opt/oe-copilot && tar -xzf /var/tmp/oe-copilot-prima.tgz ./caddy-ui && docke
 sudo useradd -m -s /bin/bash -G docker oecopilot
 # il codice è dell'utente della Action; stato/ e ui-dati/ del 10001 (4.5, 4.7)
 sudo chown oecopilot:oecopilot /opt/oe-copilot /opt/oe-copilot/.env
-cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-ts caddy-ui strumenti web-ts docker-compose.yml .env.esempio personalizzazione.esempio.json
+cd /opt/oe-copilot && sudo chown -R oecopilot:oecopilot agent agente-rs agente-ts caddy-ui strumenti web-ts docker-compose.yml .env.esempio personalizzazione.esempio.json
 ```
 La sua chiave pubblica va in `/home/oecopilot/.ssh/authorized_keys`. I secret dell'ambiente `calendar` del repository (`gh secret set <NOME> --repo <proprietario>/<repository> --env calendar`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (le chiavi dell'host, `217.76.49.98 ssh-ed25519 ...`), `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `BETTER_AUTH_SECRET` (4.7). `API_KEY` è un secret del repository, senza ambiente: lo usa anche il deploy del MCP.
 
@@ -311,9 +311,13 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker. Dal
 
 ### L'agente
 
-`server/agente-ts/` legge le caselle con le API di Outlook e di Google (`src/diretto.ts`, accessi in `stato/tokens.json`) e `agent/fonti.json` in sola lettura. Il ramo che leggeva il `calendar.db` del telefono (`src/android.ts`) resta per le prove dell'immagine. Gira come utente 10001, in sola lettura e senza capacità. L'API, con `Authorization: Bearer <API_KEY>` e una cache di 15 secondi: `GET /api/eventi?inizio=...&fine=...`, `GET /api/calendari`, `GET /api/salute`, `POST /api/ics`. `src/entita.ts` e `src/windows.ts` sono tabelle generate: non si correggono a mano.
+`server/agente-rs/` legge le caselle con le API di Outlook e di Google (`agente/src/diretto.rs`, accessi in `stato/tokens.json`) e `agent/fonti.json` in sola lettura. Il ramo che leggeva il `calendar.db` del telefono (`agente/src/fonte.rs` e `nucleo/src/android.rs`) resta per le prove dell'immagine. Gira come utente 10001, in sola lettura e senza capacità; l'immagine contiene solo il binario statico e il controllo di salute è `/agente --salute`. L'API, con `Authorization: Bearer <API_KEY>` e una cache di 15 secondi: `GET /api/eventi?inizio=...&fine=...`, `GET /api/calendari`, `GET /api/salute`, `POST /api/ics`.
 
-**Trappola: le occorrenze annullate** (`annullata()` in `server/agente-ts/src/android.ts`). Una riga di una serie con `eventStatus` 2 annulla l'occorrenza, tranne nelle serie copiate da un flusso (`isOrganizer` 1, `hasAttendeeData` 0): Outlook le segna così anche se sono riunioni normali, e quelle righe prendono la durata della serie. Un annullamento vero ha un invitato, o il titolo "Canceled:" o "Annullato:", che il gateway nasconde.
+È la traduzione di `server/agente-ts/`, con la stessa API, lo stesso stato e le stesse risposte: tre crate, `nucleo` (ricorrenze, ICS, fusi, senza rete), `rete` (Microsoft, Google, il codec protobuf di Chat) e `agente` (fonti, token, server HTTP). Le prove di `agente-ts` sono il riferimento: ognuna ha la sua copia in Rust, tranne `google-import.test.ts` che prova lo script del PC, e `test/confronta-http.ts` confronta l'agente con le risposte registrate. Quello che si genera non si corregge a mano: `src/entita.ts` e `src/windows.ts` in TypeScript, e da lì `nucleo/src/entita.rs` e `nucleo/src/windows.rs` (`node calendar/server/agente-rs/strumenti/tabelle.mjs`); i vettori del codec di Chat in `rete/tests/dati/` (`strumenti/vettori-protobuf.cjs` e `schema-protobuf.cjs`, da protobufjs).
+
+**Trappola: le parti condivise si traducono a mano.** L'agente TypeScript riceveva `teams-relay/app/scripts/mcas-auth-forms.mjs` a ogni deploy (`shared/sync.mjs`); quello in Rust ne ha una traduzione (`rete/src/mcas_auth_forms.rs`) che registra lo sha256 del file che segue, e `scripts/check.sh calendar` si ferma quando il file cambia. Lo schema di Chat (`proto/googlechat.proto`) sta in tutti e due gli agenti e `check.sh` controlla che sia uguale.
+
+**Trappola: le occorrenze annullate** (`annullata()` in `server/agente-ts/src/android.ts`, `annullata` in `server/agente-rs/nucleo/src/android.rs`). Una riga di una serie con `eventStatus` 2 annulla l'occorrenza, tranne nelle serie copiate da un flusso (`isOrganizer` 1, `hasAttendeeData` 0): Outlook le segna così anche se sono riunioni normali, e quelle righe prendono la durata della serie. Un annullamento vero ha un invitato, o il titolo "Canceled:" o "Annullato:", che il gateway nasconde.
 
 ---
 

@@ -18,11 +18,12 @@ docker build -q -t oe-copilot-caddy "$cal/server/caddy-ui"
 docker run --rm -e UI_HOST=oe.example.com \
   oe-copilot-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
-echo "== Agente in TypeScript, immagine e risposte"
+echo "== Agente, immagine e risposte"
 (
   # l'immagine parte davvero come in compose (sola lettura, utente senza privilegi, senza capacità) su un calendar.db inventato e
-  # risponde con le risposte registrate in server/strumenti/golden/agente.json (le diede una volta l'agente Python, tolto dal repository)
-  docker build -q -t oe-copilot-agent "$cal/server/agente-ts"
+  # risponde con le risposte registrate in server/strumenti/golden/agente.json (le diede una volta l'agente Python, tolto dal repository).
+  # L'immagine è quella in Rust; il database e il confronto vengono dagli strumenti di agente-ts
+  docker build -q -t oe-copilot-agent "$cal/server/agente-rs"
   dati=$(cartella)
   node "$cal/server/agente-ts/test/costruisci-db.ts" "$dati"
   id=$(docker run -d --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true -p 8181:8180 \
@@ -31,6 +32,8 @@ echo "== Agente in TypeScript, immagine e risposte"
   trap 'rc=$?; [ $rc = 0 ] || docker logs "$id"; docker rm -f "$id" >/dev/null' EXIT
   for _ in $(seq 1 30); do curl -s -o /dev/null localhost:8181/api/salute && break; sleep 1; done
   test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8181/api/salute)" = 401
+  # il controllo di salute del compose, dentro il container
+  docker exec "$id" /agente --salute
   curl -fsS -H 'Authorization: Bearer chiave-di-prova' localhost:8181/api/salute | grep -q '"fonti": {"Alfa"'
   node "$cal/server/agente-ts/test/confronta-http.ts" http://localhost:8181
 )
@@ -47,8 +50,8 @@ echo "== Gateway, accesso e cancello"
     -e APP_URL=http://localhost:3190 -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) \
     -e ADMIN_EMAIL=prova@example.com -e ADMIN_PASSWORD="$pw" oe-copilot-gateway)
   cd=$(docker run -d --network prova -p 8080:8080 -e UI_HOST=http://:8080 oe-copilot-caddy)
-  # l'agente vero (l'immagine dell'agente in TypeScript) su un calendar.db inventato: il calendario condiviso legge gli eventi da lui, e senza risponde 503
-  docker build -q -t oe-copilot-agent "$cal/server/agente-ts"
+  # l'agente vero (la sua immagine) su un calendar.db inventato: il calendario condiviso legge gli eventi da lui, e senza risponde 503
+  docker build -q -t oe-copilot-agent "$cal/server/agente-rs"
   dbd=$(cartella); node "$cal/server/agente-ts/test/costruisci-db.ts" "$dbd"
   ag=$(docker run -d --network prova --network-alias agent --read-only --tmpfs /tmp --user 10001:10001 --cap-drop ALL --security-opt no-new-privileges:true -e API_KEY=prova \
     -e BATTITO=/nessun-battito.json -e ACCESSI=/nessun-accesso.json -e TOKENS=/nessun-token.json -v "$dbd:/android-calendario:ro" -v "$dbd/fonti.json:/app/fonti.json:ro" oe-copilot-agent)

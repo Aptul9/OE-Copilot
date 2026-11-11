@@ -8,7 +8,10 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY nucleo ./nucleo
 COPY rete ./rete
+# tutti i membri del workspace, anche quelli che l'agente non usa: senza, cargo non legge Cargo.toml
+COPY http ./http
 COPY agente ./agente
+COPY gateway ./gateway
 # le dipendenze e la compilazione restano nella cache di BuildKit fra un deploy e l'altro; il binario esce dalla cache nello stesso passo
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
     cargo build --release --locked -p oe-agente && cp target/release/agente /agente

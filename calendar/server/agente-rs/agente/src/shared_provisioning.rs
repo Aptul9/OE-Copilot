@@ -7,15 +7,51 @@
 //!   POST /api/auth/shared   {"account", "capabilities": ["mail", "calendar", "chat"]} attiva o cambia; {"account", "enabled": false} spegne
 //! Una casella non condivisa vale posta e calendario, senza chat: è l'accesso di sempre.
 
-use crate::diretto::GestoreToken;
+use crate::diretto::{GestoreToken, Voce};
 use oe_nucleo::json::{Json, Mappa};
-use oe_rete::errori::ErroreAccesso;
+use oe_rete::errori::{ErroreAccesso, EsitoAccesso};
 use oe_rete::js::{js_trim, stringa_di, vero};
 use oe_rete::outlook_rest::{claims_jwt, upn_di};
 use oe_rete::sessione_web::OUTLOOK_WEB_CLIENT_ID;
 use oe_rete::shared_teams::RapportoTeams;
+use std::future::Future;
+use std::pin::Pin;
 
 pub const CAPABILITIES: [&str; 3] = ["mail", "calendar", "chat"];
+
+pub type FutureAccesso<'a> = Pin<Box<dyn Future<Output = EsitoAccesso<String>> + 'a>>;
+
+/// Quello che l'attivazione usa del gestore dei token: le caselle, un token rinnovato, la prova di una risorsa, la scrittura della
+/// condivisione.
+pub trait ArchivioCondiviso {
+    fn voce_account(&self, email: &str) -> Option<Voce>;
+    fn elenco_account(&self) -> Vec<(String, Voce)>;
+    fn ottieni_access_token<'a>(&'a self, email: &'a str, forza: bool) -> FutureAccesso<'a>;
+    fn ottieni_risorsa<'a>(&'a self, email: &'a str, risorsa: &'a str, forza: bool) -> FutureAccesso<'a>;
+    fn imposta_shared(&self, email: &str, shared: Option<Json>) -> EsitoAccesso<()>;
+}
+
+impl ArchivioCondiviso for GestoreToken {
+    fn voce_account(&self, email: &str) -> Option<Voce> {
+        GestoreToken::voce_account(self, email)
+    }
+
+    fn elenco_account(&self) -> Vec<(String, Voce)> {
+        GestoreToken::elenco_account(self)
+    }
+
+    fn ottieni_access_token<'a>(&'a self, email: &'a str, forza: bool) -> FutureAccesso<'a> {
+        Box::pin(GestoreToken::ottieni_access_token(self, email, forza))
+    }
+
+    fn ottieni_risorsa<'a>(&'a self, email: &'a str, risorsa: &'a str, forza: bool) -> FutureAccesso<'a> {
+        Box::pin(GestoreToken::ottieni_risorsa(self, email, risorsa, forza))
+    }
+
+    fn imposta_shared(&self, email: &str, shared: Option<Json>) -> EsitoAccesso<()> {
+        GestoreToken::imposta_shared(self, email, shared)
+    }
+}
 
 /// Le risorse che una capacità deve poter ottenere: la chat sono i quattro servizi che l'agente Teams senza browser usa.
 fn prove(c: &str) -> &'static [&'static str] {
@@ -100,7 +136,7 @@ fn pubblico(s: Option<&Json>) -> Json {
 
 /// L'elenco unico degli account: ogni casella Microsoft con le sue capacità, lo stato dell'accesso e, se TeamsRelay ha mandato un
 /// rapporto recente, l'account Teams che la usa; poi gli account Teams con il solo accesso del browser, che il calendario non ha.
-pub fn stato_condivisione(archivio: &GestoreToken, teams: Option<&RapportoTeams>) -> Mappa {
+pub fn stato_condivisione(archivio: &dyn ArchivioCondiviso, teams: Option<&RapportoTeams>) -> Mappa {
     let mut accounts = Vec::new();
     for (account, v) in archivio.elenco_account() {
         let v = v.borrow();
@@ -133,7 +169,7 @@ fn condivisione(account: &str, shared: Json) -> Mappa {
 /// Attiva o cambia le capacità di una casella Microsoft già collegata. Una casella già condivisa tiene la sua identità; una nuova la prende
 /// da un token rinnovato ora. Ogni risorsa delle capacità scelte si chiede a Microsoft con il nuovo stato: un rifiuto rimette lo stato di
 /// prima e l'errore dice quale capacità non passa.
-pub async fn attiva_condivisione(archivio: &GestoreToken, account: &str, capabilities: Option<&Json>) -> Result<Mappa, ErroreCondivisione> {
+pub async fn attiva_condivisione(archivio: &dyn ArchivioCondiviso, account: &str, capabilities: Option<&Json>) -> Result<Mappa, ErroreCondivisione> {
     let casella = js_trim(account).to_lowercase();
     let caps = capacita_valide(capabilities)?;
     let Some(voce) = archivio.voce_account(&casella) else { return rifiuta("Casella non trovata") };
@@ -194,7 +230,7 @@ pub async fn attiva_condivisione(archivio: &GestoreToken, account: &str, capabil
 }
 
 /// Spegne la condivisione: la casella torna all'accesso suo, posta e calendario come prima, nessun token per Teams.
-pub fn disattiva_condivisione(archivio: &GestoreToken, account: &str) -> Result<Mappa, ErroreCondivisione> {
+pub fn disattiva_condivisione(archivio: &dyn ArchivioCondiviso, account: &str) -> Result<Mappa, ErroreCondivisione> {
     let casella = js_trim(account).to_lowercase();
     let Some(voce) = archivio.voce_account(&casella) else { return rifiuta("Casella non trovata") };
     let condivisa = voce.borrow().get("shared").is_some_and(vero);
@@ -214,7 +250,7 @@ fn con_ok(ok: bool, resto: Mappa) -> Json {
 }
 
 /// La richiesta HTTP di /api/auth/shared, già autorizzata: il corpo della risposta, sempre 200 con ok come le altre di /api/auth.
-pub async fn richiesta_condivisione(archivio: Option<&GestoreToken>, post: Option<&Json>, teams: Option<&RapportoTeams>) -> Json {
+pub async fn richiesta_condivisione(archivio: Option<&dyn ArchivioCondiviso>, post: Option<&Json>, teams: Option<&RapportoTeams>) -> Json {
     let Some(archivio) = archivio else {
         let mut m = Mappa::new();
         m.insert("ok", false);

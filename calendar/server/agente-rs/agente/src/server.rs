@@ -10,7 +10,7 @@
 use crate::comunicazione::GatewayComunicazione;
 use crate::diretto::{CalendarioDiretto, Controllo, GestoreToken};
 use crate::fonte::{Adesso, CalendarioAndroid, Contesto, DB, Fonte, Livello, Registro, adesso_vero, leggi_utf8, testo_js};
-use crate::shared_provisioning::{attiva_condivisione, identita_da_token, richiesta_condivisione};
+use crate::shared_provisioning::{ArchivioCondiviso, attiva_condivisione, identita_da_token, richiesta_condivisione};
 use crate::http::{self, Gestore, Richiesta, Risposta};
 use indexmap::IndexMap;
 use jiff::Timestamp;
@@ -820,7 +820,7 @@ impl Agente {
                 }
             }
         }
-        let esito = richiesta_condivisione(self.o.tokens.as_deref(), Some(&dati), None).await;
+        let esito = richiesta_condivisione(self.o.tokens.as_deref().map(|t| t as &dyn ArchivioCondiviso), Some(&dati), None).await;
         if esito.get("ok") == Some(&Json::Bool(true)) {
             self.cache.borrow_mut().clear();
             let account = esito.get("account").filter(|a| !a.is_null()).map(testo_js).unwrap_or_default();
@@ -866,7 +866,7 @@ impl Agente {
                     && !p.get("errore").is_some_and(oe_rete::js::vero)
             });
             if campo(&signin, "phase") == "queued" && mobile_rinnovabile && !report.others.iter().any(|(e, _)| *e == account) {
-                match attiva_condivisione(tokens, &account, signin.get("capabilities")).await {
+                match attiva_condivisione(tokens.as_ref(), &account, signin.get("capabilities")).await {
                     Ok(_) => {
                         jobs.update(&id, &[("phase", Some(Json::from("complete"))), ("route", Some(Json::from("outlook-mobile")))])?;
                         self.cache.borrow_mut().clear();
@@ -1149,7 +1149,7 @@ impl Agente {
             "/api/auth/shared" => {
                 let rapporto = self.rapporto_teams.borrow().clone();
                 let teams = rapporto_valido(rapporto.as_ref(), self.adesso_s_intero());
-                let mut m = match richiesta_condivisione(self.o.tokens.as_deref(), None, teams).await {
+                let mut m = match richiesta_condivisione(self.o.tokens.as_deref().map(|t| t as &dyn ArchivioCondiviso), None, teams).await {
                     Json::Obj(m) => m,
                     _ => Mappa::new(),
                 };

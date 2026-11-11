@@ -41,3 +41,7 @@ ed25519-dalek = "2"
 rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
 unicode-normalization = "0.1"
 encoding_rs = "0.8"
+
+[dev-dependencies]
+# le prove in tests/ raggiungono i server finti su 127.0.0.1: la funzione "prove" vale solo per loro, il binario resta senza
+oe-gateway = { path = ".", features = ["prove"] }

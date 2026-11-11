@@ -1,0 +1,6 @@
+//! L'agente: le fonti dei calendari, i token delle caselle, il gateway di posta e chat, il server HTTP. Ogni modulo ha lo stesso nome del
+//! file di `agente-ts/src` che riscrive.
+
+pub mod fonte;
+pub mod http;
+pub mod server;

@@ -103,6 +103,38 @@ pub fn canonico(v: &Json) -> String {
     ordinato(v).in_js()
 }
 
+/// Una richiesta HTTP/1.1 semplice, la risposta intera: il codice e il corpo.
+pub async fn chiedi(porta: u16, metodo: &str, percorso: &str, chiave: Option<&str>, corpo: Option<&str>) -> (u16, String) {
+    let (stato, _, testo) = chiedi_tutto(porta, metodo, percorso, chiave, corpo).await;
+    (stato, testo)
+}
+
+/// Come `chiedi`, con le intestazioni della risposta (nomi in minuscolo).
+pub async fn chiedi_tutto(porta: u16, metodo: &str, percorso: &str, chiave: Option<&str>, corpo: Option<&str>) -> (u16, Vec<(String, String)>, String) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut s = tokio::net::TcpStream::connect(("127.0.0.1", porta)).await.expect("connessione");
+    let mut testa = format!("{metodo} {percorso} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
+    if let Some(k) = chiave {
+        testa.push_str(&format!("Authorization: Bearer {k}\r\n"));
+    }
+    if let Some(c) = corpo {
+        testa.push_str(&format!("Content-Type: application/json\r\nContent-Length: {}\r\n", c.len()));
+    }
+    testa.push_str("\r\n");
+    s.write_all(testa.as_bytes()).await.expect("scrittura");
+    if let Some(c) = corpo {
+        s.write_all(c.as_bytes()).await.expect("corpo");
+    }
+    let mut dati = Vec::new();
+    s.read_to_end(&mut dati).await.expect("lettura");
+    let i = dati.windows(4).position(|f| f == b"\r\n\r\n").expect("risposta");
+    let testa = String::from_utf8_lossy(&dati[..i]).into_owned();
+    let mut righe = testa.split("\r\n");
+    let stato = righe.next().unwrap_or_default().split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or_default();
+    let intestazioni = righe.filter_map(|l| l.split_once(':')).map(|(k, v)| (k.trim().to_lowercase(), v.trim().to_string())).collect();
+    (stato, intestazioni, String::from_utf8_lossy(&dati[i + 4..]).into_owned())
+}
+
 /// `testo.slice(0, n)` di JavaScript, in unità UTF-16.
 pub fn primi_utf16(s: &str, n: usize) -> String {
     let mut usate = 0;

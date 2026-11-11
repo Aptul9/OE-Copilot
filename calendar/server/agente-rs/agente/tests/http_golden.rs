@@ -4,7 +4,7 @@
 
 mod comune;
 
-use comune::{leggi_golden, leggi_testo_golden, primi_utf16, scrivi_db};
+use comune::{chiedi, leggi_golden, leggi_testo_golden, primi_utf16, scrivi_db};
 use oe_agente::fonte::{Contesto, Registro};
 use oe_agente::http::servi;
 use oe_agente::server::{Agente, OpzioniAgente, carica_fonti, contesto_di};
@@ -383,28 +383,6 @@ fn avvii_che_falliscono() {
 
 // ---- le risposte intere su un calendar.db inventato --------------------------------------------------------------------------
 const CHIAVE_PROVA: &str = "chiave-di-prova";
-
-/// Una richiesta HTTP/1.1 semplice, la risposta intera.
-async fn chiedi(porta: u16, metodo: &str, percorso: &str, chiave: Option<&str>, corpo: Option<&str>) -> (u16, String) {
-    let mut s = TcpStream::connect(("127.0.0.1", porta)).await.expect("connessione");
-    let mut testa = format!("{metodo} {percorso} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
-    if let Some(k) = chiave {
-        testa.push_str(&format!("Authorization: Bearer {k}\r\n"));
-    }
-    if let Some(c) = corpo {
-        testa.push_str(&format!("Content-Type: application/json\r\nContent-Length: {}\r\n", c.len()));
-    }
-    testa.push_str("\r\n");
-    s.write_all(testa.as_bytes()).await.expect("scrittura");
-    if let Some(c) = corpo {
-        s.write_all(c.as_bytes()).await.expect("corpo");
-    }
-    let mut dati = Vec::new();
-    s.read_to_end(&mut dati).await.expect("lettura");
-    let i = trova(&dati, b"\r\n\r\n").expect("risposta");
-    let stato = dal_latin1(&dati[..i]).split(' ').nth(1).and_then(|c| c.parse().ok()).unwrap_or_default();
-    (stato, String::from_utf8_lossy(&dati[i + 4..]).into_owned())
-}
 
 /// L'ora del giorno cambia a ogni lettura: si toglie, il resto deve restare identico.
 fn normalizza_json(corpo: &str) -> Json {

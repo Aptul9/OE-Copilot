@@ -39,6 +39,7 @@ pub mod rete_sicura;
 pub mod safe_next;
 pub mod secondo_fattore;
 pub mod semaforo;
+pub mod servizio;
 pub mod stato;
 pub mod uscita;
 pub mod valore_logo;

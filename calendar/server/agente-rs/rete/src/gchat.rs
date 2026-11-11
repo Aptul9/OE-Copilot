@@ -179,21 +179,25 @@ impl Condiviso {
     }
 }
 
+pub type Salva = Rc<dyn Fn() -> Result<(), ErroreGoogle>>;
+pub type Guardia = Rc<dyn Fn() -> Result<bool, ErroreGoogle>>;
+
 #[derive(Clone, Default)]
 pub struct OpzioniChat {
     pub now: Option<Rc<dyn Fn() -> i64>>,
-    /// I cookie della sessione sono cambiati: chi la tiene la salva.
-    pub changed: Option<Rc<dyn Fn()>>,
-    /// La sessione è ancora quella dell'archivio: se no ogni richiesta è un 409 (e la rotazione dei cookie non parte).
-    pub guardia: Option<Rc<dyn Fn() -> bool>>,
+    /// I cookie della sessione sono cambiati: chi la tiene la salva; un salvataggio fallito ferma la richiesta.
+    pub changed: Option<Salva>,
+    /// La sessione è ancora quella dell'archivio: se no ogni richiesta è un 409 e la rotazione dei cookie non parte. Il wrapper di fetchFn
+    /// in TypeScript: un errore nel leggere l'archivio diventa quello del trasporto.
+    pub guardia: Option<Guardia>,
 }
 
 pub struct GoogleChat {
     pub session: SessioneCondivisa,
     trasporto: Rc<dyn Trasporto>,
     now: Rc<dyn Fn() -> i64>,
-    changed: Rc<dyn Fn()>,
-    guardia: Option<Rc<dyn Fn() -> bool>>,
+    changed: Salva,
+    guardia: Option<Guardia>,
     xsrf: RefCell<String>,
     xsrf_at: Cell<i64>,
     refreshing: RefCell<Option<Rc<Condiviso>>>,
@@ -219,7 +223,7 @@ impl GoogleChat {
             session,
             trasporto,
             now,
-            changed: o.changed.unwrap_or_else(|| Rc::new(|| {})),
+            changed: o.changed.unwrap_or_else(|| Rc::new(|| Ok(()))),
             guardia: o.guardia,
             xsrf: RefCell::new(String::new()),
             xsrf_at: Cell::new(0),
@@ -236,8 +240,11 @@ impl GoogleChat {
 
     async fn fetch(&self, indirizzo: &str, metodo: &str, intestazioni: Intestazioni<'_>, corpo: Option<Vec<u8>>, max: usize) -> Esito<Risposta> {
         let u = trusted_url(indirizzo)?;
-        if self.guardia.as_ref().is_some_and(|g| !g()) {
-            return Err(errore("Google Chat account changed", 409));
+        let trasporto_fallito = || errore("Google Chat transport failed; write outcome may be unknown", 502);
+        if let Some(g) = &self.guardia {
+            if !g().map_err(|_| trasporto_fallito())? {
+                return Err(errore("Google Chat account changed", 409));
+            }
         }
         let host = u.host_str().unwrap_or_default().to_string();
         let (ua, cookie) = {
@@ -257,11 +264,11 @@ impl GoogleChat {
             .trasporto
             .invia(r.senza_redirect().scadenza(Duration::from_millis(30_000)).max_byte(Some(max)))
             .await
-            .map_err(|_| errore("Google Chat transport failed; write outcome may be unknown", 502))?;
+            .map_err(|_| trasporto_fallito())?;
         let righe: Vec<&str> = risposta.intestazioni.tutti("set-cookie").collect();
         let cambiato = assorbi_cookie(&mut self.session.borrow_mut().cookies, &host, &righe, self.adesso_s(), None);
         if cambiato {
-            (self.changed)();
+            (self.changed)()?;
         }
         Ok(risposta)
     }
@@ -318,12 +325,15 @@ impl GoogleChat {
         let p = Condiviso::nuovo();
         *self.renewing.borrow_mut() = Some(p.clone());
         // la guardia vale anche qui: una sessione che non è più dell'archivio non ruota (fetchFn di prima solleva, ruotaCookie dà false)
-        let vale = self.guardia.as_ref().is_none_or(|g| g());
-        if vale && ruota_cookie(&self.session, &self.trasporto, self.adesso_s()).await {
-            (self.changed)();
-        }
-        self.io.borrow_mut().clear();
-        let esito = self.xsrf_once().await;
+        let vale = self.guardia.as_ref().is_none_or(|g| g().unwrap_or(false));
+        let esito = if vale && ruota_cookie(&self.session, &self.trasporto, self.adesso_s()).await { (self.changed)() } else { Ok(()) };
+        let esito = match esito {
+            Ok(()) => {
+                self.io.borrow_mut().clear();
+                self.xsrf_once().await
+            }
+            Err(e) => Err(e),
+        };
         *self.renewing.borrow_mut() = None;
         p.compi(esito.clone());
         esito

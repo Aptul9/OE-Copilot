@@ -68,7 +68,7 @@ impl Trasporto for Google {
     }
 }
 
-fn client_con(s: SessioneCondivisa, now: Rc<Cell<i64>>, changed: Option<Rc<dyn Fn()>>, f: impl FnMut(&Richiesta) -> EsitoRete + 'static) -> (GoogleChat, Rc<TrasportoFinto>) {
+fn client_con(s: SessioneCondivisa, now: Rc<Cell<i64>>, changed: Option<oe_rete::gchat::Salva>, f: impl FnMut(&Richiesta) -> EsitoRete + 'static) -> (GoogleChat, Rc<TrasportoFinto>) {
     let finto = TrasportoFinto::con_funzione(f);
     let t: Rc<dyn Trasporto> = Rc::new(Google(finto.clone()));
     let o = OpzioniChat { now: Some(Rc::new(move || now.get())), changed, guardia: None };
@@ -142,7 +142,10 @@ async fn sessione_rifiutata_rinnovata_una_volta_e_cookie_ruotato_salvato() {
     let salvate = Rc::new(Cell::new(0));
     let s = sessione();
     let (p2, r2, s2) = (pronta.clone(), ruotate.clone(), salvate.clone());
-    let (c, _) = client_con(s.clone(), Rc::new(Cell::new(NOW * 1000)), Some(Rc::new(move || s2.set(s2.get() + 1))), move |r| {
+    let (c, _) = client_con(s.clone(), Rc::new(Cell::new(NOW * 1000)), Some(Rc::new(move || {
+        s2.set(s2.get() + 1);
+        Ok(())
+    })), move |r| {
         let p = percorso(r);
         if p == "/RotateCookies" {
             p2.set(true);

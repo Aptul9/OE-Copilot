@@ -5,6 +5,7 @@ pub mod comunicazione;
 pub mod diretto;
 pub mod fonte;
 pub mod gmail;
+pub mod google_communication;
 pub mod http;
 pub mod server;
 pub mod shared_provisioning;

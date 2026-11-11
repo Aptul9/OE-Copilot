@@ -10,6 +10,7 @@
 use crate::comunicazione::GatewayComunicazione;
 use crate::diretto::{CalendarioDiretto, Controllo, GestoreToken};
 use crate::fonte::{Adesso, CalendarioAndroid, Contesto, DB, Fonte, Livello, Registro, adesso_vero, leggi_utf8, testo_js};
+use crate::google_communication::GoogleCommunication;
 use crate::shared_provisioning::{ArchivioCondiviso, attiva_condivisione, identita_da_token, richiesta_condivisione};
 use crate::http::{self, Gestore, Richiesta, Risposta};
 use indexmap::IndexMap;
@@ -25,6 +26,7 @@ use oe_nucleo::query::{analizza_target, parse_qs};
 use oe_nucleo::tempo::fuso_iana;
 use oe_rete::errori::ErroreAccesso;
 use oe_rete::file::con_suffisso;
+use oe_rete::google_web::ErroreGoogle;
 use oe_rete::js::{js_trim, primi_utf16};
 use oe_rete::sessione_web::OUTLOOK_WEB_CLIENT_ID;
 use oe_rete::shared_commands::{SharedCommand, read_commands, save_commands};
@@ -213,6 +215,8 @@ pub struct OpzioniAgente {
     pub registro: Registro,
     /// Gestore dei token OAuth per la lettura diretta senza emulatore (tokens.json).
     pub tokens: Option<Rc<GestoreToken>>,
+    /// Gmail e Google Chat con le credenziali dell'agente, separati dagli accessi ai calendari.
+    pub google: Option<Rc<GoogleCommunication>>,
 }
 
 impl OpzioniAgente {
@@ -231,6 +235,7 @@ impl OpzioniAgente {
             registro: registro_su_stderr(zona, adesso.clone()),
             adesso,
             tokens: None,
+            google: None,
         }
     }
 }
@@ -627,14 +632,14 @@ impl Agente {
         }
         let Some(corpo) = r.leggi_corpo().await else { return Ok(http::Esito::Chiudi) };
         if percorso.starts_with("/api/communication/gmail/") || percorso.starts_with("/api/communication/gchat/") {
-            return self.google_request(r, &corpo);
+            return self.google_request(r, &percorso, &corpo).await;
         }
         if ["/api/auth/inizio", "/api/auth/completa", "/api/auth/rimuovi"].contains(&percorso.as_str()) {
             let Ok(dati) = leggi_json(&corpo) else { return self.invia(r, 400, &ogg! { "errore": "invalid JSON" }, false) };
             if let Json::Obj(m) = &dati {
                 let provider = m.get("provider").map_or_else(|| "undefined".to_string(), testo_js);
                 if ["gmail", "gchat", "google-web"].contains(&provider.as_str()) {
-                    return self.google_request(r, &corpo);
+                    return self.google_auth(r, &percorso, m).await;
                 }
             }
         }
@@ -1120,8 +1125,69 @@ impl Agente {
         }
     }
 
-    fn google_request(&self, r: &Richiesta<'_>, _corpo: &[u8]) -> Uscita {
-        self.invia(r, 404, &ogg! { "errore": "Google service not configured" }, false)
+    fn google_failure(&self, r: &Richiesta<'_>, e: ErroreGoogle) -> Uscita {
+        match e {
+            ErroreGoogle::Http { messaggio, status } => self.invia(r, status, &ogg! { "errore": messaggio }, false),
+            ErroreGoogle::Sessione(messaggio) => self.invia(r, 400, &ogg! { "errore": messaggio }, false),
+            // Network, filesystem and parsing errors can contain credentials or upstream content.
+            ErroreGoogle::Altro(_) => self.invia(r, 502, &ogg! { "errore": "Google operation failed" }, false),
+        }
+    }
+
+    fn google(&self) -> Result<&GoogleCommunication, ErroreGoogle> {
+        self.o.google.as_deref().ok_or_else(|| ErroreGoogle::http("Google service not configured", 404))
+    }
+
+    /// POST /api/communication/{gmail,gchat}/{read,write}.
+    async fn google_request(&self, r: &Richiesta<'_>, percorso: &str, corpo: &[u8]) -> Uscita {
+        let esito = async {
+            let g = self.google()?;
+            let dati = leggi_json(corpo).map_err(|_| ErroreGoogle::http("invalid JSON", 400))?;
+            let Json::Obj(input) = &dati else { return Err(ErroreGoogle::http("JSON object required", 400)) };
+            match percorso {
+                "/api/communication/gmail/read" => g.gmail.read(&dati).await,
+                "/api/communication/gmail/write" => g.gmail.write(&dati).await,
+                "/api/communication/gchat/read" => g.read_chat(input).await,
+                _ => g.write_chat(input).await,
+            }
+        }
+        .await;
+        match esito {
+            Ok(v) => self.invia(r, 200, &v, false),
+            Err(e) => self.google_failure(r, e),
+        }
+    }
+
+    /// /api/auth/inizio, /completa e /rimuovi con provider gmail, gchat o google-web: Gmail ha il suo PKCE e l'importazione delle
+    /// credenziali, Chat solo l'importazione di una sessione del PC.
+    async fn google_auth(&self, r: &Richiesta<'_>, percorso: &str, dati: &Mappa) -> Uscita {
+        let esito = async {
+            let g = self.google()?;
+            let provider = if dati.get("provider").and_then(Json::as_str) == Some("gmail") { "gmail" } else { "gchat" };
+            if percorso == "/api/auth/rimuovi" {
+                return Ok(ogg! { "ok": g.remove(provider, dati.get("account"))? });
+            }
+            if percorso == "/api/auth/inizio" {
+                if provider != "gmail" {
+                    return Err(ErroreGoogle::http("import a signed-in PC session for Google Chat", 400));
+                }
+                let inizio = g.gmail.begin(dati.get("email").and_then(Json::as_str))?;
+                return Ok(ogg! { "ok": true, "modo": "pkce", "url": inizio.url, "state": inizio.state });
+            }
+            let account = if provider == "gchat" {
+                g.import_chat(dati).await?
+            } else if dati.get("credentials").is_some_and(oe_rete::js::vero) {
+                g.gmail.import(&Json::Obj(dati.clone())).await?
+            } else {
+                g.gmail.complete(dati.get("codice").and_then(Json::as_str).unwrap_or_default(), dati.get("state").and_then(Json::as_str)).await?
+            };
+            Ok(ogg! { "ok": true, "account": account, "provider": provider })
+        }
+        .await;
+        match esito {
+            Ok(v) => self.invia(r, 200, &v, false),
+            Err(e) => self.google_failure(r, e),
+        }
     }
 
     /// Una casella condivisa senza la capacità calendario: il calendario non la legge e non la mostra, senza errori.
@@ -1145,7 +1211,13 @@ impl Agente {
                 let caselle = self.comunicazione.as_ref().map(|c| c.caselle()).unwrap_or_default();
                 self.invia(r, 200, &ogg! { "accounts": caselle }, false)
             }
-            "/api/communication/google/accounts" => self.invia(r, 200, &ogg! { "accounts": Json::Arr(Vec::new()) }, false),
+            "/api/communication/google/accounts" => {
+                let accounts = match &self.o.google {
+                    Some(g) => g.accounts().map_err(|e| Errore::Altro(e.to_string()))?,
+                    None => Vec::new(),
+                };
+                self.invia(r, 200, &ogg! { "accounts": accounts }, false)
+            }
             "/api/auth/shared" => {
                 let rapporto = self.rapporto_teams.borrow().clone();
                 let teams = rapporto_valido(rapporto.as_ref(), self.adesso_s_intero());

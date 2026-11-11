@@ -11,31 +11,40 @@ import type { Modo2fa } from "@/lib/config";
 
 const nessunCambio = () => () => {};
 
-/** I valori del gateway: null nel disegno fatto alla costruzione, e finché la pagina non è nel browser. */
-function useValoriServer<T>(): T | null {
+/**
+ * I valori del gateway. Nel disegno fatto alla costruzione (e nel primo disegno nel browser) valgono i predefiniti, così l'HTML ha già la
+ * pagina e non un foglio bianco finché non arriva il JavaScript.
+ */
+function useValoriServer<T>(predefiniti: T): T {
   return useSyncExternalStore(
     nessunCambio,
-    () => ((window as { __OE__?: T }).__OE__ ?? null),
-    () => null,
+    () => ((window as { __OE__?: T }).__OE__ ?? predefiniti),
+    () => predefiniti,
   );
 }
 
+const HOME = { accesso2fa: "off" as Modo2fa };
+const LOGIN = { next: "/", modo: "off" as Modo2fa };
+const SICUREZZA = { modo: "totp" as Exclude<Modo2fa, "off">, email: "", attivo: false };
+const DISPONIBILITA = { gruppo: "" };
+
 export function HomeEsportata() {
-  const v = useValoriServer<{ accesso2fa: Modo2fa }>();
-  return v && <AppCalendario accesso2fa={v.accesso2fa} />;
+  const v = useValoriServer(HOME);
+  return <AppCalendario accesso2fa={v.accesso2fa} />;
 }
 
 export function LoginEsportata() {
-  const v = useValoriServer<{ next: string; modo: Modo2fa }>();
-  return v && <LoginForm next={v.next} modo={v.modo} />;
+  const v = useValoriServer(LOGIN);
+  return <LoginForm next={v.next} modo={v.modo} />;
 }
 
+// key: SicurezzaForm tiene `attivo` nel suo stato, e la pagina pubblica legge per gruppo; con i valori veri si ricomincia da capo
 export function SicurezzaEsportata() {
-  const v = useValoriServer<{ modo: Exclude<Modo2fa, "off">; email: string; attivo: boolean }>();
-  return v && <SicurezzaForm modo={v.modo} email={v.email} attivo={v.attivo} />;
+  const v = useValoriServer(SICUREZZA);
+  return <SicurezzaForm key={`${v.modo}|${v.email}|${v.attivo}`} modo={v.modo} email={v.email} attivo={v.attivo} />;
 }
 
 export function DisponibilitaEsportata() {
-  const v = useValoriServer<{ gruppo: string }>();
-  return v && <AppCalendario pubblico={{ gruppo: v.gruppo }} />;
+  const v = useValoriServer(DISPONIBILITA);
+  return <AppCalendario key={v.gruppo} pubblico={{ gruppo: v.gruppo }} />;
 }

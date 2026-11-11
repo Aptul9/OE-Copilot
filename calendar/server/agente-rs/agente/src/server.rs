@@ -7,7 +7,10 @@
 //! e gli accessi alle caselle (/api/auth/*), il broker dei token della posta (GET /api/token-posta) e il gateway di sola lettura su posta e
 //! calendari che non fa uscire i token.
 
+use crate::comunicazione::GatewayComunicazione;
+use crate::diretto::{CalendarioDiretto, Controllo, GestoreToken};
 use crate::fonte::{Adesso, CalendarioAndroid, Contesto, DB, Fonte, Livello, Registro, adesso_vero, leggi_utf8, testo_js};
+use crate::shared_provisioning::{attiva_condivisione, identita_da_token, richiesta_condivisione};
 use crate::http::{self, Gestore, Richiesta, Risposta};
 use indexmap::IndexMap;
 use jiff::Timestamp;
@@ -20,7 +23,14 @@ use oe_nucleo::ogg;
 use oe_nucleo::pyfmt::{py_bool, py_float, py_repr, py_repr_str, py_strip, py_tipo};
 use oe_nucleo::query::{analizza_target, parse_qs};
 use oe_nucleo::tempo::fuso_iana;
-use oe_rete::shared_teams::{RapportoTeams, leggi_rapporto_teams};
+use oe_rete::errori::ErroreAccesso;
+use oe_rete::file::con_suffisso;
+use oe_rete::js::{js_trim, primi_utf16};
+use oe_rete::sessione_web::OUTLOOK_WEB_CLIENT_ID;
+use oe_rete::shared_commands::{SharedCommand, read_commands, save_commands};
+use oe_rete::shared_labels::{carica_etichette, leggi_etichette, salva_etichette};
+use oe_rete::shared_teams::{RapportoTeams, leggi_rapporto_teams, rapporto_valido};
+use oe_rete::signin::{SignIns, campo, uuid};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -123,7 +133,7 @@ pub fn registro_su_stderr(zona: &str, adesso: Adesso) -> Registro {
 pub fn contesto_di(accessi: PathBuf, zona: &str, adesso: Option<Adesso>, registro: Option<Registro>) -> Contesto {
     let adesso = adesso.unwrap_or_else(|| Rc::new(adesso_vero));
     let registro = registro.unwrap_or_else(|| registro_su_stderr(zona, adesso.clone()));
-    Contesto { accessi, zona: zona.to_string(), adesso, registro }
+    Contesto { accessi, zona: zona.to_string(), adesso, registro, tokens: None }
 }
 
 /// _carica_fonti: fonti.json elenca le caselle da leggere (tipo "android", "outlook" o "google"). Un file che manca o non ha la forma giusta
@@ -136,7 +146,7 @@ pub fn carica_fonti(percorso: &Path, cartella_db: &Path, ctx: &Contesto) -> Esit
         Json::Obj(m) => m.keys().map(|k| Json::from(k.as_str())).collect(),
         altro => return Err(Errore::Tipo(format!("'{}' object is not iterable", py_tipo(altro)))),
     };
-    let _ = cartella_db.join(DB);
+    let usa_diretto_per_android = ctx.tokens.as_ref().is_some_and(|t| t.percorso.exists() || !cartella_db.join(DB).exists());
     let mut fonti = Vec::new();
     for v in &elenco {
         let Json::Obj(voce) = v else { return Err(Errore::Altro(format!("'{}' object has no attribute 'get'", py_tipo(v)))) };
@@ -153,14 +163,30 @@ pub fn carica_fonti(percorso: &Path, cartella_db: &Path, ctx: &Contesto) -> Esit
                 Some(_) => return Err(Errore::Tipo("(calendari ?? []).map is not a function".to_string())),
             };
             let account = voce.get("account").and_then(Json::as_str).ok_or_else(|| Errore::Tipo("s.replace is not a function".to_string()))?;
-            if tipo != Some("android") {
-                return Err(Errore::NonSupportato(format!("fonte {} non ancora letta dall'agente Rust", tipo.unwrap_or_default())));
-            }
             let id = testo_js(voce.get("id").unwrap_or(&Json::Null));
             let nome = testo_js(voce.get("nome").unwrap_or(&Json::Null));
-            fonti.push(Fonte::Android(CalendarioAndroid::nuovo(id, nome, account, cartella_db.to_path_buf(), calendari, ctx.clone())));
+            if tipo != Some("android") || usa_diretto_per_android {
+                let gestore = match &ctx.tokens {
+                    Some(t) => t.clone(),
+                    None => {
+                        let trasporto: Rc<dyn oe_rete::trasporto::Trasporto> = Rc::new(oe_rete::trasporto::TrasportoReqwest::nuovo().map_err(|e| Errore::Altro(e.to_string()))?);
+                        Rc::new(GestoreToken::nuovo(PathBuf::from("/stato/tokens.json"), crate::diretto::OpzioniToken { token_posta: None, adesso: Some(ctx.adesso.clone()), trasporto, strict: false }))
+                    }
+                };
+                fonti.push(Fonte::Diretto(CalendarioDiretto::nuovo(id, nome, account, calendari, ctx.clone(), gestore)));
+            } else {
+                fonti.push(Fonte::Android(CalendarioAndroid::nuovo(id, nome, account, cartella_db.to_path_buf(), calendari, ctx.clone())));
+            }
         } else {
             (ctx.registro)(Livello::Error, &format!("fonte sconosciuta, ignorata: {}", py_repr(v)));
+        }
+    }
+    if let (Some(tokens), true) = (&ctx.tokens, usa_diretto_per_android) {
+        for (email, voce) in tokens.elenco_account() {
+            if !fonti.iter().any(|f| f.account().to_lowercase() == email.to_lowercase()) {
+                let provider = voce.borrow().get("provider").map_or_else(|| "undefined".to_string(), testo_js);
+                fonti.push(Fonte::Diretto(CalendarioDiretto::nuovo(format!("{provider}::{email}"), nome_da_email(&email), &email, None, ctx.clone(), tokens.clone())));
+            }
         }
     }
     Ok(fonti)
@@ -185,6 +211,8 @@ pub struct OpzioniAgente {
     pub cache_s: f64,
     pub adesso: Adesso,
     pub registro: Registro,
+    /// Gestore dei token OAuth per la lettura diretta senza emulatore (tokens.json).
+    pub tokens: Option<Rc<GestoreToken>>,
 }
 
 impl OpzioniAgente {
@@ -202,6 +230,7 @@ impl OpzioniAgente {
             cache_s: CACHE_S,
             registro: registro_su_stderr(zona, adesso.clone()),
             adesso,
+            tokens: None,
         }
     }
 }
@@ -217,6 +246,26 @@ pub struct Agente {
     cache: RefCell<IndexMap<String, VoceCache>>,
     /// L'ultimo stato degli account Teams mandato da TeamsRelay (shared_teams).
     rapporto_teams: RefCell<Option<RapportoTeams>>,
+    /// Le caselle rimosse dalla pagina: ferme qui, così un nuovo accesso le riprende come fonti.json le descrive (id, calendari).
+    ferme: RefCell<Vec<Rc<Fonte>>>,
+    comunicazione: Option<GatewayComunicazione>,
+}
+
+fn accesso(e: ErroreAccesso) -> Errore {
+    Errore::Altro(e.to_string())
+}
+
+pub fn nome_da_email(email: &str) -> String {
+    let dominio = email.split('@').nth(1).unwrap_or_default().to_lowercase();
+    if dominio == "gmail.com" || dominio == "googlemail.com" {
+        return "Personale".to_string();
+    }
+    let radice = dominio.split('.').next().filter(|r| !r.is_empty()).or_else(|| email.split('@').next().filter(|r| !r.is_empty())).unwrap_or("Calendario");
+    let mut c = radice.chars();
+    match c.next() {
+        Some(primo) => primo.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
 }
 
 /// Cosa fa il gestore: una risposta, o chiudere la connessione senza rispondere (un'eccezione che Python non prende).
@@ -361,8 +410,14 @@ fn intestazioni_json(prima: &[(&str, &str)], lunghezza: usize, extra: &[(String,
 
 impl Agente {
     pub fn nuovo(mut o: OpzioniAgente) -> Rc<Self> {
-        let fonti = std::mem::take(&mut o.fonti).into_iter().map(Rc::new).collect();
-        Rc::new(Agente { o, fonti: RefCell::new(fonti), cache: RefCell::new(IndexMap::new()), rapporto_teams: RefCell::new(None) })
+        let mut fonti: Vec<Rc<Fonte>> = Vec::new();
+        let mut ferme: Vec<Rc<Fonte>> = Vec::new();
+        for f in std::mem::take(&mut o.fonti) {
+            let rimossa = o.tokens.as_ref().is_some_and(|t| t.rimosso(f.account()));
+            if rimossa { ferme.push(Rc::new(f)) } else { fonti.push(Rc::new(f)) }
+        }
+        let comunicazione = o.tokens.clone().map(GatewayComunicazione::nuovo);
+        Rc::new(Agente { o, fonti: RefCell::new(fonti), cache: RefCell::new(IndexMap::new()), rapporto_teams: RefCell::new(None), ferme: RefCell::new(ferme), comunicazione })
     }
 
     fn adesso_s(&self) -> f64 {
@@ -424,6 +479,9 @@ impl Agente {
         let mut eventi: Vec<Json> = Vec::new();
         let mut errori: Vec<String> = Vec::new();
         for fonte in self.fonti() {
+            if self.calendario_spento(&fonte) {
+                continue;
+            }
             let (trovati, err) = match fonte.eventi(inizio, fine).await {
                 Ok(x) => x,
                 Err(e @ Errore::SenzaRisposta(_)) => return Err(e),
@@ -574,31 +632,29 @@ impl Agente {
         if ["/api/auth/inizio", "/api/auth/completa", "/api/auth/rimuovi"].contains(&percorso.as_str()) {
             let Ok(dati) = leggi_json(&corpo) else { return self.invia(r, 400, &ogg! { "errore": "invalid JSON" }, false) };
             if let Json::Obj(m) = &dati {
-                let provider = testo_js(m.get("provider").unwrap_or(&Json::Null));
+                let provider = m.get("provider").map_or_else(|| "undefined".to_string(), testo_js);
                 if ["gmail", "gchat", "google-web"].contains(&provider.as_str()) {
                     return self.google_request(r, &corpo);
                 }
             }
         }
         if percorso == "/api/communication/read" {
-            return self.invia(r, 404, &ogg! { "errore": "casella non trovata" }, false);
+            return self.leggi_comunicazione(r, &corpo).await;
         }
         if percorso == "/api/auth/shared" {
-            let Ok(dati) = leggi_json(&corpo) else { return self.invia(r, 400, &ogg! { "errore": "invalid JSON" }, false) };
-            let operazione = dati.get("operation");
-            let stretta = operazione.and_then(Json::as_str).unwrap_or_default();
-            // String(data.operation) per i passi dell'accesso guidato, === per gli altri
-            let come_testo = operazione.map(testo_js).unwrap_or_else(|| "undefined".to_string());
-            if stretta == "signin-cancel" || ["connect", "signin-progress", "signin-import"].contains(&come_testo.as_str()) {
-                return self.invia(r, 400, &ogg! { "ok": false, "errore": "Token store unavailable" }, false);
-            }
-            if ["remove", "chat", "calls"].contains(&stretta) {
-                return self.invia(r, 400, &ogg! { "ok": false, "errore": "account required" }, false);
-            }
-            return self.invia(r, 200, &ogg! { "ok": false, "errore": "gestore token non configurato" }, false);
+            return self.auth_shared(r, &corpo).await;
         }
         if percorso == "/api/auth/shared/labels" {
-            return self.invia(r, 400, &ogg! { "ok": false, "errore": "Token store unavailable" }, false);
+            let Some(tokens) = self.o.tokens.clone() else { return self.invia(r, 400, &ogg! { "ok": false, "errore": "Token store unavailable" }, false) };
+            let etichette = match leggi_json(&corpo) {
+                Err(_) => return self.invia(r, 400, &ogg! { "ok": false, "errore": "invalid JSON" }, false),
+                Ok(d) => match leggi_etichette(&d) {
+                    Ok(e) => e,
+                    Err(e) => return self.invia(r, 400, &ogg! { "ok": false, "errore": e.0 }, false),
+                },
+            };
+            salva_etichette(&con_suffisso(&tokens.percorso, ".labels.json"), &etichette)?;
+            return self.invia(r, 200, &ogg! { "ok": true }, false);
         }
         if percorso == "/api/auth/shared/teams" {
             let Ok(dati) = leggi_json(&corpo) else { return self.invia(r, 400, &ogg! { "errore": "invalid JSON" }, false) };
@@ -617,12 +673,416 @@ impl Agente {
                 Ok(x) => *self.rapporto_teams.borrow_mut() = Some(x),
                 Err(e) => return self.invia(r, 400, &ogg! { "errore": e.0 }, false),
             }
+            if let (Some(tokens), Some(Json::Arr(risultati))) = (&self.o.tokens, dati.get("results")) {
+                let file = con_suffisso(&tokens.percorso, ".commands.json");
+                let mut restano = Vec::new();
+                for c in read_commands(&file)? {
+                    match risultati.iter().find(|x| x.get("id").and_then(Json::as_str) == Some(c.id.as_str())) {
+                        None => restano.push(c),
+                        Some(x) => {
+                            if let Some(e) = x.get("error").filter(|e| oe_rete::js::vero(e)) {
+                                restano.push(SharedCommand { error: Some(primi_utf16(&testo_js(e), 300)), ..c });
+                            }
+                        }
+                    }
+                }
+                save_commands(&file, &restano)?;
+            }
             return self.invia(r, 200, &ogg! { "ok": true }, false);
         }
         if ["/api/auth/inizio", "/api/auth/rimuovi", "/api/auth/controlla", "/api/auth/completa"].contains(&percorso.as_str()) {
-            return self.invia(r, 400, &ogg! { "ok": false, "errore": "gestore token non configurato" }, false);
+            let Some(tokens) = self.o.tokens.clone() else { return self.invia(r, 400, &ogg! { "ok": false, "errore": "gestore token non configurato" }, false) };
+            let esito = match percorso.as_str() {
+                "/api/auth/inizio" => self.auth_inizio(&tokens, &corpo).await,
+                "/api/auth/rimuovi" => self.auth_rimuovi(&tokens, &corpo),
+                "/api/auth/controlla" => self.auth_controlla(&tokens, &corpo).await,
+                _ => self.auth_completa(&tokens, &corpo).await,
+            };
+            return match esito {
+                Ok(v) => self.invia(r, 200, &v, false),
+                Err(e @ Errore::SenzaRisposta(_)) => Err(e),
+                Err(e) => self.invia(r, 200, &ogg! { "ok": false, "errore": e.messaggio() }, false),
+            };
         }
         self.ics(r, &corpo)
+    }
+
+    fn sposta_in_ferme(&self, email: &str) {
+        let mut fonti = self.fonti.borrow_mut();
+        let (via, restano): (Vec<Rc<Fonte>>, Vec<Rc<Fonte>>) = std::mem::take(&mut *fonti).into_iter().partition(|f| f.account().to_lowercase() == email);
+        *fonti = restano;
+        self.ferme.borrow_mut().extend(via);
+    }
+
+    fn assicura_fonte_diretta(&self, account: &str, provider: &str) -> Esito<()> {
+        let email = account.to_lowercase();
+        if let Some(t) = &self.o.tokens {
+            t.riammetti(&email).map_err(accesso)?;
+        }
+        {
+            let mut ferme = self.ferme.borrow_mut();
+            let (tornano, restano): (Vec<Rc<Fonte>>, Vec<Rc<Fonte>>) = std::mem::take(&mut *ferme).into_iter().partition(|f| f.account().to_lowercase() == email);
+            *ferme = restano;
+            self.fonti.borrow_mut().extend(tornano);
+        }
+        let mut trovata = false;
+        for f in self.fonti.borrow().iter().filter(|f| f.account().to_lowercase() == email) {
+            f.svuota_cache();
+            trovata = true;
+        }
+        if let (false, Some(tokens)) = (trovata, &self.o.tokens) {
+            let mut ctx = contesto_di(self.o.accessi.clone(), &self.o.zona, Some(self.o.adesso.clone()), Some(self.o.registro.clone()));
+            ctx.tokens = Some(tokens.clone());
+            let f = CalendarioDiretto::nuovo(format!("{provider}::{email}"), nome_da_email(&email), &email, None, ctx, tokens.clone());
+            self.fonti.borrow_mut().push(Rc::new(Fonte::Diretto(f)));
+        }
+        Ok(())
+    }
+
+    fn adesso_s_intero(&self) -> i64 {
+        (self.o.adesso)().div_euclid(1000)
+    }
+
+    fn signins(&self, tokens: &GestoreToken) -> SignIns {
+        let adesso = self.o.adesso.clone();
+        SignIns::nuovo(&con_suffisso(&tokens.percorso, ".signins.json"), move || adesso().div_euclid(1000))
+    }
+
+    fn cancel_sign_in(&self, account: &str) -> Esito<()> {
+        let Some(tokens) = &self.o.tokens else { return Ok(()) };
+        let jobs = self.signins(tokens);
+        for job in jobs.list().map_err(accesso)?.into_iter().filter(|j| campo(j, "account") == account && matches!(campo(j, "phase"), "queued" | "browser")) {
+            jobs.update(
+                campo(&job, "id"),
+                &[("phase", Some(Json::from("blocked"))), ("error", Some(Json::from("Connection cancelled because service choices changed. Start a new connection if needed.")))],
+            )
+            .map_err(accesso)?;
+        }
+        Ok(())
+    }
+
+    async fn auth_shared(&self, r: &Richiesta<'_>, corpo: &[u8]) -> Uscita {
+        let Ok(dati) = leggi_json(corpo) else { return self.invia(r, 400, &ogg! { "errore": "invalid JSON" }, false) };
+        let operazione = dati.get("operation");
+        let stretta = operazione.and_then(Json::as_str).unwrap_or_default().to_string();
+        let come_testo = operazione.map_or_else(|| "undefined".to_string(), testo_js);
+        let attivo = |o: &Json| !matches!(o, Json::Null | Json::Bool(false)) && !(o.as_f64() == Some(0.0)) && o.as_str() != Some("");
+        if stretta == "signin-cancel" {
+            let Some(tokens) = self.o.tokens.clone() else { return self.invia(r, 400, &ogg! { "ok": false, "errore": "Token store unavailable" }, false) };
+            let account = dati.get("account").and_then(Json::as_str).map(|a| js_trim(a).to_lowercase()).unwrap_or_default();
+            return match self.signins(&tokens).cancel(&dati["id"], &Json::from(account.as_str())) {
+                Ok(signin) => {
+                    (self.o.registro)(Livello::Info, &format!("accesso guidato annullato: {account}"));
+                    self.invia(r, 200, &ogg! { "ok": true, "signin": Json::Obj(signin) }, false)
+                }
+                Err(e) => self.invia(r, 400, &ogg! { "ok": false, "errore": e.to_string() }, false),
+            };
+        }
+        if attivo(&dati) && ["connect", "signin-progress", "signin-import"].contains(&come_testo.as_str()) {
+            let Some(tokens) = self.o.tokens.clone() else { return self.invia(r, 400, &ogg! { "ok": false, "errore": "Token store unavailable" }, false) };
+            return match self.accesso_guidato(&tokens, &dati, &stretta).await {
+                Ok(v) => self.invia(r, 200, &v, false),
+                Err(e) => {
+                    let testo = e.to_string();
+                    let mut m = Mappa::new();
+                    m.insert("ok", false);
+                    if matches!(e, ErroreAccesso::ProxyBrowser(_)) {
+                        m.insert("needsProxy", true);
+                    }
+                    if matches!(e, ErroreAccesso::SessioneScaduta(_)) && !testo.contains("AADSTS53003") {
+                        m.insert("needsBrowser", true);
+                    }
+                    m.insert("errore", testo);
+                    self.invia(r, 400, &Json::Obj(m), false)
+                }
+            };
+        }
+        if attivo(&dati) && ["remove", "chat", "calls"].contains(&stretta.as_str()) {
+            return self.comando_account(r, &dati, &stretta);
+        }
+        if let (Some(tokens), Some(Json::Str(account)), Some(Json::Arr(caps))) = (&self.o.tokens, dati.get("account"), dati.get("capabilities")) {
+            let account = js_trim(account).to_lowercase();
+            let prima: Vec<Json> = tokens
+                .voce_account(&account)
+                .and_then(|v| v.borrow().get("shared").filter(|s| oe_rete::js::vero(s)).and_then(|s| s.get("capabilities")).and_then(Json::as_arr).cloned())
+                .unwrap_or_else(|| vec![Json::from("mail"), Json::from("calendar")]);
+            let solo_togliere = caps.iter().all(|c| prima.contains(c));
+            if solo_togliere {
+                self.cancel_sign_in(&account)?;
+            } else {
+                let aperti = SignIns::nuovo(&con_suffisso(&tokens.percorso, ".signins.json"), || adesso_vero().div_euclid(1000))
+                    .list()
+                    .map_err(accesso)?
+                    .iter()
+                    .any(|j| campo(j, "account") == account && matches!(campo(j, "phase"), "queued" | "browser"));
+                if aperti {
+                    return self.invia(r, 409, &ogg! { "ok": false, "errore": "Finish the connection before enabling more services" }, false);
+                }
+            }
+        }
+        let esito = richiesta_condivisione(self.o.tokens.as_deref(), Some(&dati), None).await;
+        if esito.get("ok") == Some(&Json::Bool(true)) {
+            self.cache.borrow_mut().clear();
+            let account = esito.get("account").filter(|a| !a.is_null()).map(testo_js).unwrap_or_default();
+            (self.o.registro)(Livello::Info, &format!("condivisione casella aggiornata: {account}"));
+        }
+        self.invia(r, 200, &esito, false)
+    }
+
+    async fn accesso_guidato(&self, tokens: &Rc<GestoreToken>, data: &Json, operazione: &str) -> Result<Json, ErroreAccesso> {
+        let jobs = self.signins(tokens);
+        let account = data.get("account").and_then(Json::as_str).map(|a| js_trim(a).to_lowercase()).unwrap_or_default();
+        if operazione == "connect" {
+            let rapporto = self.rapporto_teams.borrow().clone();
+            let Some(report) = rapporto_valido(rapporto.as_ref(), self.adesso_s_intero()).cloned() else {
+                return Err(ErroreAccesso::altro("Microsoft sign-in service unavailable. TeamsRelay must be connected."));
+            };
+            let previous = tokens.voce_account(&account).map(|v| v.borrow().clone());
+            let caps = match data.get("capabilities") {
+                Some(Json::Arr(v)) if !v.is_empty() && v.iter().all(|c| matches!(c.as_str(), Some("mail" | "calendar" | "chat"))) => v.clone(),
+                _ => return Err(ErroreAccesso::altro("Choose mail, calendar or Teams")),
+            };
+            let provider = previous.as_ref().and_then(|p| p.get("provider").and_then(Json::as_str).map(str::to_string));
+            if previous.is_some() && provider.as_deref() != Some("microsoft") && caps.iter().any(|c| c.as_str() != Some("chat")) {
+                return Err(ErroreAccesso::altro("This address already has a different mail provider. Its credentials will not be replaced."));
+            }
+            let existing: Vec<Json> = match (&previous, provider.as_deref()) {
+                (Some(p), Some("microsoft")) => p.get("shared").filter(|s| oe_rete::js::vero(s)).and_then(|s| s.get("capabilities")).and_then(Json::as_arr).cloned().unwrap_or_else(|| vec![Json::from("mail"), Json::from("calendar")]),
+                _ => Vec::new(),
+            };
+            let browser_on = report.others.iter().any(|(e, t)| *e == account && t.state != "stopped");
+            let mut tutte: Vec<Json> = Vec::new();
+            for c in caps.iter().chain(existing.iter()).cloned().chain(browser_on.then(|| Json::from("chat"))) {
+                if !tutte.contains(&c) {
+                    tutte.push(c);
+                }
+            }
+            let signin = jobs.start(&account, &Json::Arr(tutte))?;
+            let id = campo(&signin, "id").to_string();
+            let mobile_rinnovabile = previous.as_ref().is_some_and(|p| {
+                provider.as_deref() == Some("microsoft")
+                    && p.get("refresh_token").is_some_and(oe_rete::js::vero)
+                    && p.get("client_id").and_then(Json::as_str) != Some(OUTLOOK_WEB_CLIENT_ID)
+                    && !p.get("errore").is_some_and(oe_rete::js::vero)
+            });
+            if campo(&signin, "phase") == "queued" && mobile_rinnovabile && !report.others.iter().any(|(e, _)| *e == account) {
+                match attiva_condivisione(tokens, &account, signin.get("capabilities")).await {
+                    Ok(_) => {
+                        jobs.update(&id, &[("phase", Some(Json::from("complete"))), ("route", Some(Json::from("outlook-mobile")))])?;
+                        self.cache.borrow_mut().clear();
+                    }
+                    Err(e) => {
+                        // Only expired/refused credentials enter the browser flow; an outage must not request a fresh login.
+                        let scaduta = tokens.voce_account(&account).is_some_and(|v| v.borrow().get("errore").is_some_and(oe_rete::js::vero));
+                        if !scaduta && !matches!(e.causa, Some(ErroreAccesso::SharedRifiutato(_))) {
+                            jobs.update(&id, &[("phase", Some(Json::from("blocked"))), ("error", Some(Json::from(e.messaggio)))])?;
+                        }
+                    }
+                }
+            }
+            let corrente = jobs.list()?.into_iter().find(|j| campo(j, "id") == id).map_or(Json::Null, Json::Obj);
+            return Ok(ogg! { "ok": true, "signin": corrente });
+        }
+        let job = jobs.find(&data["id"], &Json::from(account.as_str()))?;
+        let slot = data.get("slot");
+        let fase = data.get("phase").and_then(Json::as_str).unwrap_or_default();
+        let fase_job = campo(&job, "phase").to_string();
+        let first_binding = operazione == "signin-progress" && fase == "browser" && fase_job == "queued";
+        let slot_intero = slot.and_then(Json::as_f64).filter(|n| n.fract() == 0.0);
+        let slot_job = job.get("slot").filter(|s| oe_rete::js::vero(s));
+        let esente = operazione == "signin-progress" && fase == "blocked" && slot.is_none();
+        if !esente && (slot_intero.is_none_or(|n| !(1.0..=9999.0).contains(&n)) || (slot_job.is_some_and(|s| Some(s) != slot) && !first_binding)) {
+            return Err(ErroreAccesso::altro("Sign-in slot mismatch"));
+        }
+        if operazione == "signin-progress" {
+            if !["browser", "blocked", "complete"].contains(&fase) {
+                return Err(ErroreAccesso::altro("Invalid sign-in phase"));
+            }
+            let url = match data.get("url").filter(|u| oe_rete::js::vero(u)) {
+                Some(u) => Some(url::Url::parse(&testo_js(u)).map_err(|_| ErroreAccesso::altro("Invalid URL"))?),
+                None => None,
+            };
+            if let Some(u) = &url {
+                let atteso = format!("/api/desktop/{}", slot.map(testo_js).unwrap_or_else(|| "undefined".to_string()));
+                if !matches!(u.scheme(), "http" | "https") || !u.username().is_empty() || u.password().is_some() || u.path() != atteso || u.query().is_some_and(|q| !q.is_empty()) || u.fragment().is_some_and(|f| !f.is_empty()) {
+                    return Err(ErroreAccesso::altro("Invalid sign-in URL"));
+                }
+            }
+            let caps_job: Vec<String> = job.get("capabilities").and_then(Json::as_arr).map(|v| v.iter().map(testo_js).collect()).unwrap_or_default();
+            if fase == "complete" && caps_job.iter().any(|c| c != "chat") && !tokens.ha_account(&account) {
+                return Err(ErroreAccesso::altro("Mailbox not imported"));
+            }
+            let mut patch: Vec<(&str, Option<Json>)> = vec![("phase", Some(Json::from(fase)))];
+            if let Some(s) = slot.filter(|s| oe_rete::js::vero(s)) {
+                patch.push(("slot", Some(Json::from(oe_rete::js::numero_di(s)))));
+            }
+            if let Some(u) = &url {
+                patch.push(("url", Some(Json::from(u.to_string()))));
+            }
+            patch.push(("error", data.get("error").and_then(Json::as_str).map(|e| Json::from(primi_utf16(e, 300)))));
+            let signin = jobs.update(campo(&job, "id"), &patch)?;
+            return Ok(ogg! { "ok": true, "signin": Json::Obj(signin) });
+        }
+        let sessione = data.get("sessione").cloned().unwrap_or_default();
+        let hint = sessione.get("loginHint").and_then(Json::as_str).map(|h| js_trim(h).to_lowercase());
+        if !slot_job.is_some() || fase_job != "browser" || hint.as_deref() != Some(account.as_str()) {
+            return Err(ErroreAccesso::altro("Microsoft session identity mismatch"));
+        }
+        let caps: Vec<&str> = job.get("capabilities").and_then(Json::as_arr).map(|v| v.iter().filter_map(Json::as_str).filter(|c| *c != "chat").collect()).unwrap_or_default();
+        let required: Vec<&str> = caps.iter().copied().filter(|c| *c == "mail" || *c == "calendar").collect();
+        let id_job = campo(&job, "id").to_string();
+        let valida = |token: &str| -> Result<(), ErroreAccesso> {
+            jobs.find(&Json::from(id_job.as_str()), &Json::from(account.as_str()))?;
+            if tokens.voce_account(&account).is_some_and(|v| v.borrow().get("provider").and_then(Json::as_str) == Some("google")) {
+                return Err(ErroreAccesso::altro("The account provider changed during sign-in"));
+            }
+            identita_da_token(token, &account).map_err(|e| ErroreAccesso::altro(e.messaggio))?;
+            Ok(())
+        };
+        let tenant = data.get("tenant").and_then(Json::as_str).unwrap_or("organizations");
+        let (_, route) = tokens.importa_guidata(&sessione, tenant, Some(&valida), &required).await?;
+        let token = tokens.voce_account(&account).and_then(|v| v.borrow().get("access_token").filter(|t| oe_rete::js::vero(t)).map(testo_js));
+        let Some(token) = token else { return Err(ErroreAccesso::altro("Microsoft did not return a mailbox token")) };
+        let (tid, oid) = identita_da_token(&token, &account).map_err(|e| ErroreAccesso::altro(e.messaggio))?;
+        let mut sh = Mappa::new();
+        sh.insert("tenantId", tid);
+        sh.insert("objectId", oid);
+        sh.insert("capabilities", caps.iter().map(|c| c.to_string()).collect::<Vec<_>>());
+        sh.insert("origin", if route == "outlook-web" { "outlook-spa" } else { "mobile" });
+        tokens.imposta_shared(&account, Some(Json::Obj(sh)))?;
+        self.assicura_fonte_diretta(&account, "microsoft").map_err(|e| ErroreAccesso::altro(e.messaggio()))?;
+        self.cache.borrow_mut().clear();
+        jobs.update(&id_job, &[("route", Some(Json::from(route.as_str())))])?;
+        Ok(ogg! { "ok": true, "route": route })
+    }
+
+    fn comando_account(&self, r: &Richiesta<'_>, data: &Json, operazione: &str) -> Uscita {
+        let (Some(tokens), Some(Json::Str(account))) = (self.o.tokens.clone(), data.get("account")) else {
+            return self.invia(r, 400, &ogg! { "ok": false, "errore": "account required" }, false);
+        };
+        let account = js_trim(account).to_lowercase();
+        let rapporto = self.rapporto_teams.borrow().clone();
+        let Some(teams) = rapporto_valido(rapporto.as_ref(), self.adesso_s_intero()) else {
+            return self.invia(r, 409, &ogg! { "ok": false, "errore": "Teams report unavailable" }, false);
+        };
+        let mailbox = tokens.voce_account(&account);
+        if mailbox.as_ref().is_some_and(|m| m.borrow().get("provider").and_then(Json::as_str) != Some("microsoft")) {
+            return self.invia(r, 400, &ogg! { "ok": false, "errore": "Microsoft account required" }, false);
+        }
+        let browser = teams.others.iter().any(|(e, _)| *e == account);
+        if mailbox.is_none() && !browser && !teams.accounts.contains_key(&account) {
+            return self.invia(r, 404, &ogg! { "ok": false, "errore": "Account not found" }, false);
+        }
+        let on = data.get("on").and_then(Json::as_bool);
+        if operazione == "chat" && (on.is_none() || !browser) {
+            return self.invia(r, 400, &ogg! { "ok": false, "errore": "Browser Teams account required" }, false);
+        }
+        let calls = teams.accounts.get(&account).or_else(|| teams.others.iter().find(|(e, _)| *e == account).map(|(_, s)| s)).and_then(|s| s.calls);
+        if operazione == "calls" && (on.is_none() || calls.is_none()) {
+            return self.invia(r, 400, &ogg! { "ok": false, "errore": "Calls are switched only for Teams accounts without a browser" }, false);
+        }
+        let file = con_suffisso(&tokens.percorso, ".commands.json");
+        let mut commands = read_commands(&file)?;
+        if commands.iter().any(|c| c.account == account) {
+            return self.invia(r, 409, &ogg! { "ok": false, "errore": "Account operation already pending" }, false);
+        }
+        commands.push(SharedCommand { id: uuid(), account: account.clone(), operation: operazione.to_string(), on: if operazione != "remove" { on } else { None }, error: None });
+        save_commands(&file, &commands)?;
+        if operazione == "remove" || (operazione == "chat" && on == Some(false)) {
+            self.cancel_sign_in(&account)?;
+        }
+        if operazione == "remove" && mailbox.is_some() {
+            self.sposta_in_ferme(&account);
+            tokens.rimuovi(&account).map_err(accesso)?;
+            self.cache.borrow_mut().clear();
+        }
+        self.invia(r, 200, &ogg! { "ok": true, "account": account, "pending": true }, false)
+    }
+
+    fn oggetto_o_vuoto(corpo: &[u8]) -> Esito<Json> {
+        let dati = leggi_json(corpo)?;
+        Ok(if matches!(dati, Json::Obj(_)) { dati } else { Json::obj() })
+    }
+
+    async fn auth_inizio(&self, tokens: &GestoreToken, corpo: &[u8]) -> Esito<Json> {
+        let r = Self::oggetto_o_vuoto(corpo)?;
+        let email = r.get("email").and_then(Json::as_str).map(|e| js_trim(e).to_string());
+        if r.get("provider").and_then(Json::as_str) == Some("google") {
+            let (url, state) = tokens.inizia_google_pkce(email.as_deref());
+            return Ok(ogg! { "ok": true, "provider": "google", "modo": "pkce", "url": url, "state": state });
+        }
+        if r.get("modo").and_then(Json::as_str) == Some("device") {
+            // Ripiega sul link PKCE diretto se il codice dispositivo non è raggiungibile
+            if let Ok(d) = tokens.inizia_device_microsoft(email.as_deref()).await {
+                return Ok(ogg! { "ok": true, "provider": "microsoft", "modo": "device", "url": d.url, "user_code": d.user_code, "state": d.state, "intervallo_s": d.intervallo_s, "url_pkce": d.url_pkce });
+            }
+        }
+        let (url, state) = tokens.inizia_pkce(email.as_deref());
+        Ok(ogg! { "ok": true, "provider": "microsoft", "modo": "pkce", "url": url, "state": state })
+    }
+
+    fn auth_rimuovi(&self, tokens: &GestoreToken, corpo: &[u8]) -> Esito<Json> {
+        let r = Self::oggetto_o_vuoto(corpo)?;
+        let email = r.get("account").and_then(Json::as_str).map(|a| js_trim(a).to_lowercase()).unwrap_or_default();
+        let sue = self.fonti.borrow().iter().any(|f| f.account().to_lowercase() == email);
+        if email.is_empty() || (!sue && !tokens.ha_account(&email)) {
+            return Ok(ogg! { "ok": false, "errore": "Casella non trovata" });
+        }
+        self.sposta_in_ferme(&email);
+        tokens.rimuovi(&email).map_err(accesso)?;
+        self.cache.borrow_mut().clear();
+        (self.o.registro)(Livello::Info, &format!("casella rimossa: {email}"));
+        Ok(ogg! { "ok": true, "account": email })
+    }
+
+    async fn auth_controlla(&self, tokens: &GestoreToken, corpo: &[u8]) -> Esito<Json> {
+        let r = Self::oggetto_o_vuoto(corpo)?;
+        let state = r.get("state").and_then(Json::as_str).map(|s| js_trim(s).to_string()).unwrap_or_default();
+        match tokens.controlla_device_microsoft(&state).await.map_err(accesso)? {
+            Controllo::Completato { account, .. } => {
+                self.cache.borrow_mut().clear();
+                self.assicura_fonte_diretta(&account, "microsoft")?;
+                Ok(ogg! { "ok": true, "stato": "completato", "account": account, "provider": "microsoft" })
+            }
+            Controllo::InAttesa => Ok(ogg! { "ok": true, "stato": "in_attesa" }),
+        }
+    }
+
+    async fn auth_completa(&self, tokens: &GestoreToken, corpo: &[u8]) -> Esito<Json> {
+        let dati = leggi_json(corpo)?;
+        let Json::Obj(r) = &dati else { return Err(Errore::Valore("not a dict".to_string())) };
+        let provider = if r.get("provider").and_then(Json::as_str) == Some("google") { "google" } else { "microsoft" };
+        let state = r.get("state").and_then(Json::as_str);
+        let testo = |k: &str| r.get(k).and_then(Json::as_str).unwrap_or_default().to_string();
+        let account = if provider == "google" {
+            let codice = testo("codice");
+            if !js_trim(&codice).is_empty() {
+                tokens.completa_google_pkce(&codice, state, Some(&testo("email"))).await.map_err(accesso)?
+            } else {
+                tokens.salva_google(&testo("email"), &testo("token")).await.map_err(accesso)?
+            }
+        } else if let Some(sessione) = r.get("sessione") {
+            // Sessione del browser (formato teamsrelay session.json) per le caselle dove Outlook Mobile è respinto
+            tokens.importa_sessione(sessione, &testo("tenant"), None, &["calendar"]).await.map_err(accesso)?.0
+        } else {
+            tokens.completa_pkce(&testo("codice"), state).await.map_err(accesso)?.0
+        };
+        self.cache.borrow_mut().clear();
+        self.assicura_fonte_diretta(&account, provider)?;
+        Ok(ogg! { "ok": true, "account": account, "provider": provider })
+    }
+
+    /// POST /api/communication/read: una lettura di posta o calendario con le credenziali dell'agente; il token non esce.
+    async fn leggi_comunicazione(&self, r: &Richiesta<'_>, corpo: &[u8]) -> Uscita {
+        let Some(comunicazione) = &self.comunicazione else { return self.invia(r, 404, &ogg! { "errore": "casella non trovata" }, false) };
+        let Ok(dati) = leggi_json(corpo) else { return self.invia(r, 400, &ogg! { "errore": "il corpo non è JSON" }, false) };
+        match comunicazione.leggi(&dati).await {
+            Ok(testo) => self.invia_json(r, 200, testo.into_bytes(), false, &[], &[]),
+            Err(e) => {
+                let corpo = ogg! { "errore": e.messaggio.as_str() }.in_py().into_bytes();
+                self.invia_json(r, e.codice, corpo, false, &[], &e.intestazioni)
+            }
+        }
     }
 
     fn ics(&self, r: &Richiesta<'_>, corpo: &[u8]) -> Uscita {
@@ -664,6 +1124,14 @@ impl Agente {
         self.invia(r, 404, &ogg! { "errore": "Google service not configured" }, false)
     }
 
+    /// Una casella condivisa senza la capacità calendario: il calendario non la legge e non la mostra, senza errori.
+    fn calendario_spento(&self, f: &Fonte) -> bool {
+        let Some(tokens) = &self.o.tokens else { return false };
+        tokens.voce_account(f.account()).and_then(|v| v.borrow().get("shared").filter(|s| oe_rete::js::vero(s)).cloned()).is_some_and(|s| {
+            !s.get("capabilities").and_then(Json::as_arr).is_some_and(|c| c.iter().any(|x| x.as_str() == Some("calendar")))
+        })
+    }
+
     async fn get(&self, r: &mut Richiesta<'_>) -> Uscita {
         let (percorso, query) = analizza_target(&r.url)?;
         let piena = self.autorizzato(r)?;
@@ -673,17 +1141,53 @@ impl Agente {
         let q = parse_qs(&query);
         match percorso.as_str() {
             "/api/salute" => self.invia(r, 200, &ogg! { "fonti": self.fonti_stato(), "servizio": self.servizio()? }, false),
-            "/api/communication/accounts" | "/api/communication/google/accounts" => self.invia(r, 200, &ogg! { "accounts": Json::Arr(Vec::new()) }, false),
-            "/api/auth/shared" => self.invia(r, 200, &ogg! { "ok": false, "errore": "gestore token non configurato", "signins": Json::Arr(Vec::new()), "commands": Json::Arr(Vec::new()), "labels": Json::Null }, false),
+            "/api/communication/accounts" => {
+                let caselle = self.comunicazione.as_ref().map(|c| c.caselle()).unwrap_or_default();
+                self.invia(r, 200, &ogg! { "accounts": caselle }, false)
+            }
+            "/api/communication/google/accounts" => self.invia(r, 200, &ogg! { "accounts": Json::Arr(Vec::new()) }, false),
+            "/api/auth/shared" => {
+                let rapporto = self.rapporto_teams.borrow().clone();
+                let teams = rapporto_valido(rapporto.as_ref(), self.adesso_s_intero());
+                let mut m = match richiesta_condivisione(self.o.tokens.as_deref(), None, teams).await {
+                    Json::Obj(m) => m,
+                    _ => Mappa::new(),
+                };
+                match &self.o.tokens {
+                    Some(t) => {
+                        let signins = self.signins(t).list().map_err(accesso)?;
+                        m.insert("signins", Json::Arr(signins.into_iter().map(Json::Obj).collect()));
+                        m.insert("commands", Json::Arr(read_commands(&con_suffisso(&t.percorso, ".commands.json"))?.iter().map(SharedCommand::a_json).collect()));
+                        m.insert("labels", carica_etichette(&con_suffisso(&t.percorso, ".labels.json")));
+                    }
+                    None => {
+                        m.insert("signins", Json::Arr(Vec::new()));
+                        m.insert("commands", Json::Arr(Vec::new()));
+                        m.insert("labels", Json::Null);
+                    }
+                }
+                self.invia(r, 200, &Json::Obj(m), false)
+            }
             "/api/auth/stato" => {
                 let caselle: Vec<Json> = self
                     .fonti()
                     .iter()
                     .map(|f| {
                         let s = f.stato();
-                        let provider = if f.tipo().as_deref() == Some("caldav") { "google" } else { "microsoft" };
-                        let msg = if s.msg.is_null() { String::new() } else { testo_js(&s.msg) };
-                        ogg! { "id": f.id(), "nome": f.nome(), "account": f.account(), "provider": provider, "configurato": false, "scaduto": true, "stato": s.stato, "msg": msg }
+                        let voce = self.o.tokens.as_ref().and_then(|t| t.voce_account(f.account())).map(|v| v.borrow().clone());
+                        let errore = voce.as_ref().and_then(|v| v.get("errore").filter(|e| oe_rete::js::vero(e)).cloned());
+                        let provider = voce.as_ref().and_then(|v| v.get("provider").filter(|p| !p.is_null()).cloned()).unwrap_or_else(|| Json::from(if f.tipo().as_deref() == Some("caldav") { "google" } else { "microsoft" }));
+                        let msg = errore.clone().unwrap_or_else(|| Json::from(if s.msg.is_null() { String::new() } else { testo_js(&s.msg) }));
+                        ogg! {
+                            "id": f.id(),
+                            "nome": f.nome(),
+                            "account": f.account(),
+                            "provider": provider,
+                            "configurato": voce.is_some(),
+                            "scaduto": voce.is_none() || errore.is_some(),
+                            "stato": if errore.is_some() { "errore".to_string() } else { s.stato },
+                            "msg": msg,
+                        }
                     })
                     .collect();
                 self.invia(r, 200, &ogg! { "caselle": caselle }, false)
@@ -692,10 +1196,28 @@ impl Agente {
             "/api/token-resource" => {
                 let target_query = r.url.split_once('?').map(|(_, q)| q.split('#').next().unwrap_or_default()).unwrap_or_default().to_string();
                 let risorsa = parametro_url(&target_query, "resource").unwrap_or_default();
-                let corpo = if !piena && !RISORSE_CHAT.contains(&risorsa.as_str()) { (401, ogg! { "errore": "non autorizzato" }) } else { (403, ogg! { "errore": "shared token unavailable" }) };
-                self.invia_json(r, corpo.0, corpo.1.in_py().into_bytes(), false, &[("Cache-Control", "no-store")], &[])
+                let (codice, corpo) = if !piena && !RISORSE_CHAT.contains(&risorsa.as_str()) {
+                    (401, ogg! { "errore": "non autorizzato" })
+                } else {
+                    let account = parametro_url(&target_query, "account").unwrap_or_default();
+                    let esito = match &self.o.tokens {
+                        Some(t) => t.ottieni_risorsa(&account, &risorsa, false).await.ok(),
+                        None => None,
+                    };
+                    match esito {
+                        Some(token) => (200, ogg! { "token": token }),
+                        None => (403, ogg! { "errore": "shared token unavailable" }),
+                    }
+                };
+                self.invia_json(r, codice, corpo.in_py().into_bytes(), false, &[("Cache-Control", "no-store")], &[])
             }
             "/api/token-posta" => {
+                if let Some(t) = self.o.tokens.as_ref().filter(|t| !t.elenco_account().is_empty()) {
+                    let diretti = t.token_posta_attivi().await;
+                    if !diretti.is_empty() {
+                        return self.invia(r, 200, &ogg! { "generato": self.adesso_s_intero(), "account": diretti, "servizio": self.servizio()? }, false);
+                    }
+                }
                 let mut generato = Json::from(0);
                 let mut account: Vec<Json> = Vec::new();
                 if let Some(Json::Obj(raw)) = leggi_utf8(&self.o.token_posta).ok().and_then(|t| Json::analizza(&t).ok()) {
@@ -710,26 +1232,32 @@ impl Agente {
                     Some(Json::Obj(acc)) => acc.get("caselle").filter(|c| matches!(c, Json::Obj(_) | Json::Arr(_))).cloned().unwrap_or_default(),
                     _ => Json::Null,
                 };
-                let arricchiti: Vec<Json> = account
-                    .iter()
-                    .map(|a| {
-                        let upn = testo_js(a.get("upn").filter(|u| !u.is_null()).unwrap_or(&Json::from(""))).to_lowercase();
-                        let st = caselle_stato.get(&upn).cloned();
-                        let mut m = match a {
-                            Json::Obj(m) => m.clone(),
-                            _ => Mappa::new(),
-                        };
-                        let campo = |k: &str, d: &str| st.as_ref().and_then(|s| s.get(k)).filter(|v| !v.is_null()).cloned().unwrap_or_else(|| Json::from(d));
-                        m.insert("phone_status", campo("stato", "ok"));
-                        m.insert("phone_msg", campo("msg", ""));
-                        Json::Obj(m)
-                    })
-                    .collect();
+                let mut arricchiti: Vec<Json> = Vec::new();
+                for a in &account {
+                    let upn_grezzo = testo_js(a.get("upn").filter(|u| !u.is_null()).unwrap_or(&Json::from("")));
+                    let condivisa = self.o.tokens.as_ref().and_then(|t| t.voce_account(&upn_grezzo)).is_some_and(|v| v.borrow().get("shared").is_some_and(oe_rete::js::vero));
+                    if condivisa {
+                        continue;
+                    }
+                    let upn = upn_grezzo.to_lowercase();
+                    let st = caselle_stato.get(&upn).cloned();
+                    let mut m = match a {
+                        Json::Obj(m) => m.clone(),
+                        _ => Mappa::new(),
+                    };
+                    let campo = |k: &str, d: &str| st.as_ref().and_then(|s| s.get(k)).filter(|v| !v.is_null()).cloned().unwrap_or_else(|| Json::from(d));
+                    m.insert("phone_status", campo("stato", "ok"));
+                    m.insert("phone_msg", campo("msg", ""));
+                    arricchiti.push(Json::Obj(m));
+                }
                 self.invia(r, 200, &ogg! { "generato": generato, "account": arricchiti, "servizio": self.servizio()? }, false)
             }
             "/api/calendari" => {
                 let mut caselle: Vec<Json> = Vec::new();
                 for f in self.fonti() {
+                    if self.calendario_spento(&f) {
+                        continue;
+                    }
                     match f.riepilogo().await {
                         Ok(c) => caselle.push(c),
                         Err(e @ Errore::SenzaRisposta(_)) => return Err(e),

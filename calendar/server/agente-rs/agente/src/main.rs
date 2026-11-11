@@ -4,7 +4,9 @@
 //!   BATTITO   /stato/battito.json (il segno di vita del servizio)   ACCESSI   /stato/accessi.json (lo stato degli accessi dal rilevatore)
 //!   TZ        Europe/Rome
 
+use oe_agente::diretto::{GestoreToken, OpzioniToken};
 use oe_agente::fonte::{Adesso, Livello, adesso_vero};
+use oe_rete::trasporto::{Trasporto, TrasportoReqwest};
 use oe_agente::http::servi;
 use oe_agente::server::{Agente, OpzioniAgente, carica_fonti, contesto_di, nomi_fonti, registro_su_stderr, strip};
 use oe_nucleo::errori::Errore;
@@ -50,12 +52,18 @@ async fn avvia(zona: String, adesso: Adesso, registro: oe_agente::fonte::Registr
         let cartella_db = PathBuf::from(env("ANDROID_DB", "/android-calendario"));
         let accessi = PathBuf::from(env("ACCESSI", "/stato/accessi.json"));
         let token_posta = PathBuf::from(env("TOKEN_POSTA", "/stato/token-outlook.json"));
-        let ctx = contesto_di(accessi.clone(), &zona, Some(adesso.clone()), Some(registro.clone()));
+        let trasporto: Rc<dyn Trasporto> = Rc::new(TrasportoReqwest::nuovo().map_err(|e| Errore::Altro(e.to_string()))?);
+        let tokens = Rc::new(GestoreToken::nuovo(
+            PathBuf::from(env("TOKENS", "/stato/tokens.json")),
+            OpzioniToken { token_posta: Some(token_posta.clone()), adesso: Some(adesso.clone()), trasporto, strict: false },
+        ));
+        let mut ctx = contesto_di(accessi.clone(), &zona, Some(adesso.clone()), Some(registro.clone()));
+        ctx.tokens = Some(tokens.clone());
         // le fonti si leggono prima di controllare la chiave, come in Python: un fonti.json che manca ferma l'avvio con 1
         let fonti = carica_fonti(&PathBuf::from(env("FONTI", "/app/fonti.json")), &cartella_db, &ctx)?;
-        Ok((chiave, porta, accessi, token_posta, fonti))
+        Ok((chiave, porta, accessi, token_posta, fonti, tokens))
     })();
-    let (chiave, porta, accessi, token_posta, fonti) = match preparato {
+    let (chiave, porta, accessi, token_posta, fonti, tokens) = match preparato {
         Ok(x) => x,
         Err(e) => {
             registro(Livello::Error, e.messaggio());
@@ -80,6 +88,7 @@ async fn avvia(zona: String, adesso: Adesso, registro: oe_agente::fonte::Registr
     o.accessi = accessi;
     o.adesso = adesso;
     o.registro = registro.clone();
+    o.tokens = Some(tokens);
     let agente = Agente::nuovo(o);
     let ascolto = match TcpListener::bind(("0.0.0.0", porta)).await {
         Ok(a) => a,

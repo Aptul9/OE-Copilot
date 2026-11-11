@@ -348,6 +348,11 @@ impl GestoreToken {
         self.dati.borrow().accounts.get(chiave).cloned()
     }
 
+    /// Rilegge tokens.json se è cambiato; con `strict` un file illeggibile è un errore, come per la lettura che lo segue.
+    pub fn carica(&self) -> EsitoAccesso<()> {
+        self.carica_se_cambiato()
+    }
+
     pub fn ha_account(&self, email: &str) -> bool {
         let _ = self.carica_se_cambiato();
         self.dati.borrow().accounts.contains_key(&email.to_lowercase())

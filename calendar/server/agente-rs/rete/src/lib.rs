@@ -3,6 +3,7 @@
 
 pub mod errori;
 pub mod file;
+pub mod google_web;
 pub mod js;
 pub mod mcas_auth_forms;
 pub mod mcas_outlook;

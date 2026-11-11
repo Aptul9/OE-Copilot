@@ -1163,7 +1163,7 @@ mod prove {
         }
     }
 
-    /// Ogni tipo risolto come lo risolve protobufjs: tests/dati/protobuf-schema.txt viene dal generatore delle prove.
+    /// Ogni tipo risolto come lo risolve protobufjs: tests/dati/protobuf-schema.txt viene da strumenti/schema-protobuf.cjs.
     #[test]
     fn risolve_lo_schema_come_protobufjs() {
         let mut righe = Vec::new();

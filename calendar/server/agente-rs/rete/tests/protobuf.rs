@@ -1,6 +1,7 @@
 //! Il codec protobuf contro protobufjs. tests/dati/protobuf.json è registrato con l'`encodeChat` e il `decodeChat` di
 //! `agente-ts/src/gchat.ts`: le richieste che l'agente costruisce, un valore a caso di ogni tipo dello schema andata e ritorno, le conversioni
 //! di JavaScript sui valori, ingressi binari fatti a mano, mutati o letti come un altro tipo. Degli errori conta solo che ci siano.
+//! Si rigenera con `node calendar/server/agente-rs/strumenti/vettori-protobuf.cjs` quando cambia lo schema.
 
 use oe_nucleo::json::Json;
 use oe_rete::protobuf::{codifica_chat, decodifica_chat};

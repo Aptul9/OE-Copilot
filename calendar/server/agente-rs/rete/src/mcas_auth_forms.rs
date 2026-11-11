@@ -1,6 +1,10 @@
 //! Le pagine del proxy di sicurezza di Microsoft (Defender for Cloud Apps, *.mcas.ms) e di login: il modulo con l'id_token, la pagina
 //! di accesso monitorato, il ripristino del contesto, "Object Moved", la configurazione JSON nella pagina, l'indirizzo del bootstrap. Lo
 //! stesso controllo di `teams-relay/app/scripts/mcas-auth-forms.mjs`: ogni forma inattesa è un errore.
+//!
+//! L'agente TypeScript riceve quel file a ogni deploy (shared/sync.mjs), questo è tradotto a mano: scripts/check.sh confronta lo sha256
+//! qui sotto con il file e si ferma finché la traduzione non lo segue.
+//! sorgente-sha256: 9e64c32ebdfe77c026ae0d32ea8eedb4c198bad1ce129e7fd674337b096ad78d
 
 use oe_nucleo::json::Json;
 use regex::Regex;

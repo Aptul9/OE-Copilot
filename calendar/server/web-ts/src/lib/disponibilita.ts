@@ -109,23 +109,33 @@ type Deps = {
 
 const TTL_MS = 60_000;
 const TTL_GUASTO_MS = 15_000;
+/** Fin quando un blocco letto bene si può ancora dare subito, mentre se ne legge uno nuovo: la prenotazione ricontrolla comunque i calendari. */
+export const VECCHIO_MAX_MS = 6 * 3600_000;
 const CACHE_MAX = 64;
 const LETTURE_MAX = 20;
 const FINESTRA_MS = 60_000;
-const cache = new Map<string, { fino: number; esito: Esito }>();
-const inCorso = new Map<string, Promise<Esito>>();
-const letture: number[] = [];
+/** Il giro che tiene pronti i blocchi: ogni due minuti, da una settimana fa a 61 giorni avanti (le prenotazioni arrivano a 60). */
+export const CALDO_OGNI_MS = 120_000;
+const CALDO_INDIETRO = 7;
+const CALDO_AVANTI = 61;
+/** I gruppi chiesti dalla pagina (?gruppo=) restano caldi per un giorno, al più otto. */
+const RICHIESTI_PER_MS = 24 * 3600_000;
+const RICHIESTI_MAX = 8;
+
+type Voce = { fino: number; scade: number; esito: Esito };
+type Memoria = { cache: Map<string, Voce>; inCorso: Map<string, Promise<Esito>>; letture: number[]; richiesti: Map<string, number> };
+// In globalThis: le rotte di Next e l'avvio (che fa il giro) hanno ciascuno la sua copia dei moduli, e la memoria deve essere una sola
+const globale = globalThis as typeof globalThis & { __oeDisponibilita?: Memoria; __oeDisponibilitaCaldo?: ReturnType<typeof setTimeout> | true };
+const memoria = (): Memoria => (globale.__oeDisponibilita ??= { cache: new Map(), inCorso: new Map(), letture: [], richiesti: new Map() });
 
 /** Dimentica i blocchi letti, non il conteggio delle letture: dopo una prenotazione la pagina rilegge e la vede subito. */
 export function dimenticaDisponibilita() {
-  cache.clear();
+  memoria().cache.clear();
 }
 
 /** Svuota la memoria (per le prove). */
 export function azzera() {
-  cache.clear();
-  inCorso.clear();
-  letture.length = 0;
+  globale.__oeDisponibilita = undefined;
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
@@ -161,37 +171,114 @@ async function leggi(da: string, gruppo: string, deps: Deps): Promise<Esito> {
 }
 
 /**
- * Un blocco di 28 giorni, per una richiesta pubblica. Chiunque può chiamarla: il risultato resta in
- * memoria un minuto (un guasto quindici secondi), richieste uguali in corso si fondono in una lettura,
- * e le letture vere dei calendari sono al più venti al minuto in tutto (dietro sslh i client non si
- * distinguono, quindi il limite è uno solo): oltre, 429.
+ * Legge il blocco e lo mette in memoria (richieste uguali in corso si fondono in una lettura). Una lettura che non riesce non prende il
+ * posto di un blocco letto bene: quello resta, e si riprova fra quindici secondi.
+ */
+function aggiorna(chiave: string, da: string, gruppo: string, deps: Deps, adesso: number): Promise<Esito> {
+  const m = memoria();
+  const inLettura = m.inCorso.get(chiave);
+  if (inLettura) return inLettura;
+  const promessa = leggi(da, gruppo, deps)
+    .then((esito) => {
+      const prima = m.cache.get(chiave);
+      if (!esito.ok && esito.stato !== 404 && prima?.esito.ok && prima.scade > adesso) {
+        m.cache.set(chiave, { ...prima, fino: adesso + TTL_GUASTO_MS });
+        return prima.esito;
+      }
+      m.cache.delete(chiave);
+      if (m.cache.size >= CACHE_MAX) m.cache.delete(m.cache.keys().next().value as string);
+      const buono = esito.ok ? esito.completo : esito.stato === 404;
+      m.cache.set(chiave, { fino: adesso + (buono ? TTL_MS : TTL_GUASTO_MS), scade: esito.ok ? adesso + VECCHIO_MAX_MS : 0, esito });
+      return esito;
+    })
+    .finally(() => m.inCorso.delete(chiave));
+  m.inCorso.set(chiave, promessa);
+  return promessa;
+}
+
+/** Il limite delle letture vere: al più venti al minuto in tutto. Vero se c'è posto (e lo prende). */
+function postoLibero(adesso: number): boolean {
+  const { letture } = memoria();
+  while (letture.length && letture[0] <= adesso - FINESTRA_MS) letture.shift();
+  if (letture.length >= LETTURE_MAX) return false;
+  letture.push(adesso);
+  return true;
+}
+
+/**
+ * Un blocco di 28 giorni, per una richiesta pubblica. Chiunque può chiamarla: il risultato resta in memoria un minuto (un guasto
+ * quindici secondi), e dopo si dà ancora subito, fino a sei ore, mentre se ne legge uno nuovo: una lettura dei calendari dura secondi
+ * e chi apre la pagina non la aspetta. Le letture vere sono al più venti al minuto in tutto (dietro sslh i client non si distinguono,
+ * quindi il limite è uno solo): oltre, 429 se non c'è niente da dare.
  */
 export async function leggiBlocco(da: string, gruppo: string, deps: Deps): Promise<Esito> {
   const adesso = deps.adesso?.() ?? Date.now();
   const chiave = `${da}|${gruppo}`;
-  const salvata = cache.get(chiave);
+  const m = memoria();
+  const salvata = m.cache.get(chiave);
   if (salvata && salvata.fino > adesso) return salvata.esito;
-  const inLettura = inCorso.get(chiave);
+  if (salvata?.esito.ok && salvata.scade > adesso) {
+    if (!m.inCorso.has(chiave) && postoLibero(adesso)) void aggiorna(chiave, da, gruppo, deps, adesso);
+    return salvata.esito;
+  }
+  const inLettura = m.inCorso.get(chiave);
   if (inLettura) return inLettura;
-  while (letture.length && letture[0] <= adesso - FINESTRA_MS) letture.shift();
-  if (letture.length >= LETTURE_MAX) return { ok: false, stato: 429 };
-  letture.push(adesso);
-  const promessa = leggi(da, gruppo, deps)
-    .then((esito) => {
-      if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
-      const buono = esito.ok ? esito.completo : esito.stato === 404;
-      cache.set(chiave, { fino: adesso + (buono ? TTL_MS : TTL_GUASTO_MS), esito });
-      return esito;
-    })
-    .finally(() => inCorso.delete(chiave));
-  inCorso.set(chiave, promessa);
-  return promessa;
+  if (!postoLibero(adesso)) return { ok: false, stato: 429 };
+  return aggiorna(chiave, da, gruppo, deps, adesso);
 }
 
-export const MESSAGGIO_INCOMPLETO = "Alcuni calendari non sono aggiornati al momento: gli orari occupati potrebbero essere incompleti.";
+/** Un gruppo chiesto dalla pagina pubblica: il giro lo tiene caldo per un giorno. */
+function ricordaGruppo(gruppo: string, adesso: number) {
+  if (!gruppo) return;
+  const { richiesti } = memoria();
+  richiesti.delete(gruppo);
+  richiesti.set(gruppo, adesso);
+  if (richiesti.size > RICHIESTI_MAX) richiesti.delete(richiesti.keys().next().value as string);
+}
+
+/**
+ * Un giro: rilegge, uno alla volta, i blocchi da una settimana fa a 61 giorni avanti, per tutti i calendari e per i gruppi chiesti
+ * nell'ultimo giorno. Fuori dal limite delle letture pubbliche, che resta tutto per chi apre la pagina. Restituisce quanti blocchi ha letto.
+ */
+export async function rinfresca(deps: Deps, oggi: string): Promise<number> {
+  const adesso = deps.adesso?.() ?? Date.now();
+  const { richiesti } = memoria();
+  for (const [g, quando] of richiesti) if (adesso - quando > RICHIESTI_PER_MS) richiesti.delete(g);
+  let letti = 0;
+  for (const gruppo of ["", ...richiesti.keys()]) {
+    for (const b of blocchi(spostaData(oggi, -CALDO_INDIETRO), spostaData(oggi, CALDO_AVANTI))) {
+      const esito = await aggiorna(`${b}|${gruppo}`, b, gruppo, deps, deps.adesso?.() ?? Date.now());
+      letti++;
+      // un gruppo che non c'è più non si rilegge
+      if (!esito.ok && esito.stato === 404) {
+        richiesti.delete(gruppo);
+        break;
+      }
+    }
+  }
+  return letti;
+}
+
+/** Fa partire il giro, una volta sola per processo: il primo dopo cinque secondi, così la pagina è pronta subito dopo un riavvio. */
+export function avviaDisponibilita(deps: Deps): void {
+  if (globale.__oeDisponibilitaCaldo) return;
+  globale.__oeDisponibilitaCaldo = true;
+  const giro = (ms: number) => {
+    const t = setTimeout(() => {
+      rinfresca(deps, oggiARoma())
+        .catch((e) => console.warn("disponibilità: giro non riuscito", e instanceof Error ? e.name : e))
+        .finally(() => giro(CALDO_OGNI_MS));
+    }, ms);
+    t.unref();
+    globale.__oeDisponibilitaCaldo = t;
+  };
+  giro(5_000);
+  console.info(`disponibilità: blocchi tenuti pronti, un giro ogni ${CALDO_OGNI_MS / 1000} s`);
+}
 
 /** Il corpo di /api/disponibilita: nella forma di get_events, così la pagina legge tutto come sempre. */
 export async function leggiDisponibilita(r: Richiesta, deps: Deps): Promise<{ ok: true; events: Evento[]; errors: string[] } | { ok: false; stato: 404 | 429 | 502 }> {
+  ricordaGruppo(r.gruppo, deps.adesso?.() ?? Date.now());
   const esiti = await Promise.all(blocchi(r.da, r.a).map((b) => leggiBlocco(b, r.gruppo, deps)));
   const guasto = esiti.find((e) => !e.ok);
   if (guasto && !guasto.ok) {
@@ -209,6 +296,7 @@ export async function leggiDisponibilita(r: Richiesta, deps: Deps): Promise<{ ok
       r.da,
       r.a,
     ),
-    errors: buoni.every((e) => e.completo) ? [] : [MESSAGGIO_INCOMPLETO],
+    // un calendario che non si legge (un accesso scaduto) si vede nella pagina principale, con il pallino rosso: qui non si dice
+    errors: [],
   };
 }

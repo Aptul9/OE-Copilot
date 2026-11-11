@@ -10,8 +10,8 @@ import {
   leggiBlocco,
   leggiDisponibilita,
   leggiRichiesta,
-  MESSAGGIO_INCOMPLETO,
   oggiARoma,
+  rinfresca,
   spostaData,
   unisci,
 } from "@/lib/disponibilita";
@@ -307,6 +307,89 @@ describe("leggiBlocco", () => {
   });
 });
 
+describe("blocchi vecchi e giro in secondo piano", () => {
+  /** Una lettura che risponde quando la prova lo dice. */
+  function lenta() {
+    const attese: ((v: unknown) => void)[] = [];
+    let n = 0;
+    const core = (_da: string, _giorni: number, gruppo: string) => {
+      n++;
+      return new Promise((risolvi) => attese.push(risolvi)).then((v) => v ?? { ...BUONO, impegni: [[`2026-10-12T0${n}:00:00`, "2026-10-12T10:00:00"]], gruppo });
+    };
+    return { attese, chiamate: () => n, core };
+  }
+
+  it("scaduto il minuto, il blocco vecchio si dà subito e il nuovo si legge in secondo piano", async () => {
+    const l = lenta();
+    let t = 30_000_000;
+    const d = { core: l.core, adesso: () => t };
+    const prima = leggiBlocco(BLOCCO, "", d);
+    l.attese[0](undefined);
+    const a = await prima;
+    t += 120_000;
+    const b = await leggiBlocco(BLOCCO, "", d); // non aspetta la lettura nuova
+    expect(b).toEqual(a);
+    expect(l.chiamate()).toBe(2);
+    l.attese[1](undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    const c = await leggiBlocco(BLOCCO, "", d);
+    expect(c).not.toEqual(a);
+    expect(l.chiamate()).toBe(2);
+  });
+
+  it("una lettura nuova che non riesce lascia il blocco vecchio", async () => {
+    const { deps } = finto((n: number) => (n === 1 ? BUONO : { error: "boom" }));
+    let t = 40_000_000;
+    const d = { ...deps, adesso: () => t };
+    const a = await leggiBlocco(BLOCCO, "", d);
+    t += 120_000;
+    await leggiBlocco(BLOCCO, "", d);
+    await new Promise((r) => setTimeout(r, 0));
+    t += 1_000;
+    expect(await leggiBlocco(BLOCCO, "", d)).toEqual(a);
+  });
+
+  it("oltre sei ore il blocco vecchio non vale più e si aspetta la lettura", async () => {
+    const l = lenta();
+    let t = 50_000_000;
+    const d = { core: l.core, adesso: () => t };
+    const p = leggiBlocco(BLOCCO, "", d);
+    l.attese[0](undefined);
+    await p;
+    t += 6 * 3600_000 + 1;
+    let fatto = false;
+    const q = leggiBlocco(BLOCCO, "", d).then(() => (fatto = true));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fatto).toBe(false);
+    l.attese[1](undefined);
+    await q;
+  });
+
+  it("il giro rilegge i blocchi delle prossime settimane, anche per i gruppi chiesti, e lascia quelli che non ci sono più", async () => {
+    const chiesti: string[] = [];
+    const core = async (da: string, _g: number, gruppo: string) => {
+      chiesti.push(`${da}|${gruppo}`);
+      return gruppo === "sparito" ? { ok: false, error: "Gruppo non trovato" } : BUONO;
+    };
+    await leggiDisponibilita({ da: "2026-10-12", a: "2026-10-19", gruppo: "lavoro" }, { core });
+    await leggiDisponibilita({ da: "2026-10-12", a: "2026-10-19", gruppo: "sparito" }, { core });
+    chiesti.length = 0;
+    const n = await rinfresca({ core }, "2026-10-14");
+    const attesi = blocchi("2026-10-07", "2026-12-14");
+    expect(chiesti.filter((c) => c.endsWith("|"))).toEqual(attesi.map((b) => `${b}|`));
+    expect(chiesti.filter((c) => c.endsWith("|lavoro"))).toEqual(attesi.map((b) => `${b}|lavoro`));
+    expect(chiesti.filter((c) => c.endsWith("|sparito"))).toHaveLength(1);
+    expect(n).toBe(attesi.length * 2 + 1);
+    chiesti.length = 0;
+    await rinfresca({ core }, "2026-10-14");
+    expect(chiesti.some((c) => c.endsWith("|sparito"))).toBe(false);
+    // dopo il giro la pagina non rilegge
+    chiesti.length = 0;
+    await leggiDisponibilita({ da: "2026-10-12", a: "2026-10-19", gruppo: "" }, { core });
+    expect(chiesti).toEqual([]);
+  });
+});
+
 describe("leggiDisponibilita", () => {
   const R = { da: "2026-10-12", a: "2026-10-19", gruppo: "" };
 
@@ -328,10 +411,11 @@ describe("leggiDisponibilita", () => {
     expect(e.ok && e.events.filter((x) => x.allDay)).toHaveLength(1);
   });
 
-  it("un blocco incompleto basta a dirlo", async () => {
+  it("un blocco incompleto (un accesso scaduto) non mette avvisi nella pagina pubblica", async () => {
     const { deps } = finto((n: number) => ({ ...BUONO, completo: n !== 1 }));
     const e = await leggiDisponibilita({ da: "2026-10-01", a: "2026-11-30", gruppo: "" }, deps);
-    expect(e.ok && e.errors).toEqual([MESSAGGIO_INCOMPLETO]);
+    expect(e.ok && e.errors).toEqual([]);
+    expect(e.ok && e.events.length).toBeGreaterThan(0);
   });
 
   it("se un blocco manca, il più specifico degli errori: 404 prima di 429 prima di 502", async () => {

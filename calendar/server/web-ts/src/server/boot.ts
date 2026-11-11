@@ -1,6 +1,8 @@
 import { getMigrations } from "better-auth/db/migration";
 import { auth, authOptions } from "@/lib/auth";
 import { config, modo2fa } from "@/lib/config";
+import { apiTs } from "@/lib/core/api";
+import { avviaDisponibilita } from "@/lib/disponibilita";
 import { archivio } from "@/lib/core/archivio";
 import { preparaCondivisioni } from "@/lib/core/condivisione";
 import { migraLoghi } from "@/lib/core/loghi";
@@ -44,4 +46,6 @@ export async function boot() {
     fatal(e instanceof Error ? e.message : String(e));
   }
   avviaPromemoria();
+  // la pagina pubblica (meet): i blocchi delle prossime settimane si rileggono in secondo piano, chi la apre non aspetta i calendari
+  avviaDisponibilita({ core: (da, giorni, gruppo) => apiTs.get_disponibilita(da, giorni, gruppo) });
 }

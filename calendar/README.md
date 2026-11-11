@@ -113,7 +113,7 @@ L'agente tiene tutti gli accessi in `stato/tokens.json` (utente 10001, permessi 
 
 Verifica dell'agente, dal server:
 ```bash
-curl -s -H "Authorization: Bearer $(sudo docker exec oe-copilot-agent printenv API_KEY)" \
+curl -s -H "Authorization: Bearer $(sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' oe-copilot-agent | sed -n 's/^API_KEY=//p')" \
   http://127.0.0.1:3180/api/calendari | python3 -m json.tool | head
 ```
 
@@ -305,7 +305,7 @@ L'agente ascolta solo su `127.0.0.1:3180` del server e sulla rete di Docker. Dal
 2. **Tunnel**, lasciato aperto: `ssh -N -L 13180:127.0.0.1:3180 oecopilot`.
 3. **Chiamata**, con la chiave letta dall'ambiente dell'agente e mai stampata:
    ```bash
-   CHIAVE=$(ssh oecopilot "docker exec oe-copilot-agent printenv API_KEY")
+   CHIAVE=$(ssh oecopilot "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' oe-copilot-agent | sed -n 's/^API_KEY=//p'")
    curl -s -H "Authorization: Bearer $CHIAVE" http://127.0.0.1:13180/api/calendari
    ```
 
@@ -346,7 +346,7 @@ Il rilevatore che leggeva i log del telefono è stato tolto con il telefono (PR 
 | *Il server dei calendari non risponde* | `docker logs oe-copilot-agent` e `docker logs oe-copilot-gateway` | Il suggerimento del pallino giallo o rosso dice cosa è fermo |
 | Un calendario nuovo non compare | La chiamata all'agente di 4.5, su `/api/calendari` | finestra *Account*, freccia in alto a sinistra (rilegge le caselle); per una casella di `agent/fonti.json` il calendario in `calendari`, poi `sudo docker compose restart agent` |
 | La Action dice *il servizio oe-copilot-caddy non serve il sito* | `docker logs --tail 40 oe-copilot-caddy` e `docker inspect -f '{{.RestartCount}}' oe-copilot-caddy` | `docker compose up -d --force-recreate --no-deps caddy-ui`, o il Caddyfile di prima (4.6) |
-| Un link di condivisione risponde 503 | `docker logs oe-copilot-gateway 2>&1 \| grep condivisione` e `curl -s -H "Authorization: Bearer $(sudo docker exec oe-copilot-agent printenv API_KEY)" http://127.0.0.1:3180/api/salute` | Casella in `errore`: lo dice il suo pallino. Più di 5000 eventi: meno giorni nel link |
+| Un link di condivisione risponde 503 | `docker logs oe-copilot-gateway 2>&1 \| grep condivisione` e `curl -s -H "Authorization: Bearer $(sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' oe-copilot-agent \| sed -n 's/^API_KEY=//p')" http://127.0.0.1:3180/api/salute` | Casella in `errore`: lo dice il suo pallino. Più di 5000 eventi: meno giorni nel link |
 | *Non riesco a salvare il logo sul server* | `ls -ld /opt/oe-copilot/ui-dati/logos` | `sudo chown 10001:10001 /opt/oe-copilot/ui-dati/logos` |
 | Un passo dell'aggiornamento è rosso | Lo stderr del passo *Ricostruisci e riavvia*, `cat /opt/oe-copilot/.versione` e `docker ps --filter name=oe-copilot- --format '{{.Names}}: {{.Status}}'` | Guasto nell'agente: lo script è già tornato indietro. In gateway o Caddy no (4.6) |
 

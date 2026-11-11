@@ -56,6 +56,7 @@ pub struct Contesto {
     pub zona: String,
     pub adesso: Adesso,
     pub registro: Registro,
+    pub tokens: Option<Rc<crate::diretto::GestoreToken>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -715,62 +716,75 @@ impl CalendarioAndroid {
 /// Una casella da leggere: dal telefono, o (dopo un accesso) direttamente dal fornitore.
 pub enum Fonte {
     Android(CalendarioAndroid),
+    Diretto(crate::diretto::CalendarioDiretto),
 }
 
 impl Fonte {
     pub fn id(&self) -> &str {
         match self {
             Fonte::Android(f) => &f.id,
+            Fonte::Diretto(f) => &f.id,
         }
     }
 
     pub fn nome(&self) -> &str {
         match self {
             Fonte::Android(f) => &f.nome,
+            Fonte::Diretto(f) => &f.nome,
         }
     }
 
     pub fn account(&self) -> &str {
         match self {
             Fonte::Android(f) => &f.account,
+            Fonte::Diretto(f) => &f.account,
         }
     }
 
     pub fn tipo(&self) -> Option<String> {
         match self {
             Fonte::Android(f) => f.tipo(),
+            Fonte::Diretto(f) => f.tipo(),
         }
     }
 
     pub fn stato(&self) -> Stato {
         match self {
             Fonte::Android(f) => f.stato(),
+            Fonte::Diretto(f) => f.stato(),
         }
     }
 
     pub fn descrizione(&self) -> Json {
         match self {
             Fonte::Android(f) => f.descrizione(),
+            Fonte::Diretto(f) => f.descrizione(),
         }
     }
 
     pub fn diretta(&self) -> bool {
-        false
+        matches!(self, Fonte::Diretto(_))
     }
 
     pub async fn riepilogo(&self) -> Esito<Json> {
         match self {
             Fonte::Android(f) => f.riepilogo().await,
+            Fonte::Diretto(f) => f.riepilogo().await,
         }
     }
 
     pub async fn eventi(&self, inizio: DateTime, fine: DateTime) -> Esito<(Vec<Json>, Vec<String>)> {
         match self {
             Fonte::Android(f) => f.eventi(inizio, fine).await,
+            Fonte::Diretto(f) => f.eventi(inizio, fine).await,
         }
     }
 
-    pub fn svuota_cache(&self) {}
+    pub fn svuota_cache(&self) {
+        if let Fonte::Diretto(f) = self {
+            f.svuota_cache();
+        }
+    }
 }
 
 #[cfg(test)]

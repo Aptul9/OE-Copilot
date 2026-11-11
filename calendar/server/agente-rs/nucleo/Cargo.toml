@@ -1,0 +1,11 @@
+[package]
+name = "oe-nucleo"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+indexmap.workspace = true
+jiff.workspace = true
+regex.workspace = true
+ryu-js.workspace = true

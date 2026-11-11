@@ -1,0 +1,43 @@
+[package]
+name = "oe-gateway"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "gateway"
+path = "src/main.rs"
+
+[features]
+# Le prove raggiungono server su 127.0.0.1 (rete_sicura::SoloProve): senza questa funzione il codice che lo permette non c'è nel binario.
+prove = []
+
+[dependencies]
+oe-nucleo.workspace = true
+oe-http.workspace = true
+indexmap.workspace = true
+jiff.workspace = true
+regex.workspace = true
+tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal", "sync", "fs"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-webpki-roots"] }
+hyper = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+url = "2"
+form_urlencoded = "1"
+base64 = "0.22"
+getrandom = "0.3"
+sha1 = { version = "0.10", features = ["oid"] }
+sha2 = { version = "0.10", features = ["oid"] }
+hmac = "0.12"
+hkdf = "0.12"
+scrypt = { version = "0.11", default-features = false }
+chacha20poly1305 = "0.10"
+aes-gcm = "0.10"
+p256 = { version = "0.13", features = ["ecdsa", "ecdh"] }
+p384 = { version = "0.13", features = ["ecdsa"] }
+p521 = { version = "0.13", features = ["ecdsa"] }
+ed25519-dalek = "2"
+rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
+unicode-normalization = "0.1"
+encoding_rs = "0.8"

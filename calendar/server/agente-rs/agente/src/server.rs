@@ -1361,7 +1361,7 @@ impl Agente {
     }
 }
 
-impl Gestore for Rc<Agente> {
+impl Gestore for Agente {
     async fn gestisci(&self, r: &mut Richiesta<'_>) -> http::Esito {
         let esito = match r.metodo.as_str() {
             "GET" => self.get(r).await,

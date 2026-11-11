@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["nucleo", "rete", "agente"]
+members = ["nucleo", "rete", "http", "agente", "gateway"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +10,7 @@ publish = false
 [workspace.dependencies]
 oe-nucleo = { path = "nucleo" }
 oe-rete = { path = "rete" }
+oe-http = { path = "http" }
 indexmap = "2"
 jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bundle-always"] }
 regex = "1"

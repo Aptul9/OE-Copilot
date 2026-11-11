@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 oe-nucleo.workspace = true
 oe-rete.workspace = true
+oe-http.workspace = true
 indexmap.workspace = true
 jiff.workspace = true
 tokio = { workspace = true, features = ["rt", "net", "io-util", "time", "macros", "signal", "sync"] }

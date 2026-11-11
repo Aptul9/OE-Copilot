@@ -1125,6 +1125,7 @@ dependencies = [
  "hyper",
  "indexmap",
  "jiff",
+ "oe-gateway",
  "oe-http",
  "oe-nucleo",
  "p256",

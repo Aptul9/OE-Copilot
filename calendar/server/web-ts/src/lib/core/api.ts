@@ -21,6 +21,7 @@ import {
   rinominaNeiGruppi,
 } from "./stato";
 import { personalizzazione } from "./personalizzazione";
+import { dimenticaDisponibilita } from "../disponibilita";
 import { aggiornaEtichette, etichetteAccount, indirizziElenco, mandaEtichette } from "./etichette";
 
 // I metodi di app.Api che il servizio Python ui esponeva alla pagina, scritti qui (era app.py, fino al commit 142e789): la lettura e la
@@ -567,8 +568,19 @@ export type NomeMetodoTs = keyof typeof apiTs;
 /** I metodi che il gateway serve da sé. */
 export const METODI_TS: ReadonlySet<string> = new Set(Object.keys(apiTs));
 
+/** I metodi che cambiano gli orari occupati della pagina pubblica: eventi personali, calendari accesi, gruppi, caselle. */
+export const CAMBIANO_DISPONIBILITA: ReadonlySet<string> = new Set([
+  "add_local_event", "delete_local_event", "elimina_evento", "ripristina_evento", "save_config", "set_calendar_enabled", "set_account_enabled",
+  "set_azienda_enabled", "mostra_solo_azienda", "mostra_solo_gruppo", "set_account_alias", "add_ics_calendar", "remove_ics_calendar", "rimuovi_casella",
+]);
+
 /** Chiama un metodo con gli argomenti della richiesta (la lista JSON). */
 export async function chiama(metodo: NomeMetodoTs, args: unknown[]): Promise<unknown> {
   const f = apiTs[metodo] as (...a: unknown[]) => Promise<unknown>;
-  return f(...args);
+  try {
+    return await f(...args);
+  } finally {
+    // la pagina pubblica tiene i blocchi pronti per ore: dopo un cambio li rilegge, così un evento che blocca il tempo si vede subito
+    if (CAMBIANO_DISPONIBILITA.has(metodo)) dimenticaDisponibilita();
+  }
 }

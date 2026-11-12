@@ -336,6 +336,15 @@ fn disponibilita_e_prenotazione_pubbliche() {
         // e la disponibilità pubblica lo mostra occupato
         let vista = get(&u(&format!("da={giorno}&a={}", oe_gateway::disponibilita::sposta_data(&giorno, 1)))).await;
         assert!(vista.testo.contains(&format!("\"start\":\"{giorno}T10:00:00\"")), "{}", vista.testo);
+        // un evento personale che blocca il tempo si vede subito, anche con il blocco già in memoria
+        let domani = oe_gateway::disponibilita::sposta_data(&giorno, 1);
+        let prima = get(&u(&format!("da={domani}&a={}", oe_gateway::disponibilita::sposta_data(&domani, 1)))).await;
+        assert!(!prima.testo.contains(&format!("\"start\":\"{domani}T00:00:00\"")), "{}", prima.testo);
+        let c = accedi(&p.base).await;
+        let e = api(&p.base, &c, "add_local_event", &Json::Arr(vec![ogg! { "title": "Trasloco", "start": domani.clone(), "end": oe_gateway::disponibilita::sposta_data(&domani, 1), "allDay": true, "blocca": true }])).await;
+        assert_eq!(e.json()["ok"].as_bool(), Some(true), "{}", e.testo);
+        let dopo = get(&u(&format!("da={domani}&a={}", oe_gateway::disponibilita::sposta_data(&domani, 1)))).await;
+        assert!(dopo.testo.contains(&format!("\"start\":\"{domani}T00:00:00\"")), "{}", dopo.testo);
     });
 }
 

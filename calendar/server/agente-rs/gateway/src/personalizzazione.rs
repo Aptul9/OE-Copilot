@@ -88,6 +88,13 @@ fn classi_js(src: &str) -> String {
                     c.next();
                 }
             }
+            // le asserzioni vuote, che il crate regex non conosce: (?!) non trova mai niente (la personalizzazione la usa per le aziende
+            // inoltrate senza prefisso), (?=) trova sempre
+            '(' if !in_classe && matches!(c.clone().take(3).collect::<String>().as_str(), "?!)" | "?=)") => {
+                let mai = c.nth(1) == Some('!');
+                c.next();
+                out.push_str(if mai { r"\b\B" } else { "" });
+            }
             ']' if in_classe => {
                 in_classe = false;
                 out.push(']');
@@ -237,5 +244,18 @@ mod prove {
         assert!(regex_di_python(r"\d").unwrap().find("٣").is_none());
         assert!(regex_di_python("(non chiusa").is_err());
         assert!(regex_di_python(r"(?i)[\s:]+").unwrap().find("\u{feff}:").is_some());
+    }
+
+    #[test]
+    fn le_asserzioni_vuote_come_javascript() {
+        // il prefisso delle aziende inoltrate in produzione: non trova mai niente, e l'azienda resta
+        let mai = regex_di_python("(?!)").unwrap();
+        assert!(["", "MSC: riunione", "x"].iter().all(|t| mai.find(t).is_none()));
+        assert_eq!(regex_di_python("(?=)a").unwrap().find("abc").map(|m| m.end()), Some(1));
+        // dentro una classe o con la parentesi protetta sono caratteri
+        assert!(regex_di_python(r"[(?!)]").unwrap().find("!").is_some());
+        assert!(regex_di_python(r"\(?!\)").unwrap().find("(!)").is_some());
+        let p = derivate(&Json::analizza(r##"{"aziende_inoltrate":{"MSC":{"via":"a@b.it","prefisso":"(?!)","colore":"#123456"}}}"##).unwrap().as_obj().unwrap().clone());
+        assert_eq!(p.aziende_inoltrate.keys().collect::<Vec<_>>(), ["MSC"]);
     }
 }

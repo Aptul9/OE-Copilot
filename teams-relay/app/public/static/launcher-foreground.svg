@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<!-- Master of mobile/src-tauri/icons/android/mipmap-*/ic_launcher_foreground.png: icon.svg with the logo inside the circle an Android launcher keeps of an adaptive icon (72 of 108 dp). From mobile/: npx tauri icon ../app/public/static/launcher-foreground.svg -p 108,162,216,324,432 -o out, then 108x108.png to mipmap-mdpi, 162 hdpi, 216 xhdpi, 324 xxhdpi, 432 xxxhdpi -->
+  <defs>
+    <linearGradient id="lhG" gradientUnits="userSpaceOnUse" x1="160" y1="134" x2="286" y2="260">
+      <stop offset="0" stop-color="#7F92FD"/><stop offset="1" stop-color="#5850DE"/>
+    </linearGradient>
+    <linearGradient id="rhG" gradientUnits="userSpaceOnUse" x1="483" y1="134" x2="609" y2="260">
+      <stop offset="0" stop-color="#957AF8"/><stop offset="1" stop-color="#5F48D6"/>
+    </linearGradient>
+    <linearGradient id="lbG" gradientUnits="userSpaceOnUse" x1="94" y1="293" x2="390" y2="546">
+      <stop offset="0" stop-color="#80A2FF"/><stop offset="0.5" stop-color="#6A72F7"/><stop offset="1" stop-color="#5052DD"/>
+    </linearGradient>
+    <linearGradient id="rbG" gradientUnits="userSpaceOnUse" x1="374" y1="293" x2="678" y2="546">
+      <stop offset="0" stop-color="#7652DF"/><stop offset="0.5" stop-color="#7D57E5"/><stop offset="1" stop-color="#5340CC"/>
+    </linearGradient>
+    <linearGradient id="arG" gradientUnits="userSpaceOnUse" x1="210" y1="0" x2="530" y2="0">
+      <stop offset="0" stop-color="#C3D2FF"/><stop offset="0.3" stop-color="#E0E7FF"/>
+      <stop offset="0.7" stop-color="#F6F7FF"/><stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <clipPath id="lb"><rect x="94" y="293" width="296" height="253" rx="80"/></clipPath>
+    <clipPath id="ar"><path d="M207 546 C232 472 294 397 372 397 H484 V475 H362 C328 475 290 505 276 546 Z"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <g transform="translate(66.47 90.53) scale(0.49100)">
+    <circle cx="223" cy="197" r="74" fill="url(#lhG)"/>
+    <circle cx="546" cy="197" r="74" fill="url(#rhG)"/>
+    <rect x="94" y="293" width="296" height="253" rx="80" fill="url(#lbG)"/>
+    <path d="M374 546 V378 A85 85 0 0 1 459 293 H588 A90 90 0 0 1 678 383 V466 A80 80 0 0 1 598 546 Z" fill="url(#rbG)"/>
+    <path d="M190 546 C210 450 282 368 384 368" fill="none" stroke="#FFFFFF" stroke-opacity="0.05" stroke-width="56" clip-path="url(#lb)"/>
+    <path d="M207 546 C232 472 294 397 372 397 H484 V475 H362 C328 475 290 505 276 546 Z" fill="url(#arG)"/>
+    <path d="M216 546 C241 474 300 406 372 406" fill="none" stroke="#E2EAFF" stroke-width="6" clip-path="url(#ar)"/>
+    <path d="M484 357 Q484 341 497 351 L590 424 Q602 434 590 444 L497 517 Q484 527 484 511 Z" fill="#FFFFFF"/>
+  </g>
+</svg>

@@ -39,13 +39,18 @@ jobs:
           cargo test --manifest-path core/Cargo.toml
 
       # the runner image carries the Android SDK and NDK; Tauri reads the NDK from NDK_HOME. The launcher icons go
-      # into the Android project only once it exists, so they are made again after init.
+      # into the Android project only once it exists, so they are made again after init. The launcher keeps only the
+      # central circle of the adaptive icon: its foreground comes from launcher-foreground.svg, the logo inside that circle.
       - name: Android project
         run: |
           echo "NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
           rustup target add aarch64-linux-android
           NDK_HOME="$ANDROID_NDK_HOME" npx tauri android init --ci --skip-targets-install
           npx tauri icon ../app/public/static/icon-512.png
+          npx tauri icon ../app/public/static/launcher-foreground.svg -p 108,162,216,324,432 -o "$RUNNER_TEMP/fg"
+          for d in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
+            cp "$RUNNER_TEMP/fg/${d#*:}x${d#*:}.png" "src-tauri/gen/android/app/src/main/res/mipmap-${d%:*}/ic_launcher_foreground.png"
+          done
 
       # Firebase settings of the app, from the repository secret GOOGLE_SERVICES_JSON (the google-services.json of the
       # Firebase console): string resources of the push plugin. Without the secret the APK receives no notifications.

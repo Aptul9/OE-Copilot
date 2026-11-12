@@ -12,6 +12,7 @@ import { createHash, randomUUID, webcrypto } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import vm from "node:vm";
 import { decodeIncomingPayload, loadTrouterBundle } from "./trouter-offline-probe.mjs";
 import { callingRoutes, incomingPeerMatches, permittedCallingRequest, registrarSucceeded, registrationWrites, reserveRegistration, trouterSettings } from "./trouter-live-probe.mjs";
@@ -118,16 +119,22 @@ async function connectAudioHub() {
 let micTimer = null;
 let micSample = 0;
 let micFrames = 0;
+let micSkipped = 0;
+let loopDelay = null;
+// A stall of this host up to this long is made up for: the microphone queued meanwhile goes out at once and the far
+// end's jitter buffer absorbs it. Skipping it cut the words spoken during every stall.
+const CATCH_UP_FRAMES = 40;
 function startTone() {
   if (micTimer) return;
   const frame = new Int16Array(480);
   // wall-clock pacing: send every 10 ms frame that elapsed time says is due (Node intervals drift late)
   const startedAt = performance.now();
-  micFrames = 0;
+  micFrames = 0; micSkipped = 0;
+  loopDelay = monitorEventLoopDelay({ resolution: 10 });
+  loopDelay.enable();
   micTimer = setInterval(() => {
     const due = Math.floor((performance.now() - startedAt) / 10);
-    // Never replay a stalled event loop as a burst of stale audio.
-    if (due - micFrames > 5) micFrames = due - 5;
+    if (due - micFrames > CATCH_UP_FRAMES) { micSkipped += due - CATCH_UP_FRAMES - micFrames; micFrames = due - CATCH_UP_FRAMES; }
     while (micFrames < due) feedOne();
   }, 5);
   function feedOne() {
@@ -138,7 +145,17 @@ function startTone() {
     for (const [out, track] of micOutputs) out.onData({ samples: track.enabled ? frame : SILENCE, sampleRate: 48000, bitsPerSample: 16, channelCount: 1, numberOfFrames: 480 });
   }
 }
-function stopTone() { if (micTimer) clearInterval(micTimer); micTimer = null; }
+function stopTone() { if (micTimer) clearInterval(micTimer); micTimer = null; loopDelay?.disable(); }
+// how the sound of the call that just ended went, for the log of the light host
+function callAudioSummary() {
+  const s = hubBridge?.stats;
+  const ms = (ns) => Math.round(ns / 1e6);
+  return {
+    upPackets: s?.up ?? 0, downPackets: s?.down ?? 0, underruns: s?.underruns ?? 0, targetMs: hubBridge ? Math.round(hubBridge.target / 48) : 0, maxTargetMs: s ? Math.round(s.maxTarget / 48) : 0,
+    quietDroppedMs: s ? Math.round(s.quietSamples / 48) : 0, droppedMs: s ? Math.round(s.droppedSamples / 48) : 0, micSkippedMs: micSkipped * 10,
+    loopP99Ms: loopDelay ? ms(loopDelay.percentile(99)) : 0, loopMaxMs: loopDelay ? ms(loopDelay.max) : 0,
+  };
+}
 // the stack matches a capture track to the selected device by getSettings().deviceId; the native prototype member is
 // read-only, so the track gets its own property
 const settingsOf = (track) => () => ({ deviceId: "default", groupId: "teamsrelay", sampleRate: 48000, channelCount: 1, echoCancellation: false, autoGainControl: false, noiseSuppression: false, kind: track.kind });
@@ -540,7 +557,7 @@ async function main() {
         if (current) {
           wasConnected ||= current.state === 3;
           emit({ call: { caller, since: sinceCall, seen: Date.now(), ringing: current.state === 1, active: [2, 3].includes(current.state), ended: current.state === 7, answered: wasConnected, muted: !!current.isMuted } });
-          if (current.state === 7 || (!c && previous !== -1)) { stopTone(); hubBridge?.close(); hubSocket?.close(); hubBridge = null; current = null; gatedCallSeen = false; ownedIncomingId = null; }
+          if (current.state === 7 || (!c && previous !== -1)) { stopTone(); if (hubBridge) emit({ callAudio: callAudioSummary() }); hubBridge?.close(); hubSocket?.close(); hubBridge = null; current = null; gatedCallSeen = false; ownedIncomingId = null; }
           else previous = current.state;
         }
       }, 500);

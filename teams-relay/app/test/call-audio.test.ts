@@ -152,7 +152,12 @@ describe("call audio in Chrome", () => {
 
     await until(async () => (await page.evaluate(() => (window as unknown as Win).states.at(-1)?.link)) === "live", "live");
     await sleep(1_000);
-    const peak = await page.evaluate(() => (window as unknown as Win).peak());
+    // the routed stream reaches a loaded page in bursts: at one instant the player may be refilling, so the tone is
+    // looked for over a few seconds rather than in one sample
+    const peak = await until(async () => {
+      const p = await page.evaluate(() => (window as unknown as Win).peak());
+      return Math.abs(p - TONE_DOWN) <= 25 ? p : 0;
+    }, "the tone played", 5_000);
     expect(Math.abs(peak - TONE_DOWN)).toBeLessThanOrEqual(25);
     expect(texts().filter((t) => t.startsWith("START_VIDEO"))).toEqual([]);
     expect(micFrames()).toEqual([]);

@@ -3,6 +3,7 @@
 
 import { execFile } from "node:child_process";
 import { backendUrl } from "./url.ts";
+import { hostRequest, parseHostReply } from "./oe-host.ts";
 
 export const OUTLOOK_REST = "https://outlook.office.com/api/v2.0";
 const MARGIN_S = 120;
@@ -116,8 +117,8 @@ export function httpLoader(url: string, key: string): Loader {
 }
 
 /**
- * Over SSH to the OE Copilot host: the request runs inside the agent container with its own API_KEY, so the key never leaves the host.
- * Arguments go to ssh as a list (no local shell); the script travels on stdin.
+ * Over SSH to the OE Copilot host: the request runs on the host against the agent port on its loopback (oe-host.ts), with the agent
+ * API_KEY, which never leaves the host. Arguments go to ssh as a list (no local shell).
  */
 export function sshLoader(
   host: string,
@@ -134,39 +135,29 @@ export function sshLoader(
     container.startsWith("-")
   )
     throw new TokenError("Invalid SSH host, container or port");
-  const script = `const r=await fetch("http://127.0.0.1:${port}/api/token-posta",{headers:{Authorization:"Bearer "+process.env.API_KEY}});if(!r.ok){console.error("HTTP "+r.status);process.exit(2)}process.stdout.write(await r.text())`;
+  const command = hostRequest(container, port, "/api/token-posta");
   return () =>
     new Promise((resolve, reject) => {
-      const child = execFile(
+      execFile(
         "ssh",
-        [
-          "-o",
-          "BatchMode=yes",
-          "-o",
-          "ConnectTimeout=10",
-          host,
-          "docker",
-          "exec",
-          "-i",
-          container,
-          "node",
-          "--input-type=module",
-          "-",
-        ],
-        { timeout: 45_000, maxBuffer: 4_000_000, windowsHide: true },
+        ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, command],
+        { timeout: 45_000, maxBuffer: 6_000_000, windowsHide: true },
         (err, stdout) => {
           if (err)
             return reject(
               new TokenError(`Token broker over SSH failed (${host})`),
             );
+          const reply = parseHostReply(stdout);
+          if (!reply) return reject(new TokenError("Token broker answer is not JSON"));
+          if (reply.status !== 200)
+            return reject(new TokenError(`Token broker answered HTTP ${reply.status}`));
           try {
-            resolve(JSON.parse(stdout));
+            resolve(JSON.parse(reply.body));
           } catch {
             reject(new TokenError("Token broker answer is not JSON"));
           }
         },
       );
-      child.stdin?.end(script);
     });
 }
 
@@ -181,7 +172,7 @@ export function loaderFromEnv(env: NodeJS.ProcessEnv = process.env): Loader {
   return sshLoader(
     env.OUTLOOK_MCP_SSH_HOST || "oecopilot-vm",
     env.OUTLOOK_MCP_AGENT_CONTAINER || "oe-copilot-agent",
-    Number(env.OUTLOOK_MCP_AGENT_PORT || 8180),
+    Number(env.OUTLOOK_MCP_AGENT_PORT || 3180),
   );
 }
 

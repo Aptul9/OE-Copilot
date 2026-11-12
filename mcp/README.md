@@ -82,9 +82,9 @@ npm run start:stdio
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OUTLOOK_MCP_SSH_HOST` | `oecopilot-vm` | SSH host of OE Copilot; the request runs inside the agent container with its own `API_KEY`, which never leaves the host |
-| `OUTLOOK_MCP_AGENT_CONTAINER` | `oe-copilot-agent` | Agent container |
-| `OUTLOOK_MCP_AGENT_PORT` | `8180` | Agent port inside the container |
+| `OUTLOOK_MCP_SSH_HOST` | `oecopilot-vm` | SSH host of OE Copilot; `bash` and `curl` on that host call the agent with its `API_KEY` (read by `docker inspect`), which never leaves the host. The agent image has no shell or node, so nothing runs inside the container; the SSH user needs Docker access |
+| `OUTLOOK_MCP_AGENT_CONTAINER` | `oe-copilot-agent` | Agent container, only to read its `API_KEY` |
+| `OUTLOOK_MCP_AGENT_PORT` | `3180` | Agent port published on the host loopback (`127.0.0.1:3180:8180` in the calendar compose file) |
 | `OUTLOOK_MCP_BROKER_URL` | | Direct HTTP instead of SSH: https, or http on localhost or a container name |
 | `OUTLOOK_MCP_BROKER_KEY` | | Agent `API_KEY`, required with `OUTLOOK_MCP_BROKER_URL` |
 

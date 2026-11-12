@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { Outlook, ApiError, type Obj } from "./api.ts";
 import { Tokens, selectAccount, type Account } from "./tokens.ts";
 import { backendUrl } from "./url.ts";
+import { hostRequest, NAME, parseHostReply } from "./oe-host.ts";
 const ENDPOINTS = [
   "/api/communication/accounts",
   "/api/communication/read",
@@ -51,14 +52,15 @@ export function httpGateway(
   };
 }
 
+/** Over SSH to the OE Copilot host: the request runs on the host (oe-host.ts), with the agent key that never leaves it. */
 export function sshGateway(
   host: string,
   container = "oe-copilot-agent",
-  port = 8180,
+  port = 3180,
 ): GatewayCall {
   if (
     !/^[A-Za-z0-9_][\w.@-]*$/.test(host) ||
-    !/^[A-Za-z0-9_][\w.-]*$/.test(container) ||
+    !NAME.test(container) ||
     !Number.isInteger(port) ||
     port < 1 ||
     port > 65535
@@ -68,48 +70,32 @@ export function sshGateway(
     new Promise((resolve, reject) => {
       if (!ENDPOINTS.includes(p))
         return reject(new ApiError("Unknown communication endpoint"));
-      const input = JSON.stringify({ path: p, body });
-      const script = `let s='';for await(const c of process.stdin)s+=c;const i=JSON.parse(s);const r=await fetch('http://127.0.0.1:${port}'+i.path,{method:i.body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+process.env.API_KEY,'Content-Type':'application/json'},body:i.body===undefined?undefined:JSON.stringify(i.body),redirect:'error',signal:AbortSignal.timeout(30000)});process.stdout.write(JSON.stringify({status:r.status,body:await r.text()}));`;
-      // Script is encoded, so the remote shell never interprets request data or credentials.
-      const encoded = Buffer.from(script).toString("base64");
-      const command = `node --input-type=module -e "await import('data:text/javascript;base64,${encoded}')"`;
-      const child = execFile(
+      execFile(
         "ssh",
-        [
-          "-o",
-          "BatchMode=yes",
-          "-o",
-          "ConnectTimeout=10",
-          host,
-          `docker exec -i ${container} ${command}`,
-        ],
-        { timeout: 45_000, maxBuffer: 9_000_000, windowsHide: true },
+        ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, hostRequest(container, port, p, body)],
+        { timeout: 45_000, maxBuffer: 13_000_000, windowsHide: true },
         (err, stdout) => {
           if (err)
             return reject(
               new ApiError("Communication service SSH request failed"),
             );
+          const envelope = parseHostReply(stdout);
+          let payload: Obj;
           try {
-            const envelope = JSON.parse(stdout);
-            let body: Obj;
-            try {
-              body = JSON.parse(envelope.body);
-            } catch {
-              throw new ApiError("Communication service returned invalid JSON");
-            }
-            if (envelope.status < 200 || envelope.status >= 300)
-              return reject(
-                new ApiError(
-                  `Communication service HTTP ${envelope.status}: ${String(body.errore ?? "request failed").slice(0, 200)}`,
-                ),
-              );
-            resolve(body);
+            if (!envelope) throw new Error("shape");
+            payload = JSON.parse(envelope.body);
           } catch {
-            reject(new ApiError("Communication service returned invalid JSON"));
+            return reject(new ApiError("Communication service returned invalid JSON"));
           }
+          if (envelope.status < 200 || envelope.status >= 300)
+            return reject(
+              new ApiError(
+                `Communication service HTTP ${envelope.status}: ${String(payload.errore ?? "request failed").slice(0, 200)}`,
+              ),
+            );
+          resolve(payload);
         },
       );
-      child.stdin?.end(input);
     });
 }
 

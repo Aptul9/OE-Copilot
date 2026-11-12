@@ -222,8 +222,23 @@ fn estremo(v: Option<&Json>) -> Result<String, String> {
     }
 }
 
+/// I metodi che cambiano gli orari occupati della pagina pubblica: eventi personali, calendari accesi, gruppi, caselle.
+pub const CAMBIANO_DISPONIBILITA: [&str; 14] = [
+    "add_local_event", "delete_local_event", "elimina_evento", "ripristina_evento", "save_config", "set_calendar_enabled", "set_account_enabled",
+    "set_azienda_enabled", "mostra_solo_azienda", "mostra_solo_gruppo", "set_account_alias", "add_ics_calendar", "remove_ics_calendar", "rimuovi_casella",
+];
+
 /// Chiama un metodo con gli argomenti della richiesta (la lista JSON).
 pub async fn chiama(metodo: &str, args: Vec<Json>) -> Esito<Json> {
+    let esito = esegui(metodo, args).await;
+    // la pagina pubblica tiene i blocchi pronti per ore: dopo un cambio li rilegge, così un evento che blocca il tempo si vede subito
+    if CAMBIANO_DISPONIBILITA.contains(&metodo) {
+        crate::disponibilita::dimentica_disponibilita();
+    }
+    esito
+}
+
+async fn esegui(metodo: &str, args: Vec<Json>) -> Esito<Json> {
     let a = |i: usize| args.get(i);
     match metodo {
         "get_config" => Ok(mappa_di(load_config()?)),

@@ -7,6 +7,7 @@ import { chiaveEliminato, occupato, raccogli } from "@/lib/core/eventi";
 import { azzeraFeed } from "@/lib/core/ics";
 import { fissaOra } from "@/lib/core/orologio";
 import { loadConfig } from "@/lib/core/stato";
+import { azzera as azzeraDisponibilita, leggiBlocco } from "@/lib/disponibilita";
 import { eliminatiRecenti, eliminatoDa, scadeTra } from "@/lib/oe/logic";
 import type { EventoEliminato } from "@/lib/oe/types";
 import { avviaAgenteFinto, CHIAVE_AGENTE, cartellaDati, type AgenteFinto } from "./agente-condivisione";
@@ -44,6 +45,21 @@ afterEach(async () => {
 });
 
 const titoli = async () => (await raccogli(loadConfig(), "2026-10-13T00:00:00", "2026-10-15T00:00:00"))[0].map((e) => e.title);
+
+describe("la disponibilità pubblica dopo un cambio", () => {
+  it("un metodo che cambia gli orari occupati fa rileggere i blocchi tenuti pronti; una lettura no", async () => {
+    azzeraDisponibilita();
+    let letture = 0;
+    const deps = { core: async () => (letture++, { ok: true, impegni: [], festivita: [], completo: true }) };
+    await leggiBlocco("2026-10-12", "", deps);
+    await chiama("get_config", []);
+    await leggiBlocco("2026-10-12", "", deps);
+    expect(letture).toBe(1);
+    await chiama("elimina_evento", [{ title: "Riunione di team", start: "2026-10-13T09:00:00", end: "2026-10-13T10:00:00" }]);
+    await leggiBlocco("2026-10-12", "", deps);
+    expect(letture).toBe(2);
+  });
+});
 
 describe("chiave di un evento eliminato", () => {
   it("l'orario della pagina (istante) e quello del server (ora di Roma) danno la stessa chiave, con o senza FW: davanti", () => {

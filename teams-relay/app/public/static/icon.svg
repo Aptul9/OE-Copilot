@@ -21,7 +21,7 @@
     <clipPath id="ar"><path d="M207 546 C232 472 294 397 372 397 H484 V475 H362 C328 475 290 505 276 546 Z"/></clipPath>
   </defs>
   <rect width="512" height="512" fill="#FFFFFF"/>
-  <g transform="translate(39.84 67.28) scale(0.56)">
+  <g transform="translate(-61.26 -20.99) scale(0.82192)">
     <circle cx="223" cy="197" r="74" fill="url(#lhG)"/>
     <circle cx="546" cy="197" r="74" fill="url(#rhG)"/>
     <rect x="94" y="293" width="296" height="253" rx="80" fill="url(#lbG)"/>

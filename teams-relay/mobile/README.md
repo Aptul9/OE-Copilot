@@ -47,7 +47,7 @@ The app needs a Firebase project of your own, and the server a key of the same p
 | Path | Content |
 |---|---|
 | `start/` | The bundled start page: `index.html`, `start.js`, `relay.js` (address rules), `start.css`, `icon.png` |
-| `src-tauri/` | Tauri project: `tauri.conf.json` (identifier `io.github.aptul9.teamsrelay`, CSP of the start page), `src/lib.rs` (entry point, push plugin), `capabilities/default.json` (the start page may call the plugin), `icons/` (made by `npx tauri icon ../app/public/static/icon-512.png`) |
+| `src-tauri/` | Tauri project: `tauri.conf.json` (identifier `io.github.aptul9.teamsrelay`, CSP of the start page), `src/lib.rs` (entry point, push plugin), `capabilities/default.json` (the start page may call the plugin), `icons/` (made by `npx tauri icon ../app/public/static/icon-512.png`, the Android `ic_launcher_foreground.png` from `launcher-foreground.svg`) |
 | `core/` | Shared Rust of the app, no platform code: `seal.rs` (opens what the server sends), `notice.rs` (what a message shows: calls, chats, alerts), `server.rs` (registration, forget, answer: the requests to the server), `store.rs` (what the app keeps); `cargo test` against a stand-in server |
 | `plugin/` | Tauri plugin `push`: Rust (`src/lib.rs`, commands `relay` and `opened`; `src/android.rs`, the JNI functions through which the Kotlin calls `core`) and the Kotlin of Android (`android/`: Firebase service, channels and drawing of the notifications, the ring screen of a call, the WebView and the intents that start the app, launcher shortcut; `Core.kt` declares the JNI functions) |
 | `scripts/firebase-values.mjs` | `google-services.json` to the string resources of the plugin |
@@ -62,13 +62,15 @@ Requirements, as in the [Tauri prerequisites](https://v2.tauri.app/start/prerequ
 npm ci
 npx tauri android init
 npx tauri icon ../app/public/static/icon-512.png
+npx tauri icon ../app/public/static/launcher-foreground.svg -p 108,162,216,324,432 -o out
+for d in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do cp out/${d#*:}x${d#*:}.png src-tauri/gen/android/app/src/main/res/mipmap-${d%:*}/ic_launcher_foreground.png; done
 node scripts/firebase-values.mjs <path of google-services.json> plugin/android/src/main/res/values/google-services.xml
 cargo test --manifest-path core/Cargo.toml
 npx tauri android build --debug --apk --target aarch64
 adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
 ```
 
-`tauri icon` runs after `android init`: it writes the launcher icons into the Android project only when the project exists, otherwise the APK carries the Tauri default icon. On Windows, Rust has to use the MSVC host toolchain with the Microsoft C++ Build Tools: the GNU toolchain stops on the Windows dependencies of the build scripts (`dlltool` cannot create import libraries without binutils), and `ring` (AES-GCM and TLS of `core`) compiles C with `cl`. A release build needs a signing key, configured in `src-tauri/gen/android` as in the [Tauri signing guide](https://v2.tauri.app/distribute/sign/android/); the key and `keystore.properties` stay out of git.
+`tauri icon` runs after `android init`: it writes the launcher icons into the Android project only when the project exists, otherwise the APK carries the Tauri default icon. The logo of `icon-512.png` runs almost edge to edge, and an Android launcher keeps only the central circle of an adaptive icon's foreground, so the two lines after it replace the foregrounds with `launcher-foreground.svg`, the same logo inside that circle. On Windows, Rust has to use the MSVC host toolchain with the Microsoft C++ Build Tools: the GNU toolchain stops on the Windows dependencies of the build scripts (`dlltool` cannot create import libraries without binutils), and `ring` (AES-GCM and TLS of `core`) compiles C with `cl`. A release build needs a signing key, configured in `src-tauri/gen/android` as in the [Tauri signing guide](https://v2.tauri.app/distribute/sign/android/); the key and `keystore.properties` stay out of git.
 
 The icon in the status bar is a white silhouette of the app icon (`plugin/android/src/main/res/drawable-*/ic_stat_teamsrelay.png`): Android reads only its alpha channel, so a coloured icon shows as a white square. It comes from `../app/public/static/status-icon.svg`, with the command in its comment; the web app's `badge.png` is the same image.
 

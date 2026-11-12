@@ -48,7 +48,7 @@ export class NativeCalls {
     child.on("error", () => { this.child = null; });
     // bound, so the logs and the store writes of a message keep the slot of the light host
     child.on('message', AsyncResource.bind((message: unknown) => {
-      const m = message as { stage?: string; refreshToken?: boolean; command?: number; ok?: boolean; error?: string; call?: { caller: string; since: number; seen: number; ringing: boolean; active: boolean; ended?: boolean; answered?: boolean; muted: boolean } };
+      const m = message as { stage?: string; refreshToken?: boolean; command?: number; ok?: boolean; error?: string; callAudio?: Record<string, number>; call?: { caller: string; since: number; seen: number; ringing: boolean; active: boolean; ended?: boolean; answered?: boolean; muted: boolean } };
       if (m.refreshToken) {
         void (async () => {
           l.token.renewAll();
@@ -64,6 +64,7 @@ export class NativeCalls {
       }
       if (m.stage === 'worker-ready') l.store.setState(STATE.callAudio, '1');
       if (m.error) log.warn('calling', m.error);
+      if (m.callAudio) log.info('calling', 'call audio', m.callAudio);
       if (typeof m.command === 'number') { const p = this.pending.get(m.command); if (p) { clearTimeout(p.timer); this.pending.delete(m.command); p.resolve(!!m.ok); } }
       if (m.call) {
         const c = m.call;

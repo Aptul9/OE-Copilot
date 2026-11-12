@@ -1,23 +1,42 @@
 import { OPUS_RATE } from "./frames";
 
-// The worklet that plays the decoded call: a short queue (about 60 ms before it starts, again after running dry),
-// never more than 300 ms (the oldest dropped), silence while empty. A mono stream plays on both channels.
-const PLAYER = `
+// The worklet that plays the decoded call. The packets come over a websocket, late and in bursts on a jittery link or
+// when the server stalls. Playing starts once 60 ms are queued (again after running dry), and the burst that follows a
+// stall stays queued as the cushion for the next one. Quiet packets are skipped to win the delay back only above a
+// target that grows 60 ms each time the queue runs dry (100 ms to start, at most 400 ms) and eases 20 ms after 20 s
+// without that (at least 60 ms); 500 ms over it, the oldest go. Running dry fades out instead of cutting off. A mono
+// stream plays on both channels.
+export const PLAYER = `
 class CallAudioPlayer extends AudioWorkletProcessor {
   constructor() {
     super();
+    const ms = (n) => Math.round((sampleRate * n) / 1000);
+    this.start = ms(60);
+    this.min = ms(60);
+    this.max = ms(400);
+    this.up = ms(60);
+    this.down = ms(20);
+    this.margin = ms(60);
+    this.excess = ms(500);
+    this.calmFor = ms(20000);
+    this.target = ms(100);
     this.chunks = [];
     this.offset = 0;
     this.queued = 0;
     this.playing = false;
-    this.start = Math.round(sampleRate * 0.06);
-    this.max = Math.round(sampleRate * 0.3);
+    this.resumed = false;
+    this.calm = 0;
+    this.underruns = 0;
+    this.last = [];
+    this.fresh = false;
     this.port.onmessage = (e) => {
-      this.chunks.push(e.data);
+      let peak = 0;
+      for (const v of e.data[0]) peak = Math.max(peak, Math.abs(v));
+      this.chunks.push({ planes: e.data, peak });
       this.queued += e.data[0].length;
-      while (this.queued > this.max && this.chunks.length > 1) {
-        const dropped = this.chunks.shift();
-        this.queued -= dropped[0].length - this.offset;
+      if (this.queued <= this.target + this.excess) return;
+      while (this.chunks.length > 1 && this.queued > this.target) {
+        this.queued -= this.chunks.shift().planes[0].length - this.offset;
         this.offset = 0;
       }
     };
@@ -25,14 +44,20 @@ class CallAudioPlayer extends AudioWorkletProcessor {
   process(inputs, outputs) {
     const out = outputs[0];
     const n = out[0].length;
-    if (!this.playing && this.queued < this.start) {
-      for (const channel of out) channel.fill(0);
-      return true;
+    if (!this.playing) {
+      if (this.queued < this.start) {
+        this.conceal(out, 0);
+        return true;
+      }
+      this.playing = true;
+      this.resumed = true;
     }
-    this.playing = true;
+    while (this.offset === 0 && this.chunks.length > 1 && this.chunks[0].peak < 0.02 && this.queued - this.chunks[0].planes[0].length > this.target + this.margin) {
+      this.queued -= this.chunks.shift().planes[0].length;
+    }
     let done = 0;
     while (done < n && this.chunks.length) {
-      const chunk = this.chunks[0];
+      const chunk = this.chunks[0].planes;
       const take = Math.min(n - done, chunk[0].length - this.offset);
       for (let c = 0; c < out.length; c++) out[c].set(chunk[Math.min(c, chunk.length - 1)].subarray(this.offset, this.offset + take), done);
       done += take;
@@ -43,11 +68,34 @@ class CallAudioPlayer extends AudioWorkletProcessor {
         this.offset = 0;
       }
     }
-    if (done < n) {
-      for (const channel of out) channel.fill(0, done);
-      this.playing = false;
+    if (this.resumed) {
+      for (const channel of out) for (let i = 0; i < done; i++) channel[i] *= i / n;
+      this.resumed = false;
     }
+    if (done < n) {
+      this.playing = false;
+      this.calm = 0;
+      this.underruns++;
+      this.target = Math.min(this.max, this.target + this.up);
+      this.conceal(out, done);
+      return true;
+    }
+    if ((this.calm += n) >= this.calmFor) {
+      this.calm = 0;
+      this.target = Math.max(this.min, this.target - this.down);
+    }
+    if (this.last.length !== out.length || this.last[0].length !== n) this.last = out.map(() => new Float32Array(n));
+    for (let c = 0; c < out.length; c++) this.last[c].set(out[c]);
+    this.fresh = true;
     return true;
+  }
+  // from sample from on: the quantum before once more, fading to silence; silence after it
+  conceal(out, from) {
+    const n = out[0].length;
+    for (let c = 0; c < out.length; c++) {
+      for (let i = from; i < n; i++) out[c][i] = this.fresh && this.last[c] ? (this.last[c][i] * (n - i)) / n : 0;
+    }
+    this.fresh = false;
   }
 }
 registerProcessor("call-audio-player", CallAudioPlayer);
@@ -90,8 +138,8 @@ export class OpusPlayer {
 
   play(packet: Uint8Array) {
     const d = this.decoder;
-    // a decoder falling behind drops packets rather than piling up delay
-    if (!d || d.state !== "configured" || d.decodeQueueSize > 20) return;
+    // A burst after a stall arrives in one go and is the worklet's to absorb; only a decoder seconds behind drops packets.
+    if (!d || d.state !== "configured" || d.decodeQueueSize > 100) return;
     try {
       d.decode(new EncodedAudioChunk({ type: "key", timestamp: this.timestamp, data: packet }));
       this.timestamp += 20_000;

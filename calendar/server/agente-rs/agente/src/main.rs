@@ -3,6 +3,7 @@
 //!   FONTI     /app/fonti.json (le caselle da leggere)               ANDROID_DB  /android-calendario (la cartella di calendar.db, in sola lettura)
 //!   BATTITO   /stato/battito.json (il segno di vita del servizio)   ACCESSI   /stato/accessi.json (lo stato degli accessi dal rilevatore)
 //!   TZ        Europe/Rome                                            GOOGLE_STATE  la cartella di tokens.json (gmail.json, google-web.json)
+//!   ULTIME_LETTURE  ultime-letture.json accanto a tokens.json (l'ultima lettura riuscita di ogni casella)
 
 use oe_agente::diretto::{GestoreToken, OpzioniToken};
 use oe_agente::fonte::{Adesso, Livello, adesso_vero};
@@ -73,6 +74,8 @@ async fn avvia(zona: String, adesso: Adesso, registro: oe_agente::fonte::Registr
         let token_posta = PathBuf::from(env("TOKEN_POSTA", "/stato/token-outlook.json"));
         let trasporto: Rc<dyn Trasporto> = Rc::new(TrasportoReqwest::nuovo().map_err(|e| Errore::Altro(e.to_string()))?);
         let percorso_tokens = PathBuf::from(env("TOKENS", "/stato/tokens.json"));
+        // ULTIME_LETTURE: l'ultima lettura riuscita di ogni casella; senza, accanto a tokens.json
+        let ultime_letture = std::env::var("ULTIME_LETTURE").map(PathBuf::from).unwrap_or_else(|_| percorso_tokens.with_file_name("ultime-letture.json"));
         // GOOGLE_STATE: gmail.json e google-web.json; senza, accanto a tokens.json
         let cartella_google = std::env::var("GOOGLE_STATE").map(PathBuf::from).unwrap_or_else(|_| percorso_tokens.parent().map(Path::to_path_buf).unwrap_or_default());
         let google = Rc::new(GoogleCommunication::nuovo(&cartella_google, trasporto.clone(), None));
@@ -84,9 +87,9 @@ async fn avvia(zona: String, adesso: Adesso, registro: oe_agente::fonte::Registr
         ctx.tokens = Some(tokens.clone());
         // le fonti si leggono prima di controllare la chiave, come in Python: un fonti.json che manca ferma l'avvio con 1
         let fonti = carica_fonti(&PathBuf::from(env("FONTI", "/app/fonti.json")), &cartella_db, &ctx)?;
-        Ok((chiave, porta, accessi, token_posta, fonti, tokens, google))
+        Ok((chiave, porta, accessi, token_posta, fonti, tokens, google, ultime_letture))
     })();
-    let (chiave, porta, accessi, token_posta, fonti, tokens, google) = match preparato {
+    let (chiave, porta, accessi, token_posta, fonti, tokens, google, ultime_letture) = match preparato {
         Ok(x) => x,
         Err(e) => {
             registro(Livello::Error, e.messaggio());
@@ -113,6 +116,7 @@ async fn avvia(zona: String, adesso: Adesso, registro: oe_agente::fonte::Registr
     o.registro = registro.clone();
     o.tokens = Some(tokens);
     o.google = Some(google);
+    o.ultime_letture = Some(ultime_letture);
     let agente = Agente::nuovo(o);
     let ascolto = match TcpListener::bind(("0.0.0.0", porta)).await {
         Ok(a) => a,

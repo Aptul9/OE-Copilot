@@ -13,6 +13,7 @@ use crate::fonte::{Adesso, CalendarioAndroid, Contesto, DB, Fonte, Livello, Regi
 use crate::google_communication::GoogleCommunication;
 use crate::shared_provisioning::{ArchivioCondiviso, attiva_condivisione, identita_da_token, richiesta_condivisione};
 use crate::http::{self, Gestore, Richiesta, Risposta};
+use crate::ultime::{GIORNI_PASSATI, UltimeLetture};
 use indexmap::IndexMap;
 use jiff::Timestamp;
 use jiff::civil::DateTime;
@@ -23,7 +24,7 @@ use oe_nucleo::json::{Json, Mappa};
 use oe_nucleo::ogg;
 use oe_nucleo::pyfmt::{py_bool, py_float, py_repr, py_repr_str, py_strip, py_tipo};
 use oe_nucleo::query::{analizza_target, parse_qs};
-use oe_nucleo::tempo::fuso_iana;
+use oe_nucleo::tempo::{fuso_iana, testo_naive};
 use oe_rete::errori::ErroreAccesso;
 use oe_rete::file::con_suffisso;
 use oe_rete::google_web::ErroreGoogle;
@@ -34,10 +35,14 @@ use oe_rete::shared_labels::{carica_etichette, leggi_etichette, salva_etichette}
 use oe_rete::shared_teams::{RapportoTeams, leggi_rapporto_teams, rapporto_valido};
 use oe_rete::signin::{SignIns, campo, uuid};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
 
 const MAX_CORPO: u64 = 8_000_000;
+/// Quanto si aspetta una casella che ha un'ultima lettura da dare: il gateway smette di aspettare l'agente dopo 25 s.
+const ATTESA_FONTE: Duration = Duration::from_secs(10);
 /// Le risorse dei token che la chiave di TeamsRelay può chiedere: quelle della chat, mai outlook.
 const RISORSE_CHAT: [&str; 4] = ["csa", "ic3", "spaces", "presence"];
 const CACHE_S: f64 = 15.0;
@@ -217,6 +222,8 @@ pub struct OpzioniAgente {
     pub tokens: Option<Rc<GestoreToken>>,
     /// Gmail e Google Chat con le credenziali dell'agente, separati dagli accessi ai calendari.
     pub google: Option<Rc<GoogleCommunication>>,
+    /// L'ultima lettura riuscita di ogni casella (ultime-letture.json): None, una casella che non si legge non dà eventi.
+    pub ultime_letture: Option<PathBuf>,
 }
 
 impl OpzioniAgente {
@@ -236,6 +243,7 @@ impl OpzioniAgente {
             adesso,
             tokens: None,
             google: None,
+            ultime_letture: None,
         }
     }
 }
@@ -254,7 +262,12 @@ pub struct Agente {
     /// Le caselle rimosse dalla pagina: ferme qui, così un nuovo accesso le riprende come fonti.json le descrive (id, calendari).
     ferme: RefCell<Vec<Rc<Fonte>>>,
     comunicazione: Option<GatewayComunicazione>,
+    ultime: Rc<UltimeLetture>,
+    /// Quando sono partite le letture in corso di ogni casella.
+    in_corso: Rc<RefCell<HashMap<String, Vec<tokio::time::Instant>>>>,
 }
+
+type Letta = Esito<(Vec<Json>, Vec<String>)>;
 
 fn accesso(e: ErroreAccesso) -> Errore {
     Errore::Altro(e.to_string())
@@ -422,7 +435,17 @@ impl Agente {
             if rimossa { ferme.push(Rc::new(f)) } else { fonti.push(Rc::new(f)) }
         }
         let comunicazione = o.tokens.clone().map(GatewayComunicazione::nuovo);
-        Rc::new(Agente { o, fonti: RefCell::new(fonti), cache: RefCell::new(IndexMap::new()), rapporto_teams: RefCell::new(None), ferme: RefCell::new(ferme), comunicazione })
+        let ultime = Rc::new(UltimeLetture::nuove(o.ultime_letture.clone()));
+        Rc::new(Agente {
+            o,
+            fonti: RefCell::new(fonti),
+            cache: RefCell::new(IndexMap::new()),
+            rapporto_teams: RefCell::new(None),
+            ferme: RefCell::new(ferme),
+            comunicazione,
+            ultime,
+            in_corso: Rc::new(RefCell::new(HashMap::new())),
+        })
     }
 
     fn adesso_s(&self) -> f64 {
@@ -474,6 +497,47 @@ impl Agente {
         Json::Obj(m)
     }
 
+    fn ora_locale(&self, ms: i64) -> Esito<DateTime> {
+        Ok(Timestamp::from_millisecond(ms).unwrap_or(Timestamp::UNIX_EPOCH).to_zoned(fuso_iana(&self.o.zona)?).datetime())
+    }
+
+    /// Fa partire la lettura di una casella, che finisce anche se nessuno la aspetta più e, se riesce, diventa la sua ultima lettura.
+    /// None se la casella ha dati da dare e una lettura in corso che non promette bene (la casella è in errore, o quella lettura dura già
+    /// più di ATTESA_FONTE): un'altra finirebbe uguale.
+    fn avvia_lettura(&self, fonte: &Rc<Fonte>, inizio: DateTime, fine: DateTime, tieni_da: &str) -> Option<tokio::task::JoinHandle<Letta>> {
+        let (id, adesso, partita) = (fonte.id().to_string(), (self.o.adesso)(), tokio::time::Instant::now());
+        let lenta = match self.in_corso.borrow().get(&id).and_then(|v| v.first()) {
+            Some(prima) => fonte.stato().stato == "errore" || partita.duration_since(*prima) >= ATTESA_FONTE,
+            None => false,
+        };
+        if lenta && self.ultime.eventi(&id, &testo_naive(&inizio), &testo_naive(&fine), adesso).is_some() {
+            return None;
+        }
+        self.in_corso.borrow_mut().entry(id.clone()).or_default().push(partita);
+        let (fonte, ultime, in_corso, orologio, registro) = (fonte.clone(), self.ultime.clone(), self.in_corso.clone(), self.o.adesso.clone(), self.o.registro.clone());
+        let tieni_da = tieni_da.to_string();
+        Some(tokio::task::spawn_local(async move {
+            let letta = fonte.eventi(inizio, fine).await;
+            if let Ok((trovati, errori)) = &letta {
+                if errori.is_empty() {
+                    if let Err(e) = ultime.ricorda(&id, &testo_naive(&inizio), &testo_naive(&fine), trovati, orologio(), &tieni_da) {
+                        registro(Livello::Warning, &format!("{}: ultima lettura non salvata ({})", fonte.nome(), e.messaggio()));
+                    }
+                }
+            }
+            let mut in_corso = in_corso.borrow_mut();
+            if let Some(v) = in_corso.get_mut(&id) {
+                if let Some(i) = v.iter().position(|t| *t == partita) {
+                    v.remove(i);
+                }
+                if v.is_empty() {
+                    in_corso.remove(&id);
+                }
+            }
+            letta
+        }))
+    }
+
     pub async fn raccogli(&self, inizio: DateTime, fine: DateTime) -> Esito<Rc<Json>> {
         let chiave = format!("{}\u{0}{}", iso_naive(&inizio), iso_naive(&fine));
         if let Some(v) = self.cache.borrow().get(&chiave) {
@@ -481,13 +545,39 @@ impl Agente {
                 return Ok(v.risposta.clone());
             }
         }
+        let (da, a) = (testo_naive(&inizio), testo_naive(&fine));
+        let tieni_da = testo_naive(&self.ora_locale((self.o.adesso)() - GIORNI_PASSATI * 86_400_000)?);
+        // tutte le caselle insieme: una che non risponde non fa aspettare le altre, e la risposta arriva prima che il gateway smetta di aspettare
+        let letture: Vec<_> = self.fonti().into_iter().filter(|f| !self.calendario_spento(f)).map(|f| {
+            let h = self.avvia_lettura(&f, inizio, fine, &tieni_da);
+            (f, h)
+        }).collect();
+        let scadenza = tokio::time::Instant::now() + ATTESA_FONTE;
         let mut eventi: Vec<Json> = Vec::new();
         let mut errori: Vec<String> = Vec::new();
-        for fonte in self.fonti() {
-            if self.calendario_spento(&fonte) {
-                continue;
-            }
-            let (trovati, err) = match fonte.eventi(inizio, fine).await {
+        let mut vecchie: HashMap<String, String> = HashMap::new();
+        for (fonte, lettura) in letture {
+            let adesso = (self.o.adesso)();
+            let ultima = || self.ultime.eventi(fonte.id(), &da, &a, adesso);
+            let senza_risposta = || Ok((Vec::new(), vec![format!("{}: nessuna risposta in {} s", fonte.nome(), ATTESA_FONTE.as_secs())]));
+            let letta: Letta = match lettura {
+                None if fonte.stato().stato == "errore" => Ok((Vec::new(), vec![format!("{}: {}", fonte.nome(), testo_js(&fonte.stato().msg))])),
+                None => senza_risposta(),
+                Some(mut h) => {
+                    let finita = match tokio::time::timeout_at(scadenza, &mut h).await {
+                        Ok(x) => Some(x),
+                        Err(_) if ultima().is_some() => None,
+                        // niente di vecchio da dare: si aspetta la lettura, come prima
+                        Err(_) => Some(h.await),
+                    };
+                    match finita {
+                        Some(Ok(x)) => x,
+                        Some(Err(e)) => Err(Errore::Altro(format!("lettura interrotta: {e}"))),
+                        None => senza_risposta(),
+                    }
+                }
+            };
+            let (trovati, err) = match letta {
                 Ok(x) => x,
                 Err(e @ Errore::SenzaRisposta(_)) => return Err(e),
                 Err(e) => {
@@ -496,16 +586,38 @@ impl Agente {
                     (Vec::new(), vec![format!("{}: {}", fonte.nome(), e.messaggio())])
                 }
             };
+            if !err.is_empty() {
+                if let Some((vecchi, letto)) = ultima() {
+                    let t = self.ora_locale(letto)?;
+                    let motivo = err.iter().map(|x| x.strip_prefix(&format!("{}: ", fonte.nome())).unwrap_or(x)).collect::<Vec<_>>().join(" · ");
+                    vecchie.insert(fonte.id().to_string(), format!("{motivo} · dati della lettura del {:02}/{:02} alle {:02}:{:02}", t.day(), t.month(), t.hour(), t.minute()));
+                    eventi.extend(vecchi);
+                    continue;
+                }
+            }
             eventi.extend(trovati);
             errori.extend(err);
         }
-        let ora = Timestamp::from_millisecond((self.o.adesso)()).unwrap_or(Timestamp::UNIX_EPOCH).to_zoned(fuso_iana(&self.o.zona)?).datetime();
+        let ora = self.ora_locale((self.o.adesso)())?;
         let generato = format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", ora.year(), ora.month(), ora.day(), ora.hour(), ora.minute(), ora.second());
+        // una casella che dà la sua ultima lettura è gialla, con l'ora di quella lettura
+        let con_vecchie = |f: &Rc<Fonte>, mut d: Json| {
+            if let (Some(msg), Json::Obj(m)) = (vecchie.get(f.id()), &mut d) {
+                m.insert("stato", "avviso");
+                m.insert("msg", msg.as_str());
+            }
+            d
+        };
+        let mut fonti_stato = Mappa::new();
+        for f in self.fonti() {
+            let s = f.stato();
+            fonti_stato.insert(f.nome(), con_vecchie(&f, ogg! { "stato": s.stato, "msg": s.msg }));
+        }
         let risposta = Rc::new(ogg! {
             "eventi": eventi,
             "errori": errori,
-            "fonti": self.fonti_stato(),
-            "caselle": self.fonti().iter().map(|f| f.descrizione()).collect::<Vec<_>>(),
+            "fonti": fonti_stato,
+            "caselle": self.fonti().iter().map(|f| con_vecchie(f, f.descrizione())).collect::<Vec<_>>(),
             "servizio": self.servizio()?,
             "generato": generato,
         });

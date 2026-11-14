@@ -109,7 +109,8 @@ services:
       # socket of the supervisor; the browser profiles are not mounted here
       - control:/run/teamsrelay
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      # the Rust binary asks itself: its image has no shell and no curl
+      test: ["CMD", "/teamsrelay-web", "--health"]
       interval: 30s
       timeout: 5s
       retries: 3

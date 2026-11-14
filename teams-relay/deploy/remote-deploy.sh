@@ -42,10 +42,17 @@ preflight() {
   fi
 }
 
+# The web app answers inside its container: the Rust binary asks itself (no shell, no curl in its image); the Node image
+# of an earlier release, which a rollback runs with this script, with fetch.
+webapp_answers() {
+  docker compose exec -T webapp /teamsrelay-web --health >/dev/null 2>&1 \
+    || docker compose exec -T webapp node -e "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1
+}
+
 healthy() {
   # the web app answers inside its container, then every running agent works
   for _ in $(seq 1 30); do
-    if docker compose exec -T webapp node -e "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1; then
+    if webapp_answers; then
       # the web app starts the accounts a few seconds after its start
       sleep 25
       agents_ok
@@ -78,8 +85,9 @@ agents_ok() {
       return 1
     fi
     stale=""
+    # read in the browsers container, where the agents write it: the web app's image has no Node
     for n in $(cut -d' ' -f1 <<<"$before"); do
-      docker compose exec -T webapp node -e "const D=require('better-sqlite3');const r=new D('/data/'+process.argv[1]+'/messages.db',{readonly:true,fileMustExist:true}).prepare(\"SELECT v FROM state WHERE k='health'\").get();process.exit(r&&Date.now()/1000-(JSON.parse(r.v).ts||0)<60?0:1)" "$n" >/dev/null 2>&1 || stale="$stale $n"
+      docker compose exec -T browsers node -e "const D=require('/app/node_modules/better-sqlite3');const r=new D('/root/data/'+process.argv[1]+'/messages.db',{readonly:true,fileMustExist:true}).prepare(\"SELECT v FROM state WHERE k='health'\").get();process.exit(r&&Date.now()/1000-(JSON.parse(r.v).ts||0)<60?0:1)" "$n" >/dev/null 2>&1 || stale="$stale $n"
     done
     [ -z "$stale" ] && return 0
   done

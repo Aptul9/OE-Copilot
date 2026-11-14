@@ -1,6 +1,8 @@
 node_modules
 .next
+out
 dist
+webapp-rs/target
 test
 *.tsbuildinfo
 next-env.d.ts

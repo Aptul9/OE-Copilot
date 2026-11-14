@@ -7,7 +7,7 @@ use super::notify::{CALL_TTL, Field, PUSH_TTL, RecentPushes, call_tag, chat_tag,
 use super::seal::seal_for;
 use super::vapid::VapidKeys;
 use super::webpush::{Options, SendError, send_notification};
-use super::{Audience, Devices, PushDevices, PushTarget, device_side, is_phone};
+use super::{Audience, PushDevices, PushTarget, device_side, is_phone};
 use crate::state::{self, Identity};
 use futures_util::future::{LocalBoxFuture, join_all};
 use rusqlite::{Connection, OptionalExtension};
@@ -29,7 +29,8 @@ const APPLE_PUSH: &str = "https://web.push.apple.com/";
 pub struct NotifierOptions {
     /// data/N/messages.db of the slot (history of the notified messages, known chats, identity)
     pub store_file: PathBuf,
-    pub devices: Devices,
+    /// AppStore of the web app (Devices), or the app.db reader of a light agent
+    pub devices: Box<dyn PushDevices>,
     pub vapid: Option<VapidKeys>,
     pub subject: String,
     /// url and topic
@@ -90,14 +91,14 @@ impl Notifier {
             Box::pin(async move { send_notification(&web, &sub, &payload, &options).await })
         });
         let later: Later = Rc::new(|ms, run| {
-            tokio::task::spawn_local(async move {
+            tokio::task::spawn_local(super::notify::keep_slot(async move {
                 tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
                 run.await;
-            });
+            }));
         });
         let fcm = o.fcm.map(|f| Rc::new(f) as Rc<dyn FcmSend>);
         let hooks = Hooks { send, http, later, clock: Rc::new(crate::web::now_ms), fcm };
-        Notifier::assemble(o.store_file, Box::new(o.devices), o.vapid, o.subject, o.ntfy, o.answerable, hooks)
+        Notifier::assemble(o.store_file, o.devices, o.vapid, o.subject, o.ntfy, o.answerable, hooks)
     }
 
     fn assemble(
@@ -507,11 +508,11 @@ impl Inner {
         if queue.is_none() {
             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Map<String, Value>>();
             let http = self.hooks.http.clone();
-            tokio::task::spawn_local(async move {
+            tokio::task::spawn_local(super::notify::keep_slot(async move {
                 while let Some(m) = rx.recv().await {
                     post_ntfy(&http, &ntfy, m).await;
                 }
-            });
+            }));
             *queue = Some(tx);
         }
         if let Some(tx) = queue.as_ref() {

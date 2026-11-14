@@ -2,7 +2,7 @@
 //! vapid.ts, src/agent/store/app-store.ts as the web app uses them): Web Push to browsers, sealed FCM data messages to
 //! the phones of the Android app, ntfy when enabled, and the history of the notified messages.
 
-mod app_store;
+pub(crate) mod app_store;
 pub mod fcm;
 pub mod http;
 pub mod notifier;

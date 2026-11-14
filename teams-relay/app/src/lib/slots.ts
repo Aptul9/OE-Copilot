@@ -64,6 +64,13 @@ export function exclusive<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
+// A new account is light (src/lib/light.ts): its browser runs now for the first sign-in, as a sign-in run asked by its
+// owner, and stops once the light agent has the sign-in
+export function startLight(n: number, db: Database.Database) {
+  setLight(db, n, true);
+  askRefresh(db, n);
+}
+
 export function addAccount(userId: string, ctl: ControlClient, o: SlotOptions): Promise<number> {
   return exclusive(async () => {
     const n = claimSlot(o.db, userId, { perUser: o.perUser });
@@ -71,6 +78,7 @@ export function addAccount(userId: string, ctl: ControlClient, o: SlotOptions): 
       await slotDown(ctl, n).catch(() => undefined);
       await wipeSlot(ctl, n, o);
       await slotUp(ctl, n);
+      startLight(n, o.db);
     } catch (e) {
       releaseSlot(o.db, n);
       throw e;

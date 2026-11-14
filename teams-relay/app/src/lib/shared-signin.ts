@@ -5,9 +5,10 @@ import {
   slotRow,
   releaseSlot,
   askRefresh,
+  setLight,
 } from "./appdb";
 import { config } from "./config";
-import { slotDown, wipeSlot } from "./slots";
+import { slotDown, startLight, wipeSlot } from "./slots";
 import type { SyncDeps } from "./shared-accounts";
 import { accountSummary, saveMailboxIdentity } from "./accounts";
 
@@ -112,8 +113,12 @@ export async function syncSignIns(d: SyncDeps, input: unknown) {
         await wipeSlot(d.ctl, slot, d);
         if (!job.capabilities.includes("chat") && d.ctl.signin) {
           setSlotStopped(d.db, slot, true);
+          setLight(d.db, slot, true);
           await d.ctl.signin(slot);
-        } else await d.ctl.start(slot);
+        } else {
+          await d.ctl.start(slot);
+          startLight(slot, d.db);
+        }
       }
       const row = slotRow(d.db, slot);
       if (!row || row.owner_id !== d.owner || row.relay || row.shared_account)

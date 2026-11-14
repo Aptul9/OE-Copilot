@@ -6,3 +6,4 @@ __pycache__/
 /teams-relay/app/src/shared/accounts/
 /calendar/server/agente-ts/src/shared/
 /mcp/target/
+/teams-relay/app/webapp-rs/target/

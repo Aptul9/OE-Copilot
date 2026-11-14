@@ -151,7 +151,7 @@ describe("a pass over the shared accounts", () => {
     await syncSharedAccounts(deps({ ctl: { ...ctl, signin: async n => void calls.push(`signin ${n}`) }, dir: { ...directory, connect: async () => ({ ok: false, interaction: true }) } }));
     expect(calls).toContain("signin 1");
     expect(calls).not.toContain("start 1");
-    expect(slotRow(db, 1)?.stopped).toBe(1);
+    expect(slotRow(db, 1)).toMatchObject({ stopped: 1, light: 1 });
   });
   it("keeps one verified identity for a mail-only browser profile without a Teams agent", async () => {
     process.env.APP_DB = path.join(dataDir,"app.db");
@@ -187,6 +187,8 @@ describe("a pass over the shared accounts", () => {
     expect(calls).toContain("start 1");
     expect(directory.set).toHaveBeenCalledWith(expect.objectContaining({ operation: "signin-progress", slot: 1, phase: "browser" }));
     expect(calls.filter(c => c.startsWith("wipe"))).toHaveLength(1);
+    // light from the start: its browser is a sign-in run, ended by the sign-in it captures
+    expect(slotRow(db, 1)).toMatchObject({ light: 1, refresh_result: "asked" });
   });
   it("an account with Teams on gets a new slot of the owner, wiped, bound, its light agent started", async () => {
     accounts = [

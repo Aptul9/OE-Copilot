@@ -45,7 +45,7 @@ function oldData(n: number) {
 }
 
 describe("addAccount", () => {
-  it("starts from a clean slot: stop, wipe, start", async () => {
+  it("starts from a clean slot: stop, wipe, start; light, with its sign-in run asked", async () => {
     oldData(1);
 
     const slot = await addAccount("u1", control(), opts());
@@ -53,7 +53,7 @@ describe("addAccount", () => {
     expect(slot).toBe(1);
     expect(calls).toEqual(["stop 1", "wipe 1", "start 1"]);
     expect(fs.existsSync(path.join(dataDir, "1"))).toBe(false);
-    expect(listSlots(db)).toEqual([{ slot: 1, owner_id: "u1", added: expect.any(Number), stopped: 0, started: 0, check_every: 0, check_due: 0, checked: 0, check_result: "", checking: 0, relay: 0, browser_off: 0, light: 0, refreshing: 0, refreshed: 0, refresh_result: "", calls: 1, notify_mobile: 1, notify_desktop: 1, shared_account: "", shared_region: "" }]);
+    expect(listSlots(db)).toEqual([{ slot: 1, owner_id: "u1", added: expect.any(Number), stopped: 0, started: 0, check_every: 0, check_due: 0, checked: 0, check_result: "", checking: 0, relay: 0, browser_off: 0, light: 1, refreshing: 0, refreshed: 0, refresh_result: "asked", calls: 1, notify_mobile: 1, notify_desktop: 1, shared_account: "", shared_region: "" }]);
   });
 
   it("releases the slot when it cannot be started", async () => {
@@ -92,7 +92,7 @@ describe("removeAccount", () => {
     await expect(removeAccount(1, control("wipe 1"), opts())).rejects.toThrow(/wipe 1 failed/);
 
     expect(fs.existsSync(path.join(dataDir, "1", "messages.db"))).toBe(true);
-    expect(listSlots(db)).toEqual([{ slot: 1, owner_id: "u1", added: expect.any(Number), stopped: 0, started: 0, check_every: 0, check_due: 0, checked: 0, check_result: "", checking: 0, relay: 0, browser_off: 0, light: 0, refreshing: 0, refreshed: 0, refresh_result: "", calls: 1, notify_mobile: 1, notify_desktop: 1, shared_account: "", shared_region: "" }]);
+    expect(listSlots(db)).toEqual([{ slot: 1, owner_id: "u1", added: expect.any(Number), stopped: 0, started: 0, check_every: 0, check_due: 0, checked: 0, check_result: "", checking: 0, relay: 0, browser_off: 0, light: 1, refreshing: 0, refreshed: 0, refresh_result: "asked", calls: 1, notify_mobile: 1, notify_desktop: 1, shared_account: "", shared_region: "" }]);
   });
 });
 
@@ -241,15 +241,24 @@ describe("setAccountRunning", () => {
 
     calls = [];
     await setAccountRunning(1, true, control(), db);
-    expect(calls).toEqual(["start 1"]);
+    expect(calls).toEqual(["light 1"]);
     expect(isSlotStopped(db, 1)).toBe(false);
+  });
+
+  it("starts an always-on account with its browser", async () => {
+    await addAccount("u1", control(), opts());
+    await setCheckMode(1, 0, control(), db);
+    await setAccountRunning(1, false, control(), db);
+    calls = [];
+    await setAccountRunning(1, true, control(), db);
+    expect(calls).toEqual(["start 1"]);
   });
 
   it("stays stopped when it cannot be started", async () => {
     await addAccount("u1", control(), opts());
     await setAccountRunning(1, false, control(), db);
 
-    await expect(setAccountRunning(1, true, control("start 1"), db)).rejects.toThrow(/start 1 failed/);
+    await expect(setAccountRunning(1, true, control("light 1"), db)).rejects.toThrow(/light 1 failed/);
     expect(isSlotStopped(db, 1)).toBe(true);
   });
 
@@ -260,9 +269,11 @@ describe("setAccountRunning", () => {
 });
 
 describe("keepSlotsUp", () => {
-  it("starts the owned slots except the stopped ones", async () => {
+  it("starts the owned slots except the stopped ones and the new ones, whose browser is their sign-in run", async () => {
     await addAccount("u1", control(), opts());
     await addAccount("u1", control(), opts());
+    await addAccount("u1", control(), opts());
+    await setCheckMode(1, 0, control(), db);
     await setAccountRunning(2, false, control(), db);
     calls = [];
 

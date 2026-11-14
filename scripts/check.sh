@@ -105,10 +105,17 @@ check_teams_relay() {
 
 check_mcp() {
   cd "$root/mcp"
-  step "mcp"
-  install
-  npm run typecheck
-  npm test
+  step "mcp: Rust server"
+  # a Windows GNU toolchain has no C compiler for ring, hence the Linux Rust image as for the calendar agent
+  if [ "$docker" = 1 ]; then
+    docker run --rm -v "$(pwd -W 2>/dev/null || pwd):/mcp:ro" -w /mcp -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+  elif command -v cargo >/dev/null; then
+    cargo test --locked
+  else
+    echo "no cargo: the Rust server not tested"
+  fi
+  step "mcp: TypeScript reference"
+  (cd ts && install && npm run typecheck && npm test)
   [ "$docker" = 1 ] || return 0
   step "mcp: image"
   docker build -q -t communication-mcp-check .

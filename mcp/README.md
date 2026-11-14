@@ -1,59 +1,51 @@
-# Communication MCP (TypeScript)
+# Communication MCP
 
-One remote MCP endpoint for mail, calendars and Teams chats. Mail and calendars: every mailbox OE Copilot is signed in to, over Outlook REST v2.0. Teams: the tools of a TeamsRelay `/mcp` endpoint, under `teams_` names. Clients hold one bearer token; every backend credential stays on the server.
+One remote MCP endpoint for mail, calendars and chats: Outlook mail and calendars of every mailbox OE Copilot is signed in to (Outlook REST v2.0), Gmail and Google Chat through the OE Copilot agent, Teams through TeamsRelay `/mcp`, Slack through its Web API. Clients hold one bearer token; every backend credential stays on the server.
 
-The server signs nothing in and stores no token on disk. OE Copilot owns sign-in and renewal for every mailbox (Outlook Mobile client, or the Outlook web session for tenants that block Outlook Mobile); TeamsRelay owns the Teams sessions.
+The server signs nothing in and stores no token on disk. OE Copilot owns sign-in and renewal of every mailbox and Google grant, TeamsRelay owns the Teams sessions, the OE autologin keeps the Slack session in the slackcli workspace store.
+
+Rust (`src/`), since 2026-11-14. It replaces the TypeScript server, kept in `ts/` as the reference it was checked against: same tools, input schemas (`src/tools.json` is the TypeScript `tools/list`), validation messages, resource handles and answers. One static binary in a `FROM scratch` image, under 1 MiB of memory at rest (the TypeScript server used 125 to 220 MiB).
 
 ```text
 MCP client --HTTPS, Bearer MCP_HTTP_TOKEN--> TeamsRelay Caddy --> communication-mcp:8190/mcp
-  communication-mcp --> agent:8180 (OE Copilot: token broker or read gateway) --> Outlook REST
+  communication-mcp --> agent:8180 (OE Copilot: token broker, Gmail and Google Chat API) --> Outlook REST, Google
   communication-mcp --> webapp:8090/mcp (TeamsRelay, its MCP_TOKEN) --> Teams
+  communication-mcp --> https://<workspace>.slack.com/api (session from /slackcli/workspaces.json) --> Slack
 ```
 
 ## Remote server
 
-`src/http.ts`, Streamable HTTP (stateless, one server instance per request). `npm start` runs it.
+Streamable HTTP, stateless, as the TypeScript SDK 2.4 served 2025-era clients: every POST is one exchange, requests are answered on an SSE stream (one event per answer, a `: keepalive` comment every 15 s), notifications and responses get 202.
 
 | Path | Answer |
 |---|---|
-| `POST/GET/DELETE /mcp` | MCP. Needs `Authorization: Bearer <MCP_HTTP_TOKEN>` (constant-time compare), a `Host` listed in `MCP_HTTP_HOSTS` (421 otherwise: DNS rebinding), no `Origin` header (403: no browser callers), body up to 4 MiB (413) |
+| `POST /mcp` | MCP. Needs `Authorization: Bearer <MCP_HTTP_TOKEN>` (constant-time compare), a `Host` listed in `MCP_HTTP_HOSTS` (421 otherwise: DNS rebinding), no `Origin` header (403: no browser callers), body up to 4 MiB (413), `Content-Type: application/json` (415), `Accept` with both `application/json` and `text/event-stream` (406) |
+| `GET`, `DELETE /mcp` | 405 `Method not allowed.`: no sessions |
 | `GET /healthz` | `{"ok":true}`, no auth, no backend call |
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `MCP_HTTP_TOKEN` | | Client bearer token, at least 32 characters |
 | `MCP_HTTP_HOSTS` | | Comma-separated `Host` values accepted on `/mcp` |
+| `OUTLOOK_MCP_BROKER_URL` | | OE Copilot token broker (`http://agent:8180/api/token-posta`); Gmail and Google Chat go to the same origin |
+| `OUTLOOK_MCP_BROKER_KEY` | | Agent `API_KEY` |
+| `OUTLOOK_MCP_TEAMS_URL`, `OUTLOOK_MCP_TEAMS_TOKEN` | | TeamsRelay `/mcp` and its `MCP_TOKEN`; empty URL = no Teams |
+| `SLACK_WORKSPACES` | `/slackcli/workspaces.json` (image) | slackcli workspace store; unset = no Slack |
+| `COMMUNICATION_ID_KEY` | | Key of the resource handles; compose sets it to `MCP_HTTP_TOKEN`, so handles survive restarts |
 | `PORT` | `8190` | Listen port |
-| `BIND_HOST` | `127.0.0.1` | Listen address (`0.0.0.0` in the container) |
+| `BIND_HOST` | `127.0.0.1` (`0.0.0.0` in the image) | Listen address |
 
-Plus the backend variables below. Teams tools are discovered once at start and shared by every request; a relay that is down at start, or a call that loses the connection, triggers a rediscovery at most once a minute, and the list is refreshed every 10 minutes. Mail and calendar tools never wait for Teams.
+Backend addresses that receive a credential must be https, or plain http to loopback or to a single-label container name. No redirect is followed with a credential. The Outlook API address is fixed in the code: a broker answer or a pagination link cannot send a token anywhere else.
 
-Differences from local mode, because the caller's disk is not the server's: `send_email` and `forward_email` take `files` (`name`, `content_base64`, `content_type`) instead of local paths, and `get_attachment` returns the bytes in the result (images inline, other files as embedded resources) instead of saving them.
+`communication-mcp --health` asks the running server for `/healthz` (the container healthcheck: the image has no shell and no curl).
 
 ### Deployment
 
-`compose.yml`, on the host of OE Copilot and TeamsRelay. The container joins `oe-copilot_default` and `teamsrelay_default`, reaches `agent:8180` and `webapp:8090` there, and listens on `127.0.0.1:8190` only. Backend addresses may be plain http to loopback or to a single-label container name; anything else must be https.
+`compose.yml`, on the host of OE Copilot and TeamsRelay (`oe-vm`, `/opt/communication-mcp`). The container joins `oe-copilot_default` and `teamsrelay_default`, reaches `agent:8180` and `webapp:8090` there, mounts `/opt/communication-mcp-state/slackcli` read-only at `/slackcli`, and listens on `127.0.0.1:8190` only. A push on `main` touching `mcp/**` deploys it (`.github/workflows/mcp.yml`: rsync, `.env` from the `mcp` environment, `docker compose up -d --build`, health check, rollback to the previous tree on failure). The first build compiles the dependencies (a few minutes); BuildKit cache mounts keep later builds incremental.
 
-```bash
-tar -czf cmcp.tgz --exclude=node_modules --exclude=test --exclude=.env -C ts .
-scp cmcp.tgz host:/tmp/
-# first time: cp .env.example .env, chmod 600, fill it; later runs keep .env
-ssh host 'cd /opt/communication-mcp && find . -mindepth 1 -maxdepth 1 ! -name .env -exec rm -rf {} + \
-  && tar --no-same-owner --no-same-permissions -xzf /tmp/cmcp.tgz && rm /tmp/cmcp.tgz \
-  && chmod -R go-w . && chmod 750 . && docker compose up -d --build'
-```
+Public address: a path on the TeamsRelay name, `/communication/*`, which the TeamsRelay Caddy strips; `MCP_HTTP_HOSTS` lists that name.
 
-On `oe-vm` (2026-11-08): `/opt/communication-mcp`, broker mode, `OUTLOOK_MCP_BROKER_KEY` = the agent's `API_KEY` (an OE Copilot Action secret: a rotation there needs the same value here), `OUTLOOK_MCP_TEAMS_TOKEN` = TeamsRelay `MCP_TOKEN`.
-
-Public address: a path on the TeamsRelay name (teamsrelay PR 143), so no new DNS name or certificate. The TeamsRelay Caddy strips the prefix; `MCP_HTTP_HOSTS` must then list that name.
-
-```caddyfile
-handle_path /communication/* {
-	reverse_proxy communication-mcp:8190
-}
-```
-
-Client registration, O?penCode (`opencode.jsonc`):
+Client registration, OpenCode (`opencode.jsonc`):
 
 ```jsonc
 "mcp": {
@@ -67,64 +59,23 @@ Client registration, O?penCode (`opencode.jsonc`):
 
 Claude Code: `claude mcp add --transport http --scope user communication https://teams.example.com/communication/mcp --header "Authorization: Bearer <token>"`.
 
-## Local stdio (compatibility)
-
-Node 24 or later (type stripping), no build step. Same tools, local file paths for attachments.
-
-```powershell
-npm ci
-npm run typecheck
-npm test
-npm run start:stdio
-```
-
-## Token broker
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `OUTLOOK_MCP_SSH_HOST` | `oecopilot-vm` | SSH host of OE Copilot; `bash` and `curl` on that host call the agent with its `API_KEY` (read by `docker inspect`), which never leaves the host. The agent image has no shell or node, so nothing runs inside the container; the SSH user needs Docker access |
-| `OUTLOOK_MCP_AGENT_CONTAINER` | `oe-copilot-agent` | Agent container, only to read its `API_KEY` |
-| `OUTLOOK_MCP_AGENT_PORT` | `3180` | Agent port published on the host loopback (`127.0.0.1:3180:8180` in the calendar compose file) |
-| `OUTLOOK_MCP_BROKER_URL` | | Direct HTTP instead of SSH: https, or http on localhost or a container name |
-| `OUTLOOK_MCP_BROKER_KEY` | | Agent `API_KEY`, required with `OUTLOOK_MCP_BROKER_URL` |
-
-A broker row is used only when its token is for the Outlook resource, carries a mail permission, names the same mailbox as the row, and has more than two minutes left. The API address is fixed in the code, never taken from the broker answer. A 401 from Outlook reloads tokens once.
-
-## Differences from the Python server
-
-- No local token sources (New Outlook IdentityCache, phone over SSH): OE Copilot is the only source.
-- `account` fragments that match several mailboxes are refused instead of taking the first.
-- Plain text containing `< b` is no longer mistaken for HTML (the Python check allowed a space after `<`).
-- `get_attachment` never overwrites an existing file; it saves as `name (2).ext`.
-- `list_calendar_events` requires start and end with a zone, takes `time_zone` for the returned times, and reports `has_more`.
-
-## Consolidation boundary
-
-The package exports `outlook-mcp/core`: mail/calendar clients and token-service adapters, without any MCP imports. The MCP layer only declares tools and formats results. No mailbox or body cache is created.
-
-OE-Copilot remains the credential owner. Its optional communication API returns account metadata and executes constrained mail/calendar reads. Configure `OUTLOOK_MCP_SERVICE_URL` plus `OUTLOOK_MCP_BROKER_KEY`, or `OUTLOOK_MCP_SERVICE_SSH`. In this mode Microsoft bearer tokens do not leave OE-Copilot. Write tools are not registered in service mode; legacy broker mode retains the existing write tools.
-
-Production services and their deployment pipelines remain separate. Teams forwarding is optional and preserves TeamsRelay's tool behavior, including read-state effects on refresh tools. No calendar source or production account is migrated by installing this package.
-
-### Unified Teams tools
-
-Set `OUTLOOK_MCP_TEAMS_URL` to the existing TeamsRelay `/mcp` endpoint and `OUTLOOK_MCP_TEAMS_TOKEN` to its bearer credential. Teams tools are discovered and exposed under `teams_` names. Mail/calendar tools keep their current names for compatibility. Schemas, annotations and content blocks remain those of TeamsRelay. An unavailable Teams endpoint does not disable mail/calendar. Existing services are not merged or redeployed.
-
-### Unread completeness
-
-`list_unread` searches all folders of all mailboxes, or selected accounts. Requests run with bounded parallelism. Each mailbox reports its own result or error, `has_more`, `incomplete`, page count and stop reason. Limits are 1000 summaries per mailbox and 50 pages scanned; reaching a safety bound is explicit. No read state changes and no local mailbox cache.
-
-List/search follows same-collection Outlook pagination links. Unknown folder names now fail instead of quietly searching the whole mailbox. Folder lists recurse into child folders and follow pages, with explicit safety errors rather than silent truncation.
-
-The cross-mailbox MCP unread tool defaults to 20 summaries per mailbox to bound tool output; an explicit limit can request up to 1000. Summary output is compact and full bodies remain on demand. The core API can be used independently of MCP through the package `./core` export. Dependency pins are SDK client/server 2.4.0 and zod 4.6.7; audit after upgrade reports no known vulnerabilities.
-
-
 ## Unified contract
 
-MCP registrations use communication_accounts, mail_*, chat_*, calendar_list and calendar_events. Previous tool names are removed. Every data operation requires exact ccount_id from inventory. Resource IDs are signed account-bound handles. Native IDs cannot be substituted. Production compose supplies a stable signing key from its existing MCP credential.
+Tools: `communication_accounts`, `email_folders|list|search|read|thread|send|reply|reply_all|forward|draft_update|draft_send|draft_delete|manage|attachments|attachment`, `chat_list|search|read|send|edit|delete|react|attachment`, `calendar_list`, `calendar_events`. Every data operation requires an exact `account_id` from the inventory. Resource ids are signed handles bound to one account and one kind; native ids cannot be substituted. Unsupported operations return `UNSUPPORTED_CAPABILITY`. No write is retried after an ambiguous transport failure.
 
-Slack uses checksum-pinned slackcli 0.19.1, explicit stored workspace profile and bounded subprocess calls. Provision /opt/communication-mcp-state/slackcli/workspaces.json owned by uid 1000, mode 0600, directory mode 0700. Compose mounts profile read-only; never place credentials in source. The image currently carries Linux amd64 CLI.
+Mail compose, same schema for Outlook and Gmail: `email_send` (to, cc, bcc, reply_to, files, draft; HTML body when the text looks like HTML), `email_reply` and `email_reply_all` (thread kept, original quoted, to/cc added to the original recipients), `email_forward` (comment, original attachments kept), `email_draft_update` (recipient lists replace, text replaces the author part and keeps the quote, files added), `email_draft_send`, `email_draft_delete`. `email_send.message_id` is the old reply path (recipients replace the original ones, no quote).
 
-Mail compose, same schema for Outlook and Gmail: `email_send` (to, cc, bcc, reply_to, files, draft; HTML body when the text looks like HTML, plain text otherwise), `email_reply` and `email_reply_all` (thread kept, original quoted, to/cc added on top of the original recipients), `email_forward` (comment text, original attachments kept, extra files), `email_draft_update` (recipient lists replace, text replaces the author part and keeps the quote, files added), `email_draft_send`, `email_draft_delete`. Every compose tool with `draft: true` returns a `draft_id` handle. `email_send.message_id` is the old reply path (recipients replace the original ones, no quote) and stays for compatibility. Gmail drafts need the agent actions `update_draft` and `send_draft` (`calendar/server/agente-ts/GOOGLE.md`).
+Outlook lists follow same-collection pagination links (at most 20 pages) and report `has_more`, `incomplete` and `stop_reason`. Teams reads its saved chat window: no search, no threads, no uploads. Google Chat search scans recent topics.
 
-Provider limits remain explicit: Teams reads its saved chat window and does not expose full-history search or thread reads; Google Chat search scans recent topics. Unsupported operations return UNSUPPORTED_CAPABILITY. Outlook service mode remains read-only. No write retries occur after ambiguous transport failures.
+Slack: the calls slackcli 0.19.1 made, from the same workspace store (browser session: `xoxc` token and `d` cookie, sent only to the https `*.slack.com` workspace origin), with its pacing (two calls at a time, 200 ms between starts) and retries (a 429 for any call, a 5xx or network failure for reads only). Answers keep the slackcli `--json` shapes. Edit and delete check that the message is the user's own.
+
+## Differences from the TypeScript server
+
+- No local mode: no stdio entry, no SSH or service-gateway token source, no local file attachments. `ts/` still has them.
+- Slack without the slackcli subprocess: a failed Slack call reads `Slack request failed; write outcome may be unknown`; an uploaded file keeps its name (slackcli saw it as `0-<name>`).
+- `serverInfo.version` is `5.0.0`.
+- The 2026-07-28 protocol revision (per-request `_meta` envelope) is not served; no client uses it.
+
+## Checks
+
+`scripts/check.sh mcp` runs `cargo test --locked` (unit tests, and `tests/server.rs`: the whole server over HTTP against fake broker, Outlook, agent, TeamsRelay and Slack) and the TypeScript suite in `ts/`; `--docker` builds the image. Cargo in a Linux Rust image or WSL: the Windows GNU toolchain has no C compiler for ring.

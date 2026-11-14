@@ -11,10 +11,9 @@ services:
     environment:
       COMMUNICATION_ID_KEY: ${MCP_HTTP_TOKEN}
     volumes:
-      - /opt/communication-mcp-state/slackcli:/home/node/.config/slackcli:ro
+      # the slackcli workspace store, kept by the OE autologin (oe-slack) and read by Everflow too
+      - /opt/communication-mcp-state/slackcli:/slackcli:ro
     read_only: true
-    tmpfs:
-      - /tmp
     cap_drop:
       - ALL
     security_opt:

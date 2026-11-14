@@ -40,7 +40,8 @@ jobs:
         run: ssh "$TARGET" "cd $MCP_DIR && tar -czf $BACKUP --exclude=./.env --exclude=./.deployed-sha ."
 
       - name: Upload code
-        run: rsync -rlptz --delete --exclude /.env --exclude /.deployed-sha --exclude node_modules/ mcp/ "$TARGET:$MCP_DIR/"
+        # the TypeScript reference in ts/ stays out: the image is the Rust server
+        run: rsync -rlptz --delete --exclude /.env --exclude /.deployed-sha --exclude node_modules/ --exclude /target/ --exclude /ts/ mcp/ "$TARGET:$MCP_DIR/"
 
       # .env comes from the environment mcp; the OE Copilot agent key and the TeamsRelay MCP token are the same
       # repository secrets those two deploys use, so a rotation reaches all three

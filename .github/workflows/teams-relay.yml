@@ -97,6 +97,7 @@ jobs:
           TR_NATIVE_CALLS: ${{ vars.NATIVE_CALLS }}
           TR_LIGHT_HOST: ${{ vars.LIGHT_HOST }}
           TR_LIGHT_RUST: ${{ vars.LIGHT_RUST }}
+          TR_SUPERVISOR_RUST: ${{ vars.SUPERVISOR_RUST }}
           TR_DESKTOP_ON_DEMAND: ${{ vars.DESKTOP_ON_DEMAND }}
           # shared Microsoft accounts of the calendar agent on the same host: its address, the key it gives this stack
           # (repository secret, the agent's TEAMS_BROKER_KEY too), their owner, where a new one is signed in

@@ -1,5 +1,9 @@
 #!/usr/bin/with-contenv bash
-# Supervisor of the Teams accounts: the browser and the agent of each account (app/src/supervisor). The remote desktop is
-# not a dependency of it: the supervisor starts the desktop when a browser needs it (src/supervisor/desktop.ts)
+# Supervisor of the Teams accounts: the browser and the agent of each account (app/webapp-rs/src/supervisor, or
+# app/src/supervisor with SUPERVISOR_RUST=0). The remote desktop is not a dependency of it: the supervisor starts the
+# desktop when a browser needs it.
 
-exec node /app/supervisor.cjs
+if [ "${SUPERVISOR_RUST:-1}" = "0" ]; then
+  exec node /app/supervisor.cjs
+fi
+exec /app/teamsrelay-supervisor

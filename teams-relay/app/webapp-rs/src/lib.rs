@@ -23,6 +23,7 @@ pub mod slotdb;
 pub mod slots;
 pub mod state;
 pub mod status;
+pub mod supervisor;
 pub mod uploads;
 pub mod web;
 pub mod zod;

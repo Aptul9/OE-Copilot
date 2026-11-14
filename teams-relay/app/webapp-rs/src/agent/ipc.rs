@@ -68,6 +68,34 @@ pub fn pair() -> std::io::Result<(tokio::net::UnixStream, std::os::unix::net::Un
 /// The descriptor of the channel in a Node child.
 pub const CHILD_FD: RawFd = 3;
 
+/// Starts `cmd` as Node's fork starts a child: the other end of a new channel as its descriptor 3, NODE_CHANNEL_FD and
+/// the JSON serialization set (after the environment the caller gave). `own_session`: in a session and process group of
+/// its own, as the option detached of Node, so a signal to the group reaches what it starts too.
+pub fn spawn_with_channel(cmd: &mut tokio::process::Command, own_session: bool) -> std::io::Result<(tokio::process::Child, tokio::net::UnixStream)> {
+    use std::os::fd::AsRawFd;
+    let (ours, theirs) = pair()?;
+    let fd = theirs.as_raw_fd();
+    cmd.env("NODE_CHANNEL_FD", CHILD_FD.to_string()).env("NODE_CHANNEL_SERIALIZATION_MODE", "json");
+    // SAFETY: only async-signal-safe calls between fork and exec
+    unsafe {
+        cmd.pre_exec(move || {
+            if own_session && libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            if fd == CHILD_FD {
+                let flags = libc::fcntl(fd, libc::F_GETFD);
+                libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
+            } else if libc::dup2(fd, CHILD_FD) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let child = cmd.spawn()?;
+    drop(theirs);
+    Ok((child, ours))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

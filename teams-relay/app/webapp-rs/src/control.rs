@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::time::Duration;
 
 /// A request on the socket: status and body, or the error text of the connection.
-async fn call(socket: &str, method: &str, path: &str, body: Option<String>, wait: Duration) -> Result<(u16, String), String> {
+pub async fn call(socket: &str, method: &str, path: &str, body: Option<String>, wait: Duration) -> Result<(u16, String), String> {
     let run = async {
         let stream = tokio::net::UnixStream::connect(socket).await.map_err(|e| connect_text(socket, &e))?;
         let (mut send, conn) = hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(stream)).await.map_err(|e| e.to_string())?;

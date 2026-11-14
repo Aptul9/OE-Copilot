@@ -42,6 +42,8 @@ services:
       LIGHT_HOST: ${LIGHT_HOST:-1}
       # the light host in Rust (/app/teamsrelay-light); 0: the Node host of light.cjs
       LIGHT_RUST: ${LIGHT_RUST:-1}
+      # the supervisor in Rust (/app/teamsrelay-supervisor); 0: the Node supervisor of supervisor.cjs
+      SUPERVISOR_RUST: ${SUPERVISOR_RUST:-1}
       DESKTOP_ON_DEMAND: ${DESKTOP_ON_DEMAND:-1}
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
       # shared Microsoft accounts of the OE calendar agent (app/src/supervisor/broker.ts): its address and the key it gives
@@ -62,8 +64,8 @@ services:
     shm_size: "1gb"
     stop_grace_period: 40s
     healthcheck:
-      # the supervisor answers on its socket
-      test: ["CMD", "node", "/app/supervisor.cjs", "status"]
+      # the supervisor answers on its socket (either one: the client only asks the socket)
+      test: ["CMD", "/app/teamsrelay-supervisor", "status"]
       interval: 10s
       timeout: 5s
       retries: 3

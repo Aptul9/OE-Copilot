@@ -26,6 +26,11 @@ pub mod uploads;
 pub mod web;
 pub mod zod;
 
+/// The tests that set the process environment (APP_DB, TZ, UI_DIR) take this, one at a time: the tests of one binary
+/// run on parallel threads of one process.
+#[cfg(test)]
+pub static TEST_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Shared HTTP client: no redirects, rustls with the webpki roots.
 pub fn http_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();

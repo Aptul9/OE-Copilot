@@ -14,7 +14,7 @@ const TOKEN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789a
 const FAST: Wait = Wait { timeout_ms: 1000, poll_ms: 20 };
 
 fn set_env(k: &str, v: &str) {
-    // SAFETY: the variables of this module are read by this test alone
+    // SAFETY: the tests that set the environment hold TEST_ENV
     unsafe { std::env::set_var(k, v) };
 }
 
@@ -158,6 +158,7 @@ fn agent(slot: i64, outcome: &'static str) -> tokio::task::JoinHandle<()> {
 
 #[test]
 fn mcp_endpoint() {
+    let _env = crate::TEST_ENV.lock().unwrap_or_else(|p| p.into_inner());
     let dir = std::env::temp_dir().join(format!("trweb-mcp-{}-{}", std::process::id(), crate::web::now_ms()));
     std::fs::create_dir_all(&dir).unwrap();
     set_env("APP_DB", dir.join("app.db").to_str().unwrap());

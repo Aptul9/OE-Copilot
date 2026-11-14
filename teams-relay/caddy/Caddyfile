@@ -28,6 +28,8 @@
 		reverse_proxy communication-mcp:8190
 	}
 	handle {
+		# the web app sends its pages and the scripts of the UI as they are: zstd or gzip here, 1.3 MiB down to 0.4
+		encode zstd gzip
 		reverse_proxy webapp:8090
 	}
 	# the desktop is off while no browser runs: a direct visit lands on the page that starts it

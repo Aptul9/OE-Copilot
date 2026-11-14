@@ -1,14 +1,20 @@
-# Remote MCP for mail, calendars and Teams (src/http.ts). Node 26 runs the TypeScript sources as they are: no build step.
-# Same base image digest as OE Copilot's agente-ts (index amd64 + arm64); to update: docker buildx imagetools inspect node:26-slim
-FROM node:26-slim@sha256:193fe51b64e77981119c98c2002c9e32a70e2f006fb4d25068ce0558998917f0
-ADD --checksum=sha256:c9d97d4b57682f664a94a6a7c81df09ff9f674dd7c900c38024ec95db4940692 --chmod=755 https://github.com/shaharia-lab/slackcli/releases/download/v0.19.1/slackcli-linux /usr/local/bin/slackcli
-ENV NODE_ENV=production BIND_HOST=0.0.0.0 PORT=8190 SLACKCLI_PATH=/usr/local/bin/slackcli SLACKCLI_LOG_LEVEL=off SLACKCLI_NO_UPDATE_NOTIFIER=1
-WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
+# Remote MCP for mail, calendars and chats (src/http.rs), in Rust. The image holds only the static binary: reqwest carries the certificate
+# roots, Slack goes over its Web API (no slackcli), so no system files, no shell, no node. Healthcheck: `/communication-mcp --health`.
+# Same base as the OE Copilot agent, pinned by digest (amd64 + arm64 index); to update: docker buildx imagetools inspect rust:1-alpine
+FROM rust:1-alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS build
+RUN apk add --no-cache musl-dev
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-USER node
+# dependencies and build stay in the BuildKit cache between deploys; the binary leaves the cache in the same step
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
+    cargo build --release --locked --bin communication-mcp && cp target/release/communication-mcp /communication-mcp
+
+FROM scratch
+COPY --from=build /communication-mcp /communication-mcp
+ENV BIND_HOST=0.0.0.0 PORT=8190 SLACK_WORKSPACES=/slackcli/workspaces.json
+# the slackcli store belongs to uid 1000 (mode 0600 in a 0700 directory), mounted read-only
+USER 1000:1000
 EXPOSE 8190
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:8190/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
-CMD ["node", "src/http.ts"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD ["/communication-mcp", "--health"]
+ENTRYPOINT ["/communication-mcp"]

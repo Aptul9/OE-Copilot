@@ -72,6 +72,15 @@ check_teams_relay() {
   node scripts/bundles.mjs relay cmdapi fleet fleet-agent
   node --check public/sw.js
   node dist/relay.cjs --check
+  step "teams-relay: Rust web app"
+  # a Windows GNU toolchain has no C compiler for ring and the bundled SQLite, hence the Linux Rust image
+  if [ "$docker" = 1 ]; then
+    docker run --rm -v "$(pwd -W 2>/dev/null || pwd)/webapp-rs:/webapp-rs:ro" -w /webapp-rs -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+  elif command -v cargo >/dev/null; then
+    (cd webapp-rs && cargo test --locked)
+  else
+    echo "no cargo: webapp-rs not tested"
+  fi
   cd "$root/teams-relay/mobile"
   step "teams-relay: Android app (page tests, shared Rust)"
   install

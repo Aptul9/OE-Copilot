@@ -6,10 +6,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# web app (.next/standalone), agent (dist/agent.cjs), light agent (dist/light.cjs), supervisor (dist/supervisor.cjs) and
-# the socket of the sound of the calls of accounts on another computer (dist/call-audio.cjs), loaded before the server of
-# the web app; the local relay and the fleet bundles are no image's
-RUN npx next build && node scripts/bundles.mjs agent light supervisor hub
+# the pages of the web app exported as static files (out/, served by webapp-rs), agent (dist/agent.cjs), light agent
+# (dist/light.cjs) and supervisor (dist/supervisor.cjs); the local relay and the fleet bundles are no image's
+RUN TR_EXPORT=1 npx next build && node scripts/bundles.mjs agent light supervisor
 # What the agent loads at runtime besides its bundle. The standalone output traces only the web app, so these
 # are copied explicitly: playwright-core whole (no dependencies), better-sqlite3 without its sources and with
 # the binary of this architecture only (the image is built on the machine that runs it).
@@ -47,13 +46,22 @@ RUN chmod +x /etc/s6-overlay/s6-rc.d/svc-teamsrelay/run /usr/local/bin/desktop-m
  && node /app/light.cjs --check \
  && node /app/supervisor.cjs --check
 
-# Web app: PWA, API, users and sessions
-FROM node:26-slim AS web
-WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=8090 HOSTNAME=0.0.0.0
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
-COPY --from=build /app/public ./public
-COPY --from=build /app/dist/call-audio.cjs ./
+# The web app in Rust (webapp-rs): one static binary. jiff carries the time zone database and reqwest the certificate
+# roots, so the image needs no system file. Pinned by digest as calendar/server/agente-rs/Dockerfile.
+FROM rust:1-alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS webrs
+RUN apk add --no-cache musl-dev
+WORKDIR /src
+COPY webapp-rs/Cargo.toml webapp-rs/Cargo.lock ./
+COPY webapp-rs/src ./src
+# the dependencies and the build stay in the BuildKit cache between deploys; the binary leaves the cache in the same step
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
+    cargo build --release --locked && cp target/release/teamsrelay-web /teamsrelay-web
+
+# Web app: PWA, API, users and sessions, the pages from /ui. Root as the Node image was: data/ and app.db are root's.
+# The healthcheck is `/teamsrelay-web --health` (no shell, no curl).
+FROM scratch AS web
+COPY --from=webrs /teamsrelay-web /teamsrelay-web
+COPY --from=build /app/out /ui
+ENV PORT=8090 HOSTNAME=0.0.0.0 UI_DIR=/ui
 EXPOSE 8090
-CMD ["node", "--require", "./call-audio.cjs", "server.js"]
+ENTRYPOINT ["/teamsrelay-web"]

@@ -66,31 +66,10 @@ impl Worker for Process {
 /// process group of the host (a stop of the host reaches it).
 pub fn fork_worker() -> Spawn {
     Rc::new(|script: &str, args: &[&str], env: &Env| {
-        use std::os::fd::AsRawFd;
-        let (ours, theirs) = super::ipc::pair().map_err(|e| e.to_string())?;
-        let fd = theirs.as_raw_fd();
         let mut cmd = tokio::process::Command::new(node());
-        cmd.arg(script)
-            .args(args)
-            .env_clear()
-            .envs(env)
-            .env("NODE_CHANNEL_FD", super::ipc::CHILD_FD.to_string())
-            .env("NODE_CHANNEL_SERIALIZATION_MODE", "json");
+        cmd.arg(script).args(args).env_clear().envs(env);
         cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::inherit());
-        // SAFETY: only async-signal-safe calls between fork and exec
-        unsafe {
-            cmd.pre_exec(move || {
-                if fd == super::ipc::CHILD_FD {
-                    let flags = libc::fcntl(fd, libc::F_GETFD);
-                    libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC);
-                } else if libc::dup2(fd, super::ipc::CHILD_FD) < 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-        drop(theirs);
+        let (mut child, ours) = super::ipc::spawn_with_channel(&mut cmd, false).map_err(|e| e.to_string())?;
         let pid = child.id().unwrap_or(0) as i32;
         let (channel, messages) = super::ipc::open(ours);
         let gone = Rc::new(std::cell::Cell::new(false));

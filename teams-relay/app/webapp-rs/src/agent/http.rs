@@ -19,11 +19,16 @@ pub fn slot_http() -> Http {
             let started = Instant::now();
             let what = format!("{} {}", r.method, origin_and_path(&r.url));
             let method = reqwest::Method::from_bytes(r.method.as_bytes()).map_err(|e| e.to_string())?;
+            // a POST or PUT without a body says so, as fetch does: Teams' authz answers 411 to one without a length
+            let empty = r.body.is_empty() && (method == reqwest::Method::POST || method == reqwest::Method::PUT);
             let mut b = client.request(method, &r.url).timeout(r.timeout);
             for (k, v) in &r.headers {
                 if !k.eq_ignore_ascii_case("content-length") {
                     b = b.header(k.as_str(), v.as_str());
                 }
+            }
+            if empty {
+                b = b.header(reqwest::header::CONTENT_LENGTH, "0");
             }
             let failed = |e: reqwest::Error| if e.is_timeout() { "The operation was aborted due to timeout".to_string() } else { chain(&e) };
             let slow = |answer: Option<u128>, error: Option<&str>| {
@@ -100,4 +105,36 @@ pub fn text(r: &Response) -> String {
 /// Every value of a header the answer carries more than once (Set-Cookie).
 pub fn all<'a>(r: &'a Response, name: &str) -> Vec<&'a str> {
     r.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// The head of the request a local server received, the server answering 200.
+    async fn sent(method: &'static str, body: Vec<u8>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("listen");
+        let url = format!("http://{}/api/authsvc/v1.0/authz", listener.local_addr().expect("addr"));
+        let server = tokio::task::spawn_local(async move {
+            let (mut s, _) = listener.accept().await.expect("accept");
+            let mut buf = vec![0u8; 4096];
+            let n = s.read(&mut buf).await.expect("read");
+            s.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}").await.expect("write");
+            String::from_utf8_lossy(&buf[..n]).to_lowercase()
+        });
+        let r = send(&slot_http(), method, &url, vec![("Authorization", "Bearer t".into())], body, 5_000).await.expect("answer");
+        assert_eq!(r.status, 200);
+        server.await.expect("server")
+    }
+
+    #[test]
+    fn a_post_or_put_without_a_body_carries_a_length_of_zero_as_fetch_does() {
+        crate::agent::testing::run(async {
+            assert!(sent("POST", vec![]).await.contains("\r\ncontent-length: 0\r\n"));
+            assert!(sent("PUT", vec![]).await.contains("\r\ncontent-length: 0\r\n"));
+            assert!(sent("POST", b"{}".to_vec()).await.contains("\r\ncontent-length: 2\r\n"));
+            assert!(!sent("GET", vec![]).await.contains("content-length"));
+        });
+    }
 }

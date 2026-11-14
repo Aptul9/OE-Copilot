@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "teamsrelay-light"
 path = "src/bin/teamsrelay-light.rs"
 
+[[bin]]
+name = "teamsrelay-supervisor"
+path = "src/bin/teamsrelay-supervisor.rs"
+
 [lib]
 path = "src/lib.rs"
 

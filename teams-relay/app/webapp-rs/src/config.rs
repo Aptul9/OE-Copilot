@@ -131,6 +131,16 @@ pub struct Push {
 
 /// PushEnv parsed: Err with zod's text of the first problems.
 pub fn push() -> Result<Push, String> {
+    push_of(&var)
+}
+
+/// PushEnv of an environment given as a lookup (a light slot brings its own); an empty value counts as unset.
+pub fn push_of(get: &dyn Fn(&str) -> String) -> Result<Push, String> {
+    let or = |name: &str, fallback: &str| {
+        let v = get(name);
+        if v.is_empty() { fallback.to_string() } else { v }
+    };
+    let var = |name: &str| get(name);
     let mut problems = vec![];
     let subject = or("VAPID_SUBJECT", "mailto:admin@example.com");
     if !(subject.starts_with("mailto:") || subject.starts_with("https://")) {

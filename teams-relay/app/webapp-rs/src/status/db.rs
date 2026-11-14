@@ -76,3 +76,33 @@ pub fn first_since(c: &Connection, name: &str) -> rusqlite::Result<Option<i64>> 
 pub fn delete_statuses_of(c: &Connection, name: &str) -> rusqlite::Result<usize> {
     c.execute("DELETE FROM presence_log WHERE name=?", [name])
 }
+
+/// The rows of every name but these.
+pub fn delete_statuses_except(c: &Connection, keep: &[String]) -> rusqlite::Result<usize> {
+    let keep = serde_json::to_string(keep).unwrap_or_else(|_| "[]".into());
+    c.execute("DELETE FROM presence_log WHERE name NOT IN (SELECT value FROM json_each(?))", [keep])
+}
+
+/// One poll: the same status as the newest stretch, seen at most `gap` seconds ago, extends it; anything else opens a
+/// stretch. A person the poll got no answer for is not in `seen` (name, mri, status).
+pub fn record_statuses(c: &Connection, seen: &[(String, String, String)], now: i64, gap: i64) -> rusqlite::Result<()> {
+    let tx = c.unchecked_transaction()?;
+    for (name, mri, status) in seen {
+        let last: Option<(i64, i64, String)> = tx
+            .query_row("SELECT id, until, status FROM presence_log WHERE name=? ORDER BY since DESC, id DESC LIMIT 1", [name], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .optional()?;
+        match last {
+            Some((id, until, s)) if s == *status && now - until <= gap => {
+                if now > until {
+                    tx.execute("UPDATE presence_log SET until=?, mri=? WHERE id=?", rusqlite::params![now, mri, id])?;
+                }
+            }
+            _ => {
+                tx.execute("INSERT INTO presence_log(name, mri, since, until, status) VALUES(?,?,?,?,?)", rusqlite::params![name, mri, now, now, status])?;
+            }
+        }
+    }
+    tx.commit()
+}

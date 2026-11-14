@@ -40,6 +40,8 @@ services:
       S6_SERVICES_GRACETIME: "35000"
       NATIVE_CALLS: ${NATIVE_CALLS:-0}
       LIGHT_HOST: ${LIGHT_HOST:-1}
+      # the light host in Rust (/app/teamsrelay-light); 0: the Node host of light.cjs
+      LIGHT_RUST: ${LIGHT_RUST:-1}
       DESKTOP_ON_DEMAND: ${DESKTOP_ON_DEMAND:-1}
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
       # shared Microsoft accounts of the OE calendar agent (app/src/supervisor/broker.ts): its address and the key it gives

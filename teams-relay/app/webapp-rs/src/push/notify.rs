@@ -195,12 +195,40 @@ pub fn error_text(e: &str) -> String {
     utf16_slice(e.split('\n').next().unwrap_or(""), 0, MAX)
 }
 
+tokio::task_local! {
+    /// The light slot the current work belongs to, in the light host where every slot shares one process
+    /// (src/agent/slot-scope.ts).
+    static SLOT: i64;
+}
+
+/// Runs `f` as work of `slot`: its lines start with "[slot] ".
+pub async fn in_slot<F: std::future::Future>(slot: i64, f: F) -> F::Output {
+    SLOT.scope(slot, f).await
+}
+
+/// The slot of the work in progress, None outside any.
+pub fn current_slot() -> Option<i64> {
+    SLOT.try_with(|s| *s).ok()
+}
+
+/// `f` as work of the slot in progress, if any: what a task spawned for the slot runs.
+pub fn keep_slot<F: std::future::Future + 'static>(f: F) -> std::pin::Pin<Box<dyn std::future::Future<Output = F::Output>>> {
+    match current_slot() {
+        Some(slot) => Box::pin(SLOT.scope(slot, f)),
+        None => Box::pin(f),
+    }
+}
+
+fn slot_prefix() -> String {
+    current_slot().map(|s| format!("[{s}] ")).unwrap_or_default()
+}
+
 pub fn info(prefix: &str, message: &str, fields: &[(&str, Field)]) {
-    println!("{}", format(prefix, message, fields));
+    println!("{}{}", slot_prefix(), format(prefix, message, fields));
 }
 
 pub fn warn(prefix: &str, message: &str, fields: &[(&str, Field)]) {
-    eprintln!("{}", format(prefix, message, fields));
+    eprintln!("{}{}", slot_prefix(), format(prefix, message, fields));
 }
 
 #[cfg(test)]

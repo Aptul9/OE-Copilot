@@ -2,6 +2,7 @@
 //! src/server, and the pages of the UI exported as static files. Same database, same cookies, same answers.
 
 pub mod accounts;
+pub mod agent;
 pub mod appdb;
 pub mod auth;
 pub mod checks;

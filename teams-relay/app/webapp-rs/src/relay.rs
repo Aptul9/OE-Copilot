@@ -405,7 +405,7 @@ fn relay_notifier(caller: &Caller) -> Res<Rc<crate::push::Notifier>> {
     let (slot, added) = (caller.slot, caller.added);
     let notifier = Rc::new(crate::push::Notifier::new(crate::push::NotifierOptions {
         store_file,
-        devices: crate::push::Devices { store: crate::push::AppStore::new(slot), holds: Box::new(move || holds(slot, added)) },
+        devices: Box::new(crate::push::Devices { store: crate::push::AppStore::new(slot), holds: Box::new(move || holds(slot, added)) }),
         vapid,
         subject: push.vapid_subject.clone(),
         ntfy: push.ntfy.clone(),

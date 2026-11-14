@@ -1,4 +1,4 @@
-import { fork } from "node:child_process";
+import { fork, spawn, type StdioOptions } from "node:child_process";
 import readline from "node:readline";
 import { HOST_FLAG, type FromHost, type ToHost } from "../agent/light/host-protocol";
 import { restartDelay, signal, TIMING, type Command, type Timing } from "./process";
@@ -187,9 +187,10 @@ export class LightHost implements LightHostLike {
 }
 
 // The host as a child of this process with an IPC channel, in its own process group, so that a stop reaches the
-// calling hosts it forked too
-export function forkHost(file: string, node: string, env: Record<string, string>, output: (line: string) => void): HostChild {
-  const child = fork(file, [HOST_FLAG], { execPath: node, env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe", "ipc"], detached: true, windowsHide: true });
+// calling hosts it forked too: node `file`, or the Rust binary `bin` (webapp-rs) on the same channel
+export function forkHost(file: string, node: string, env: Record<string, string>, output: (line: string) => void, bin: string | null = null): HostChild {
+  const options = { env: env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe", "ipc"] as StdioOptions, detached: true, windowsHide: true };
+  const child = bin ? spawn(bin, [HOST_FLAG], options) : fork(file, [HOST_FLAG], { ...options, execPath: node });
   for (const stream of [child.stdout, child.stderr]) {
     if (stream) readline.createInterface({ input: stream }).on("line", output);
   }

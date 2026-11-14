@@ -324,4 +324,25 @@ describe("forkHost", () => {
     await until(() => exits.length === 1);
     expect(exits).toEqual(["signal SIGTERM"]);
   });
+
+  // the Rust host is a binary: spawned, not forked, on the same channel (an executable script stands in for it)
+  it.skipIf(process.platform === "win32")("spawns a host binary with --host on the same channel", async () => {
+    const out: string[] = [];
+    const bin = path.join(tempDir(), "teamsrelay-light");
+    const script = [
+      `#!${process.execPath}`,
+      "process.stdout.write(JSON.stringify([process.argv.slice(2), process.env.NODE_BIN]) + '\\n');",
+      "process.on('message', (m) => process.send({ slot: m.slot, event: 'started' }));",
+      "setInterval(() => {}, 1000);",
+    ].join("\n");
+    fs.writeFileSync(bin, script, { mode: 0o755 });
+    const child = forkHost("/unused/light.cjs", process.execPath, { PATH: process.env.PATH ?? "", NODE_BIN: process.execPath }, (l) => out.push(l), bin);
+    live.push(child);
+    const got: FromHost[] = [];
+    child.on("message", (m) => got.push(m));
+    child.send({ op: "start", slot: 5, env: {} });
+    await until(() => out.length === 1 && got.length === 1);
+    expect(out).toEqual([JSON.stringify([["--host"], process.execPath])]);
+    expect(got).toEqual([{ slot: 5, event: "started" }]);
+  });
 });

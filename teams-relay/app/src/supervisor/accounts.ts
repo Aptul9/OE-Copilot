@@ -36,6 +36,8 @@ export type AccountsConfig = {
   wlrctl: string;
   // every light slot in one process (src/supervisor/light-host.ts); false: one process per slot
   lightHost: boolean;
+  // the host in Rust (webapp-rs, src/agent) instead of node lightScript --host; null: the Node host
+  lightBin?: string | null;
 };
 
 export class AccountError extends Error {
@@ -164,9 +166,11 @@ export class Accounts {
   ) {
     this.makeProcess = deps.process ?? ((name, command, output) => new Supervised(name, command, { log: (m) => this.say(m), output }));
     this.focus = deps.focus ?? ((n) => focusWindow(n, cfg));
-    // the slots bring their own environment; the host only needs what any agent process gets
-    const hostEnv = { PATH, HOME: "/root", NODE_ENV: "production", ...cfg.agentEnv };
-    this.host = !cfg.lightHost ? null : (deps.lightHost ?? new LightHost(() => forkHost(cfg.lightScript, cfg.node, hostEnv, (line) => deps.log(line)), (m) => this.say(m)));
+    // the slots bring their own environment; the host only needs what any agent process gets, and the Rust one the Node
+    // its calling workers run on
+    const hostEnv = { PATH, HOME: "/root", NODE_ENV: "production", ...cfg.agentEnv, ...(cfg.lightBin ? { NODE_BIN: cfg.node } : {}) };
+    const spawnHost = () => forkHost(cfg.lightScript, cfg.node, hostEnv, (line) => deps.log(line), cfg.lightBin ?? null);
+    this.host = !cfg.lightHost ? null : (deps.lightHost ?? new LightHost(spawnHost, (m) => this.say(m)));
   }
 
   start(n: number) {

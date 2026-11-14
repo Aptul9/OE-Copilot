@@ -77,7 +77,8 @@ check_teams_relay() {
   if [ "$docker" = 1 ]; then
     docker run --rm -v "$(pwd -W 2>/dev/null || pwd)/webapp-rs:/webapp-rs:ro" -w /webapp-rs -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
   elif command -v cargo >/dev/null; then
-    (cd webapp-rs && cargo test --locked)
+    # NODE_BIN: the light host's calling worker test runs a real Node on its IPC channel
+    (cd webapp-rs && NODE_BIN="$(command -v node)" cargo test --locked)
   else
     echo "no cargo: webapp-rs not tested"
   fi

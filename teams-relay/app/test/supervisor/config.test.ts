@@ -33,6 +33,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ LIGHT_HOST: "yes" })).toThrow(/LIGHT_HOST/);
   });
 
+  it("runs the light host in Rust unless LIGHT_RUST is 0", () => {
+    expect(loadConfig({}).accounts.lightBin).toBe("/app/teamsrelay-light");
+    expect(loadConfig({ LIGHT_BIN: "/opt/light" }).accounts.lightBin).toBe("/opt/light");
+    expect(loadConfig({ LIGHT_RUST: "0" }).accounts.lightBin).toBeNull();
+    expect(() => loadConfig({ LIGHT_RUST: "yes" })).toThrow(/LIGHT_RUST/);
+  });
+
   it("starts the desktop on demand, after 10 minutes without a browser, unless DESKTOP_ON_DEMAND is 0", () => {
     expect(loadConfig({}).desktop).toEqual({ onDemand: true, socket: path.join("/config/.XDG", "wayland-0"), s6rc: "/command/s6-rc", microphone: null, idleMs: 600_000 });
     expect(loadConfig({ DESKTOP_ON_DEMAND: "0" }).desktop.onDemand).toBe(false);

@@ -5,6 +5,7 @@
 
 pub mod activity;
 pub mod api;
+pub mod browser;
 pub mod calls;
 pub mod chatsvc;
 pub mod commands;
@@ -23,7 +24,9 @@ pub mod session;
 pub mod slot;
 pub mod status;
 pub mod store;
+pub mod teams;
 pub mod token;
+pub mod web;
 
 pub use crate::push::notify::{Field, error_text, info, warn};
 

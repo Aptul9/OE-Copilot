@@ -44,6 +44,8 @@ services:
       LIGHT_RUST: ${LIGHT_RUST:-1}
       # the supervisor in Rust (/app/teamsrelay-supervisor); 0: the Node supervisor of supervisor.cjs
       SUPERVISOR_RUST: ${SUPERVISOR_RUST:-1}
+      # the browser agent in Rust (/app/teamsrelay-agent); 0: the Node agent of agent.cjs
+      AGENT_RUST: ${AGENT_RUST:-1}
       DESKTOP_ON_DEMAND: ${DESKTOP_ON_DEMAND:-1}
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
       # shared Microsoft accounts of the OE calendar agent (app/src/supervisor/broker.ts): its address and the key it gives

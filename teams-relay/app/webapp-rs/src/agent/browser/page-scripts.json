@@ -1,0 +1,383 @@
+{
+ "_generated": "by scripts/page-scripts.mjs from src/agent/teams/scripts and src/agent/teams/selectors.ts: do not edit",
+ "scripts": {
+  "activity.readActivityFeed": "function readActivityFeed({ s, t }) {\n  return [...document.querySelectorAll(s.feedItem)].map((it) => {\n    const id = ((it.getAttribute(\"aria-labelledby\") || \"\").match(s.feedItemId) || [])[1] || \"\";\n    const titleEl = it.querySelector(s.feedTitle);\n    const title = titleEl ? (titleEl.innerText || \"\").replace(/\\s+/g, \" \").trim() : \"\";\n    const leaves = [...it.querySelectorAll(\"*\")].filter((x) => x.children.length === 0 && (x.textContent || \"\").trim() && !(titleEl && titleEl.contains(x)) && !x.closest(\"button\")).map((x) => (x.textContent || \"\").replace(/\\s+/g, \" \").trim());\n    let ti = leaves.findIndex((x) => t.feedTime.test(x));\n    if (ti < 0) ti = leaves.length;\n    const tm = leaves[ti] || \"\";\n    const preview = leaves.slice(0, ti).join(\" \");\n    const place = leaves.slice(ti + 1);\n    const emoji = [...it.querySelectorAll(\"img\")].map((i) => i.alt || \"\").filter(Boolean).join(\"\");\n    const call = title.match(t.missedCall);\n    const actor = call ? call[1].trim() : title.replace(t.feedAction, \"\").trim();\n    let kind = call ? \"call\" : t.feedReaction.test(title) ? \"reaction\" : t.feedMention.test(title) ? \"mention\" : t.feedReply.test(title) ? \"reply\" : t.feedTask.test(title) ? \"task\" : t.feedTeam.test(title) ? \"team\" : \"message\";\n    const channel = place.length > 1 || /\\s>\\s/.test(place.join(\" \"));\n    let chat = place.join(\" \\u203A \").replace(/\\s+>\\s+/g, \" \\u203A \");\n    if (t.inChatWithYou.test(chat) || call) chat = actor;\n    if (t.meetingTime.test(chat)) kind = \"meeting\";\n    const weight = parseInt(getComputedStyle(titleEl || it).fontWeight, 10) || 400;\n    const avatar = [...it.querySelectorAll(\"img\")].find((i) => !i.alt && i.naturalWidth);\n    return { id, title, kind, actor, emoji, preview: preview.slice(0, 300), tm, chat, channel, unread: weight >= 600, avsrc: avatar ? avatar.currentSrc || avatar.src : \"\" };\n  });\n}",
+  "calls.installMicHook": "function installMicHook() {\n  const w = window;\n  if (w.__teamsMicHook) return \"already\";\n  const devices = navigator.mediaDevices;\n  if (!devices || typeof devices.getUserMedia !== \"function\") return \"unavailable\";\n  const original = devices.getUserMedia.bind(devices);\n  w.__teamsMicTracks = w.__teamsMicTracks || [];\n  devices.getUserMedia = async (constraints) => {\n    const stream = await original(constraints);\n    try {\n      for (const t of stream.getAudioTracks()) w.__teamsMicTracks.push(t);\n    } catch {\n    }\n    return stream;\n  };\n  w.__teamsMicHook = true;\n  return \"installed\";\n}",
+  "calls.micLive": "function micLive() {\n  const w = window;\n  const live = (w.__teamsMicTracks || []).filter((t) => t.readyState === \"live\");\n  w.__teamsMicTracks = live;\n  return live.length > 0;\n}",
+  "calls.micMuted": "function micMuted(s) {\n  const reads = /* @__PURE__ */ new Set();\n  for (const b of document.querySelectorAll(s.callMic)) {\n    const r = b.getBoundingClientRect();\n    if (!(r.width > 0 && r.height > 0)) continue;\n    const state = b.getAttribute(\"data-state\") || \"\";\n    const byState = s.callMicMuted.includes(state) ? true : s.callMicLive.includes(state) ? false : null;\n    const action = b.getAttribute(\"data-track-action-scenario\");\n    const byAction = action === s.callMicUnmute ? true : action === s.callMicMute ? false : null;\n    reads.add(byState !== null && byAction !== null && byState !== byAction ? null : byState ?? byAction);\n  }\n  if (reads.size !== 1) return null;\n  const [muted] = reads;\n  return muted ?? null;\n}",
+  "calls.notOneOnOne": "function notOneOnOne({ s, t }) {\n  const shown = (root, sel) => [...root.querySelectorAll(sel)].filter((e) => e.getClientRects().length > 0);\n  const header = shown(document, s.chatHeader).find((h) => shown(h, s.chatTitle).length > 0);\n  if (!header) return \"no chat header on screen\";\n  if (shown(header, s.groupHeaderMarks).length) return \"the header shows the marks of a group chat\";\n  for (const count of shown(header, s.participantCount)) {\n    const m = `${count.getAttribute(\"aria-label\") ?? \"\"} ${count.textContent ?? \"\"}`.match(t.participantCount);\n    if (!m) return \"participant count not readable\";\n    if (Number(m[1]) > 0) return `${m[1]} people in the participant count`;\n  }\n  if (!shown(header, s.oneOnOneCall).length) return \"no 1:1 call button in the header\";\n  return \"\";\n}",
+  "calls.readIncomingCall": "function readIncomingCall({ s, t }) {\n  const toast = [...document.querySelectorAll(s.callToast)].find((e) => e.getClientRects().length > 0);\n  if (!toast) return null;\n  const text = ((toast.querySelector(s.callText) || toast).innerText || \"\").replace(/\\s+/g, \" \").trim();\n  const m = text.match(t.callingYou);\n  return { caller: m ? m[1].replace(t.externalMark, \"\").trim() : \"\" };\n}",
+  "chat-list.clickChatRow": "function clickChatRow({ s, t, name, exact }) {\n  const header = (sec) => sec.querySelector(s.sectionHeader) || sec;\n  const headText = (sec) => (header(sec).innerText || \"\").replace(/\\s+/g, \" \").trim();\n  const rows = [...document.querySelectorAll(s.chatRow)].filter((e) => {\n    const sec = e.parentElement && e.parentElement.closest(s.section);\n    return !!sec && t.listSection.test(headText(sec));\n  });\n  const rowName = (e) => {\n    const clean = (e.innerText || \"\").replace(/\\s+/g, \" \").trim().replace(t.listPrefix, \"\").replace(t.statusWords, \"\").replace(/\\s+/g, \" \").trim();\n    const n = clean.split(t.listNameEnd)[0].trim();\n    return (n || clean.slice(0, 40)).slice(0, 60);\n  };\n  const names = rows.map(rowName);\n  let i = names.indexOf(name);\n  if (i < 0 && !exact) {\n    const prefixed = names.map((n, k) => n.startsWith(name) ? k : -1).filter((k) => k >= 0);\n    if (prefixed.length === 1) i = prefixed[0];\n  }\n  if (i < 0) return false;\n  rows[i].click();\n  return true;\n}",
+  "chat-list.openChatHeader": "function openChatHeader({ s, t }) {\n  const title = document.querySelector(s.chatTitle);\n  if (!title) return { title: \"\", people: [], more: 0, count: null };\n  const lines = (title.innerText || \"\").split(\"\\n\").map((line) => line.trim());\n  const plus = lines.find((line) => /^\\+\\d+$/.test(line)) ?? \"\";\n  const [first = \"\", next = \"\"] = lines;\n  const people = [...title.querySelectorAll(s.topicParticipant)].map((p) => (p.innerText || \"\").trim()).filter(Boolean);\n  const counter = document.querySelector(s.participantCount);\n  const n = counter && `${counter.getAttribute(\"aria-label\") || \"\"} ${counter.innerText || \"\"}`.match(t.participantCount);\n  return { title: /^\\+\\d+$/.test(next) ? `${first}, ${next}` : first, people, more: plus ? Number(plus.slice(1)) : 0, count: n ? Number(n[1]) : null };\n}",
+  "chat-list.openChatTitle": "function openChatTitle(s) {\n  const title = document.querySelector(s.chatTitle);\n  if (!title) return \"\";\n  const [first = \"\", next = \"\"] = (title.innerText || \"\").split(\"\\n\").map((line) => line.trim());\n  return /^\\+\\d+$/.test(next) ? `${first}, ${next}` : first;\n}",
+  "chat-list.readChatList": "function readChatList({ s, t }) {\n  const header = (sec) => sec.querySelector(s.sectionHeader) || sec;\n  const headText = (sec) => (header(sec).innerText || \"\").replace(/\\s+/g, \" \").trim();\n  for (const sec of document.querySelectorAll(s.collapsedSection)) {\n    if (t.listSection.test(headText(sec))) header(sec).click();\n  }\n  const rows = [...document.querySelectorAll(s.chatRow)].filter((e) => {\n    const sec = e.parentElement && e.parentElement.closest(s.section);\n    return !!sec && t.listSection.test(headText(sec));\n  });\n  const out = [];\n  const seen = /* @__PURE__ */ new Set();\n  for (const e of rows) {\n    const text = (e.innerText || \"\").replace(/\\s+/g, \" \").trim();\n    if (!text || t.listNoise.test(text)) continue;\n    const unread = !!e.querySelector(s.unread);\n    const clean = text.replace(t.listPrefix, \"\").replace(t.statusWords, \"\").replace(/\\s+/g, \" \").trim();\n    const tm = clean.match(t.listTime);\n    const time = tm ? tm[0].trim() : \"\";\n    let name = clean.split(t.listNameEnd)[0].trim();\n    if (!name) name = clean.slice(0, 40);\n    if (!name || seen.has(name)) continue;\n    seen.add(name);\n    let preview = clean;\n    if (time) {\n      const i = clean.indexOf(time);\n      if (i > -1) preview = clean.slice(i + time.length).trim();\n    } else {\n      preview = clean.slice(name.length).trim();\n    }\n    const label = e.getAttribute(\"aria-label\") || \"\";\n    const mention = !!e.querySelector(s.mention) || t.mentionLabel.test(label);\n    const muted = e.getAttribute(\"data-item-type\") === s.mutedItemType || !!e.querySelector(s.mutedIcon);\n    const avatar = e.querySelector(s.avatar);\n    const avsrc = avatar && avatar.naturalWidth ? avatar.currentSrc || avatar.src : \"\";\n    const presence = (e.querySelector(s.rowPresence)?.getAttribute(\"aria-label\") || \"\").trim().slice(0, 60);\n    const ids = (e.getAttribute(\"aria-labelledby\") || \"\").split(/\\s+/);\n    const kind = ids.includes(s.rowOneOnOne) ? \"one\" : ids.includes(s.rowGroup) ? \"group\" : ids.includes(s.rowMeeting) ? \"meeting\" : \"\";\n    out.push({ name: name.slice(0, 60), preview: preview.slice(0, 120), time, unread, mention, muted, avsrc, presence, kind });\n    if (out.length >= 40) break;\n  }\n  return out;\n}",
+  "chat-list.scrollList": "function scrollList({ item, to }) {\n  let e = document.querySelector(item);\n  while (e && !(e.scrollHeight > e.clientHeight + 5 && /auto|scroll/.test(getComputedStyle(e).overflowY))) e = e.parentElement;\n  if (!e) return false;\n  const before = e.scrollTop;\n  e.scrollTop = to === \"top\" ? 0 : before + e.clientHeight * 0.8;\n  return e.scrollTop !== before;\n}",
+  "compose.composerImages": "function composerImages(s) {\n  const box = [...document.querySelectorAll(s.editor)].find((x) => !x.closest(s.item) && x.offsetParent !== null);\n  return box ? box.querySelectorAll(\"img\").length : 0;\n}",
+  "compose.composerLeft": "function composerLeft(s) {\n  const box = [...document.querySelectorAll(s.editor)].find((x) => !x.closest(s.item) && x.offsetParent !== null);\n  if (!box) return 0;\n  return (box.textContent || \"\").replace(/[\\s⁠​ ]/g, \"\").length + box.querySelectorAll(\"img\").length + box.querySelectorAll(s.composerMention).length;\n}",
+  "compose.messageIds": "function messageIds(s) {\n  return [...document.querySelectorAll(s.message)].map((m) => m.getAttribute(\"data-mid\") || \"\");\n}",
+  "compose.ownMessageSent": "function ownMessageSent({ s, t, before, image = false, names = [] }) {\n  const known = new Set(before);\n  return [...document.querySelectorAll(s.message)].some((m) => {\n    const mid = m.getAttribute(\"data-mid\") || \"\";\n    const mine = m.closest(s.mine) || m.querySelector(s.mine);\n    if (!mid || known.has(mid) || !mine) return false;\n    const icon = mine.querySelector(s.statusIcon);\n    const status = (icon && icon.getAttribute(\"aria-label\") || \"\").trim();\n    if (!status || t.sending.test(status) || t.sendFailed.test(status)) return false;\n    if (image && ![...m.querySelectorAll(\"img\")].some((i) => s.imageType.test(i.getAttribute(\"itemtype\") || \"\") || s.lazyImage.test(i.getAttribute(\"data-tid\") || \"\"))) return false;\n    if (!names.length) return true;\n    const tagged = [...m.querySelectorAll(\"[itemtype]\")].filter((e) => s.mentionType.test(e.getAttribute(\"itemtype\") || \"\")).map((e) => (e.textContent || \"\").replace(/[\\s ]+/g, \" \").trim());\n    return names.every((n) => tagged.includes(n));\n  });\n}",
+  "compose.pasteImage": "function pasteImage({ s, name, type, data }) {\n  const box = [...document.querySelectorAll(s.editor)].find((x) => !x.closest(s.item) && x.offsetParent !== null);\n  if (!box) return false;\n  const raw = atob(data);\n  const bytes = new Uint8Array(raw.length);\n  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);\n  const transfer = new DataTransfer();\n  transfer.items.add(new File([bytes], name, { type }));\n  box.focus();\n  return !box.dispatchEvent(new ClipboardEvent(\"paste\", { clipboardData: transfer, bubbles: true, cancelable: true }));\n}",
+  "conversation.readMessages": "function readMessages({ s, t }) {\n  const isEmoji = (i) => s.emojiType.test(i.getAttribute(\"itemtype\") || \"\") || !!i.closest(s.emoticon);\n  const block = (n) => /^(block|flex|grid|list-item|table)$/.test(getComputedStyle(n).display);\n  const walk = (n) => {\n    if (n.nodeType === 3) return n.nodeValue || \"\";\n    if (n.nodeType !== 1) return \"\";\n    const el = n;\n    if (el.matches(s.bodySkip)) return \"\";\n    if (el.tagName === \"BR\") return \"\\n\";\n    if (el.tagName === \"IMG\") return isEmoji(el) ? el.alt || \"\" : \"\";\n    let text = \"\";\n    for (const c of el.childNodes) text += walk(c);\n    return el.tagName === \"P\" || block(el) ? text + \"\\n\" : text;\n  };\n  const esc = (v) => (v || \"\").replace(/[&<>\"]/g, (c) => ({ \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\" })[c] || c);\n  const COLOR = /^(rgba?\\(\\s*\\d+\\s*,\\s*\\d+\\s*,\\s*\\d+\\s*(,\\s*[\\d.]+\\s*)?\\)|#[0-9a-f]{3,8})$/i;\n  const TAGS = { B: \"b\", STRONG: \"b\", I: \"i\", EM: \"i\", U: \"u\", S: \"s\", STRIKE: \"s\", DEL: \"s\", CODE: \"code\", PRE: \"pre\", UL: \"ul\", OL: \"ol\", LI: \"li\", BLOCKQUOTE: \"blockquote\", P: \"p\", H1: \"h\", H2: \"h\", H3: \"h\", H4: \"h\" };\n  const toHtml = (n) => {\n    if (n.nodeType === 3) return esc(n.nodeValue || \"\");\n    if (n.nodeType !== 1) return \"\";\n    const el = n;\n    if (el.matches(s.bodySkip)) return \"\";\n    const tag = el.tagName;\n    if (tag === \"BR\") return \"<br>\";\n    if (tag === \"IMG\") return isEmoji(el) ? esc(el.alt || \"\") : \"\";\n    if (s.mentionType.test(el.getAttribute(\"itemtype\") || \"\")) {\n      const me = ((el.closest(s.mentionBox) || el).getAttribute(\"aria-label\") || \"\").toLowerCase().includes(t.mentionedYou.toLowerCase());\n      return `<span class=\"mn${me ? \" me\" : \"\"}\">${esc(el.textContent || \"\")}</span>`;\n    }\n    let out2 = \"\";\n    for (const c of el.childNodes) out2 += toHtml(c);\n    if (el.hasAttribute(\"data-mention-type\")) return out2;\n    if (tag === \"A\") {\n      const href = el.getAttribute(\"href\") || \"\";\n      return /^https?:\\/\\//i.test(href) ? `<a href=\"${esc(href)}\" target=\"_blank\" rel=\"noopener\">${out2}</a>` : out2;\n    }\n    const st = el.style;\n    if (st.color && COLOR.test(st.color.trim())) out2 = `<span style=\"color:${st.color.trim()}\">${out2}</span>`;\n    if (st.backgroundColor && COLOR.test(st.backgroundColor.trim())) out2 = `<span style=\"background:${st.backgroundColor.trim()}\">${out2}</span>`;\n    if (/^(bold|[6-9]00)$/.test(st.fontWeight || \"\")) out2 = `<b>${out2}</b>`;\n    if (st.fontStyle === \"italic\") out2 = `<i>${out2}</i>`;\n    if (/line-through/.test(st.textDecoration || \"\")) out2 = `<s>${out2}</s>`;\n    else if (/underline/.test(st.textDecoration || \"\")) out2 = `<u>${out2}</u>`;\n    const known = TAGS[tag];\n    if (known === \"h\") return `<div class=\"h\">${out2}</div>`;\n    if (known) return `<${known}>${out2}</${known}>`;\n    return block(el) ? `<div>${out2}</div>` : out2;\n  };\n  const out = [];\n  let lastAuthor = \"\";\n  for (const e of [...document.querySelectorAll(s.message)].slice(-40)) {\n    const className = typeof e.className === \"string\" ? e.className : \"\";\n    const mine = !!e.querySelector(s.mine) || className.indexOf(\"MyMessage\") > -1 || !!e.closest(s.mine);\n    const item = e.closest(s.item) || e;\n    const authorEl = item.querySelector(s.author) || e.querySelector(s.author);\n    let author = authorEl ? (authorEl.innerText || \"\").trim() : \"\";\n    if (!author) {\n      const m = (e.getAttribute(\"aria-label\") || \"\").match(t.authorLabel);\n      if (m) author = m[1].trim();\n    }\n    if (mine) lastAuthor = \"\";\n    else if (author) lastAuthor = author;\n    else author = lastAuthor;\n    const body = e.querySelector(s.body) || e.querySelector(s.bodyAlt);\n    const text = body ? walk(body).replace(/ /g, \" \").replace(/[ \\t]+\\n/g, \"\\n\").replace(/\\n{3,}/g, \"\\n\\n\").trim() : \"\";\n    let quote = null;\n    const card = e.querySelector(s.quote);\n    if (card) {\n      const preview = card.querySelector(s.quotePreview);\n      const lines = (card.innerText || \"\").split(\"\\n\").map((x) => x.trim()).filter(Boolean);\n      quote = { author: (lines[0] || \"\").slice(0, 60), text: (preview && preview.innerText || lines.slice(2).join(\" \")).trim().slice(0, 300) };\n    }\n    const images = [...e.querySelectorAll(\"img\")].filter(\n      (i) => !isEmoji(i) && !i.closest(s.bodySkip) && !i.closest(s.anyAvatar) && (s.imageType.test(i.getAttribute(\"itemtype\") || \"\") || s.lazyImage.test(i.getAttribute(\"data-tid\") || \"\") || i.naturalWidth > 64)\n    ).map(\n      (i) => i.complete && i.naturalWidth > 1 ? { src: i.currentSrc || i.src || \"\", w: i.naturalWidth, h: i.naturalHeight, loaded: true } : { src: i.getAttribute(s.lazyImageSource) || \"\", w: 0, h: 0, loaded: false }\n    ).filter((i) => i.src);\n    const files = [];\n    for (const grid of e.querySelectorAll(s.files)) {\n      for (const x of grid.querySelectorAll(s.fileEntry)) {\n        const [name, ...rest] = (x.getAttribute(\"aria-label\") || \"\").split(\"\\n\");\n        const url = rest.join(\"\").trim();\n        if (name && !files.some((f) => f.url === url)) files.push({ name: name.trim().slice(0, 160), url });\n      }\n    }\n    const reactions = [...item.querySelectorAll(s.pill)].map((x) => ({\n      e: [...x.querySelectorAll(\"img\")].map((i) => i.alt).join(\"\"),\n      n: parseInt((x.innerText || \"\").trim(), 10) || 1,\n      mine: x.getAttribute(\"aria-pressed\") === \"true\"\n    })).filter((r) => r.e);\n    const reacts = reactions.map((r) => r.e + (r.n > 1 ? r.n : \"\")).join(\" \");\n    let status = \"\";\n    if (mine) {\n      const my = e.closest(s.mine) || item.querySelector(s.mine);\n      const icon = my && my.querySelector(s.statusIcon);\n      status = icon ? (icon.getAttribute(\"aria-label\") || \"\").trim() : \"\";\n    }\n    const deleted = !!item.querySelector(s.tombstone);\n    const edited = [...item.querySelectorAll(\"span\")].some((x) => !x.closest(s.body) && t.edited.test((x.textContent || \"\").trim()));\n    const avatar = item.querySelector(s.messageAvatar);\n    const avsrc = avatar && avatar.naturalWidth ? avatar.currentSrc || avatar.src : \"\";\n    let html = body ? toHtml(body) : \"\";\n    for (let k = 0; k < 4; k++) html = html.replace(/<div>\\s*<\\/div>/g, \"\");\n    html = html.replace(/^(\\s|<div>|<p>[\\s ]*<\\/p>)+/, (m) => m.replace(/<p>[\\s ]*<\\/p>/g, \"\")).replace(/(<p>[\\s ]*<\\/p>|\\s)+(?=(<\\/div>)*$)/, \"\").slice(0, 2e4);\n    const mentionsMe = !!(body && body.querySelector(`${s.mentionBox}[aria-label=\"${t.mentionedYou}\"]`));\n    out.push({ mid: e.getAttribute(\"data-mid\") || \"\", author: author.slice(0, 60), text: text.slice(0, 2e3), mine, reacts, quote, images, files, reactions, status, edited, html, mentionsMe, avsrc, deleted });\n  }\n  return out;\n}",
+  "media.copyImage": "function copyImage(src) {\n  const img = [...document.querySelectorAll(\"img\")].find((x) => (x.currentSrc || x.src) === src && x.naturalWidth);\n  if (!img) return null;\n  const canvas = document.createElement(\"canvas\");\n  canvas.width = img.naturalWidth;\n  canvas.height = img.naturalHeight;\n  try {\n    const ctx = canvas.getContext(\"2d\");\n    if (!ctx) return null;\n    ctx.drawImage(img, 0, 0);\n    return canvas.toDataURL(\"image/png\").split(\",\")[1] || null;\n  } catch {\n    return null;\n  }\n}",
+  "media.fetchImage": "async function fetchImage({ src, max }) {\n  const r = await fetch(src, { credentials: \"include\" });\n  if (!r.ok) return null;\n  const blob = await r.blob();\n  if (blob.size > max) return null;\n  const url = await new Promise((resolve) => {\n    const reader = new FileReader();\n    reader.onload = () => resolve(String(reader.result));\n    reader.readAsDataURL(blob);\n  });\n  return { type: blob.type, data: url.split(\",\")[1] || \"\" };\n}",
+  "media.squareLogo": "async function squareLogo(banner) {\n  try {\n    const image = await createImageBitmap(new Blob([Uint8Array.from(atob(banner), (c) => c.charCodeAt(0))]));\n    const { width: w, height: h } = image;\n    const canvas = new OffscreenCanvas(w, h);\n    const ctx = canvas.getContext(\"2d\");\n    if (!ctx) return null;\n    ctx.drawImage(image, 0, 0);\n    const px = ctx.getImageData(0, 0, w, h).data;\n    const inked = (x, y) => {\n      const i = (y * w + x) * 4;\n      return px[i + 3] > 40 && Math.min(px[i], px[i + 1], px[i + 2]) < 225;\n    };\n    const groups = [];\n    for (let x = 0; x < w; x++) {\n      let y0 = -1;\n      let y1 = -1;\n      for (let y = 0; y < h; y++) {\n        if (!inked(x, y)) continue;\n        if (y0 < 0) y0 = y;\n        y1 = y + 1;\n      }\n      if (y0 < 0) continue;\n      const last = groups[groups.length - 1];\n      if (last?.x1 === x) Object.assign(last, { x1: x + 1, y0: Math.min(last.y0, y0), y1: Math.max(last.y1, y1) });\n      else groups.push({ x0: x, x1: x + 1, y0, y1 });\n    }\n    if (!groups.length) return null;\n    const first = groups[0];\n    const heights = groups.slice(1).map((g) => g.y1 - g.y0).sort((a, b) => a - b);\n    const [fw, fh] = [first.x1 - first.x0, first.y1 - first.y0];\n    const mark = heights.length > 0 && fw >= fh * 0.8 && fw <= fh * 1.25 && fh >= heights[heights.length >> 1] * 2;\n    const box = mark ? first : { x0: first.x0, x1: groups[groups.length - 1].x1, y0: Math.min(...groups.map((g) => g.y0)), y1: Math.max(...groups.map((g) => g.y1)) };\n    const [bw, bh] = [box.x1 - box.x0, box.y1 - box.y0];\n    const side = Math.max(bw, bh) + 2 * Math.round(Math.max(bw, bh) * 0.06);\n    const square = new OffscreenCanvas(side, side);\n    const out = square.getContext(\"2d\");\n    if (!out) return null;\n    out.fillStyle = \"#fff\";\n    out.fillRect(0, 0, side, side);\n    out.drawImage(canvas, box.x0, box.y0, bw, bh, Math.round((side - bw) / 2), Math.round((side - bh) / 2), bw, bh);\n    const blob = await square.convertToBlob({ type: \"image/png\" });\n    const url = await new Promise((resolve) => {\n      const reader = new FileReader();\n      reader.onload = () => resolve(String(reader.result));\n      reader.readAsDataURL(blob);\n    });\n    return url.split(\",\")[1] || null;\n  } catch {\n    return null;\n  }\n}",
+  "members.rosterNames": "function rosterNames(s) {\n  const names = [...document.querySelectorAll(s.rosterName)].map((e) => (e.textContent || \"\").trim()).filter(Boolean);\n  return [...new Set(names)];\n}",
+  "members.topicNames": "function topicNames({ s, t }) {\n  const names = [...document.querySelectorAll(s.topicParticipant)].map((e) => (e.textContent || \"\").replace(t.selfChat, \"\").trim()).filter(Boolean);\n  return [...new Set(names)];\n}",
+  "mentions.composerMentionNames": "function composerMentionNames(s) {\n  const box = [...document.querySelectorAll(s.editor)].find((x) => !x.closest(s.item) && x.offsetParent !== null);\n  if (!box) return [];\n  return [...box.querySelectorAll(s.composerMention)].map((m) => (m.textContent || \"\").replace(/[\\s ]+/g, \" \").trim()).filter(Boolean);\n}",
+  "mentions.mentionOptionPoint": "function mentionOptionPoint({ s, name }) {\n  const popup = document.querySelector(s.mentionPopup);\n  if (!popup) return null;\n  const option = [...popup.querySelectorAll('[role=\"option\"]')].find(\n    (o) => o.getAttribute(\"itemtype\") === \"person\" && o.getAttribute(\"data-tid\") === s.mentionOptionPrefix + name && o.getClientRects().length > 0\n  );\n  if (!option) return null;\n  option.scrollIntoView({ block: \"nearest\" });\n  const r = option.getBoundingClientRect();\n  const x = r.left + r.width / 2;\n  const y = r.top + r.height / 2;\n  const hit = document.elementFromPoint(x, y);\n  return hit && option.contains(hit) ? { x, y } : null;\n}",
+  "message-actions.barButtonPoint": "function barButtonPoint({ s, mid, tid }) {\n  const m = document.querySelector(`${s.message}[data-mid=\"${CSS.escape(mid)}\"]`);\n  if (!m) return null;\n  const r = m.getBoundingClientRect();\n  const bars = [...document.querySelectorAll(s.actionBar)].filter((b) => b.offsetParent !== null);\n  let best = null;\n  let distance = 1e9;\n  for (const b of bars) {\n    const q2 = b.getBoundingClientRect();\n    const d = Math.abs((q2.top + q2.bottom) / 2 - (r.top + Math.min(r.height, 40) / 2));\n    if (d < distance) {\n      distance = d;\n      best = b;\n    }\n  }\n  if (!best || distance > 120) return null;\n  const btn = best.querySelector(`[data-tid=\"${CSS.escape(tid)}\"]`);\n  if (!btn || btn.offsetParent === null) return null;\n  const q = btn.getBoundingClientRect();\n  const x = q.left + q.width / 2;\n  const y = q.top + q.height / 2;\n  const hit = document.elementFromPoint(x, y);\n  return hit && btn.contains(hit) ? { x, y } : null;\n}",
+  "message-actions.centerElement": "function centerElement(el) {\n  el.scrollIntoView({ block: \"center\" });\n}",
+  "message-actions.composerText": "function composerText(s) {\n  const box = [...document.querySelectorAll(s.editor)].find((x) => !x.closest(s.item) && x.offsetParent !== null);\n  return box ? box.innerText : \"\";\n}",
+  "message-actions.deletedState": "function deletedState({ s, mid }) {\n  const m = document.querySelector(`${s.message}[data-mid=\"${CSS.escape(mid)}\"]`);\n  const item = m && m.closest(s.item);\n  if (!item) return \"missing\";\n  return item.querySelector(s.tombstone) ? \"deleted\" : \"present\";\n}",
+  "message-actions.isOwnMessage": "function isOwnMessage({ s, mid }) {\n  const m = document.querySelector(`${s.message}[data-mid=\"${CSS.escape(mid)}\"]`);\n  return !!(m && m.closest(s.mine));\n}",
+  "message-actions.lastMessageQuotes": "function lastMessageQuotes({ s, before, text }) {\n  const all = [...document.querySelectorAll(s.message)];\n  if (all.length <= before) return false;\n  const item = all[all.length - 1].closest(s.item);\n  return !!item && !!item.querySelector(s.quote) && (item.innerText || \"\").includes(text);\n}",
+  "message-actions.messageBodyText": "function messageBodyText(mid) {\n  const body = document.getElementById(`content-${mid}`);\n  return body ? body.innerText.trim() : null;\n}",
+  "message-actions.messageCount": "function messageCount(s) {\n  return document.querySelectorAll(s.message).length;\n}",
+  "message-actions.openOverlayNames": "function openOverlayNames(s) {\n  return [...document.querySelectorAll(s.overlays)].filter((e) => {\n    const r = e.getBoundingClientRect();\n    return r.width > 0 && r.height > 0;\n  }).map((e) => [e.getAttribute(\"role\"), e.getAttribute(\"aria-label\"), e.getAttribute(\"data-tid\") || e.getAttribute(\"data-testid\")].filter(Boolean).join(\" \"));\n}",
+  "message-actions.ownReactions": "function ownReactions({ s, mid }) {\n  const m = document.querySelector(`${s.message}[data-mid=\"${CSS.escape(mid)}\"]`);\n  if (!m) return [];\n  const item = m.closest(s.item) || m;\n  return [...item.querySelectorAll(`${s.pill}[aria-pressed=\"true\"]`)].map((x) => (x.getAttribute(\"aria-labelledby\") || \"\").split(\"-\")[1] || \"\");\n}",
+  "message-actions.quoteBoxReady": "function quoteBoxReady(s) {\n  return [...document.querySelectorAll(s.closeQuote)].some((x) => !x.closest(s.item));\n}",
+  "message-actions.reactionPill": "function reactionPill({ s, mid, emoji }) {\n  const m = document.querySelector(`${s.message}[data-mid=\"${CSS.escape(mid)}\"]`);\n  if (!m) return null;\n  const item = m.closest(s.item) || m;\n  const pill = [...item.querySelectorAll(s.pill)].find((x2) => [...x2.querySelectorAll(\"img\")].some((i) => i.alt === emoji));\n  if (!pill) return { found: false };\n  const r = pill.getBoundingClientRect();\n  const x = r.left + r.width / 2;\n  const y = r.top + r.height / 2;\n  const hit = document.elementFromPoint(x, y);\n  return { found: true, x, y, pressed: pill.getAttribute(\"aria-pressed\") === \"true\", covered: !hit || !pill.contains(hit) };\n}",
+  "message-actions.readReceiptNames": "function readReceiptNames({ s, entry }) {\n  const menus = [...document.querySelectorAll(s.menu)].filter((m) => m.getClientRects().length && !m.querySelector(`[data-tid=\"${entry}\"]`));\n  return menus.flatMap((m) => [...m.querySelectorAll(s.menuItem)].map((x) => (x.innerText || \"\").trim()).filter(Boolean));\n}",
+  "message-actions.undoButtonPoint": "function undoButtonPoint({ s, mid }) {\n  const m = document.querySelector(`${s.message}[data-mid=\"${CSS.escape(mid)}\"]`);\n  const item = m && m.closest(s.item);\n  const btn = item && item.querySelector(s.undoDelete);\n  if (!btn) return null;\n  btn.scrollIntoView({ block: \"center\" });\n  const r = btn.getBoundingClientRect();\n  const x = r.left + r.width / 2;\n  const y = r.top + r.height / 2;\n  const hit = document.elementFromPoint(x, y);\n  return hit && btn.contains(hit) ? { x, y } : null;\n}",
+  "page-state.drainInput": "function drainInput() {\n  const w = window;\n  const times = w.__relayInput || [];\n  w.__relayInput = [];\n  return times;\n}",
+  "page-state.drainNotifications": "function drainNotifications() {\n  const w = window;\n  const captured = w.__teamsMsgs || [];\n  w.__teamsMsgs = [];\n  return captured;\n}",
+  "page-state.installNotificationHook": "function installNotificationHook() {\n  const w = window;\n  if (w.__teamsHookInstalled) return \"already\";\n  w.__teamsMsgs = w.__teamsMsgs || [];\n  const capture = (title, body) => {\n    try {\n      w.__teamsMsgs.push({ title: String(title || \"\"), body: String(body || \"\") });\n    } catch {\n    }\n  };\n  try {\n    const Original = window.Notification;\n    const Wrapped = function(title, options) {\n      capture(title, options && options.body);\n      try {\n        return new Original(title, options);\n      } catch {\n        return { close() {\n        } };\n      }\n    };\n    try {\n      Wrapped.requestPermission = (cb) => {\n        if (cb) cb(\"granted\");\n        return Promise.resolve(\"granted\");\n      };\n    } catch {\n    }\n    try {\n      Object.defineProperty(Wrapped, \"permission\", { get: () => \"granted\" });\n    } catch {\n    }\n    window.Notification = Wrapped;\n  } catch {\n  }\n  try {\n    const proto = window.ServiceWorkerRegistration && ServiceWorkerRegistration.prototype;\n    if (proto && proto.showNotification) {\n      const show = proto.showNotification;\n      proto.showNotification = function(title, options) {\n        capture(title, options && options.body);\n        return show.call(this, title, options);\n      };\n    }\n  } catch {\n  }\n  try {\n    const perms = navigator.permissions;\n    const query = perms && perms.query ? perms.query.bind(perms) : null;\n    if (query) {\n      perms.query = ((d) => d && d.name === \"notifications\" ? Promise.resolve({ state: \"granted\", onchange: null }) : query(d));\n    }\n  } catch {\n  }\n  w.__teamsHookInstalled = true;\n  return \"installed\";\n}",
+  "page-state.makeVisible": "function makeVisible() {\n  const w = window;\n  if (w.__teamsVisible) return \"already\";\n  try {\n    Object.defineProperty(document, \"visibilityState\", { configurable: true, get: () => \"visible\" });\n    Object.defineProperty(document, \"hidden\", { configurable: true, get: () => false });\n    document.hasFocus = () => true;\n    w.__teamsVisible = true;\n    window.dispatchEvent(new Event(\"focus\"));\n    document.dispatchEvent(new Event(\"visibilitychange\"));\n    return \"installed\";\n  } catch {\n    return \"failed\";\n  }\n}",
+  "page-state.probePage": "function probePage({ s, t, withPresence }) {\n  const reduced = t.sessionLost.test(document.body && document.body.innerText || \"\");\n  const domReady = !!document.querySelector(s.editor) || !!document.querySelector(s.listItem);\n  const hookInstalled = !!window.__teamsHookInstalled;\n  if (!withPresence) return { reduced, domReady, hookInstalled };\n  const badge = document.querySelector(s.presence);\n  return { reduced, domReady, hookInstalled, presence: badge ? (badge.getAttribute(\"aria-label\") || \"\").trim().toLowerCase() : \"\" };\n}",
+  "page-state.readIdentity": "function readIdentity(s) {\n  const read = (k) => {\n    try {\n      return JSON.parse(localStorage.getItem(k || \"\") || \"null\");\n    } catch {\n      return null;\n    }\n  };\n  const user = read(s.userKey);\n  const profile = user && user.item && user.item.profile || {};\n  const tenants = (read(Object.keys(localStorage).find((k) => s.tenantsKey.test(k))) || {}).item || [];\n  const img = document.querySelector(s.meAvatar);\n  return {\n    name: String(profile.name || \"\"),\n    email: String(profile.preferred_username || profile.upn || \"\"),\n    tenant: String((tenants.find((x) => x.tenantId === profile.tid) || {}).tenantName || \"\"),\n    avsrc: img && img.naturalWidth ? img.currentSrc || img.src : \"\"\n  };\n}",
+  "page-state.uncoveredPoint": "function uncoveredPoint(sel) {\n  const el = [...document.querySelectorAll(sel)].find((e) => {\n    const r2 = e.getBoundingClientRect();\n    return r2.width > 0 && r2.height > 0;\n  });\n  if (!el) return null;\n  const r = el.getBoundingClientRect();\n  for (const fy of [0.5, 0.85, 0.15]) {\n    for (const fx of [0.5, 0.2, 0.8]) {\n      const x = r.left + r.width * fx;\n      const y = r.top + r.height * fy;\n      const hit = document.elementFromPoint(x, y);\n      if (hit && (hit === el || el.contains(hit))) return { x, y };\n    }\n  }\n  return null;\n}",
+  "page-state.watchInput": "function watchInput() {\n  const w = window;\n  if (w.__relayInputWatch) return \"already\";\n  w.__relayInput = w.__relayInput || [];\n  const note = (e) => {\n    if (!e.isTrusted) return;\n    const times = w.__relayInput = w.__relayInput || [];\n    times.push(Date.now());\n    if (times.length > 50) times.splice(0, times.length - 50);\n  };\n  for (const type of [\"pointerdown\", \"keydown\", \"wheel\"]) window.addEventListener(type, note, { capture: true, passive: true });\n  w.__relayInputWatch = true;\n  return \"installed\";\n}",
+  "sign-in.signInPage": "function signInPage({ s, t, email = \"\" }) {\n  const shown = (e) => {\n    const r = e.getBoundingClientRect();\n    const cs = getComputedStyle(e);\n    return r.width > 0 && r.height > 0 && cs.visibility !== \"hidden\" && cs.display !== \"none\";\n  };\n  const label = (e) => (e.innerText || e.value || e.getAttribute(\"aria-label\") || \"\").replace(/\\s+/g, \" \").trim();\n  const free = (e) => {\n    const r = e.getBoundingClientRect();\n    for (const fy of [0.5, 0.25, 0.75]) {\n      for (const fx of [0.5, 0.25, 0.75]) {\n        const x = r.left + r.width * fx;\n        const y = r.top + r.height * fy;\n        const hit = document.elementFromPoint(x, y);\n        if (hit && (hit === e || e.contains(hit)) && (hit.closest(s.clickable) ?? e) === e) return { x, y };\n      }\n    }\n    return null;\n  };\n  const clickable = [...document.querySelectorAll(s.clickable)].filter(shown);\n  const buttons = [...new Set(clickable.map((e) => label(e).slice(0, 40)).filter(Boolean))].slice(0, 30);\n  const sessionLost = t.sessionLost.test(document.body && document.body.innerText || \"\");\n  const signIns = clickable.filter((e) => t.signInButton.test(label(e)));\n  const teams = { asks: sessionLost, found: signIns.length, at: sessionLost && signIns.length === 1 ? free(signIns[0]) : null };\n  const untyped = [\"hidden\", \"submit\", \"button\", \"checkbox\", \"radio\", \"image\", \"reset\"];\n  const fields = [...document.querySelectorAll(s.fields)].filter(shown).filter((f) => f.tagName !== \"INPUT\" || !untyped.includes((f.type || \"text\").toLowerCase()));\n  if (fields.length) return { teams, microsoft: { asks: true, accounts: 0, account: null, buttons: 0, button: null }, buttons };\n  const own = email.trim().toLowerCase();\n  const word = new RegExp(`(^|[^a-z0-9._%+-])${own.replace(/[.*+?^${}()|[\\]\\\\]/g, \"\\\\$&\")}($|[^a-z0-9._%+-])`, \"i\");\n  const named = own ? [...document.querySelectorAll(`${s.clickable},${s.accountTile}`)].filter(shown).filter((e) => (e.getAttribute(\"data-test-id\") || \"\").toLowerCase() === own || e.matches(s.clickable) && word.test(e.innerText || \"\")) : [];\n  const accounts = named.filter((e) => !named.some((o) => o !== e && e.contains(o)));\n  const continues = clickable.filter((e) => t.microsoftButton.test(label(e)));\n  return {\n    teams,\n    microsoft: {\n      asks: false,\n      accounts: accounts.length,\n      account: accounts.length === 1 ? free(accounts[0]) : null,\n      buttons: continues.length,\n      button: continues.length === 1 ? free(continues[0]) : null\n    },\n    buttons\n  };\n}",
+  "tokens.readMsalEntries": "async function readMsalEntries(parts) {\n  const b64 = (s) => {\n    let t = s.replace(/-/g, \"+\").replace(/_/g, \"/\");\n    while (t.length % 4) t += \"=\";\n    return Uint8Array.from(atob(t), (c) => c.charCodeAt(0));\n  };\n  let cookie = null;\n  const raw = document.cookie.split(\";\").map((c) => c.trim()).find((c) => c.startsWith(\"msal.cache.encryption=\"));\n  if (raw) {\n    try {\n      cookie = JSON.parse(decodeURIComponent(raw.slice(\"msal.cache.encryption=\".length)));\n    } catch {\n      cookie = null;\n    }\n  }\n  let base = null;\n  const out = [];\n  for (let i = 0; i < localStorage.length; i++) {\n    const key = localStorage.key(i) || \"\";\n    const low = key.toLowerCase();\n    if (!parts.every((p) => low.includes(p.toLowerCase()))) continue;\n    let v = null;\n    try {\n      v = JSON.parse(localStorage.getItem(key) || \"null\");\n    } catch {\n      continue;\n    }\n    if (!v || typeof v !== \"object\") continue;\n    if (typeof v.data === \"string\" && typeof v.nonce === \"string\") {\n      if (!cookie?.key || v.id !== cookie.id) continue;\n      try {\n        base ??= await crypto.subtle.importKey(\"raw\", b64(cookie.key), \"HKDF\", false, [\"deriveKey\"]);\n        const context = key.split(\"|\").slice(2).find((p) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p)) || \"\";\n        const derived = await crypto.subtle.deriveKey({ name: \"HKDF\", salt: b64(v.nonce), hash: \"SHA-256\", info: new TextEncoder().encode(context) }, base, { name: \"AES-GCM\", length: 256 }, false, [\"decrypt\"]);\n        v = JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: \"AES-GCM\", iv: new Uint8Array(12) }, derived, b64(v.data))));\n      } catch {\n        continue;\n      }\n      if (!v || typeof v !== \"object\") continue;\n    }\n    if (typeof v.secret !== \"string\" || !v.secret) continue;\n    out.push({ secret: v.secret, clientId: String(v.clientId || \"\"), homeAccountId: String(v.homeAccountId || \"\"), expiresOn: Number(v.expiresOn) || 0 });\n  }\n  return out;\n}"
+ },
+ "sel": {
+  "section": "[role=\"treeitem\"][aria-level=\"1\"]",
+  "collapsedSection": "[role=\"treeitem\"][aria-level=\"1\"][aria-expanded=\"false\"]",
+  "sectionHeader": ":scope > :not([role=\"group\"])",
+  "chatRow": "[role=\"treeitem\"][aria-level=\"2\"][id^=\"menu\"]",
+  "anyChatRow": "[role=\"treeitem\"][aria-level=\"2\"]",
+  "listItem": "[role=\"treeitem\"][id^=\"menu\"]",
+  "unread": "[data-tid=\"unread\"]",
+  "mention": "[data-tid*=\"mention\" i],[class*=\"mention\" i]",
+  "mutedIcon": "[data-testid=\"muted-icon\"]",
+  "mutedItemType": "muted-chat",
+  "avatar": "img.fui-Avatar__image",
+  "chatTitle": "[data-tid=\"chat-title\"]",
+  "chatHeader": "[data-tid=\"entity-header\"]",
+  "activityView": "button[aria-label^=\"Activity\"]",
+  "chatView": "button[aria-label^=\"Chat\"]",
+  "presence": "[data-tid=\"me-control-avatar-presence\"]",
+  "rowPresence": "[data-tid=\"presence-badge\"]",
+  "rowOneOnOne": "one-on-one-chat-support-text",
+  "rowGroup": "chat-group-support-text",
+  "rowMeeting": "chat-meeting-support-text",
+  "meAvatar": "[data-tid=\"me-control-avatar\"] img",
+  "editor": "[data-tid=\"ckeditor\"]",
+  "textbox": "[role=\"textbox\"]",
+  "item": "[data-tid=\"chat-pane-item\"]",
+  "message": "[data-tid=\"chat-pane-message\"]",
+  "mine": ".fui-ChatMyMessage",
+  "body": "[id^=\"content-\"]",
+  "bodyAlt": "[data-tid=\"messageBodyContent\"]",
+  "author": "[data-tid=\"message-author-name\"]",
+  "messageAvatar": "[data-tid=\"message-avatar\"] img.fui-Avatar__image, [data-tid=\"message-avatar\"] img",
+  "quote": "[data-tid=\"quoted-reply-card\"]",
+  "quotePreview": "[data-tid=\"quoted-reply-preview-content\"]",
+  "files": "[data-tid=\"file-attachment-grid\"]",
+  "pill": "[data-tid=\"diverse-reaction-pill-button\"]",
+  "emoticon": "[data-tid=\"emoticon-renderer\"]",
+  "statusIcon": "[class*=\"statusIcon\"]",
+  "tombstone": "[data-tid=\"message-tombstone\"]",
+  "undoDelete": "[data-tid=\"message-undo-delete-btn\"]",
+  "mentionBox": "[data-mention-type]",
+  "fileEntry": "[aria-label*=\"https://\"]",
+  "anyAvatar": "[data-tid*=\"avatar\" i]",
+  "emojiType": {
+   "$re": [
+    "Emoji",
+    "i"
+   ]
+  },
+  "mentionType": {
+   "$re": [
+    "Mention",
+    "i"
+   ]
+  },
+  "imageType": {
+   "$re": [
+    "AMSImage",
+    "i"
+   ]
+  },
+  "lazyImage": {
+   "$re": [
+    "^lazy-image",
+    ""
+   ]
+  },
+  "lazyImageSource": "data-orig-src",
+  "bodySkip": "[data-tid=\"quoted-reply-card\"],[data-tid=\"file-attachment-grid\"],[data-tid*=\"reaction\"],[data-tid^=\"message-actions\"]",
+  "actionBar": "[data-tid=\"message-actions-container\"]",
+  "menu": "[role=\"menu\"]",
+  "menuItem": "[role=\"menuitem\"]",
+  "overlays": "[role=\"menu\"],[role=\"dialog\"],[role=\"alertdialog\"]",
+  "sendButton": "[data-tid=\"sendMessageCommands-send\"]",
+  "participantCount": "[data-tid=\"chat-header-participant-count\"]",
+  "oneOnOneCall": "[data-tid=\"default-chat-call-audio-button\"]",
+  "groupHeaderMarks": "[data-tid=\"audio-drop-in-button\"],[data-tid=\"chat-title-name-group-chat\"],[data-tid=\"tfw-group-chat-avatar-button\"]",
+  "rosterName": "[id^=\"chat-roster-item-name-\"]",
+  "topicParticipant": "[data-tid=\"chat-topic-menu\"] [id^=\"chat-topic-person-\"]",
+  "mentionPopup": "[data-tid=\"AutocompletePopup-Mentions\"]",
+  "mentionOptionPrefix": "autocomplete-picker-item-",
+  "composerMention": "[itemtype*=\"Mention\"]",
+  "editDone": "[data-tid=\"newMessageCommands-send\"]",
+  "editDiscard": "[data-tid=\"newMessageCommands-discard-draft\"]",
+  "discardConfirm": "[data-tid=\"messagedraft-discard-confirm\"]",
+  "closeQuote": "[data-tid=\"close-quoted-reply\"]",
+  "callToast": "[data-testid=\"calling-notification\"]",
+  "callText": "[id^=\"cn-calling-main-content-\"]",
+  "callAccept": "[data-testid=\"calling-notification\"] [data-testid=\"calling-actions\"] button[aria-label=\"Accept with audio\"]",
+  "callMic": "#microphone-button",
+  "callMicMuted": [
+   "mic-off"
+  ],
+  "callMicLive": [
+   "mic",
+   "mic-volume-renderer"
+  ],
+  "callMicUnmute": "callUnmuteAudio",
+  "callMicMute": "callMuteAudio",
+  "feedItem": "[data-tid=\"activity-feed-list-item\"]",
+  "feedTitle": "[data-tid=\"activity-feed-item-title\"]",
+  "feedItemId": {
+   "$re": [
+    "activity-feed-item-title-(\\d+)",
+    ""
+   ]
+  },
+  "userKey": "tmp.auth.v1.GLOBAL.User.User",
+  "tenantsKey": {
+   "$re": [
+    "^tmp\\.auth\\.v1\\..*\\.Tenants\\.Tenants$",
+    ""
+   ]
+  },
+  "clickable": "button,[role=\"button\"],a,input[type=\"submit\"],input[type=\"button\"]",
+  "accountTile": "[data-test-id]",
+  "fields": "input,textarea,select"
+ },
+ "texts": {
+  "selfChat": "(You)",
+  "participantCount": {
+   "$re": [
+    "(\\d+)\\s+participants?\\b",
+    "i"
+   ]
+  },
+  "outbound": {
+   "$re": [
+    "^(you|tu):",
+    "i"
+   ]
+  },
+  "readBy": {
+   "$re": [
+    "^Read by (\\d+) of (\\d+)",
+    ""
+   ]
+  },
+  "ownNotification": {
+   "$re": [
+    "^(Nice job|Notifications are now on)",
+    "i"
+   ]
+  },
+  "healthTag": "__HEALTHCHECK__",
+  "listSection": {
+   "$re": [
+    "^(Chats|Chat|Favorites|Preferiti)\\b",
+    "i"
+   ]
+  },
+  "listNoise": {
+   "$re": [
+    "^(Copilot|Drafts|Quick views.*|Favorites|Chats|Meet now|Activity|Unread)$",
+    "i"
+   ]
+  },
+  "listPrefix": {
+   "$re": [
+    "^(Favorites|Chats|Quick views|Recent|Drafts)\\s+",
+    "i"
+   ]
+  },
+  "statusWords": {
+   "$re": [
+    "\\b(Unread|Offline|Away|Available|Busy|Do not disturb|Be right back|Presence unknown|Out of office)\\b",
+    "gi"
+   ]
+  },
+  "listTime": {
+   "$re": [
+    "\\d{1,2}:\\d{2}\\s?(AM|PM)?|\\d{1,2}\\/\\d{1,2}",
+    ""
+   ]
+  },
+  "listNameEnd": {
+   "$re": [
+    "\\s+\\d{1,2}:\\d{2}|\\s+\\d{1,2}\\/\\d{1,2}|\\s+You:",
+    ""
+   ]
+  },
+  "mentionLabel": {
+   "$re": [
+    "mention|menzion",
+    "i"
+   ]
+  },
+  "authorLabel": {
+   "$re": [
+    "^([^,]+),",
+    ""
+   ]
+  },
+  "edited": {
+   "$re": [
+    "^(Edited|Modificato)$",
+    "i"
+   ]
+  },
+  "mentionedYou": "Mentioned you",
+  "sending": {
+   "$re": [
+    "^Sending",
+    "i"
+   ]
+  },
+  "sendFailed": {
+   "$re": [
+    "fail",
+    "i"
+   ]
+  },
+  "callingYou": {
+   "$re": [
+    "^(.+?)\\s+is (?:video )?calling you\\b",
+    "i"
+   ]
+  },
+  "externalMark": {
+   "$re": [
+    "^External\\s+",
+    "i"
+   ]
+  },
+  "sessionLost": {
+   "$re": [
+    "REDUCED_CAPABILITIES|Chats are temporarily unavailable|Sync engine is running in Reduced|We need you to sign in again|Chat non (?:sono )?disponibili",
+    "i"
+   ]
+  },
+  "signInButton": {
+   "$re": [
+    "^sign in$",
+    "i"
+   ]
+  },
+  "microsoftButton": {
+   "$re": [
+    "^(sign in|continue)$",
+    "i"
+   ]
+  },
+  "feedTime": {
+   "$re": [
+    "^(\\d{1,2}:\\d{2}\\s?(AM|PM)?|\\d{1,2}\\/\\d{1,2}(\\/\\d{2,4})?|Yesterday|Ieri|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\\b",
+    "i"
+   ]
+  },
+  "missedCall": {
+   "$re": [
+    "^Missed call from (.+)$",
+    "i"
+   ]
+  },
+  "feedAction": {
+   "$re": [
+    "\\s+(reacted|mentioned|replied|liked|sent|posted|invited|scheduled|assigned|updated|added|removed|shared|commented|canceled|cancelled|accepted|declined|started|joined|changed|created|edited|forwarded)\\b.*$",
+    "i"
+   ]
+  },
+  "feedReaction": {
+   "$re": [
+    "reacted",
+    "i"
+   ]
+  },
+  "feedMention": {
+   "$re": [
+    "mentioned",
+    "i"
+   ]
+  },
+  "feedReply": {
+   "$re": [
+    "repl",
+    "i"
+   ]
+  },
+  "feedTask": {
+   "$re": [
+    "assigned you a task",
+    "i"
+   ]
+  },
+  "feedTeam": {
+   "$re": [
+    "added you to",
+    "i"
+   ]
+  },
+  "inChatWithYou": {
+   "$re": [
+    "^In chat with you$",
+    "i"
+   ]
+  },
+  "meetingTime": {
+   "$re": [
+    "\\d{1,2}:\\d{2}\\s?(AM|PM)?\\s*-\\s*\\d{1,2}:\\d{2}",
+    "i"
+   ]
+  }
+ },
+ "actions": {
+  "more": "message-actions-more",
+  "edit": "message-actions-edit",
+  "quotedReply": "message-actions-quoted-reply",
+  "delete": "message-actions-delete",
+  "readReceipt": "message-actions-read-receipt",
+  "picker": "expanded-reactions-picker-entry"
+ },
+ "bar_reactions": {
+  "like": "message-actions-like",
+  "heart": "message-actions-heart",
+  "laugh": "message-actions-laugh",
+  "surprised": "message-actions-surprised"
+ },
+ "picker_reactions": {
+  "cry": "emoticon-button-cry",
+  "angry": "emoticon-button-angry"
+ },
+ "teams_hosts": [
+  "teams.microsoft.com",
+  "teams.cloud.microsoft",
+  "teams.live.com"
+ ],
+ "login_hosts": [
+  "login.microsoftonline.com",
+  "login.live.com",
+  "login.microsoft.com"
+ ]
+}

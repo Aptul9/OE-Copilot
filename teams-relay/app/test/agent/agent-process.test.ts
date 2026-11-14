@@ -1,6 +1,7 @@
 // The agent bundle as a process, against a local Chrome that serves the captured chat list on the Teams host:
 // connection, health row, chat list, new message detection, commands, reconnection after the browser
-// restarts, exit without a Teams tab, SIGTERM. About two minutes: the exit waits the real 60 s.
+// restarts, exit without a Teams tab, SIGTERM. About two minutes: the exit waits the real 60 s. AGENT_BIN names the Rust
+// agent (webapp-rs, teamsrelay-agent) to run in place of the bundle, for the same checks.
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
@@ -13,6 +14,7 @@ import { tempDir } from "../helpers";
 import { fixture } from "./chrome";
 
 const APP = path.resolve(__dirname, "../..");
+const RUST = process.env.AGENT_BIN;
 let dir = "";
 let bundle = "";
 let port = 0;
@@ -40,7 +42,7 @@ async function startChrome() {
 
 function startAgent() {
   lines = [];
-  agent = spawn(process.execPath, [bundle], {
+  agent = spawn(RUST ?? process.execPath, RUST ? [] : [bundle], {
     env: {
       ...process.env,
       NODE_PATH: path.join(APP, "node_modules"),
@@ -86,7 +88,7 @@ const exited = (p: ChildProcess) => new Promise<{ code: number | null; signal: s
 beforeAll(async () => {
   dir = tempDir("teamsrelay-agent-process-");
   bundle = path.join(dir, "agent.cjs");
-  await build(bundleOptions("agent", bundle));
+  if (!RUST) await build(bundleOptions("agent", bundle));
   port = await freePort();
   await startChrome();
   startAgent();

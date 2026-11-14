@@ -25,11 +25,20 @@ pub struct AppDb {
     /// read at most every 5 s: when, and what
     sides: Cell<(i64, Audience)>,
     calls: Cell<(i64, bool)>,
+    checked: Cell<(i64, bool)>,
+    light: Cell<(i64, bool)>,
 }
 
 impl AppDb {
     pub fn new(file: PathBuf, slot: i64) -> Self {
-        AppDb { file, slot, sides: Cell::new((0, Audience::ALL)), calls: Cell::new((0, true)) }
+        AppDb {
+            file,
+            slot,
+            sides: Cell::new((0, Audience::ALL)),
+            calls: Cell::new((0, true)),
+            checked: Cell::new((i64::MIN / 2, false)),
+            light: Cell::new((i64::MIN / 2, false)),
+        }
     }
 
     fn use_db<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>, fallback: T) -> T {
@@ -74,6 +83,48 @@ impl AppDb {
         };
         self.calls.set((now, on));
         on
+    }
+
+    /// Number(row?.[column]) of this account's row, 0 when there is none (NaN counts as 0 too: never > 0).
+    fn column(&self, column: &str) -> f64 {
+        let value = self.use_db(
+            |c| {
+                let mut st = c.prepare("SELECT * FROM teams_accounts WHERE slot=?")?;
+                let at = st.column_names().iter().position(|n| *n == column);
+                st.query_row([self.slot], |r| at.map(|i| r.get::<_, rusqlite::types::Value>(i)).transpose()).optional()
+            },
+            None,
+        );
+        match value.flatten() {
+            Some(rusqlite::types::Value::Integer(i)) => i as f64,
+            Some(rusqlite::types::Value::Real(f)) => f,
+            Some(rusqlite::types::Value::Text(t)) => t.trim().parse::<f64>().unwrap_or(0.0),
+            _ => 0.0,
+        }
+    }
+
+    /// The web app starts this account only to check it every few hours (check_every > 0). Read at most every minute.
+    pub fn checked_only(&self) -> bool {
+        let now = super::now_ms();
+        let (at, value) = self.checked.get();
+        if now - at <= 60_000 {
+            return value;
+        }
+        let v = self.column("check_every") > 0.0;
+        self.checked.set((now, v));
+        v
+    }
+
+    /// A light account whose browser runs to sign it in again (light and refreshing). Read at most every 15 s.
+    pub fn light_mode(&self) -> bool {
+        let now = super::now_ms();
+        let (at, value) = self.light.get();
+        if now - at <= 15_000 {
+            return value;
+        }
+        let v = self.column("light") > 0.0 && self.column("refreshing") > 0.0;
+        self.light.set((now, v));
+        v
     }
 
     /// Every status page of the server, none while the web app has not created the table; None when app.db cannot be

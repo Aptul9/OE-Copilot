@@ -38,6 +38,24 @@ pub struct Config {
     pub calling_host: String,
     pub call_audio_url: String,
     pub push: crate::config::Push,
+    /// the DevTools of the slot's browser, for the browser agent (127.0.0.1: Chromium binds CDP on IPv4 only)
+    pub cdp: String,
+    /// the remote desktop of the browsers container, watched for the owner; None for a slot run by hand
+    pub desktop: Option<DesktopWatch>,
+    /// how to sign in again, and which browser does not start: the first sentence of those pushes
+    pub alert_sign_in: String,
+    pub alert_browser_down: String,
+}
+
+/// The websocket of the remote desktop (its viewers are connections to that port) and how to ask its compositor which
+/// window is in front: as the desktop user, in its session.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DesktopWatch {
+    pub port: u16,
+    pub uid: u32,
+    pub gid: u32,
+    pub app_id: String,
+    pub session: Env,
 }
 
 /// An empty value counts as unset, so its default applies (parseEnv).
@@ -77,6 +95,13 @@ pub fn load(env: &Env) -> R<Config> {
     if region.is_some_and(|r| !regex::Regex::new("^[a-z][a-z0-9]{1,15}$").expect("fixed").is_match(r)) {
         problems.push("SHARED_BROKER_REGION: Invalid string: must match pattern /^[a-z][a-z0-9]{1,15}$/".into());
     }
+    let cdp = given(env, "CDP").unwrap_or("http://localhost:9222").to_string();
+    if !http_url(&cdp) {
+        problems.push("CDP: Invalid URL".into());
+    }
+    let desktop_port = given(env, "DESKTOP_PORT").map(|_| int(env, "DESKTOP_PORT", 0, 1, 65535, &mut problems));
+    let desktop_uid = given(env, "DESKTOP_UID").map(|_| int(env, "DESKTOP_UID", 0, 0, u32::MAX as i64, &mut problems));
+    let desktop_gid = given(env, "DESKTOP_GID").map(|_| int(env, "DESKTOP_GID", 0, 0, u32::MAX as i64, &mut problems));
     let push = crate::config::push_of(&|k| given(env, k).unwrap_or("").to_string());
     if let Err(e) = &push {
         problems.push(e.clone());
@@ -110,6 +135,22 @@ pub fn load(env: &Env) -> R<Config> {
         native_calls: given(env, "NATIVE_CALLS") == Some("1"),
         calling_host: given(env, "CALLING_HOST").unwrap_or("/app/calling-live-host.mjs").to_string(),
         call_audio_url: given(env, "CALL_AUDIO_URL").map(String::from).unwrap_or_else(|| format!("wss://{domain}/api/call/audio/socket?a={slot}")),
+        alert_sign_in: match given(env, "SHARED_BROKER_ACCOUNT") {
+            Some(a) => format!("Sign in again to {a} in the Account window of the calendar, then check its Chat Teams capability"),
+            None => "Open the remote desktop of the account and sign in again".into(),
+        },
+        alert_browser_down: format!("The browser of account {slot} does not start"),
+        desktop: match (desktop_port, desktop_uid, desktop_gid, given(env, "DESKTOP_APP_ID"), given(env, "XDG_RUNTIME_DIR"), given(env, "WAYLAND_DISPLAY")) {
+            (Some(port), Some(uid), Some(gid), Some(app), Some(xdg), Some(wayland)) => Some(DesktopWatch {
+                port: port as u16,
+                uid: uid as u32,
+                gid: gid as u32,
+                app_id: app.into(),
+                session: [("XDG_RUNTIME_DIR".to_string(), xdg.to_string()), ("WAYLAND_DISPLAY".to_string(), wayland.to_string())].into_iter().collect(),
+            }),
+            _ => None,
+        },
+        cdp,
         db_path,
         app_db,
         push: push.map_err(Fail::Other)?,

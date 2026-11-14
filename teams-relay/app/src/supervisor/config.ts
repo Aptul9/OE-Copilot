@@ -26,6 +26,9 @@ const Env = z.object({
   // the light host in Rust (webapp-rs, src/agent), driven over the same IPC channel; 0: the Node host of LIGHT_SCRIPT
   LIGHT_RUST: z.enum(["0", "1"]).default("1"),
   LIGHT_BIN: z.string().default("/app/teamsrelay-light"),
+  // the browser agent in Rust (webapp-rs, teamsrelay-agent); 0: node AGENT_SCRIPT
+  AGENT_RUST: z.enum(["0", "1"]).default("1"),
+  AGENT_BIN: z.string().default("/app/teamsrelay-agent"),
   // the remote desktop starts when a browser needs it and stops after DESKTOP_IDLE_MIN minutes without one; 0: it comes up
   // with the supervisor and stays (src/supervisor/desktop.ts)
   DESKTOP_ON_DEMAND: z.enum(["0", "1"]).default("1"),
@@ -72,6 +75,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       wlrctl: "wlrctl",
       lightHost: e.LIGHT_HOST === "1",
       lightBin: e.LIGHT_RUST === "1" ? e.LIGHT_BIN : null,
+      agentBin: e.AGENT_RUST === "1" ? e.AGENT_BIN : null,
     },
     desktop: {
       onDemand: e.DESKTOP_ON_DEMAND === "1",

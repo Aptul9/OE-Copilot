@@ -64,6 +64,10 @@ async-trait = "0.1"
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
 
+# dtls verifies an ECDSA signature by its hash, not by the curve of the key: Teams desktop and mobile fail (vendor/README.md)
+[patch.crates-io]
+dtls = { path = "vendor/dtls" }
+
 [profile.release]
 opt-level = 3
 lto = "fat"

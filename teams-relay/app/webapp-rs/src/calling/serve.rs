@@ -389,7 +389,16 @@ impl Worker {
                 self.out.send(&a);
             }
             if let Some(m) = &call.media {
-                eprintln!("calling: media {:?}, pair {}", m.state(), m.selected_pair().await.unwrap_or_else(|| "none".into()));
+                let c = &m.counters;
+                eprintln!(
+                    "calling: media {:?}, pair {}, rtp sent {} received {} undecoded {} decoded {} ms",
+                    m.state(),
+                    m.selected_pair().await.unwrap_or_else(|| "none".into()),
+                    c.sent.load(Ordering::Relaxed),
+                    c.received.load(Ordering::Relaxed),
+                    c.undecoded.load(Ordering::Relaxed),
+                    c.decoded_samples.load(Ordering::Relaxed) / 48
+                );
             }
             if let Some(h) = &call.hub {
                 h.close();

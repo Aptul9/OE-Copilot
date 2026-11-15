@@ -33,6 +33,7 @@ RUN apk add --no-cache musl-dev cmake make
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 WORKDIR /src
 COPY webapp-rs/Cargo.toml webapp-rs/Cargo.lock ./
+COPY webapp-rs/vendor ./vendor
 COPY webapp-rs/src ./src
 # the dependencies and the build stay in the BuildKit cache between deploys; the binaries leave the cache in the same step
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \

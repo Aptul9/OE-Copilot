@@ -14,7 +14,7 @@ pub use crate::agent::{Fail, R};
 
 use codec::{FRAME_20, RATE, dominant_notes, melody_frame, melody_heard};
 use serde_json::{Value, json};
-use signaling::{Account, CallLinks, Conversation, ECHO_BOT, Endpoint, Event, event_of, relay, uuid};
+use signaling::{Account, CallLinks, Conversation, ECHO_BOT, EarlyAnswers, Endpoint, Event, event_of, relay, uuid};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -33,26 +33,27 @@ pub async fn echo(discovery: &Value, peer: Option<&str>, seconds: u64) -> R<Valu
     let account = Account::of(discovery, "TeamsRelay")?;
     let http = signaling::http();
     let r = relay(&http, &account).await?;
-    step("relay", json!({ "turn": r.fqdn }));
+    step("relay", json!({ "turn": r.fqdn, "allocating": r.udp_host }));
     let (e, mut requests) = Endpoint::start(account).await?;
     step("registered", json!({ "surl": url::Url::parse(&e.trouter.surl).ok().and_then(|u| u.host_str().map(String::from)) }));
     let (speaker, mut heard) = mpsc::unbounded_channel::<Vec<i16>>();
     let outcome = async {
-        let media = media::Media::new(media::relay_servers(&r.fqdn, r.udp, r.tcp, &r.username, &r.credential), speaker).await?;
+        let media = media::Media::new(media::relay_servers(&r), speaker).await?;
         let offer = media.offer().await?;
         step("offer", json!({ "bytes": offer.len() }));
         let links = CallLinks::new(&e);
         let conv = Conversation::create(&e, &links, &[json!({ "id": peer.unwrap_or(ECHO_BOT), "participantId": uuid() })], &offer).await?;
         step("created", json!({ "links": conv.links.len() }));
         let deadline = Instant::now() + Duration::from_secs(seconds);
-        let mut accepted = false;
+        let mut accepted: Option<Instant> = None;
+        let mut early = EarlyAnswers::default();
         let mut ended = None;
         let mut muted_at = None;
         let mut sample = 0u64;
         while Instant::now() < deadline && ended.is_none() {
             let Ok(Some(req)) = tokio::time::timeout(Duration::from_millis(500), requests.recv()).await else {
-                // 13 s into the call: muted for 4 s, as the Node host tested it
-                if accepted && muted_at.is_none() && t0.elapsed() > Duration::from_secs(13) {
+                // 10 s after the answer: muted for 4 s, as the Node host tested it
+                if accepted.is_some_and(|at| at.elapsed() > Duration::from_secs(10)) && muted_at.is_none() {
                     conv.set_muted(&e, true).await?;
                     media.muted.store(true, Ordering::Relaxed);
                     muted_at = Some(Instant::now());
@@ -73,10 +74,22 @@ pub async fn echo(discovery: &Value, peer: Option<&str>, seconds: u64) -> R<Valu
             e.trouter.answer(&req, 200, &body);
             step("callback", json!({ "name": req.name() }));
             match ev {
-                Event::Accepted { by, answer } => {
+                Event::MediaAnswer { endpoint, answer, ack } => {
+                    if std::env::var("CALLING_DEBUG").is_ok() {
+                        eprintln!("{}", json!({ "mediaAnswer": answer, "standard": sdp::from_ngc(&answer).map(|a| a.sdp) }));
+                    }
+                    early.add(&endpoint, &answer);
+                    let status = conv.acknowledge_media(&e, &ack).await?;
+                    step("media-answer", json!({ "endpoint": endpoint, "acknowledged": status }));
+                }
+                Event::Accepted { by, endpoint, answer } => {
+                    let answer = early.of_acceptance(&endpoint, &answer);
+                    if std::env::var("CALLING_DEBUG").is_ok() {
+                        eprintln!("{}", json!({ "answer": answer }));
+                    }
                     media.answer(&answer).await?;
-                    accepted = true;
-                    step("accepted", json!({ "by": by, "codec": media.sending() }));
+                    accepted = Some(Instant::now());
+                    step("accepted", json!({ "by": by, "endpoint": endpoint, "codec": media.sending() }));
                     media.start_sending(Box::new(move || {
                         let mut f = vec![0i16; FRAME_20];
                         melody_frame(sample, &mut f);
@@ -95,8 +108,13 @@ pub async fn echo(discovery: &Value, peer: Option<&str>, seconds: u64) -> R<Valu
         }
         let state = format!("{:?}", media.state());
         let codec = media.sending();
+        let pair = media.selected_pair().await;
         media.close().await;
-        Ok::<Value, Fail>(json!({ "accepted": accepted, "ended": ended, "localHangup": local_hangup, "state": state, "codec": codec, "sent": media.counters.sent.load(Ordering::Relaxed), "received": media.counters.received.load(Ordering::Relaxed) }))
+        let c = &media.counters;
+        Ok::<Value, Fail>(json!({
+            "accepted": accepted.is_some(), "ended": ended, "localHangup": local_hangup, "state": state, "codec": codec, "pair": pair,
+            "sent": c.sent.load(Ordering::Relaxed), "received": c.received.load(Ordering::Relaxed), "undecoded": c.undecoded.load(Ordering::Relaxed),
+        }))
     }
     .await;
     e.stop().await;

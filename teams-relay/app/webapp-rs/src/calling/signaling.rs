@@ -85,13 +85,60 @@ async fn body_of(r: reqwest::Response) -> (u16, String) {
     (status, r.text().await.unwrap_or_default())
 }
 
-/// The TURN relay of the tenant and its credentials: fqdn, UDP port, TCP port, username, password.
+/// The TURN relay of the tenant and its credentials: fqdn, UDP port, TCP port, username, password; `udp_host`, the
+/// relay server that allocates over UDP (the gateway at `fqdn` sends every Allocate on to one, see `allocating`).
 pub struct Relay {
     pub fqdn: String,
+    pub udp_host: String,
     pub udp: u16,
     pub tcp: u16,
     pub username: String,
     pub credential: String,
+}
+
+/// The relay server that takes an Allocate sent to `fqdn`:`port`. The Teams gateway answers every Allocate with 300
+/// Try Alternate and the server to use (ALTERNATE-SERVER); libwebrtc follows it, the TURN client of webrtc-rs does not
+/// and gathers no relay candidate (oe-vm, 2026-11-15). Without one the calls of Teams desktop and mobile, whose relays
+/// forward only from the addresses they were told, connect no media. None: no redirect, or the gateway did not answer.
+pub async fn allocating(fqdn: &str, port: u16) -> Option<std::net::SocketAddr> {
+    use webrtc::stun::addr::AlternateServer;
+    use webrtc::stun::agent::TransactionId;
+    use webrtc::stun::attributes::ATTR_ALTERNATE_SERVER;
+    use webrtc::stun::error_code::{CODE_TRY_ALTERNATE, ErrorCodeAttribute};
+    use webrtc::stun::message::{CLASS_REQUEST, Getter, METHOD_ALLOCATE, Message, MessageType};
+    use webrtc::turn::proto::PROTO_UDP;
+    use webrtc::turn::proto::reqtrans::RequestedTransport;
+    let mut to = tokio::net::lookup_host((fqdn, port)).await.ok()?.find(std::net::SocketAddr::is_ipv4)?;
+    let socket = tokio::net::UdpSocket::bind("0.0.0.0:0").await.ok()?;
+    let mut redirected = None;
+    // a redirect may lead to another one; three at most
+    for _ in 0..3 {
+        let mut m = Message::new();
+        m.build(&[
+            Box::new(TransactionId::new()),
+            Box::new(MessageType::new(METHOD_ALLOCATE, CLASS_REQUEST)),
+            Box::new(RequestedTransport { protocol: PROTO_UDP }),
+        ])
+        .ok()?;
+        socket.send_to(&m.raw, to).await.ok()?;
+        let mut buf = [0u8; 1500];
+        let n = match tokio::time::timeout(Duration::from_millis(1500), socket.recv(&mut buf)).await {
+            Ok(Ok(n)) => n,
+            _ => return redirected,
+        };
+        let mut r = Message::new();
+        r.raw = buf[..n].to_vec();
+        r.decode().ok()?;
+        let mut code = ErrorCodeAttribute::default();
+        let mut alternate = AlternateServer::default();
+        // AlternateServer is MappedAddress: its get_from reads MAPPED-ADDRESS
+        if code.get_from(&r).is_err() || code.code != CODE_TRY_ALTERNATE || alternate.get_from_as(&r, ATTR_ALTERNATE_SERVER).is_err() {
+            return redirected;
+        }
+        to = std::net::SocketAddr::new(alternate.ip, alternate.port);
+        redirected = Some(to);
+    }
+    redirected
 }
 
 /// The relay as Teams web finds it: the anonymous ECS settings (MDN_TRAP), then a token of its token service.
@@ -134,9 +181,14 @@ pub async fn relay(http: &reqwest::Client, a: &Account) -> R<Relay> {
     }
     let t: Value = serde_json::from_str(&text).map_err(other)?;
     let tok = &t["tokens"][0];
+    let (udp_host, udp) = match allocating(&fqdn, port("udpPort", 3478)).await {
+        Some(a) => (a.ip().to_string(), a.port()),
+        None => (fqdn.clone(), port("udpPort", 3478)),
+    };
     Ok(Relay {
         fqdn,
-        udp: port("udpPort", 3478),
+        udp_host,
+        udp,
         tcp: port("tcpPort", 443),
         username: tok["username"].as_str().unwrap_or("").into(),
         credential: tok["password"].as_str().unwrap_or("").into(),
@@ -372,6 +424,17 @@ impl Conversation {
         if (200..300).contains(&status) { Ok(()) } else { Err(other(format!("mute {status}"))) }
     }
 
+    /// The early answer of a device of the far end received (POST of its mediaAcknowledgement link, no body, as
+    /// Teams web acknowledges it); the status of the service.
+    pub async fn acknowledge_media(&self, e: &Endpoint, link: &str) -> R<u16> {
+        if !link.starts_with("https://") {
+            return Err(other("no mediaAcknowledgement link"));
+        }
+        // a POST without a body says so: Teams services answer 411 to one without a length
+        let r = self.headers(e, e.http.post(link)).header(reqwest::header::CONTENT_LENGTH, "0").send().await.map_err(other)?;
+        Ok(r.status().as_u16())
+    }
+
     /// This client leaves the call (a local hang-up).
     pub async fn leave(&self, e: &Endpoint) -> R<()> {
         let body = json!({
@@ -575,9 +638,17 @@ impl Attached {
 #[derive(Debug, PartialEq)]
 pub enum Event {
     Progress(String),
-    /// accepted, with the answer of the far end
+    /// the answer of one device of the far end while it rings, to acknowledge on `ack` (Teams desktop and mobile send
+    /// it and hold their acceptance until it is acknowledged)
+    MediaAnswer {
+        endpoint: String,
+        answer: String,
+        ack: String,
+    },
+    /// accepted by a device of the far end, with its answer (empty when it gave it in its mediaAnswer)
     Accepted {
         by: String,
+        endpoint: String,
         answer: String,
     },
     Ended(String),
@@ -586,17 +657,46 @@ pub enum Event {
 
 pub fn event_of(req: &Request) -> Event {
     let v = req.json();
+    let s = |v: &Value| v.as_str().unwrap_or("").to_string();
     match req.name() {
         "progress" => Event::Progress(v["callProgress"]["status"].as_str().unwrap_or("").into()),
+        "mediaAnswer" => {
+            let m = &v["mediaAnswer"];
+            Event::MediaAnswer { endpoint: s(&m["sender"]["endpointId"]), answer: s(&m["mediaContent"]["blob"]), ack: s(&m["links"]["mediaAcknowledgement"]) }
+        }
         "acceptance" => {
             let a = &v["callAcceptance"];
-            Event::Accepted { by: a["acceptedBy"]["id"].as_str().unwrap_or("").into(), answer: a["mediaContent"]["blob"].as_str().unwrap_or("").into() }
+            Event::Accepted { by: s(&a["acceptedBy"]["id"]), endpoint: s(&a["acceptedBy"]["endpointId"]), answer: s(&a["mediaContent"]["blob"]) }
         }
         "end" | "conversationEnd" => {
             let reason = v["callEnd"]["phrase"].as_str().or(v["conversationEnd"]["reason"].as_str()).unwrap_or("ended");
             Event::Ended(reason.into())
         }
         other => Event::Other(other.into()),
+    }
+}
+
+/// The answers the devices of the far end gave while it rang (mediaAnswer), by endpoint. A peer connection of
+/// webrtc-rs takes one answer (no pranswer), and the device that accepts, or the media server Teams falls back to
+/// when no device connects, may not be the first that answered: none is applied before the acceptance.
+#[derive(Default)]
+pub struct EarlyAnswers(Vec<(String, String)>);
+
+impl EarlyAnswers {
+    pub fn add(&mut self, endpoint: &str, answer: &str) {
+        if !answer.is_empty() {
+            self.0.retain(|(e, _)| e != endpoint);
+            self.0.push((endpoint.into(), answer.into()));
+        }
+    }
+
+    /// The answer of an acceptance: its own, else the early answer of the device that accepted, else the latest one.
+    pub fn of_acceptance(&self, endpoint: &str, answer: &str) -> String {
+        if !answer.is_empty() {
+            return answer.into();
+        }
+        let own = self.0.iter().find(|(e, _)| !e.is_empty() && e == endpoint);
+        own.or(self.0.last()).map(|(_, a)| a.clone()).unwrap_or_default()
     }
 }
 
@@ -614,5 +714,52 @@ mod tests {
         assert_eq!((a.oid.as_str(), a.tenant.as_str(), a.partition.as_str()), ("51f9", "3d43", "emea03"));
         assert_eq!(a.mri(), "8:orgid:51f9");
         assert!(a.gtms("calling_trouterUrl").is_ok() && a.gtms("calling_registrarUrl").is_err());
+    }
+
+    /// A relay server on 127.0.0.1 that answers each Allocate with `code`, naming `alternate` when given.
+    async fn relay_server(code: u16, alternate: Option<std::net::SocketAddr>) -> std::net::SocketAddr {
+        use webrtc::stun::addr::AlternateServer;
+        use webrtc::stun::attributes::ATTR_ALTERNATE_SERVER;
+        use webrtc::stun::error_code::{ErrorCode, ErrorCodeAttribute};
+        use webrtc::stun::message::{CLASS_ERROR_RESPONSE, METHOD_ALLOCATE, Message, MessageType, Setter};
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.expect("bind");
+        let at = socket.local_addr().expect("addr");
+        tokio::spawn(async move {
+            let mut buf = [0u8; 1500];
+            while let Ok((n, from)) = socket.recv_from(&mut buf).await {
+                let mut req = Message::new();
+                req.raw = buf[..n].to_vec();
+                req.decode().expect("request");
+                let mut r = Message::new();
+                r.transaction_id = req.transaction_id;
+                r.set_type(MessageType::new(METHOD_ALLOCATE, CLASS_ERROR_RESPONSE));
+                r.write_header();
+                ErrorCodeAttribute { code: ErrorCode(code), reason: b"x".to_vec() }.add_to(&mut r).expect("code");
+                if let Some(a) = alternate {
+                    AlternateServer { ip: a.ip(), port: a.port() }.add_to_as(&mut r, ATTR_ALTERNATE_SERVER).expect("alternate");
+                }
+                let _ = socket.send_to(&r.raw, from).await;
+            }
+        });
+        at
+    }
+
+    #[tokio::test]
+    async fn an_allocation_goes_to_the_server_the_gateway_names() {
+        let server = relay_server(401, None).await;
+        let gateway = relay_server(300, Some(server)).await;
+        assert_eq!(allocating("127.0.0.1", gateway.port()).await, Some(server));
+        assert_eq!(allocating("127.0.0.1", server.port()).await, None, "no redirect: the fqdn stays");
+    }
+
+    #[test]
+    fn the_answer_of_the_device_that_accepted() {
+        let mut early = EarlyAnswers::default();
+        assert_eq!(early.of_acceptance("phone", ""), "");
+        early.add("desktop", "sdp desktop");
+        early.add("phone", "sdp phone");
+        assert_eq!(early.of_acceptance("desktop", ""), "sdp desktop");
+        assert_eq!(early.of_acceptance("server", "sdp server"), "sdp server", "its own answer first");
+        assert_eq!(early.of_acceptance("unknown", ""), "sdp phone", "else the latest");
     }
 }

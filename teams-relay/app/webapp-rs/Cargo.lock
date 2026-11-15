@@ -565,8 +565,6 @@ checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
 [[package]]
 name = "dtls"
 version = "0.17.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5e96e126d5c585f3984bf212f699d9ee2d7b103570a98c5c472c9ea16401d1e"
 dependencies = [
  "aes",
  "aes-gcm",

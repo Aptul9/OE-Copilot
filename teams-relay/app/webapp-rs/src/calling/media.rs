@@ -145,6 +145,10 @@ impl Media {
         // the far end's IP address in SNI, which TLS does not allow
         let mut s = SettingEngine::default();
         s.set_answering_dtls_role(DTLSRole::Server).map_err(webrtc_err)?;
+        // placing a call, ICE nominates a pair through the relay (the path to a NATed Teams desktop) after 2 s by
+        // default (1 s with a peer-reflexive far end): 500 ms, as for a reflexive pair, brings the audio that much sooner
+        s.set_relay_acceptance_min_wait(Some(Duration::from_millis(500)));
+        s.set_prflx_acceptance_min_wait(Some(Duration::from_millis(500)));
         let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(s).build();
         let pc = Arc::new(api.new_peer_connection(RTCConfiguration { ice_servers: ice, ..Default::default() }).await.map_err(webrtc_err)?);
         let track = Arc::new(AnyAudioTrack::default());

@@ -40,7 +40,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
 
 # Every Teams account: Chromium and the remote desktop of linuxserver, the agents, and the supervisor that runs
 # them (s6 service svc-teamsrelay). The desktop no longer opens a browser by itself.
-FROM lscr.io/linuxserver/chromium:latest@sha256:59d1bfa98a6ab759fce078e5a714de3920f4c618b8939a0df6e1dec7d25c7aba AS browsers
+FROM lscr.io/linuxserver/chromium:latest@sha256:ff1b8235e20367c3b660d31892e14428687df75e2d62e274b7d8d40cf5537108 AS browsers
 # wlrctl brings the window of an account to the front. abc, the user of the browsers, loses its passwordless
 # sudo: a browser taken over by a web page must not reach root and, with it, data/ and vapid/.
 RUN apt-get update \

@@ -123,6 +123,13 @@ describe("agentCommand", () => {
       WAYLAND_DISPLAY: "wayland-0",
     });
   });
+
+  it("runs the Rust agent with the same environment where AGENT_RUST gives its binary", () => {
+    const c = agentCommand(2, { ...cfg, agentBin: "/app/teamsrelay-agent" });
+    expect(c.file).toBe("/app/teamsrelay-agent");
+    expect(c.args).toEqual([]);
+    expect(c.env).toEqual(agentCommand(2, cfg).env);
+  });
 });
 
 describe("lightCommand", () => {

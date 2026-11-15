@@ -13,6 +13,10 @@ name = "teamsrelay-light"
 path = "src/bin/teamsrelay-light.rs"
 
 [[bin]]
+name = "teamsrelay-agent"
+path = "src/bin/teamsrelay-agent.rs"
+
+[[bin]]
 name = "teamsrelay-supervisor"
 path = "src/bin/teamsrelay-supervisor.rs"
 

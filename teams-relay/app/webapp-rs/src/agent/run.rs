@@ -49,6 +49,10 @@ pub trait Notify {
     fn notice<'a>(&'a self, title: &'a str, body: &'a str) -> LocalBoxFuture<'a, usize>;
     fn call<'a>(&'a self, caller: &'a str, state: &'a str, since: i64, seconds: i64, answered: bool) -> LocalBoxFuture<'a, usize>;
     fn device_count(&self) -> usize;
+    /// a missed call the check of an account checked every N hours found (missedCall)
+    fn missed_call<'a>(&'a self, _caller: &'a str, _time: &'a str) -> LocalBoxFuture<'a, usize> {
+        Box::pin(async { 0 })
+    }
 }
 
 impl Notify for crate::push::Notifier {
@@ -66,6 +70,9 @@ impl Notify for crate::push::Notifier {
     }
     fn device_count(&self) -> usize {
         crate::push::Notifier::device_count(self)
+    }
+    fn missed_call<'a>(&'a self, caller: &'a str, time: &'a str) -> LocalBoxFuture<'a, usize> {
+        Box::pin(crate::push::Notifier::missed_call(self, caller, time))
     }
 }
 
@@ -456,7 +463,7 @@ async fn notify_new(l: &Rc<Light>, rows: &[ChatEntry]) {
 }
 
 /// ids of a state row, newest first: an array of strings, else none (z.array(z.string()).catch([])).
-fn ids_of(raw: &str) -> Vec<String> {
+pub fn ids_of(raw: &str) -> Vec<String> {
     match serde_json::from_str::<Value>(raw) {
         Ok(Value::Array(a)) if a.iter().all(Value::is_string) => a.iter().filter_map(|v| v.as_str().map(String::from)).collect(),
         _ => vec![],
@@ -464,7 +471,7 @@ fn ids_of(raw: &str) -> Vec<String> {
 }
 
 /// ids newest first: the ones of this read, then the ones of the earlier reads, up to 200.
-fn union(now: Vec<String>, before: Vec<String>) -> Vec<String> {
+pub fn union(now: Vec<String>, before: Vec<String>) -> Vec<String> {
     let mut out: Vec<String> = vec![];
     for id in now.into_iter().chain(before) {
         if !out.contains(&id) {
@@ -485,52 +492,51 @@ fn tell_old(l: &Light, items: &[super::api::Notification], since: i64) {
 }
 
 /// Each missed call of the feed that no push told yet alerts once; the first feed only records what it has.
-async fn push_missed_calls(l: &Light) {
-    let calls = l.store.missed_calls();
-    let raw = l.store.get_state("calls_told");
+pub async fn push_missed_calls(store: &Store, notifier: &Rc<dyn Notify>) -> usize {
+    let calls = store.missed_calls();
+    let raw = store.get_state("calls_told");
     let told = (!raw.is_empty()).then(|| ids_of(&raw));
-    let checked: Vec<String> = crate::state::object(Some(&l.store.get_state(key::CHECK_SEEN)))
-        .and_then(|o| o.get("calls").cloned())
-        .map(|c| ids_of(&c.to_string()))
-        .unwrap_or_default();
+    let checked: Vec<String> =
+        crate::state::object(Some(&store.get_state(key::CHECK_SEEN))).and_then(|o| o.get("calls").cloned()).map(|c| ids_of(&c.to_string())).unwrap_or_default();
     let known: HashSet<&String> = told.iter().flatten().chain(checked.iter()).collect();
     let fresh: Vec<&(String, String, String)> = if told.is_some() { calls.iter().filter(|c| !known.contains(&c.0)).collect() } else { vec![] };
-    l.store.set_state("calls_told", &crate::js::stringify(&json!(union(calls.iter().map(|c| c.0.clone()).collect(), told.clone().unwrap_or_default()))));
+    store.set_state("calls_told", &crate::js::stringify(&json!(union(calls.iter().map(|c| c.0.clone()).collect(), told.clone().unwrap_or_default()))));
     let pushes = fresh.iter().map(|(_, caller, time)| {
         let title = if caller.is_empty() { "Missed call".to_string() } else { format!("Missed call from {caller}") };
         let body = format!("Teams call{}, not answered", if time.is_empty() { String::new() } else { format!(" at {time}") });
-        let n = l.notifier.clone();
+        let n = notifier.clone();
         async move { n.notice(&title, &body).await }
     });
     futures_util::future::join_all(pushes).await;
     if !fresh.is_empty() {
         info("calls", "missed", &[("calls", fresh.len().into())]);
     }
+    fresh.len()
 }
 
 /// Each mention the chat list does not notify (a muted chat, a channel) notifies once, as Teams does.
-async fn push_mentions(l: &Light) {
-    let mentions = l.store.mentions();
-    let raw = l.store.get_state("mentions_told");
+pub async fn push_mentions(store: &Store, notifier: &Rc<dyn Notify>) {
+    let mentions = store.mentions();
+    let raw = store.get_state("mentions_told");
     let told = (!raw.is_empty()).then(|| ids_of(&raw));
     let known: HashSet<&String> = told.iter().flatten().collect();
     let fresh: Vec<_> = if told.is_some() {
         mentions
             .iter()
-            .filter(|m| !known.contains(&m.id) && m.unread && (m.channel || l.store.is_muted_chat(&m.chat)) && !in_app(&l.store, &m.chat))
+            .filter(|m| !known.contains(&m.id) && m.unread && (m.channel || store.is_muted_chat(&m.chat)) && !in_app(store, &m.chat))
             .cloned()
             .collect()
     } else {
         vec![]
     };
-    l.store.set_state("mentions_told", &crate::js::stringify(&json!(union(mentions.iter().map(|m| m.id.clone()).collect(), told.clone().unwrap_or_default()))));
+    store.set_state("mentions_told", &crate::js::stringify(&json!(union(mentions.iter().map(|m| m.id.clone()).collect(), told.clone().unwrap_or_default()))));
     for m in fresh {
-        let chat = if l.store.is_known_chat(&m.chat) { m.chat.clone() } else { String::new() };
+        let chat = if store.is_known_chat(&m.chat) { m.chat.clone() } else { String::new() };
         info("MENTION", &m.chat, &[("by", m.actor.as_str().into()), ("preview", cut(&m.preview, 50).into())]);
         let who = if m.actor.is_empty() { "You were mentioned".to_string() } else { format!("{} mentioned you", m.actor) };
         let body = format!("{who}{}", if m.preview.is_empty() { String::new() } else { format!(": {}", m.preview) });
         let title = if m.chat.is_empty() { m.actor.clone() } else { m.chat.clone() };
-        l.notifier.message(&title, &body, &chat).await;
+        notifier.message(&title, &body, &chat).await;
     }
 }
 
@@ -566,13 +572,13 @@ pub async fn read_feed(l: &Rc<Light>) -> bool {
         let _ = l.store.save_activity(&feed);
     }
     l.store.set_state(key::ACTIVITY_TS, &now_s().to_string());
-    push_missed_calls(l).await;
-    push_mentions(l).await;
+    push_missed_calls(&l.store, &l.notifier).await;
+    push_mentions(&l.store, &l.notifier).await;
     true
 }
 
 /// A problem that lasts `after` seconds is pushed once, and its end once more (watchProblem).
-fn watch_problem(state: &str, since: i64, alerted: bool, armed: bool, after: i64, now: i64) -> ((i64, bool), Option<&'static str>) {
+pub fn watch_problem(state: &str, since: i64, alerted: bool, armed: bool, after: i64, now: i64) -> ((i64, bool), Option<&'static str>) {
     match state {
         "problem" => {
             let since = if since != 0 { since } else { now };

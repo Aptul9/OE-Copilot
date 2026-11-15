@@ -218,10 +218,22 @@ impl ChatSvc {
         timeout_ms: u64,
     ) -> R<super::http::Response> {
         let r = send(http, method, url, headers(auth, json_body), body, timeout_ms).await?;
-        if r.status == 401 && self.refused.borrow_mut().insert(auth.token.clone()) {
-            warn("chatsvc", "token refused: back to the Teams page", &[]);
+        if r.status == 401 {
+            self.note_refused(&auth.token);
         }
         Ok(r)
+    }
+
+    /// A token the chat service refused: the browser agent takes the page's MSAL token next, else the Teams page serves
+    /// the account until Teams renews it. Logged once per token.
+    pub fn note_refused(&self, token: &str) {
+        if self.refused.borrow_mut().insert(token.to_string()) {
+            warn("chatsvc", "token refused: back to the Teams page", &[]);
+        }
+    }
+
+    pub fn refused(&self, token: &str) -> bool {
+        self.refused.borrow().contains(token)
     }
 
     fn mine(auth: &TeamsAuth, conv: &str, from: &str) -> bool {

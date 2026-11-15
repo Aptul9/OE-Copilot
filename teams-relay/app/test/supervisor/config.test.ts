@@ -40,6 +40,13 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ LIGHT_RUST: "yes" })).toThrow(/LIGHT_RUST/);
   });
 
+  it("runs the browser agent in Rust unless AGENT_RUST is 0", () => {
+    expect(loadConfig({}).accounts.agentBin).toBe("/app/teamsrelay-agent");
+    expect(loadConfig({ AGENT_BIN: "/opt/agent" }).accounts.agentBin).toBe("/opt/agent");
+    expect(loadConfig({ AGENT_RUST: "0" }).accounts.agentBin).toBeNull();
+    expect(() => loadConfig({ AGENT_RUST: "yes" })).toThrow(/AGENT_RUST/);
+  });
+
   it("starts the desktop on demand, after 10 minutes without a browser, unless DESKTOP_ON_DEMAND is 0", () => {
     expect(loadConfig({}).desktop).toEqual({ onDemand: true, socket: path.join("/config/.XDG", "wayland-0"), s6rc: "/command/s6-rc", microphone: null, idleMs: 600_000 });
     expect(loadConfig({ DESKTOP_ON_DEMAND: "0" }).desktop.onDemand).toBe(false);

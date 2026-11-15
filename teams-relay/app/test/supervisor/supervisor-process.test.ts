@@ -80,6 +80,10 @@ beforeAll(async () => {
     PGID: String(process.getgid?.()),
     CHROMIUM: chromium,
     AGENT_SCRIPT: agent,
+    // the stand-in above is the Node agent's script: not the Rust agent of the image
+    AGENT_RUST: "0",
+    // the bundle sits in a temporary folder: its external packages come from the app's node_modules
+    NODE_PATH: path.join(__dirname, "../../node_modules"),
     S6_RC: "",
     TZ: "Europe/Rome",
   };

@@ -292,6 +292,91 @@ impl Store {
         rows.map(|r| r.filter_map(Result::ok).collect()).unwrap_or_default()
     }
 
+    /// The chat with yourself ("Name (You)"): the visible page can read nothing there on the user's behalf.
+    pub fn self_chat(&self) -> String {
+        self.c
+            .query_row("SELECT name FROM chats WHERE name LIKE '%(You)%' ORDER BY pos LIMIT 1", [], |r| r.get::<_, String>(0))
+            .optional()
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+    }
+
+    pub fn has_pending_commands(&self) -> bool {
+        self.c.query_row("SELECT 1 FROM commands WHERE status='pending' LIMIT 1", [], |_| Ok(())).optional().ok().flatten().is_some()
+    }
+
+    /// Your messages of the chat with an id, the last first.
+    pub fn own_recent_message_ids(&self, chat: &str, limit: usize) -> Vec<String> {
+        let Ok(mut st) = self.c.prepare("SELECT mid FROM chat_messages WHERE chat=? AND mine=1 AND mid<>'' ORDER BY idx DESC LIMIT ?") else { return vec![] };
+        st.query_map(params![chat, limit as i64], |r| r.get::<_, String>(0)).map(|r| r.filter_map(Result::ok).collect()).unwrap_or_default()
+    }
+
+    /// The "Read by" known of the messages of a chat: label and when it was read.
+    pub fn read_by_of(&self, chat: &str) -> HashMap<String, (String, i64)> {
+        let Ok(mut st) = self.c.prepare("SELECT mid, label, ts FROM readby WHERE chat=?") else { return HashMap::new() };
+        let rows = st.query_map([chat], |r| {
+            Ok((r.get::<_, String>(0)?, (r.get::<_, Option<String>>(1)?.unwrap_or_default(), r.get::<_, Option<i64>>(2)?.unwrap_or(0))))
+        });
+        rows.map(|r| r.filter_map(Result::ok).collect()).unwrap_or_default()
+    }
+
+    pub fn save_read_by(&self, mid: &str, chat: &str, label: &str, names: &[String]) {
+        let _ = self.c.execute(&insert_row("readby"), params![mid, chat, label, crate::js::stringify(&json!(names)), now_s()]);
+    }
+
+    /// Picture of each item of the Activity feed that has one, by id.
+    pub fn activity_avatars(&self) -> HashMap<String, String> {
+        let Ok(mut st) = self.c.prepare("SELECT id, av FROM activity WHERE av <> ''") else { return HashMap::new() };
+        st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))).map(|r| r.filter_map(Result::ok).collect()).unwrap_or_default()
+    }
+
+    /// Ids of every item of the Activity feed, in feed order.
+    pub fn activity_ids(&self) -> Vec<String> {
+        let Ok(mut st) = self.c.prepare("SELECT id FROM activity ORDER BY pos") else { return vec![] };
+        st.query_map([], |r| r.get::<_, String>(0)).map(|r| r.filter_map(Result::ok).collect()).unwrap_or_default()
+    }
+
+    /// Ids of the items with their Teams id the feed shows unread, in feed order.
+    pub fn unread_activity(&self) -> Vec<String> {
+        let sql = format!("SELECT id FROM activity WHERE unread=1 AND {HAS_TEAMS_ID} ORDER BY pos");
+        let Ok(mut st) = self.c.prepare(&sql) else { return vec![] };
+        st.query_map([], |r| r.get::<_, String>(0)).map(|r| r.filter_map(Result::ok).collect()).unwrap_or_default()
+    }
+
+    /// Files of the media folder the rows name: pictures of chats, feed and account, images and pictures of the messages
+    /// kept (mediaFilesOf).
+    pub fn media_files(&self) -> std::collections::HashSet<String> {
+        let mut files = std::collections::HashSet::new();
+        let mut add = |f: Option<&str>| {
+            if let Some(f) = f.filter(|f| !f.is_empty()) {
+                files.insert(f.to_string());
+            }
+        };
+        if let Ok(mut st) = self.c.prepare("SELECT av FROM chats UNION SELECT av FROM activity")
+            && let Ok(rows) = st.query_map([], |r| r.get::<_, Option<String>>(0))
+        {
+            for av in rows.flatten() {
+                add(av.as_deref());
+            }
+        }
+        if let Ok(mut st) = self.c.prepare("SELECT extra FROM chat_messages")
+            && let Ok(rows) = st.query_map([], |r| r.get::<_, Option<String>>(0))
+        {
+            for extra in rows.flatten() {
+                let e = parse_extra(extra.as_deref());
+                add(e.get("av").and_then(Value::as_str));
+                for im in e.get("images").and_then(Value::as_array).into_iter().flatten() {
+                    add(im.get("f").and_then(Value::as_str));
+                }
+            }
+        }
+        let me = crate::state::object(Some(&self.get_state(crate::state::key::ME))).unwrap_or_default();
+        add(me.get("av").and_then(Value::as_str));
+        add(me.get("logo").and_then(Value::as_str));
+        files
+    }
+
     pub fn save_activity(&self, items: &[ActivityEntry]) -> rusqlite::Result<()> {
         let tx = self.c.unchecked_transaction()?;
         let ts = now_s();

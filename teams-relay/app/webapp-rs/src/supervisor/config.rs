@@ -39,6 +39,8 @@ pub struct AccountsConfig {
     pub light_host: bool,
     /// the host in Rust (agent/host.rs) instead of node light_script --host
     pub light_bin: Option<String>,
+    /// the browser agent in Rust (teamsrelay-agent) instead of node agent_script
+    pub agent_bin: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +79,7 @@ pub fn load(env: &dyn Fn(&str) -> Option<String>) -> Result<Config, String> {
     };
     let light_host = flag("LIGHT_HOST", "1");
     let light_rust = flag("LIGHT_RUST", "1");
+    let agent_rust = flag("AGENT_RUST", "1");
     let on_demand = flag("DESKTOP_ON_DEMAND", "1");
     let mut int = |k: &str, d: i64, min: i64, max: i64| {
         let Some(v) = given(k) else { return d };
@@ -139,6 +142,7 @@ pub fn load(env: &dyn Fn(&str) -> Option<String>) -> Result<Config, String> {
             wlrctl: "wlrctl".into(),
             light_host,
             light_bin: light_rust.then(|| or("LIGHT_BIN", "/app/teamsrelay-light")),
+            agent_bin: agent_rust.then(|| or("AGENT_BIN", "/app/teamsrelay-agent")),
         },
         desktop: DesktopSettings {
             on_demand,
@@ -195,6 +199,9 @@ pub(crate) mod tests {
         assert_eq!(of(&[]).expect("c").accounts.light_bin.as_deref(), Some("/app/teamsrelay-light"));
         assert_eq!(of(&[("LIGHT_BIN", "/opt/light")]).expect("c").accounts.light_bin.as_deref(), Some("/opt/light"));
         assert_eq!(of(&[("LIGHT_RUST", "0")]).expect("c").accounts.light_bin, None);
+        assert_eq!(of(&[]).expect("c").accounts.agent_bin.as_deref(), Some("/app/teamsrelay-agent"));
+        assert_eq!(of(&[("AGENT_RUST", "0")]).expect("c").accounts.agent_bin, None);
+        assert!(of(&[("AGENT_RUST", "yes")]).unwrap_err().contains("AGENT_RUST"));
         assert!(of(&[("LIGHT_RUST", "yes")]).unwrap_err().contains("LIGHT_RUST"));
     }
 

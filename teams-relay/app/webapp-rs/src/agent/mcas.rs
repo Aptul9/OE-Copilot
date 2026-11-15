@@ -292,6 +292,66 @@ pub fn load(file: &Path) -> Option<(Map<String, Value>, Vec<Cookie>)> {
     Some((s, cookies))
 }
 
+/// A GET as the browser's request context makes it (Playwright's context.request): its cookies, the cookies of the
+/// answer stored in the browser, no redirect followed.
+async fn browser_get(http: &Http, browser: &crate::agent::browser::Browser, url: &Url, headers: Vec<(&str, String)>, timeout_ms: u64) -> R<Response> {
+    let cookies = browser.cookies().await.map_err(Fail::Other)?;
+    let mut headers = headers;
+    let cookie = crate::cdp::cookie_header(&cookies, url);
+    if !cookie.is_empty() {
+        headers.push(("Cookie", cookie));
+    }
+    let r = send(http, "GET", url.as_str(), headers, vec![], timeout_ms).await?;
+    let _ = browser.set_cookies(crate::cdp::set_cookies(url, &r)).await;
+    Ok(r)
+}
+
+/// The session of a Teams page the browser holds behind the proxy (McasSession.capture): the bootstrap script its root
+/// loads, checked as the renewal checks it, and the cookies of the sign-in and of the proxy. False when the page is not
+/// behind the proxy, or anything is not of the shape observed.
+pub async fn capture(file: &Path, http: &Http, page: &crate::agent::browser::Page, tenant_id: &str, login_hint: &str, user_agent: &str) -> bool {
+    matches!(capture_session(file, http, page, tenant_id, login_hint, user_agent).await, Ok(true))
+}
+
+async fn capture_session(file: &Path, http: &Http, page: &crate::agent::browser::Page, tenant_id: &str, login_hint: &str, user_agent: &str) -> R<bool> {
+    let here = Url::parse(&page.url()).map_err(|e| Fail::Other(e.to_string()))?;
+    let own = here.origin().ascii_serialization();
+    let app_origin = own.strip_suffix(".mcas.ms").unwrap_or(&own).to_string();
+    if here.scheme() != "https" || !here.host_str().unwrap_or("").ends_with(".mcas.ms") || !APPS.contains(&app_origin.as_str()) {
+        return Ok(false);
+    }
+    let browser = page.browser().ok_or_else(|| Fail::Other("no browser".into()))?;
+    let ua = || vec![("User-Agent", user_agent.to_string())];
+    let start = Url::parse(&format!("{own}/")).map_err(|e| Fail::Other(e.to_string()))?;
+    let mut at = start.clone();
+    let mut root = browser_get(http, &browser, &at, ua(), 15_000).await?;
+    for _ in 0..2 {
+        if !(300..400).contains(&root.status) {
+            break;
+        }
+        let Some(next) = root.header("location").and_then(|l| at.join(l).ok()) else { return Ok(false) };
+        if next.origin().ascii_serialization() != own || !["/v2", "/v2/"].contains(&next.path()) {
+            return Ok(false);
+        }
+        at = next;
+        root = browser_get(http, &browser, &at, ua(), 15_000).await?;
+    }
+    let Some(url) = forms::bootstrap_url(&text(&root, 2 * 1024 * 1024)?, &own).map_err(|e| Fail::Other(e.to_string()))? else { return Ok(false) };
+    let address = bootstrap_address(&url)?;
+    let mut headers = ua();
+    headers.push(("Referer", start.to_string()));
+    settings(&text(&browser_get(http, &browser, &address, headers, 10_000).await?, 128 * 1024)?)?;
+    let cookies: Vec<Value> = browser.cookies().await.map_err(Fail::Other)?.iter().filter_map(valid_cookie).map(Value::Object).collect();
+    let estsauth = regex::Regex::new("^ESTSAUTH(?:PERSISTENT|LIGHT)?$").expect("fixed");
+    if !cookies.iter().any(|c| estsauth.is_match(c["name"].as_str().unwrap_or(""))) || login_hint.is_empty() {
+        return Ok(false);
+    }
+    let captured =
+        json!({ "tenantId": tenant_id, "loginHint": login_hint, "userAgent": user_agent, "appOrigin": app_origin, "bootstrapUrl": url, "cookies": cookies });
+    save_credential(file, &captured)?;
+    Ok(true)
+}
+
 impl McasSession {
     pub fn new(file: PathBuf, http: Http) -> Self {
         McasSession { file, http, now: Rc::new(now_ms) }

@@ -89,7 +89,10 @@ pub fn agent_command(n: i64, cfg: &AccountsConfig) -> Command {
         ("XDG_RUNTIME_DIR", cfg.session.get("XDG_RUNTIME_DIR").cloned().unwrap_or_default()),
         ("WAYLAND_DISPLAY", cfg.session.get("WAYLAND_DISPLAY").cloned().unwrap_or_default()),
     ]));
-    Command { file: cfg.node.clone(), args: vec![cfg.agent_script.clone()], env: Some(env), ..Default::default() }
+    match &cfg.agent_bin {
+        Some(bin) => Command { file: bin.clone(), args: vec![], env: Some(env), ..Default::default() },
+        None => Command { file: cfg.node.clone(), args: vec![cfg.agent_script.clone()], env: Some(env), ..Default::default() },
+    }
 }
 
 /// The light agent of a light account: the environment of the agent, without its browser and its desktop; bound to a
@@ -460,6 +463,7 @@ pub(crate) mod tests {
         .accounts;
         c.profiles_dir = root.join("profiles");
         c.light_host = false;
+        c.agent_bin = None;
         std::fs::create_dir_all(&c.profiles_dir).expect("profiles");
         c
     }
@@ -524,6 +528,11 @@ pub(crate) mod tests {
 
         let a = agent_command(2, &c);
         assert_eq!((a.file.as_str(), a.args.clone(), a.uid), ("/usr/local/bin/node", vec!["/app/agent.cjs".to_string()], None));
+        // AGENT_RUST: the same environment for the Rust agent
+        let rust = AccountsConfig { agent_bin: Some("/app/teamsrelay-agent".into()), ..c.clone() };
+        let r = agent_command(2, &rust);
+        assert_eq!((r.file.as_str(), r.args.len(), r.uid), ("/app/teamsrelay-agent", 0, None));
+        assert_eq!(r.env, a.env);
         let e = a.env.expect("env");
         for (k, v) in [
             ("ACCOUNT", "2"),

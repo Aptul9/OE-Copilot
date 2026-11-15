@@ -38,6 +38,8 @@ export type AccountsConfig = {
   lightHost: boolean;
   // the host in Rust (webapp-rs, src/agent) instead of node lightScript --host; null: the Node host
   lightBin?: string | null;
+  // the browser agent in Rust (webapp-rs, teamsrelay-agent) instead of node agentScript; null: the Node agent
+  agentBin?: string | null;
 };
 
 export class AccountError extends Error {
@@ -104,8 +106,8 @@ export function browserCommand(n: number, cfg: AccountsConfig): Command {
 export function agentCommand(n: number, cfg: AccountsConfig): Command {
   const { join } = path.posix;
   return {
-    file: cfg.node,
-    args: [cfg.agentScript],
+    file: cfg.agentBin ?? cfg.node,
+    args: cfg.agentBin ? [] : [cfg.agentScript],
     env: {
       PATH,
       HOME: "/root",

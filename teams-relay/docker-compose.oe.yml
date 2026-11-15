@@ -2,14 +2,15 @@
 # joins the network the calendar keeps for it, where only the agent is (SHARED_BROKER_URL, http://oe-copilot-agent:8180):
 # not the calendar's gateway, nor the rest of its compose network. Only the browsers container: the web app stays off it
 # and reaches the agent's list through the supervisor's socket.
-# deploy/remote-deploy.sh adds this file when .env sets SHARED_BROKER_URL and the network exists.
+# The project of every stack of oe-vm (deploy/stack/compose.yml) includes it with docker-compose.yml.
 services:
   browsers:
     networks:
-      desktop: {}
-      oe: {}
+      tr_desktop: {}
+      oe_teams: {}
 
 networks:
-  oe:
-    name: ${OE_NETWORK:-oe-copilot-teams}
-    external: true
+  # declared as the calendar declares it (calendar/server/docker-compose.yml): one network of the project of oe-vm
+  # (deploy/stack), the only place this file is used
+  oe_teams:
+    name: oe-copilot-teams

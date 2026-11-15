@@ -1,6 +1,6 @@
-# Remote MCP on the host of OE Copilot and TeamsRelay (README.md, "Remote server"). It joins their compose networks to reach
-# the OE Copilot agent (agent:8180) and the TeamsRelay web app (webapp:8090) without leaving the host, and so that the
-# TeamsRelay Caddy can proxy the public name to it. Secrets and addresses come from .env (.env.example).
+# Remote MCP on the host of OE Copilot and TeamsRelay (README.md, "Remote server"), in their compose project (deploy/stack).
+# It joins their networks to reach the OE Copilot agent (agent:8180) and the TeamsRelay web app (webapp:8090) without
+# leaving the host, and so that the TeamsRelay Caddy can proxy the public name to it. Secrets and addresses come from .env (.env.example).
 name: communication-mcp
 services:
   mcp:
@@ -22,14 +22,13 @@ services:
     ports:
       - "127.0.0.1:8190:8190"
     networks:
-      - oe
-      - teams
+      - oe_default
+      - tr_default
     restart: unless-stopped
 
+# declared as the calendar and TeamsRelay declare them: three stacks, one project on oe-vm (deploy/stack/compose.yml)
 networks:
-  oe:
+  oe_default:
     name: oe-copilot_default
-    external: true
-  teams:
+  tr_default:
     name: teamsrelay_default
-    external: true

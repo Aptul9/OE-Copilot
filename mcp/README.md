@@ -41,7 +41,7 @@ Backend addresses that receive a credential must be https, or plain http to loop
 
 ### Deployment
 
-`compose.yml`, on the host of OE Copilot and TeamsRelay (`oe-vm`, `/opt/communication-mcp`). The container joins `oe-copilot_default` and `teamsrelay_default`, reaches `agent:8180` and `webapp:8090` there, mounts `/opt/communication-mcp-state/slackcli` read-only at `/slackcli`, and listens on `127.0.0.1:8190` only. A push on `main` touching `mcp/**` deploys it (`.github/workflows/mcp.yml`: rsync, `.env` from the `mcp` environment, `docker compose up -d --build`, health check, rollback to the previous tree on failure). The first build compiles the dependencies (a few minutes); BuildKit cache mounts keep later builds incremental.
+`compose.yml`, on the host of OE Copilot and TeamsRelay (`oe-vm`, `/opt/communication-mcp`). The container joins `oe-copilot_default` and `teamsrelay_default`, reaches `agent:8180` and `webapp:8090` there, mounts `/opt/communication-mcp-state/slackcli` read-only at `/slackcli`, and listens on `127.0.0.1:8190` only. A push on `main` touching `mcp/**` deploys it (`.github/workflows/mcp.yml`: rsync, `.env` from the `mcp` environment, `docker compose up -d --build mcp` in the one compose project of oe-vm (`deploy/stack/README.md`), health check, rollback to the previous tree on failure). The first build compiles the dependencies (a few minutes); BuildKit cache mounts keep later builds incremental.
 
 Public address: a path on the TeamsRelay name, `/communication/*`, which the TeamsRelay Caddy strips; `MCP_HTTP_HOSTS` lists that name.
 

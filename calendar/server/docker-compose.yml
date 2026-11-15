@@ -8,6 +8,9 @@ services:
   # agente-ts/ è la versione TypeScript da cui è tradotto: tiene le prove di riferimento e gli strumenti (confronta-http, costruisci-db).
   agent:
     build: ./agente-rs
+    # nomi fissi di immagini, reti e volumi: valgono anche nel progetto unico della VM (deploy/stack), dove il nome
+    # del progetto non è più oe-copilot
+    image: oe-copilot-agent
     container_name: oe-copilot-agent
     user: "10001:10001"
     read_only: true
@@ -29,11 +32,11 @@ services:
     # compose, niente è esposto su internet.
     ports:
       - "127.0.0.1:3180:8180"
-    # default: gateway e MCP. teams: solo l'agente e il container dei browser di TeamsRelay (teams-relay/docker-compose.oe.yml),
+    # oe_default: gateway e MCP. oe_teams: solo l'agente e il container dei browser di TeamsRelay (teams-relay/docker-compose.oe.yml),
     # che così non vede il gateway né il resto di questa rete
     networks:
-      - default
-      - teams
+      - oe_default
+      - oe_teams
     healthcheck:
       # l'immagine ha solo il binario: /api/salute senza chiave deve rispondere 401
       test: ["CMD", "/agente", "--salute"]
@@ -56,6 +59,7 @@ services:
       dockerfile: gateway.Dockerfile
       additional_contexts:
         web: ./web-ts
+    image: oe-copilot-gateway
     container_name: oe-copilot-gateway
     user: "10001:10001"
     read_only: true
@@ -89,6 +93,8 @@ services:
       - ./ui-dati:/dati
     ports:
       - "127.0.0.1:3190:3000"
+    networks:
+      - oe_default
     healthcheck:
       # l'immagine ha solo il binario: /salute deve rispondere 200
       test: ["CMD", "/gateway", "--salute"]
@@ -103,6 +109,7 @@ services:
   # certificato (TLS-ALPN).
   caddy-ui:
     build: ./caddy-ui
+    image: oe-copilot-caddy-ui
     container_name: oe-copilot-caddy
     environment:
       - UI_HOST=${UI_HOST:-}
@@ -112,17 +119,25 @@ services:
         condition: service_healthy
     volumes:
       # certificati e account ACME: non si perdono ricreando il container
-      - caddy_dati:/data
-      - caddy_config:/config
+      - oe_caddy_dati:/data
+      - oe_caddy_config:/config
     ports:
       - "127.0.0.1:4445:443"
+    networks:
+      - oe_default
     restart: unless-stopped
 
 volumes:
-  caddy_dati:
-  caddy_config:
+  # i nomi di prima: certificati e account ACME restano dove sono
+  oe_caddy_dati:
+    name: oe-copilot_caddy_dati
+  oe_caddy_config:
+    name: oe-copilot_caddy_config
 
 networks:
+  # gateway, agente, caddy-ui e l'MCP remoto (mcp/compose.yml)
+  oe_default:
+    name: oe-copilot_default
   # l'agente per TeamsRelay sullo stesso host (account Microsoft condivisi): il nome fisso è quello che cerca il suo deploy
-  teams:
+  oe_teams:
     name: oe-copilot-teams

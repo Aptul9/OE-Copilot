@@ -1,0 +1,54 @@
+#!/bin/bash
+# The compose project of every stack of oe-vm (compose.yml here), for the deploys of its modules and by hand. Root-owned
+# in /usr/local/sbin, run by the deploy users through sudo (README.md here): compose reads the .env of every module, which
+# only their owners can read, and runs with a clean environment, where no variable of the caller overrides a .env.
+#   oe-stack <stack> <compose arguments>   docker compose of the project, for <stack>: calendar, teamsrelay, mcp or all
+#   oe-stack <stack> services              the services of <stack>
+#   oe-stack calendar secrets              NAME=value lines on stdin: the calendar's secrets (API_KEY, ADMIN_EMAIL,
+#                                          ADMIN_PASSWORD, BETTER_AUTH_SECRET, TEAMS_BROKER_KEY); an empty value keeps
+#                                          the saved one
+set -euo pipefail
+ROOT=/opt/oe-stack
+SECRETS="$ROOT/secrets/calendar.env"
+
+stack="${1:-}"
+case "$stack" in
+  calendar) services="agent gateway caddy-ui" ;;
+  teamsrelay) services="browsers webapp caddy" ;;
+  mcp) services="mcp" ;;
+  all) services="agent gateway caddy-ui browsers webapp caddy mcp" ;;
+  *) echo "usage: oe-stack calendar|teamsrelay|mcp|all <compose arguments> | services | secrets (calendar)" >&2; exit 2 ;;
+esac
+shift
+
+case "${1:-}" in
+  services)
+    echo "$services"
+    exit 0
+    ;;
+  secrets)
+    [ "$stack" = calendar ] || { echo "oe-stack: secrets are the calendar's only" >&2; exit 2; }
+    umask 077
+    mkdir -p "$(dirname "$SECRETS")"
+    touch "$SECRETS"
+    tmp="$(mktemp "$SECRETS.XXXXXX")"
+    trap 'rm -f "$tmp" "$tmp.n"' EXIT
+    cp "$SECRETS" "$tmp"
+    while IFS= read -r line || [ -n "$line" ]; do
+      name="${line%%=*}"
+      value="${line#*=}"
+      case "$name" in ADMIN_EMAIL | ADMIN_PASSWORD | API_KEY | BETTER_AUTH_SECRET | TEAMS_BROKER_KEY) ;; *) continue ;; esac
+      [ -n "$value" ] || continue
+      # single quotes in the .env: compose takes the value as it is, a $ included
+      case "$value" in *"'"*) echo "oe-stack: $name has a single quote, refused" >&2; exit 1 ;; esac
+      grep -v "^$name=" "$tmp" > "$tmp.n" || true
+      printf "%s='%s'\n" "$name" "$value" >> "$tmp.n"
+      mv "$tmp.n" "$tmp"
+    done
+    mv "$tmp" "$SECRETS"
+    exit 0
+    ;;
+esac
+
+cd "$ROOT"
+exec env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/root docker compose -f "$ROOT/compose.yml" "$@"

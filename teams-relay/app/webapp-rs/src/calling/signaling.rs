@@ -120,12 +120,17 @@ pub async fn allocating(fqdn: &str, port: u16) -> Option<std::net::SocketAddr> {
             Box::new(RequestedTransport { protocol: PROTO_UDP }),
         ])
         .ok()?;
-        socket.send_to(&m.raw, to).await.ok()?;
         let mut buf = [0u8; 1500];
-        let n = match tokio::time::timeout(Duration::from_millis(1500), socket.recv(&mut buf)).await {
-            Ok(Ok(n)) => n,
-            _ => return redirected,
-        };
+        // sent again while no answer comes, as STUN retransmits over UDP: one lost datagram left a call without relay
+        let mut n = None;
+        for wait in [500, 1000, 2000] {
+            socket.send_to(&m.raw, to).await.ok()?;
+            if let Ok(Ok(len)) = tokio::time::timeout(Duration::from_millis(wait), socket.recv(&mut buf)).await {
+                n = Some(len);
+                break;
+            }
+        }
+        let Some(n) = n else { return redirected };
         let mut r = Message::new();
         r.raw = buf[..n].to_vec();
         r.decode().ok()?;
@@ -321,13 +326,15 @@ impl CallLinks {
 }
 
 /// The body of a call created on the conversation service: the people called, the offer, the links of this client.
+/// suppressDialout false, as Teams web sends it calling a person: with true, Teams desktop rings but its Accept does
+/// nothing (no acceptance, no DTLS, voicemail after 30 s; 2026-11-15).
 pub fn create_body(e: &Endpoint, links: &CallLinks, participant: &str, to: &[Value], offer: &str, media_leg: &str) -> Value {
     let roster = e.link("conversation/rosterUpdate");
     json!({
         "conversationRequest": {
             "conversationType": null,
             "subject": null,
-            "suppressDialout": true,
+            "suppressDialout": false,
             "roster": { "type": "Delta", "rosterUpdate": roster },
             "properties": { "allowConversationWithoutHost": true, "enableGroupCallEventMessages": true, "enableGroupCallUpgradeMessage": false, "enableGroupCallMeetupGeneration": false },
             "links": links.conversation,
@@ -716,8 +723,9 @@ mod tests {
         assert!(a.gtms("calling_trouterUrl").is_ok() && a.gtms("calling_registrarUrl").is_err());
     }
 
-    /// A relay server on 127.0.0.1 that answers each Allocate with `code`, naming `alternate` when given.
-    async fn relay_server(code: u16, alternate: Option<std::net::SocketAddr>) -> std::net::SocketAddr {
+    /// A relay server on 127.0.0.1 that answers each Allocate with `code`, naming `alternate` when given; the first
+    /// `lost` requests get no answer, as datagrams lost on the way.
+    async fn relay_server(code: u16, alternate: Option<std::net::SocketAddr>, lost: usize) -> std::net::SocketAddr {
         use webrtc::stun::addr::AlternateServer;
         use webrtc::stun::attributes::ATTR_ALTERNATE_SERVER;
         use webrtc::stun::error_code::{ErrorCode, ErrorCodeAttribute};
@@ -726,7 +734,12 @@ mod tests {
         let at = socket.local_addr().expect("addr");
         tokio::spawn(async move {
             let mut buf = [0u8; 1500];
+            let mut seen = 0;
             while let Ok((n, from)) = socket.recv_from(&mut buf).await {
+                seen += 1;
+                if seen <= lost {
+                    continue;
+                }
                 let mut req = Message::new();
                 req.raw = buf[..n].to_vec();
                 req.decode().expect("request");
@@ -746,10 +759,12 @@ mod tests {
 
     #[tokio::test]
     async fn an_allocation_goes_to_the_server_the_gateway_names() {
-        let server = relay_server(401, None).await;
-        let gateway = relay_server(300, Some(server)).await;
+        let server = relay_server(401, None, 0).await;
+        let gateway = relay_server(300, Some(server), 0).await;
         assert_eq!(allocating("127.0.0.1", gateway.port()).await, Some(server));
         assert_eq!(allocating("127.0.0.1", server.port()).await, None, "no redirect: the fqdn stays");
+        let lossy = relay_server(300, Some(server), 2).await;
+        assert_eq!(allocating("127.0.0.1", lossy.port()).await, Some(server), "sent again until the gateway answers");
     }
 
     #[test]

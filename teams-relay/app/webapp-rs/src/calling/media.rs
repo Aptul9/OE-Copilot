@@ -14,6 +14,8 @@ use tokio::sync::{Mutex, mpsc};
 use webrtc::api::APIBuilder;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::MediaEngine;
+use webrtc::api::setting_engine::SettingEngine;
+use webrtc::dtls_transport::dtls_role::DTLSRole;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -114,6 +116,8 @@ pub type Microphone = Box<dyn FnMut() -> Vec<i16> + Send>;
 pub struct Counters {
     pub sent: AtomicU64,
     pub received: AtomicU64,
+    /// received with a payload type the far end did not name
+    pub undecoded: AtomicU64,
     pub decoded_samples: AtomicU64,
 }
 
@@ -137,24 +141,36 @@ impl Media {
             m.register_codec(p, RTPCodecType::Audio).map_err(webrtc_err)?;
         }
         let registry = register_default_interceptors(Registry::new(), &mut m).map_err(webrtc_err)?;
-        let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).build();
+        // answering a call, this end is the DTLS server: the far end sends the ClientHello. The client of webrtc-rs puts
+        // the far end's IP address in SNI, which TLS does not allow
+        let mut s = SettingEngine::default();
+        s.set_answering_dtls_role(DTLSRole::Server).map_err(webrtc_err)?;
+        let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(s).build();
         let pc = Arc::new(api.new_peer_connection(RTCConfiguration { ice_servers: ice, ..Default::default() }).await.map_err(webrtc_err)?);
         let track = Arc::new(AnyAudioTrack::default());
         let init = RTCRtpTransceiverInit { direction: RTCRtpTransceiverDirection::Sendrecv, send_encodings: vec![] };
         let transceiver = pc.add_transceiver_from_track(track.clone() as Arc<dyn TrackLocal + Send + Sync>, Some(init)).await.map_err(webrtc_err)?;
         let ssrc = transceiver.sender().await.get_parameters().await.encodings.first().map(|e| e.ssrc).unwrap_or(0);
-        if std::env::var("CALLING_DEBUG").is_ok() {
-            let t0 = std::time::Instant::now();
+        let debug = std::env::var("CALLING_DEBUG").is_ok();
+        let t0 = std::time::Instant::now();
+        if debug {
             pc.on_ice_candidate(Box::new(move |c| {
                 if let Some(c) = c {
                     eprintln!("{}", serde_json::json!({ "candidate": format!("{:?} {} {}:{}", c.typ, c.protocol, c.address, c.port), "ms": t0.elapsed().as_millis() as u64 }));
                 }
                 Box::pin(async {})
             }));
+            pc.on_ice_connection_state_change(Box::new(move |st| {
+                eprintln!("{}", serde_json::json!({ "iceState": st.to_string(), "ms": t0.elapsed().as_millis() as u64 }));
+                Box::pin(async {})
+            }));
         }
         let state = Arc::new(std::sync::Mutex::new(RTCPeerConnectionState::New));
         let s = state.clone();
         pc.on_peer_connection_state_change(Box::new(move |st| {
+            if debug {
+                eprintln!("{}", serde_json::json!({ "pcState": st.to_string(), "ms": t0.elapsed().as_millis() as u64 }));
+            }
             if let Ok(mut x) = s.lock() {
                 *x = st;
             }
@@ -177,7 +193,10 @@ impl Media {
                                 let name = nm.lock().await.get(&pt).cloned().unwrap_or_default();
                                 match Codec::of(&name) {
                                     Some(c) => v.insert(c),
-                                    None => continue,
+                                    None => {
+                                        c.undecoded.fetch_add(1, Ordering::Relaxed);
+                                        continue;
+                                    }
                                 }
                             }
                         };
@@ -195,6 +214,11 @@ impl Media {
 
     pub fn state(&self) -> RTCPeerConnectionState {
         self.state.lock().map(|s| *s).unwrap_or(RTCPeerConnectionState::Unspecified)
+    }
+
+    /// The candidate pair ICE carries the call on, once it has one.
+    pub async fn selected_pair(&self) -> Option<String> {
+        self.pc.sctp().transport().ice_transport().get_selected_candidate_pair().await.map(|p| p.to_string())
     }
 
     /// The offer in the dialect of Teams, once ICE has a relay candidate over UDP, the address Teams announces (or all
@@ -223,7 +247,7 @@ impl Media {
     /// The offer of an incoming call (dialect of Teams) answered: this client's answer in the dialect, once ICE has a
     /// relay candidate. The codec sent is the one the caller prefers among ours.
     pub async fn accept_offer(&self, ngc: &str) -> R<String> {
-        let offered = sdp::from_ngc(ngc).ok_or_else(|| Fail::Other("offer without audio".into()))?;
+        let offered = sdp::from_ngc_offer(ngc).ok_or_else(|| Fail::Other("offer without audio".into()))?;
         self.remember_names(ngc).await;
         if let Ok(mut p) = self.track.preferred.lock() {
             *p = offered.payload_types.clone();
@@ -235,7 +259,7 @@ impl Media {
         self.pc.set_local_description(answer).await.map_err(webrtc_err)?;
         self.wait_relay(&mut gathered).await;
         let local = self.pc.local_description().await.ok_or_else(|| Fail::Other("no local description".into()))?;
-        sdp::to_ngc(&local.sdp, &sdp::OfferExtras { ssrc: self.ssrc, cname: format!("teamsrelay{}", self.ssrc) })
+        sdp::to_ngc_answer(&local.sdp, &sdp::OfferExtras { ssrc: self.ssrc, cname: format!("teamsrelay{}", self.ssrc) }, ngc)
             .ok_or_else(|| Fail::Other("answer without audio or candidates".into()))
     }
 
@@ -252,9 +276,8 @@ impl Media {
     }
 
     /// Until ICE has the address Teams announces: a relay candidate over UDP, else a reflexive one and 300 ms more for a
-    /// relay, else all it gathered; 5 s at most. The TURN allocation of webrtc-rs with the relays of Teams has not
-    /// produced a relay candidate on oe-vm (2026-11-15), its reflexive address carries the calls: the gathering waited
-    /// for its full 5 s there before every call.
+    /// relay, else all it gathered; 5 s at most. The relay comes within ~150 ms once the allocation goes to the server
+    /// the Teams gateway names (signaling::allocating); before that it never came and the gathering waited its 5 s.
     async fn wait_relay(&self, gathered: &mut tokio::sync::mpsc::Receiver<()>) {
         let started = tokio::time::Instant::now();
         let end = started + Duration::from_secs(5);
@@ -357,12 +380,12 @@ fn rand_u16() -> u16 {
     rand_u32() as u16
 }
 
-/// The ICE servers of Teams: its TURN relay (fqdn of the ECS settings, UDP and TCP ports) with the credentials of
-/// the relay token service.
-pub fn relay_servers(fqdn: &str, udp: u16, tcp: u16, username: &str, credential: &str) -> Vec<RTCIceServer> {
+/// The ICE servers of Teams: its TURN relay (over UDP the server the gateway sends allocations to, over TCP the fqdn
+/// of the ECS settings) with the credentials of the relay token service.
+pub fn relay_servers(r: &super::signaling::Relay) -> Vec<RTCIceServer> {
     vec![RTCIceServer {
-        urls: vec![format!("turn:{fqdn}:{udp}?transport=udp"), format!("turn:{fqdn}:{tcp}?transport=tcp")],
-        username: username.into(),
-        credential: credential.into(),
+        urls: vec![format!("turn:{}:{}?transport=udp", r.udp_host, r.udp), format!("turn:{}:{}?transport=tcp", r.fqdn, r.tcp)],
+        username: r.username.clone(),
+        credential: r.credential.clone(),
     }]
 }

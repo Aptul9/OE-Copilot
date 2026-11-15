@@ -7,7 +7,7 @@
 use super::bridge::Hub;
 use super::codec::FRAME_20;
 use super::media::{Media, relay_servers};
-use super::signaling::{Account, Attached, CallLinks, Conversation, Endpoint, Event, Incoming, attach, event_of, relay, uuid};
+use super::signaling::{Account, Attached, CallLinks, Conversation, EarlyAnswers, Endpoint, Event, Incoming, attach, event_of, relay, uuid};
 use super::trouter::Request;
 use super::{Fail, R};
 use serde_json::{Map, Value, json};
@@ -52,6 +52,8 @@ struct Call {
     answered: bool,
     muted: bool,
     side: Side,
+    /// the answers of the called person's devices while it rings
+    early: EarlyAnswers,
     links: CallLinks,
     media: Option<Arc<Media>>,
     hub: Option<Arc<Hub>>,
@@ -85,9 +87,12 @@ impl Call {
         let s = self.hub.as_ref()?.stats();
         let hub = self.hub.as_ref()?;
         let target = hub.bridge.lock().map(|b| b.target).unwrap_or(0);
+        let rtp = |f: fn(&super::media::Counters) -> u64| self.media.as_ref().map(|m| f(&m.counters)).unwrap_or(0);
         Some(json!({ "callAudio": {
             "upPackets": s.up, "downPackets": s.down, "underruns": s.underruns, "targetMs": target / 48, "maxTargetMs": s.max_target / 48,
             "quietDroppedMs": s.quiet_samples / 48, "droppedMs": s.dropped_samples / 48, "micSkippedMs": 0, "loopP99Ms": 0, "loopMaxMs": 0,
+            "rtpSent": rtp(|c| c.sent.load(Ordering::Relaxed)), "rtpReceived": rtp(|c| c.received.load(Ordering::Relaxed)),
+            "rtpUndecoded": rtp(|c| c.undecoded.load(Ordering::Relaxed)),
         }}))
     }
 }
@@ -152,7 +157,7 @@ impl Worker {
     async fn media(&self, hub: Option<Arc<Hub>>) -> R<Arc<Media>> {
         let r = relay(&self.e.http, &self.account_now()).await?;
         let (speaker, mut heard) = mpsc::unbounded_channel::<Vec<i16>>();
-        let media = Arc::new(Media::new(relay_servers(&r.fqdn, r.udp, r.tcp, &r.username, &r.credential), speaker).await?);
+        let media = Arc::new(Media::new(relay_servers(&r), speaker).await?);
         tokio::spawn(async move {
             while let Some(pcm) = heard.recv().await {
                 if let Some(h) = &hub {
@@ -185,6 +190,9 @@ impl Worker {
     /// A request of the service on Trouter: answered at once, then acted on.
     async fn on_request(&mut self, req: Request) {
         let body = req.json();
+        if std::env::var("CALLING_DEBUG").is_ok() {
+            eprintln!("{}", json!({ "callback": req.name(), "body": body }));
+        }
         if let Some(inc) = Incoming::of(&body) {
             self.e.trouter.answer(&req, 200, "");
             if self.call.is_none() {
@@ -197,8 +205,19 @@ impl Worker {
         self.e.trouter.answer(&req, 200, &ack);
         let Some(call) = self.call.as_mut() else { return };
         match ev {
-            Event::Accepted { answer, .. } => {
+            Event::MediaAnswer { endpoint, answer, ack } => {
+                if let Side::Outgoing { conv } = &call.side {
+                    call.early.add(&endpoint, &answer);
+                    match conv.acknowledge_media(&self.e, &ack).await {
+                        Ok(s) if (200..300).contains(&s) => {}
+                        Ok(s) => eprintln!("calling: media answer acknowledgement {s}"),
+                        Err(e) => eprintln!("calling: media answer acknowledgement: {e}"),
+                    }
+                }
+            }
+            Event::Accepted { endpoint, answer, .. } => {
                 if let (Side::Outgoing { .. }, Some(media)) = (&call.side, call.media.clone()) {
+                    let answer = call.early.of_acceptance(&endpoint, &answer);
                     match media.answer(&answer).await {
                         Ok(()) => {
                             call.state = State::Connected;
@@ -238,6 +257,7 @@ impl Worker {
             answered: false,
             muted: false,
             side: Side::Incoming { inc: Box::new(inc), attached: Box::new(attached) },
+            early: EarlyAnswers::default(),
             links,
             media: None,
             hub: None,
@@ -272,6 +292,7 @@ impl Worker {
                     answered: false,
                     muted: false,
                     side: Side::Outgoing { conv },
+                    early: EarlyAnswers::default(),
                     links,
                     media: Some(media),
                     hub,
@@ -294,6 +315,9 @@ impl Worker {
                 let hub = Self::hub().await;
                 let media = self.media(hub.clone()).await?;
                 let answer = media.accept_offer(&offer).await?;
+                if std::env::var("CALLING_DEBUG").is_ok() {
+                    eprintln!("{}", json!({ "offer": offer, "answer": answer }));
+                }
                 let call = self.call.as_mut().ok_or_else(|| other("call gone"))?;
                 let Side::Incoming { attached, .. } = &call.side else { return Err(other("not an incoming call")) };
                 let links = attached.accept(&self.e, &answer, &leg).await?;
@@ -363,6 +387,9 @@ impl Worker {
         if call.state == State::Ended {
             if let Some(a) = call.audio_summary() {
                 self.out.send(&a);
+            }
+            if let Some(m) = &call.media {
+                eprintln!("calling: media {:?}, pair {}", m.state(), m.selected_pair().await.unwrap_or_else(|| "none".into()));
             }
             if let Some(h) = &call.hub {
                 h.close();

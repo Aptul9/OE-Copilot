@@ -133,10 +133,40 @@ pub struct OfferExtras {
     pub cname: String,
 }
 
-/// The standard offer or answer of the peer connection (ICE gathered) in the dialect, as an audio-only Teams client
-/// sends it. None when it has no audio or no candidate.
+/// The standard offer of the peer connection (ICE gathered) in the dialect, as an audio-only Teams client sends it.
+/// None when it has no audio or no candidate.
 pub fn to_ngc(offer: &str, extras: &OfferExtras) -> Option<String> {
-    let (session, media) = sections(offer);
+    ngc(offer, extras, None)
+}
+
+/// The standard answer of the peer connection to `offer` (a dialect offer) in the dialect. An answer has the m-lines of
+/// the offer in its order, with its mids: Teams desktop and mobile offer audio_0 and video_1 and end the call on any
+/// other shape (callEnd 406/4122 FinalAnswerError, 2026-11-15); the streams other than audio are declined (port 0).
+pub fn to_ngc_answer(answer: &str, extras: &OfferExtras, offer: &str) -> Option<String> {
+    ngc(answer, extras, Some(offer))
+}
+
+/// A stream of the offer an audio-only answer declines: its m-line with port 0, its mid and label.
+fn declined(section: &[&str]) -> Vec<String> {
+    let mut f: Vec<&str> = section[0].split_whitespace().collect();
+    if f.len() > 1 {
+        f[1] = "0";
+    }
+    let mut o = vec![f.join(" ")];
+    for name in ["mid", "label"] {
+        if let Some(v) = attr(section, name) {
+            o.push(format!("a={name}:{v}"));
+        }
+    }
+    o
+}
+
+fn ngc(local: &str, extras: &OfferExtras, offer: Option<&str>) -> Option<String> {
+    // the m-lines around the audio: those of the offer answered, else the streams an audio-only Teams web offer declines
+    let offered = offer.map(sections).map(|(_, m)| m).unwrap_or_default();
+    let audio_at = offered.iter().position(|m| m[0].starts_with("m=audio ") && !m[0].starts_with("m=audio 0 "));
+    let mid = audio_at.and_then(|i| attr(&offered[i], "mid")).unwrap_or("0");
+    let (session, media) = sections(local);
     let audio = media.iter().find(|m| m[0].starts_with("m=audio "))?;
     let candidates: Vec<Candidate> = attrs(audio, "candidate").into_iter().chain(attrs(&session, "candidate")).filter_map(Candidate::parse).collect();
     let at = default_address(&candidates)?;
@@ -150,12 +180,19 @@ pub fn to_ngc(offer: &str, extras: &OfferExtras) -> Option<String> {
         "b=CT:7000".into(),
         "t=0 0".into(),
         "a=msid-semantic: WMS *".into(),
-        "a=group:BUNDLE 0".into(),
+        format!("a=group:BUNDLE {mid}"),
+    ];
+    if let Some(i) = audio_at {
+        for m in &offered[..i] {
+            o.extend(declined(m));
+        }
+    }
+    o.extend([
         format!("m=audio {} RTP/SAVP {}", at.port, pts.join(" ")),
         format!("c=IN IP4 {}", at.ip),
         "a=x-signaling-fb:* x-message app recv:dsh".into(),
         format!("a=x-ssrc-range:{0}-{0}", extras.ssrc),
-    ];
+    ]);
     for pt in &pts {
         if let Some(map) = attrs(audio, "rtpmap").into_iter().find(|m| m.split_whitespace().next() == Some(*pt)) {
             o.push(format!("a=rtpmap:{map}"));
@@ -171,7 +208,7 @@ pub fn to_ngc(offer: &str, extras: &OfferExtras) -> Option<String> {
         o.push(format!("a=extmap:{}", ngc_extmap(e)));
     }
     o.push(format!("a=setup:{}", from("setup").unwrap_or("actpass")));
-    o.push("a=mid:0".into());
+    o.push(format!("a=mid:{mid}"));
     o.push("a=sendrecv".into());
     o.push(format!("a=ice-ufrag:{}", from("ice-ufrag")?));
     o.push(format!("a=ice-pwd:{}", from("ice-pwd")?));
@@ -183,12 +220,21 @@ pub fn to_ngc(offer: &str, extras: &OfferExtras) -> Option<String> {
     o.push(format!("a=ssrc:{} cname:{}", extras.ssrc, extras.cname));
     o.push("a=rtcp-mux".into());
     o.push("a=label:main-audio".into());
-    // the streams an audio-only client declines
-    for (m, label) in
-        [("m=video 0 RTP/SAVP 39 40", "main-video"), ("m=video 0 RTP/SAVP 39 40", "applicationsharing-video"), ("m=x-data 0 RTP/SAVP 127 126", "data")]
-    {
-        o.push(m.into());
-        o.push(format!("a=label:{label}"));
+    match audio_at {
+        Some(i) => {
+            for m in &offered[i + 1..] {
+                o.extend(declined(m));
+            }
+        }
+        // the streams an audio-only client declines
+        None => {
+            for (m, label) in
+                [("m=video 0 RTP/SAVP 39 40", "main-video"), ("m=video 0 RTP/SAVP 39 40", "applicationsharing-video"), ("m=x-data 0 RTP/SAVP 127 126", "data")]
+            {
+                o.push(m.into());
+                o.push(format!("a=label:{label}"));
+            }
+        }
     }
     Some(o.join("\r\n") + "\r\n")
 }
@@ -202,9 +248,19 @@ pub struct Answered {
     pub payload_types: Vec<u8>,
 }
 
-/// A dialect answer (or offer) as the standard SDP of an audio-only peer connection whose audio has mid "0". None when
-/// it accepts no audio.
+/// A dialect answer as the standard SDP of an audio-only peer connection whose audio has mid "0". None when it accepts
+/// no audio.
 pub fn from_ngc(ngc: &str) -> Option<Answered> {
+    standard(ngc, "active")
+}
+
+/// A dialect offer as the standard SDP of an audio-only peer connection. The offers of Teams desktop and mobile carry
+/// no a=setup: they take either DTLS role, as actpass says.
+pub fn from_ngc_offer(ngc: &str) -> Option<Answered> {
+    standard(ngc, "actpass")
+}
+
+fn standard(ngc: &str, setup: &str) -> Option<Answered> {
     let (session, media) = sections(ngc);
     let audio = media.iter().find(|m| m[0].starts_with("m=audio ") && !m[0].starts_with("m=audio 0 "))?;
     let m: Vec<&str> = audio[0].split_whitespace().collect();
@@ -232,7 +288,7 @@ pub fn from_ngc(ngc: &str) -> Option<Answered> {
         o.push("a=ice-lite".into());
     }
     o.push(format!("a=fingerprint:{}", from("fingerprint")?));
-    o.push(format!("a=setup:{}", from("setup").unwrap_or("active")));
+    o.push(format!("a=setup:{}", from("setup").unwrap_or(setup)));
     o.push("a=mid:0".into());
     let direction = audio.iter().find_map(|l| ["a=sendrecv", "a=sendonly", "a=recvonly", "a=inactive"].into_iter().find(|d| l == d)).unwrap_or("a=sendrecv");
     o.push(direction.into());
@@ -297,5 +353,25 @@ mod tests {
         let back = from_ngc(&ngc).expect("audio");
         assert_eq!(back.payload_types, [111, 9, 0]);
         assert_eq!(back.ssrc, Some(42));
+    }
+
+    /// The offer of Teams desktop on a call to this client (2026-11-15, Vection to Aubay), cut to what the answer reads:
+    /// audio_0 and video_1 bundled, no a=setup.
+    const DESKTOP_OFFER: &str = "v=0\r\no=- 0 0 IN IP4 52.114.250.1\r\ns=session\r\nc=IN IP4 52.114.250.1\r\nb=CT:4000\r\nt=0 0\r\na=group:BUNDLE audio_0 video_1\r\nm=audio 3480 RTP/SAVP 109 102 9 0 8 101\r\na=x-ssrc-range:46224-46224\r\na=label:main-audio\r\na=ice-ufrag:Ge7I\r\na=ice-pwd:9XmA2vnKbfzRxIqWp0bLtnCs\r\na=candidate:10 1 UDP 1258286591 52.114.250.1 3480 typ relay raddr 151.46.158.178 rport 50450 MTURNID 677281832445125534\r\na=candidate:9 1 UDP 1694494206 151.46.158.178 50450 typ srflx raddr 192.168.8.166 rport 50008\r\na=fingerprint:sha-256 B5:0F:53\r\na=mid:audio_0\r\na=rtcp-mux\r\na=rtpmap:109 SATINFB/48000/2\r\na=rtpmap:102 opus/48000/2\r\na=rtpmap:9 G722/8000\r\na=rtpmap:0 PCMU/8000\r\na=rtpmap:8 PCMA/8000\r\na=rtpmap:101 telephone-event/8000\r\nm=video 3480 RTP/SAVP 119 100\r\nc=IN IP4 52.114.239.83\r\na=x-ssrc-range:24589-24688\r\na=label:main-video\r\na=mid:video_1\r\na=recvonly\r\na=rtcp-mux\r\n";
+
+    #[test]
+    fn an_answer_to_teams_desktop_has_the_streams_and_mids_of_its_offer() {
+        let offered = from_ngc_offer(DESKTOP_OFFER).expect("audio");
+        assert!(offered.sdp.contains("a=setup:actpass\r\n"), "no setup offered: either role");
+        assert_eq!(offered.payload_types, [109, 102, 9, 0, 8, 101]);
+        let answer = "v=0\r\no=- 7 2 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\na=fingerprint:sha-256 CC:DD\r\na=group:BUNDLE 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 102 9 0 8\r\nc=IN IP4 0.0.0.0\r\na=setup:passive\r\na=mid:0\r\na=ice-ufrag:us\r\na=ice-pwd:pw\r\na=rtcp-mux\r\na=rtpmap:102 opus/48000/2\r\na=rtpmap:9 G722/8000\r\na=rtpmap:0 PCMU/8000\r\na=rtpmap:8 PCMA/8000\r\na=candidate:1 1 udp 2130706431 172.25.0.2 34841 typ host\r\na=candidate:2 1 udp 1694498815 217.76.49.98 52747 typ srflx raddr 0.0.0.0 rport 52747\r\na=candidate:3 1 udp 16777215 52.114.251.152 50763 typ relay raddr 0.0.0.0 rport 40000\r\na=sendrecv\r\n";
+        let ngc = to_ngc_answer(answer, &OfferExtras { ssrc: 7, cname: "x".into() }, DESKTOP_OFFER).expect("ngc");
+        let l: Vec<&str> = ngc.split("\r\n").collect();
+        let m: Vec<&&str> = l.iter().filter(|l| l.starts_with("m=")).collect();
+        assert_eq!(m, [&"m=audio 50763 RTP/SAVP 102 9 0 8", &"m=video 0 RTP/SAVP 119 100"], "{ngc}");
+        assert!(l.contains(&"a=group:BUNDLE audio_0") && l.contains(&"a=mid:audio_0") && l.contains(&"a=mid:video_1"));
+        assert!(l.contains(&"a=label:main-video") && l.contains(&"a=setup:passive") && !l.contains(&"a=mid:0"));
+        // an offer of Teams web keeps the declined streams of an audio-only Teams web client
+        assert!(to_ngc(answer, &OfferExtras { ssrc: 7, cname: "x".into() }).expect("ngc").contains("a=group:BUNDLE 0\r\n"));
     }
 }

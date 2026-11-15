@@ -9,10 +9,18 @@ DIR="${OE_DIR:-/opt/oe-copilot}"
 COPIA=/var/tmp/oe-copilot-prima.tgz
 cd "$DIR"
 
+# Sulla VM i progetti compose sono uno solo (deploy/stack): lo fa girare il suo wrapper di root, sui servizi del calendario.
+# Altrove, il compose di questa cartella.
+if [ -x /usr/local/sbin/oe-stack ]; then
+    dc() { sudo -n /usr/local/sbin/oe-stack calendar "$@"; }
+else
+    dc() { docker compose "$@"; }
+fi
+
 # Gira dentro `if avvia && sano`: lì errexit è spento, quindi ogni passo che può fallire ha il suo `|| return 1`.
 avvia() {
     # Il codice dell'agente è nell'immagine, niente file montati: compose lo ricrea da sé quando l'immagine o la configurazione cambiano.
-    docker compose up -d --build agent \
+    dc up -d --build agent \
         || { echo "docker compose non ha avviato l'agente" >&2; return 1; }
 }
 
@@ -28,6 +36,16 @@ credenziali_da_stdin() {
     done
 }
 
+# Nel progetto unico compose gira con un ambiente pulito, senza queste variabili: oe-stack le tiene per lui (solo root,
+# /opt/oe-stack/secrets). Un valore vuoto lascia quello salvato.
+segreti_allo_stack() {
+    [ -x /usr/local/sbin/oe-stack ] || return 0
+    local v
+    for v in ADMIN_EMAIL ADMIN_PASSWORD API_KEY BETTER_AUTH_SECRET TEAMS_BROKER_KEY; do
+        if [ -n "${!v:-}" ]; then printf '%s=%s\n' "$v" "${!v}"; fi
+    done | sudo -n /usr/local/sbin/oe-stack calendar secrets
+}
+
 # Interfaccia web (README.md 4.7): il gateway, che chiede l'accesso e serve la
 # pagina, l'API e i loghi, e il Caddy che le mette HTTPS davanti. Parte solo se in .env c'è UI_HOST.
 # Gira dopo che l'agente è sano e non fa tornare indietro niente: se la web
@@ -40,7 +58,7 @@ avvia_ui() {
         [ -n "${!v:-}" ] || grep -q "^$v=." .env \
             || { echo "manca $v (né nei secret della Action né in $DIR/.env, vedi README.md, 4.7): l'interfaccia web resta com'è" >&2; return 1; }
     done
-    docker compose up -d --build gateway caddy-ui \
+    dc up -d --build gateway caddy-ui \
         || { echo "docker compose non ha avviato gateway e caddy-ui" >&2; docker logs --tail 40 oe-copilot-gateway >&2 || true; return 1; }
     if docker container inspect oe-copilot-ui >/dev/null 2>&1; then
         docker rm -f oe-copilot-ui >/dev/null && echo "tolto il container oe-copilot-ui: il servizio ui non c'è più"
@@ -109,6 +127,7 @@ case "${1:-}" in
     avvia)
         sha="${2:-sconosciuto}"
         credenziali_da_stdin
+        segreti_allo_stack
         for f in .env agent/fonti.json; do
             [ -f "$f" ] || { echo "$f mancante in $DIR: la prima installazione va fatta a mano (vedi README.md)" >&2; exit 1; }
         done
@@ -124,7 +143,7 @@ case "${1:-}" in
             exit 0
         fi
         echo "aggiornamento a $sha fallito: si torna alla versione di prima" >&2
-        docker compose logs --tail 40 agent >&2 || true
+        dc logs --tail 40 agent >&2 || true
         if [ -f "$COPIA" ]; then
             tar -xzf "$COPIA"
             avvia && sano && echo "tornato a: $(cat .versione 2>/dev/null || echo versione precedente)" >&2

@@ -1,0 +1,19 @@
+# Every stack of oe-vm as one compose project: the OE Copilot calendar, TeamsRelay and the remote MCP. Each module keeps its
+# own compose file, folder and .env, and each include interpolates from its own .env only. Run through the root wrapper
+# oe-stack (README.md here), which gives compose a clean environment: a variable of the shell would override every .env.
+# OE_STACK_ROOT moves the module folders, for a check of this file away from /opt.
+name: oe-stack
+include:
+  # the calendar's API key, owner and cookie secret are not in its .env: its GitHub Action hands them to oe-stack, which
+  # keeps them in secrets/calendar.env (root only)
+  - path: ${OE_STACK_ROOT:-/opt}/oe-copilot/docker-compose.yml
+    env_file:
+      - ${OE_STACK_ROOT:-/opt}/oe-copilot/.env
+      - ${OE_STACK_ROOT:-/opt}/oe-stack/secrets/calendar.env
+  # with the shared Microsoft accounts of the calendar agent (docker-compose.oe.yml)
+  - path:
+      - ${OE_STACK_ROOT:-/opt}/teamsrelay/docker-compose.yml
+      - ${OE_STACK_ROOT:-/opt}/teamsrelay/docker-compose.oe.yml
+    env_file: ${OE_STACK_ROOT:-/opt}/teamsrelay/.env
+  - path: ${OE_STACK_ROOT:-/opt}/communication-mcp/compose.yml
+    env_file: ${OE_STACK_ROOT:-/opt}/communication-mcp/.env

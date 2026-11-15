@@ -127,9 +127,9 @@ La Action `.github/workflows/calendar.yml` (alla radice del repository `Aptul9/O
 
 **Trappola: il Caddy.** `docker compose up` dà 0 anche con un container che si riavvia in continuazione, quindi lo script vuole 200 da `curl -k --resolve <UI_HOST>:4445:127.0.0.1 https://<UI_HOST>:4445/login` e `RestartCount` 0. Alla prima installazione fallisce finché Caddy non ha il certificato: si rilancia dopo qualche minuto. Il Caddyfile di prima si rimette così:
 ```bash
-cd /opt/oe-copilot && tar -xzf /var/tmp/oe-copilot-prima.tgz ./caddy-ui && docker compose up -d --no-deps --build caddy-ui
+cd /opt/oe-copilot && tar -xzf /var/tmp/oe-copilot-prima.tgz ./caddy-ui && sudo oe-stack calendar up -d --no-deps --build caddy-ui
 ```
-`--no-deps` è obbligatorio, altrimenti compose ricrea il gateway senza i secret.
+`--no-deps`: compose non tocca il gateway. Sulla VM il compose del calendario è nel progetto unico `oe-stack` con TeamsRelay e il MCP (`deploy/stack/README.md`): un `docker compose` lanciato in `/opt/oe-copilot` crea un secondo progetto, che si scontra con i nomi dei container.
 
 **Trappola: quale codice gira.** Lo dicono `Created` e `StartedAt` del container (`docker inspect -f '{{.Created}} {{.State.StartedAt}}' oe-copilot-agent`) e `.versione`. Gli ID delle immagini no: con containerd sono digest diversi.
 
@@ -160,9 +160,9 @@ sudo install -o 10001 -g 10001 -m 600 personalizzazione.json /opt/oe-copilot/ui-
 
 **Accesso.** Il proprietario nasce a ogni avvio da `ADMIN_EMAIL` e `ADMIN_PASSWORD`; con una email nuova il vecchio utente va tolto da `gateway.db` (tabelle `session`, `account`, `user`). Il cookie dura 30 giorni, e un cambio di `ADMIN_PASSWORD` chiude tutte le sessioni. Cinque password sbagliate bloccano l'account 15 minuti, per tutti: dietro sslh i client hanno lo stesso indirizzo.
 
-**Secret.** `ADMIN_EMAIL`, `ADMIN_PASSWORD` (almeno 12 caratteri, senza `$`), `API_KEY` e `BETTER_AUTH_SECRET` (almeno 32 caratteri, `openssl rand -hex 32`) stanno nei secret della Action (4.6), e compose li legge dall'ambiente prima che da `.env`. Si cambiano con `gh secret set` e un nuovo aggiornamento. Senza la Action stanno in `.env`.
+**Secret.** `ADMIN_EMAIL`, `ADMIN_PASSWORD` (almeno 12 caratteri, senza `$`), `API_KEY` e `BETTER_AUTH_SECRET` (almeno 32 caratteri, `openssl rand -hex 32`) stanno nei secret della Action (4.6). Sulla VM `aggiorna_server.sh` li passa a `oe-stack calendar secrets`, che li tiene in `/opt/oe-stack/secrets/calendar.env` (solo root) per il progetto unico (`deploy/stack/README.md`); altrove compose li legge dall'ambiente prima che da `.env`. Si cambiano con `gh secret set` e un nuovo aggiornamento. Senza la Action stanno in `.env`.
 
-**Trappola: niente `docker compose up` a mano con la Action.** Ricrea l'agente con `API_KEY` vuota, e non parte. Ricrea il gateway senza `BETTER_AUTH_SECRET`, e si ferma con "BETTER_AUTH_SECRET deve essere impostata". Dopo una modifica a `.env` serve un nuovo aggiornamento: `docker restart` non rilegge l'ambiente.
+**Trappola: sulla VM solo `sudo oe-stack calendar ...`, mai `docker compose` in `/opt/oe-copilot`.** `oe-stack` ha i secret; un `docker compose up` a mano no: ricrea l'agente con `API_KEY` vuota, e non parte. Ricrea il gateway senza `BETTER_AUTH_SECRET`, e si ferma con "BETTER_AUTH_SECRET deve essere impostata". Dopo una modifica a `.env` serve un nuovo aggiornamento: `docker restart` non rilegge l'ambiente.
 
 **HTTPS.** Caddy ottiene il certificato da solo. Con la 443 libera bastano le porte `443:443` e `80:80` su `caddy-ui`, lasciando `127.0.0.1:4445:443` per il controllo del deploy. Con sslh sulla 443 si aggiunge a `/etc/sslh.cfg`, sopra la voce che prende tutto il resto:
 ```
@@ -178,7 +178,7 @@ e si riavvia sslh. Il certificato arriva col TLS-ALPN; il primo tentativo HTTP-0
 ```bash
 cd /opt/oe-copilot
 sudo sed -i 's/^AUTH_2FA=.*/AUTH_2FA=off/' .env
-# poi, dal PC: gh workflow run calendar.yml --repo Aptul9/OE-Copilot --ref main   (senza la Action: sudo docker compose up -d gateway, con i secret in .env o nell'ambiente)
+# poi, dal PC: gh workflow run calendar.yml --repo Aptul9/OE-Copilot --ref main   (senza la Action: sudo oe-stack calendar up -d gateway)
 docker logs --tail 5 oe-copilot-gateway    # a deploy finito deve dire: secondo fattore dell'accesso (AUTH_2FA): off
 ```
 Per ripartire da zero col codice, a gateway fermo (le passkey restano):
@@ -358,8 +358,8 @@ Il rilevatore che leggeva i log del telefono è stato tolto con il telefono (PR 
 | Sintomo | Diagnosi, sul server | Cosa fare |
 |---|---|---|
 | *Il server dei calendari non risponde* | `docker logs oe-copilot-agent` e `docker logs oe-copilot-gateway` | Il suggerimento del pallino giallo o rosso dice cosa è fermo |
-| Un calendario nuovo non compare | La chiamata all'agente di 4.5, su `/api/calendari` | finestra *Account*, freccia in alto a sinistra (rilegge le caselle); per una casella di `agent/fonti.json` il calendario in `calendari`, poi `sudo docker compose restart agent` |
-| La Action dice *il servizio oe-copilot-caddy non serve il sito* | `docker logs --tail 40 oe-copilot-caddy` e `docker inspect -f '{{.RestartCount}}' oe-copilot-caddy` | `docker compose up -d --force-recreate --no-deps caddy-ui`, o il Caddyfile di prima (4.6) |
+| Un calendario nuovo non compare | La chiamata all'agente di 4.5, su `/api/calendari` | finestra *Account*, freccia in alto a sinistra (rilegge le caselle); per una casella di `agent/fonti.json` il calendario in `calendari`, poi `sudo oe-stack calendar restart agent` |
+| La Action dice *il servizio oe-copilot-caddy non serve il sito* | `docker logs --tail 40 oe-copilot-caddy` e `docker inspect -f '{{.RestartCount}}' oe-copilot-caddy` | `sudo oe-stack calendar up -d --force-recreate --no-deps caddy-ui`, o il Caddyfile di prima (4.6) |
 | Un link di condivisione risponde 503 | `docker logs oe-copilot-gateway 2>&1 \| grep condivisione` e `curl -s -H "Authorization: Bearer $(sudo docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' oe-copilot-agent \| sed -n 's/^API_KEY=//p')" http://127.0.0.1:3180/api/salute` | Casella in `errore`: lo dice il suo pallino. Più di 5000 eventi: meno giorni nel link |
 | *Non riesco a salvare il logo sul server* | `ls -ld /opt/oe-copilot/ui-dati/logos` | `sudo chown 10001:10001 /opt/oe-copilot/ui-dati/logos` |
 | Un passo dell'aggiornamento è rosso | Lo stderr del passo *Ricostruisci e riavvia*, `cat /opt/oe-copilot/.versione` e `docker ps --filter name=oe-copilot- --format '{{.Names}}: {{.Status}}'` | Guasto nell'agente: lo script è già tornato indietro. In gateway o Caddy no (4.6) |

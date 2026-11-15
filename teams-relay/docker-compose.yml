@@ -62,7 +62,7 @@ services:
       - ./vapid:/root/vapid:ro
       # service-account.json of the Firebase project, for the Android app; FCM is off while it is missing
       - ./fcm:/root/fcm:ro
-      - control:/root/run
+      - tr_control:/root/run
     security_opt:
       - seccomp:unconfined
     shm_size: "1gb"
@@ -74,7 +74,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-    networks: [desktop]
+    networks: [tr_desktop]
     restart: unless-stopped
 
   webapp:
@@ -115,7 +115,7 @@ services:
       - ./fcm:/fcm:ro
       - ./data:/data
       # socket of the supervisor; the browser profiles are not mounted here
-      - control:/run/teamsrelay
+      - tr_control:/run/teamsrelay
     healthcheck:
       # the Rust binary asks itself: its image has no shell and no curl
       test: ["CMD", "/teamsrelay-web", "--health"]
@@ -126,7 +126,7 @@ services:
     depends_on:
       browsers:
         condition: service_healthy
-    networks: [default]
+    networks: [tr_default]
     restart: unless-stopped
 
   caddy:
@@ -141,17 +141,26 @@ services:
       - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks: [default, desktop]
+      - tr_caddy_data:/data
+      - tr_caddy_config:/config
+    networks: [tr_default, tr_desktop]
     restart: unless-stopped
 
+# Fixed names: the same on a host where this stack is one project of several (deploy/stack, oe-vm), and those the stack has had
+# since its first release in /opt/teamsrelay, so certificates and networks stay where they are.
 networks:
+  # the web app, Caddy and the remote MCP of the same host (mcp/compose.yml)
+  tr_default:
+    name: teamsrelay_default
   # browsers and Caddy only: the browsers reach the web app only through Caddy, like any client
-  desktop:
+  tr_desktop:
+    name: teamsrelay_desktop
 
 volumes:
-  caddy_data:
-  caddy_config:
+  tr_caddy_data:
+    name: teamsrelay_caddy_data
+  tr_caddy_config:
+    name: teamsrelay_caddy_config
   # unix socket of the supervisor, shared by the browsers container and the web app
-  control:
+  tr_control:
+    name: teamsrelay_control

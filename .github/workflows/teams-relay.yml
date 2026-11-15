@@ -107,7 +107,6 @@ jobs:
           TR_SHARED_BROKER_KEY: ${{ secrets.TEAMS_BROKER_KEY }}
           TR_SHARED_ACCOUNTS_OWNER: ${{ vars.SHARED_ACCOUNTS_OWNER }}
           TR_SHARED_ACCOUNTS_URL: ${{ vars.SHARED_ACCOUNTS_URL }}
-          TR_OE_NETWORK: ${{ vars.OE_NETWORK }}
         run: |
           teams-relay/deploy/render-env.sh > /tmp/tr.env
           grep -Eq '^(BETTER_AUTH_SECRET|SESSION_SECRET)=.{32,}' /tmp/tr.env || { echo "no session key of at least 32 characters in the pipeline variables" >&2; exit 1; }

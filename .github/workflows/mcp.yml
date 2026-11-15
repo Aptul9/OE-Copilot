@@ -67,6 +67,8 @@ jobs:
           set -euo pipefail
           dir=$1 backup=$2 sha=$3
           cd "$dir"
+          # on oe-vm every stack is one compose project (deploy/stack), run by its root wrapper; elsewhere the compose here
+          if [ -x /usr/local/sbin/oe-stack ]; then dc() { sudo -n /usr/local/sbin/oe-stack mcp "$@"; }; else dc() { docker compose "$@"; }; fi
           healthy() {
             for _ in $(seq 1 20); do
               curl -fsS --max-time 3 http://127.0.0.1:8190/healthz >/dev/null 2>&1 && return 0
@@ -74,7 +76,7 @@ jobs:
             done
             return 1
           }
-          docker compose up -d --build
+          dc up -d --build mcp
           if healthy; then
             echo "$sha" > .deployed-sha
             docker image prune -f >/dev/null
@@ -82,10 +84,10 @@ jobs:
             exit 0
           fi
           echo "communication-mcp does not answer after the deploy of $sha: rollback" >&2
-          docker compose logs --tail 40 >&2 || true
+          dc logs --tail 40 mcp >&2 || true
           find . -mindepth 1 -maxdepth 1 ! -name .env ! -name .deployed-sha -exec rm -rf {} +
           tar -xzf "$backup"
-          docker compose up -d --build
+          dc up -d --build mcp
           healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
           exit 1
           SH

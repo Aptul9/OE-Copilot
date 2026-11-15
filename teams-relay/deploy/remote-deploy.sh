@@ -13,21 +13,16 @@ cd "$TR_DIR"
 # profile active, a rollback to one of them creates those containers again. No service of this release uses it.
 export COMPOSE_PROFILES=accounts
 
-# The shared Microsoft accounts of the OE calendar agent (docker-compose.oe.yml): the browsers container joins the network
-# the calendar keeps for it when .env sets the broker and that network exists on this host. Evaluated again after a
-# rollback, whose code may not have the file. No .env yet: nothing to join, "up" says what is missing.
-oe_network() {
-  local net=""
-  [ -f .env ] && net="$(sed -n 's/^OE_NETWORK=//p' .env | tail -n 1)"
-  net="${net:-oe-copilot-teams}"
-  if [ -f docker-compose.oe.yml ] && grep -q '^SHARED_BROKER_URL=.' .env 2>/dev/null && docker network inspect "$net" >/dev/null 2>&1; then
-    export COMPOSE_FILE=docker-compose.yml:docker-compose.oe.yml
-    echo "shared Microsoft accounts: browsers joins $net"
-  else
-    unset COMPOSE_FILE
-  fi
-}
-oe_network
+# On oe-vm every stack is one compose project (deploy/stack, which includes docker-compose.oe.yml for the shared Microsoft
+# accounts of the calendar): its root wrapper runs compose there, on the services of this stack. Elsewhere, the compose of
+# this folder.
+if [ -x /usr/local/sbin/oe-stack ]; then
+  dc() { sudo -n /usr/local/sbin/oe-stack teamsrelay "$@"; }
+  services() { sudo -n /usr/local/sbin/oe-stack teamsrelay services; }
+else
+  dc() { docker compose "$@"; }
+  services() { COMPOSE_PROFILES='' docker compose config --services; }
+fi
 
 code_files() {
   # everything but the runtime data
@@ -45,8 +40,8 @@ preflight() {
 # The web app answers inside its container: the Rust binary asks itself (no shell, no curl in its image); the Node image
 # of an earlier release, which a rollback runs with this script, with fetch.
 webapp_answers() {
-  docker compose exec -T webapp /teamsrelay-web --health >/dev/null 2>&1 \
-    || docker compose exec -T webapp node -e "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1
+  dc exec -T webapp /teamsrelay-web --health >/dev/null 2>&1 \
+    || dc exec -T webapp node -e "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" >/dev/null 2>&1
 }
 
 healthy() {
@@ -65,7 +60,7 @@ healthy() {
 
 # "<account> <restarts>" for every running agent, from the supervisor of the browsers container
 running_agents() {
-  docker compose exec -T browsers sh -c 'node /app/supervisor.cjs status | node -e "let s=\"\";process.stdin.on(\"data\",(d)=>s+=d).on(\"end\",()=>{for(const a of JSON.parse(s))if(a.agent.running)console.log(a.account,a.agent.restarts)})"'
+  dc exec -T browsers sh -c 'node /app/supervisor.cjs status | node -e "let s=\"\";process.stdin.on(\"data\",(d)=>s+=d).on(\"end\",()=>{for(const a of JSON.parse(s))if(a.agent.running)console.log(a.account,a.agent.restarts)})"'
 }
 
 # An agent works when it keeps running and writes its health row (state 'health' of data/N/messages.db,
@@ -74,7 +69,7 @@ running_agents() {
 agents_ok() {
   local before now n stale
   # a rollback to a release without the browsers container: its agents are not checked here
-  docker compose ps --services --status running | grep -qx browsers || { echo "no browsers container: agents not checked" >&2; return 0; }
+  dc ps --services --status running | grep -qx browsers || { echo "no browsers container: agents not checked" >&2; return 0; }
   before="$(running_agents)" || { echo "the supervisor of the browsers container does not answer" >&2; return 1; }
   [ -n "$before" ] || return 0
   for _ in $(seq 1 18); do
@@ -87,7 +82,7 @@ agents_ok() {
     stale=""
     # read in the browsers container, where the agents write it: the web app's image has no Node
     for n in $(cut -d' ' -f1 <<<"$before"); do
-      docker compose exec -T browsers node -e "const D=require('/app/node_modules/better-sqlite3');const r=new D('/root/data/'+process.argv[1]+'/messages.db',{readonly:true,fileMustExist:true}).prepare(\"SELECT v FROM state WHERE k='health'\").get();process.exit(r&&Date.now()/1000-(JSON.parse(r.v).ts||0)<60?0:1)" "$n" >/dev/null 2>&1 || stale="$stale $n"
+      dc exec -T browsers node -e "const D=require('/app/node_modules/better-sqlite3');const r=new D('/root/data/'+process.argv[1]+'/messages.db',{readonly:true,fileMustExist:true}).prepare(\"SELECT v FROM state WHERE k='health'\").get();process.exit(r&&Date.now()/1000-(JSON.parse(r.v).ts||0)<60?0:1)" "$n" >/dev/null 2>&1 || stale="$stale $n"
     done
     [ -z "$stale" ] && return 0
   done
@@ -96,25 +91,28 @@ agents_ok() {
 }
 
 start() {
-  docker compose build
-  docker compose create
+  # shellcheck disable=SC2046
+  dc build $(services)
+  # shellcheck disable=SC2046
+  dc create $(services)
   # The agents and the web app read the Firebase key (fcm/, written by the Action from its secret) only at their
   # start: a new, changed or removed key recreates both, which restarts every account. "create" replaces what it may
   # have just made for a new image, so they start once.
   fcm_sum="$(sha256sum fcm/service-account.json 2>/dev/null | cut -d' ' -f1 || true)"
   if [ "$fcm_sum" != "$(cat .fcm-sum 2>/dev/null)" ]; then
-    docker compose create --force-recreate browsers webapp
+    dc create --force-recreate browsers webapp
   fi
-  # The services outside any profile. The containers of the old "accounts" profile (a rollback) stay created
-  # and stopped: the web app of those releases starts the ones of its accounts.
+  # The services of this stack only (on oe-vm the project holds the other stacks too), outside any profile. The
+  # containers of the old "accounts" profile (a rollback) stay created and stopped: the web app of those releases starts
+  # the ones of its accounts.
   # shellcheck disable=SC2046
-  docker compose up -d --remove-orphans $(COMPOSE_PROFILES='' docker compose config --services)
+  dc up -d $(services)
   echo "$fcm_sum" > .fcm-sum
   # Caddy has no image to rebuild and reads the mounted Caddyfile: rsync replaces it with a new file and
   # the container would keep seeing the old one. If it changed, restart (certificates stay in the volume).
   caddy_sum="$(sha256sum caddy/Caddyfile | cut -d' ' -f1)"
   if [ "$caddy_sum" != "$(cat .caddyfile-sum 2>/dev/null)" ]; then
-    docker compose restart caddy && echo "$caddy_sum" > .caddyfile-sum
+    dc restart caddy && echo "$caddy_sum" > .caddyfile-sum
   fi
 }
 
@@ -137,7 +135,7 @@ case "${1:-}" in
       exit 0
     fi
     echo "the web app does not answer after the deploy of $sha: rollback" >&2
-    docker compose logs --tail 40 webapp >&2 || true
+    dc logs --tail 40 webapp >&2 || true
     if [ -f "$BACKUP" ]; then
       code_files | xargs -r rm -rf
       tar -xzf "$BACKUP"
@@ -148,7 +146,6 @@ case "${1:-}" in
         (umask 077 && cp "$ENV_BACKUP" .env)
         echo "rollback: previous .env restored" >&2
       fi
-      oe_network
       start
       healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
     fi

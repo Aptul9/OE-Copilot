@@ -5,6 +5,7 @@ pub mod accounts;
 pub mod agent;
 pub mod appdb;
 pub mod auth;
+pub mod calling;
 pub mod cdp;
 pub mod checks;
 pub mod commands;

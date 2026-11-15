@@ -63,7 +63,7 @@ pub struct Config {
 /// Passed on as they are, when set. PULSE_RUNTIME_PATH: where the image runs PulseAudio, the sound of the desktop and the
 /// microphone Selkies forwards.
 const BROWSER_ENV: [&str; 5] = ["TZ", "LANG", "LANGUAGE", "LC_ALL", "PULSE_RUNTIME_PATH"];
-const AGENT_ENV: [&str; 8] = ["TZ", "VAPID_SUBJECT", "NTFY_ENABLED", "NTFY_URL", "NTFY_TOPIC", "LIGHT_POLL", "NATIVE_CALLS", "DOMAIN"];
+const AGENT_ENV: [&str; 9] = ["TZ", "VAPID_SUBJECT", "NTFY_ENABLED", "NTFY_URL", "NTFY_TOPIC", "LIGHT_POLL", "NATIVE_CALLS", "CALLS_RUST", "DOMAIN"];
 
 /// The variables as given; None for an unset or empty one.
 pub fn load(env: &dyn Fn(&str) -> Option<String>) -> Result<Config, String> {

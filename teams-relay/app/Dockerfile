@@ -28,13 +28,15 @@ RUN cp -r node_modules/@roamhq /agent/node_modules/ \
 # The web app, the light host, the supervisor and the browser agent in Rust (webapp-rs): static binaries. jiff carries the time zone database and reqwest the
 # certificate roots, so they need no system file. Pinned by digest as calendar/server/agente-rs/Dockerfile.
 FROM rust:1-alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS webrs
-RUN apk add --no-cache musl-dev
+# cmake builds libopus for the calling worker (audiopus_sys static); its CMakeLists predates CMake 4
+RUN apk add --no-cache musl-dev cmake make
+ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 WORKDIR /src
 COPY webapp-rs/Cargo.toml webapp-rs/Cargo.lock ./
 COPY webapp-rs/src ./src
 # the dependencies and the build stay in the BuildKit cache between deploys; the binaries leave the cache in the same step
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
-    cargo build --release --locked && cp target/release/teamsrelay-web target/release/teamsrelay-light target/release/teamsrelay-supervisor target/release/teamsrelay-agent /
+    cargo build --release --locked && cp target/release/teamsrelay-web target/release/teamsrelay-light target/release/teamsrelay-supervisor target/release/teamsrelay-agent target/release/teamsrelay-calling /
 
 # Every Teams account: Chromium and the remote desktop of linuxserver, the agents, and the supervisor that runs
 # them (s6 service svc-teamsrelay). The desktop no longer opens a browser by itself.
@@ -47,9 +49,9 @@ RUN apt-get update \
  && gpasswd -d abc sudo
 COPY --from=build /usr/local/bin/node /usr/local/bin/node
 COPY --from=build /agent /app
-# the light host, the supervisor and the browser agent run by default (LIGHT_RUST, SUPERVISOR_RUST, AGENT_RUST);
-# light.cjs, supervisor.cjs and agent.cjs stay for 0
-COPY --from=webrs /teamsrelay-light /teamsrelay-supervisor /teamsrelay-agent /app/
+# the light host, the supervisor, the browser agent and the calling worker run by default (LIGHT_RUST, SUPERVISOR_RUST,
+# AGENT_RUST, CALLS_RUST); light.cjs, supervisor.cjs, agent.cjs and calling-live-host.mjs stay for 0
+COPY --from=webrs /teamsrelay-light /teamsrelay-supervisor /teamsrelay-agent /teamsrelay-calling /app/
 COPY docker/browsers/ /
 # The remote desktop starts when a browser needs it (src/supervisor/desktop.ts): out of the boot bundle of s6-rc, still in
 # its database
@@ -58,6 +60,7 @@ RUN cd /etc/s6-overlay/s6-rc.d/user/contents.d && rm -f svc-de svc-selkies svc-n
 RUN chmod +x /etc/s6-overlay/s6-rc.d/svc-teamsrelay/run /usr/local/bin/desktop-microphone \
  && node /app/agent.cjs --check \
  && /app/teamsrelay-agent --check \
+ && /app/teamsrelay-calling --check \
  && node /app/light.cjs --check \
  && /app/teamsrelay-light --check \
  && node /app/supervisor.cjs --check \

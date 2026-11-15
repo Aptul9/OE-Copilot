@@ -269,7 +269,7 @@ fn the_captured_chat_list_saved_and_the_open_group_chat_recognized() {
         assert_eq!(rows.len(), 40);
         assert_eq!(rows.iter().map(|r| r.entry.name.as_str()).collect::<HashSet<_>>().len(), 40);
         let presences: HashSet<&str> = rows.iter().map(|r| r.entry.presence.as_str()).filter(|p| !p.is_empty()).collect();
-        assert_eq!(presences, ["available", "away", "offline", "ooo"].into_iter().collect());
+        assert_eq!(presences, ["available", "away", "offline", "ooo"].into_iter().collect::<HashSet<&str>>());
         assert!(rows.iter().filter(|r| !r.entry.presence.is_empty()).all(|r| r.entry.kind == "one"));
         assert!(jobs::read_chats(&a, false).await.expect("read"));
         assert_eq!(a.store.chats().len(), 40);

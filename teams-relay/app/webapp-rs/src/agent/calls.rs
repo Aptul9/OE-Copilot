@@ -63,11 +63,17 @@ impl Worker for Process {
 }
 
 /// The worker as a child of this process: stdin and stdout ignored, stderr to the host's, the channel on fd 3, in the
-/// process group of the host (a stop of the host reaches it).
+/// process group of the host (a stop of the host reaches it). A script runs on Node, a native worker by itself.
 pub fn fork_worker() -> Spawn {
     Rc::new(|script: &str, args: &[&str], env: &Env| {
-        let mut cmd = tokio::process::Command::new(node());
-        cmd.arg(script).args(args).env_clear().envs(env);
+        let mut cmd = if [".mjs", ".cjs", ".js"].iter().any(|x| script.ends_with(x)) {
+            let mut c = tokio::process::Command::new(node());
+            c.arg(script);
+            c
+        } else {
+            tokio::process::Command::new(script)
+        };
+        cmd.args(args).env_clear().envs(env);
         cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::inherit());
         let (mut child, ours) = super::ipc::spawn_with_channel(&mut cmd, false).map_err(|e| e.to_string())?;
         let pid = child.id().unwrap_or(0) as i32;

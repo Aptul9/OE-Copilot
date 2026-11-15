@@ -133,7 +133,10 @@ pub fn load(env: &Env) -> R<Config> {
         status_db: app_db.parent().map(PathBuf::from).unwrap_or_default().join("status.db"),
         env: env.clone(),
         native_calls: given(env, "NATIVE_CALLS") == Some("1"),
-        calling_host: given(env, "CALLING_HOST").unwrap_or("/app/calling-live-host.mjs").to_string(),
+        // the calling worker in Rust (teamsrelay-calling) unless CALLS_RUST is 0: the Node host of Teams web's calling stack
+        calling_host: given(env, "CALLING_HOST")
+            .unwrap_or(if given(env, "CALLS_RUST") == Some("0") { "/app/calling-live-host.mjs" } else { "/app/teamsrelay-calling" })
+            .to_string(),
         call_audio_url: given(env, "CALL_AUDIO_URL").map(String::from).unwrap_or_else(|| format!("wss://{domain}/api/call/audio/socket?a={slot}")),
         alert_sign_in: match given(env, "SHARED_BROKER_ACCOUNT") {
             Some(a) => format!("Sign in again to {a} in the Account window of the calendar, then check its Chat Teams capability"),
@@ -204,6 +207,9 @@ mod tests {
         assert_eq!(c.light_token_file, PathBuf::from("/root/data/4/light-token.json"));
         assert_eq!(c.status_db, PathBuf::from("/root/data/status.db"));
         assert_eq!(c.call_audio_url, "wss://relay.example/api/call/audio/socket?a=4");
+        assert_eq!(c.calling_host, "/app/teamsrelay-calling");
+        assert_eq!(load(&env(&[("CALLS_RUST", "0")])).expect("config").calling_host, "/app/calling-live-host.mjs");
+        assert_eq!(load(&env(&[("CALLS_RUST", "0"), ("CALLING_HOST", "/opt/h.mjs")])).expect("config").calling_host, "/opt/h.mjs");
         assert!(load(&env(&[("LIGHT_POLL", "5")])).is_err());
         assert!(load(&env(&[("ACCOUNT", "x")])).is_err());
     }

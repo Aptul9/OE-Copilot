@@ -56,6 +56,9 @@ impl Outlook {
             req = req.header("Authorization", format!("Bearer {}", a.token)).header("Accept", "application/json").header("User-Agent", "OutlookMCP/3.0.0");
             if let Some(d) = data {
                 req = req.header("Content-Type", "application/json; charset=utf-8").body(serde_json::to_vec(d).unwrap_or_default());
+            } else if method == "POST" {
+                // a POST without a length gets 411 from Outlook (messages/{id}/send)
+                req = req.header("Content-Length", "0");
             }
             let r = req.send().await.map_err(|e| Error::provider(format!("Outlook request failed: {e}")))?;
             let status = r.status().as_u16();

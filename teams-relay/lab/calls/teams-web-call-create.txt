@@ -1,0 +1,557 @@
+{
+ "conversationRequest": {
+  "conversationType": null,
+  "subject": null,
+  "suppressDialout": false,
+  "roster": {
+   "type": "Delta",
+   "rosterUpdate": "<link>"
+  },
+  "properties": {
+   "allowConversationWithoutHost": true,
+   "enableGroupCallEventMessages": true,
+   "enableGroupCallUpgradeMessage": false,
+   "enableGroupCallMeetupGeneration": false
+  },
+  "links": {
+   "conversationEnd": "<link>",
+   "conversationUpdate": "<link>",
+   "localParticipantUpdate": "<link>",
+   "addParticipantSuccess": "<link>",
+   "addParticipantFailure": "<link>",
+   "addModalitySuccess": "<link>",
+   "addModalityFailure": "<link>",
+   "confirmUnmute": "<link>",
+   "receiveMessage": "<link>"
+  }
+ },
+ "contentSharing": null,
+ "participants": {
+  "from": {
+   "id": "8:orgid:9ceee9f5-6eb1-4585-a155-582808df989a",
+   "displayName": "Antonio Maritato | Ext Vection Technologies",
+   "endpointId": "2284bfae-069c-4904-b366-ad3c8f6fbe43",
+   "participantId": "5f3c3f26-0ee3-472c-b2b8-67cfc2c96d89",
+   "languageId": "it-it"
+  },
+  "to": [
+   {
+    "id": "8:orgid:04962e9d-95d3-4c7d-ab80-e22a3762eec0",
+    "participantId": "8ab4b24c-2de2-46a7-ab7f-87272e1989a6"
+   }
+  ]
+ },
+ "capabilities": null,
+ "endpointCapabilities": 73463,
+ "clientEndpointCapabilities": 248477418,
+ "endpointMetadata": {
+  "holographicCapabilities": 3
+ },
+ "groupContext": null,
+ "groupChat": null,
+ "meetingInfo": null,
+ "meetingData": null,
+ "endpointState": {
+  "endpointStateSequenceNumber": 1,
+  "endpointProperties": {
+   "additionalEndpointProperties": {
+    "infoShownInReportMode": "FullInformation"
+   }
+  }
+ },
+ "callInvitation": {
+  "callModalities": [
+   "Audio"
+  ],
+  "replaces": null,
+  "transferor": null,
+  "clientTransferContext": null,
+  "customContext": null,
+  "links": {
+   "progress": "<link>",
+   "mediaAnswer": "<link>",
+   "acceptance": "<link>",
+   "redirection": "<link>",
+   "end": "<link>"
+  },
+  "clientContentForMediaController": {
+   "controlVideoStreaming": "<link>",
+   "csrcInfo": "<link>"
+  },
+  "pstnContent": {
+   "emergencyCallCountry": "",
+   "platformName": "SkypeSpaces/1415/26101515220/os=windows; osVer=NT 10.0; deviceType=computer; browser=chrome; browserVer=158.0.0.0/TsCallingVersion=2026.40.01.8/Ovb=1d7b6785828ef72ea1ae3da94082435119a87860",
+   "publicApiCall": false
+  },
+  "emergencyContent": null,
+  "mediaContent": {
+   "contentType": "application/sdp-ngc-1.0",
+   "requiredFeatures": "nonByPass",
+   "clientLocation": "IT",
+   "applyChannelParameters": {
+    "multiChannelParameter": {
+     "mids": [
+      "*"
+     ],
+     "mediaParameter": "{\"sendSideBWSeed\":{\"seedValueBitsPerSec\":1500000}}"
+    }
+   },
+   "mediaLegId": "269086F45FE5465980584E64C3E99395"
+  },
+  "voicemailSettings": {},
+  "locationContent": null,
+  "networkContent": null,
+  "areaContent": null
+ },
+ "debugContent": {
+  "ecsEtag": "\"U4a2/tx4KU9CBHB2CUeTugyYFnY2h1/Ibyr1u4VikI0=\""
+ },
+ "participantPropertyBag": {
+  "aiVoiceConsent": {
+   "value": {
+    "aiVoiceConsentValue": "0"
+   },
+   "sequenceNumber": 0
+  }
+ }
+}
+== offer
+v=0
+
+o=- 7339961762120500365 2 IN IP4 127.0.0.1
+
+s=-
+
+b=CT:4000
+
+t=0 0
+
+a=extmap-allow-mixed
+
+a=msid-semantic: WMS *
+
+a=group:BUNDLE 0 1 2 3
+
+m=audio 50273 RTP/SAVP 105 111 63 9 0 8 13 110 126
+
+c=IN IP4 52.114.235.86
+
+a=x-signaling-fb:* x-message app recv:dsh
+
+a=x-ssrc-range:2665516979-2665516979
+
+a=rtpmap:105 CN/48000
+
+a=rtpmap:111 opus/48000/2
+
+a=rtpmap:63 red/48000/2
+
+a=rtpmap:9 G722/8000
+
+a=rtpmap:0 PCMU/8000
+
+a=rtpmap:8 PCMA/8000
+
+a=rtpmap:13 CN/8000
+
+a=rtpmap:110 telephone-event/48000
+
+a=rtpmap:126 telephone-event/8000
+
+a=fmtp:111 minptime=10;useinbandfec=1
+
+a=fmtp:63 111/111
+
+a=rtcp:50273
+
+a=rtcp-fb:111 transport-cc
+
+a=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level
+
+a=extmap:2 http:\\www.webrtc.org\experiments\rtp-hdrext\abs-send-time
+
+a=extmap:3 http:\\www.ietf.org\id\draft-holmer-rmcat-transport-wide-cc-extensions-01
+
+a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid
+
+a=setup:actpass
+
+a=mid:0
+
+a=msid:4711d8f0-9b6b-427b-ad7a-94a8c0f8def3 7e352205-e154-4986-be14-ec909f249891
+
+a=sendrecv
+
+a=ice-ufrag:G/vp
+
+a=ice-pwd:aI4zlDqNIddGx0AKaCGFez9A
+
+a=fingerprint:sha-256 91:34:8B:D5:5D:AE:91:8E:1C:F8:3D:3F:14:9C:C8:D6:88:2A:79:43:AD:9F:FD:08:3E:EC:C6:71:76:A0:77:57
+
+a=candidate:301111537 1 udp 24781055 52.114.235.86 50273 typ relay raddr 151.46.159.84 rport 39620
+
+a=candidate:782160337 1 tcp-act 1517952767 192.168.8.166 9 typ host
+
+a=candidate:801881897 1 udp 2122194687 172.27.176.1 62987 typ host
+
+a=candidate:987897290 1 udp 2122003199 fd82:fad8:378f:6800:d4b1:94ad:5cbd:3e0a 62991 typ host
+
+a=candidate:1545274648 1 tcp-act 1518088959 fd82:fad8:378f:6800:3808:4a42:5186:5fd6 9 typ host
+
+a=candidate:1581269771 1 udp 1685724927 151.46.159.84 39609 typ srflx raddr 192.168.8.166 rport 62989
+
+a=candidate:1740521608 1 tcp-act 1518214911 172.27.176.1 9 typ host
+
+a=candidate:1955811292 1 udp 2122260223 169.254.83.107 62986 typ host
+
+a=candidate:2530895620 1 tcp-act 1518280447 169.254.83.107 9 typ host
+
+a=candidate:2590618028 1 udp 2122068735 fd82:fad8:378f:6800:3808:4a42:5186:5fd6 62990 typ host
+
+a=candidate:3945444053 1 tcp-act 1518149375 172.18.32.1 9 typ host
+
+a=candidate:4017827525 1 tcp-act 1518023423 fd82:fad8:378f:6800:d4b1:94ad:5cbd:3e0a 9 typ host
+
+a=candidate:4155711116 1 udp 2122129151 172.18.32.1 62988 typ host
+
+a=candidate:4241840037 1 udp 2121932543 192.168.8.166 62989 typ host
+
+a=ice-options:trickle
+
+a=ssrc:2665516979 cname:X48RB5ji9ENiTJP2
+
+a=ssrc:2665516979 msid:4711d8f0-9b6b-427b-ad7a-94a8c0f8def3 7e352205-e154-4986-be14-ec909f249891
+
+a=rtcp-mux
+
+a=label:main-audio
+
+m=video 50273 RTP/SAVP 102 104 108 114 116 39 41 43 118 120 45 47 103 107 109 115 117 40 42 44 46 48 119 121
+
+c=IN IP4 52.114.235.86
+
+a=x-signaling-fb:* x-message app send:src recv:src,vc
+
+a=rtpmap:102 H264/90000
+
+a=rtpmap:104 H264/90000
+
+a=rtpmap:108 H264/90000
+
+a=rtpmap:114 H264/90000
+
+a=rtpmap:116 H264/90000
+
+a=rtpmap:39 H264/90000
+
+a=rtpmap:41 H264/90000
+
+a=rtpmap:43 H264/90000
+
+a=rtpmap:118 H264/90000
+
+a=rtpmap:120 H264/90000
+
+a=rtpmap:45 AV1/90000
+
+a=rtpmap:47 AV1/90000
+
+a=rtpmap:103 rtx/90000
+
+a=rtpmap:107 rtx/90000
+
+a=rtpmap:109 rtx/90000
+
+a=rtpmap:115 rtx/90000
+
+a=rtpmap:117 rtx/90000
+
+a=rtpmap:40 rtx/90000
+
+a=rtpmap:42 rtx/90000
+
+a=rtpmap:44 rtx/90000
+
+a=rtpmap:46 rtx/90000
+
+a=rtpmap:48 rtx/90000
+
+a=rtpmap:119 rtx/90000
+
+a=rtpmap:121 rtx/90000
+
+a=fmtp:102 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f;max-fs=8160;max-mbps=244800;max-fps=3000
+
+a=fmtp:104 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f
+
+a=fmtp:108 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f
+
+a=fmtp:114 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f
+
+a=fmtp:116 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f
+
+a=fmtp:39 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4d001f
+
+a=fmtp:41 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=f4001f
+
+a=fmtp:43 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=f4001f
+
+a=fmtp:118 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f
+
+a=fmtp:120 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=64001f
+
+a=fmtp:45 level-idx=5;profile=0;tier=0
+
+a=fmtp:47 level-idx=5;profile=1;tier=0
+
+a=fmtp:103 apt=102
+
+a=fmtp:107 apt=104
+
+a=fmtp:109 apt=108
+
+a=fmtp:115 apt=114
+
+a=fmtp:117 apt=116
+
+a=fmtp:40 apt=39
+
+a=fmtp:42 apt=41
+
+a=fmtp:44 apt=43
+
+a=fmtp:46 apt=45
+
+a=fmtp:48 apt=47
+
+a=fmtp:119 apt=118
+
+a=fmtp:121 apt=120
+
+a=rtcp:50273
+
+a=rtcp-fb:* goog-remb
+
+a=rtcp-fb:* transport-cc
+
+a=rtcp-fb:* ccm fir
+
+a=rtcp-fb:* nack
+
+a=rtcp-fb:* nack pli
+
+a=extmap:14 urn:ietf:params:rtp-hdrext:toffset
+
+a=extmap:2 http:\\www.webrtc.org\experiments\rtp-hdrext\abs-send-time
+
+a=extmap:13 urn:3gpp:video-orientation
+
+a=extmap:3 http:\\www.ietf.org\id\draft-holmer-rmcat-transport-wide-cc-extensions-01
+
+a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/video-content-type
+
+a=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/video-timing
+
+a=extmap:8 http://www.webrtc.org/experiments/rtp-hdrext/color-space
+
+a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid
+
+a=extmap:10 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id
+
+a=extmap:11 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id
+
+a=setup:actpass
+
+a=mid:1
+
+a=recvonly
+
+a=ice-ufrag:G/vp
+
+a=ice-pwd:aI4zlDqNIddGx0AKaCGFez9A
+
+a=fingerprint:sha-256 91:34:8B:D5:5D:AE:91:8E:1C:F8:3D:3F:14:9C:C8:D6:88:2A:79:43:AD:9F:FD:08:3E:EC:C6:71:76:A0:77:57
+
+a=ice-options:trickle
+
+a=rtcp-mux
+
+a=rtcp-rsize
+
+a=label:main-video
+
+m=video 50273 RTP/SAVP 102 104 108 114 116 39 118 45 103 107 109 115 117 40 46 119
+
+c=IN IP4 52.114.235.86
+
+a=x-signaling-fb:* x-message app send:src recv:src,vc
+
+a=rtpmap:102 H264/90000
+
+a=rtpmap:104 H264/90000
+
+a=rtpmap:108 H264/90000
+
+a=rtpmap:114 H264/90000
+
+a=rtpmap:116 H264/90000
+
+a=rtpmap:39 H264/90000
+
+a=rtpmap:118 H264/90000
+
+a=rtpmap:45 AV1/90000
+
+a=rtpmap:103 rtx/90000
+
+a=rtpmap:107 rtx/90000
+
+a=rtpmap:109 rtx/90000
+
+a=rtpmap:115 rtx/90000
+
+a=rtpmap:117 rtx/90000
+
+a=rtpmap:40 rtx/90000
+
+a=rtpmap:46 rtx/90000
+
+a=rtpmap:119 rtx/90000
+
+a=fmtp:102 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f;max-fs=8160;max-mbps=135000;max-fps=1500
+
+a=fmtp:104 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f
+
+a=fmtp:108 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f
+
+a=fmtp:114 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f
+
+a=fmtp:116 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f
+
+a=fmtp:39 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4d001f
+
+a=fmtp:118 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=64001f
+
+a=fmtp:45 level-idx=5;profile=0;tier=0
+
+a=fmtp:103 apt=102
+
+a=fmtp:107 apt=104
+
+a=fmtp:109 apt=108
+
+a=fmtp:115 apt=114
+
+a=fmtp:117 apt=116
+
+a=fmtp:40 apt=39
+
+a=fmtp:46 apt=45
+
+a=fmtp:119 apt=118
+
+a=rtcp:50273
+
+a=rtcp-fb:* goog-remb
+
+a=rtcp-fb:* transport-cc
+
+a=rtcp-fb:* ccm fir
+
+a=rtcp-fb:* nack
+
+a=rtcp-fb:* nack pli
+
+a=extmap:14 urn:ietf:params:rtp-hdrext:toffset
+
+a=extmap:2 http:\\www.webrtc.org\experiments\rtp-hdrext\abs-send-time
+
+a=extmap:13 urn:3gpp:video-orientation
+
+a=extmap:3 http:\\www.ietf.org\id\draft-holmer-rmcat-transport-wide-cc-extensions-01
+
+a=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/video-content-type
+
+a=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/video-timing
+
+a=extmap:8 http://www.webrtc.org/experiments/rtp-hdrext/color-space
+
+a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid
+
+a=extmap:10 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id
+
+a=extmap:11 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id
+
+a=setup:actpass
+
+a=mid:2
+
+a=inactive
+
+a=ice-ufrag:G/vp
+
+a=ice-pwd:aI4zlDqNIddGx0AKaCGFez9A
+
+a=fingerprint:sha-256 91:34:8B:D5:5D:AE:91:8E:1C:F8:3D:3F:14:9C:C8:D6:88:2A:79:43:AD:9F:FD:08:3E:EC:C6:71:76:A0:77:57
+
+a=ice-options:trickle
+
+a=rtcp-mux
+
+a=rtcp-rsize
+
+a=label:applicationsharing-video
+
+m=x-data 50273 RTP/SAVP 127 126
+
+c=IN IP4 52.114.235.86
+
+a=x-data-protocol:sctp
+
+a=x-ssrc-range:1034678118-1034678118
+
+a=rtpmap:127 x-data/90000
+
+a=rtpmap:126 rtx/90000
+
+a=fmtp:126 apt=127
+
+a=setup:actpass
+
+a=mid:3
+
+a=sendrecv
+
+a=ice-ufrag:G/vp
+
+a=ice-pwd:aI4zlDqNIddGx0AKaCGFez9A
+
+a=fingerprint:sha-256 91:34:8B:D5:5D:AE:91:8E:1C:F8:3D:3F:14:9C:C8:D6:88:2A:79:43:AD:9F:FD:08:3E:EC:C6:71:76:A0:77:57
+
+a=ice-options:trickle
+
+a=rtcp-mux
+
+a=label:data
+
+a=sctp-port:5000
+
+a=max-message-size:262144
+
+
+== headers
+{
+ "MS-Teams-Partition": "emea03",
+ "MS-Teams-Region": "emea",
+ "MS-Teams-Ring": "general",
+ "Referer": "https://teams.cloud.microsoft/",
+ "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
+ "X-MS-Migration": "True",
+ "X-Microsoft-Skype-Chain-ID": "1efe88e1-b30e-4511-980b-e4745e147146",
+ "X-Microsoft-Skype-Client": "SkypeSpaces/1415/26101515220/os=windows; osVer=NT 10.0; deviceType=computer; browser=chrome; browserVer=158.0.0.0/TsCallingVersion=2026.40.01.8/Ovb=1d7b6785828ef72ea1ae3da94082435119a87860",
+ "X-Microsoft-Skype-Message-ID": "ddfcf0b7-7c1f-4bea-81c9-55df9f3545a6",
+ "content-type": "application/json",
+ "sec-ch-ua": "\"Chromium\";v=\"158\", \"Not.A/Brand\";v=\"24\", \"Google Chrome\";v=\"158\"",
+ "sec-ch-ua-mobile": "?0",
+ "sec-ch-ua-platform": "\"Windows\""
+}

@@ -326,8 +326,9 @@ impl CallLinks {
 }
 
 /// The body of a call created on the conversation service: the people called, the offer, the links of this client.
-/// suppressDialout false, as Teams web sends it calling a person: with true, Teams desktop rings but its Accept does
-/// nothing (no acceptance, no DTLS, voicemail after 30 s; 2026-11-15).
+/// suppressDialout false, as Teams web sends it calling a person: with true, Teams desktop rings but its Accept only
+/// opens its prejoin screen (AcceptIncomingCallThroughPrejoin), so the call is never answered and goes to voicemail
+/// after 30 s (2026-11-15).
 pub fn create_body(e: &Endpoint, links: &CallLinks, participant: &str, to: &[Value], offer: &str, media_leg: &str) -> Value {
     let roster = e.link("conversation/rosterUpdate");
     json!({
@@ -646,7 +647,7 @@ impl Attached {
 pub enum Event {
     Progress(String),
     /// the answer of one device of the far end while it rings, to acknowledge on `ack` (Teams desktop and mobile send
-    /// it and hold their acceptance until it is acknowledged)
+    /// one; the acceptance that follows may come without its own answer)
     MediaAnswer {
         endpoint: String,
         answer: String,
@@ -684,8 +685,8 @@ pub fn event_of(req: &Request) -> Event {
 }
 
 /// The answers the devices of the far end gave while it rang (mediaAnswer), by endpoint. A peer connection of
-/// webrtc-rs takes one answer (no pranswer), and the device that accepts, or the media server Teams falls back to
-/// when no device connects, may not be the first that answered: none is applied before the acceptance.
+/// webrtc-rs takes one answer (no pranswer), and the device that accepts, or the voicemail service after 30 s of
+/// ringing, may not be the first that answered: none is applied before the acceptance.
 #[derive(Default)]
 pub struct EarlyAnswers(Vec<(String, String)>);
 

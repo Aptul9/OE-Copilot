@@ -38,9 +38,12 @@ async fn backend(log: Log) -> u16 {
                     async move {
                         let method = req.method().to_string();
                         let pq = req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_default();
+                        let sized = req.headers().contains_key("content-length") || req.headers().contains_key("transfer-encoding");
                         let body = String::from_utf8_lossy(&req.into_body().collect().await.unwrap().to_bytes()).to_string();
                         log.lock().unwrap().push((method.clone(), pq.clone(), body.clone()));
-                        let (status, ctype, out) = answer(port, &method, &pq, &body);
+                        // like Outlook: a POST must say how long it is
+                        let (status, ctype, out) =
+                            if method == "POST" && !sized { (411, "text/html", "Length Required".into()) } else { answer(port, &method, &pq, &body) };
                         Ok::<_, std::convert::Infallible>(
                             Response::builder().status(status).header("content-type", ctype).body(Full::new(Bytes::from(out))).unwrap(),
                         )
@@ -66,6 +69,9 @@ fn answer(port: u16, method: &str, pq: &str, body: &str) -> (u16, &'static str, 
         })),
         ("GET", "/api/v2.0/me/MailFolders('Inbox')/messages") => j(json!({"value": [{"Id": "m2", "IsRead": false}, {"Id": "m3", "IsRead": false}]})),
         ("POST", "/api/v2.0/me/sendmail") => (202, "application/json", String::new()),
+        ("POST", "/api/v2.0/me/messages") => (201, "application/json", json!({"Id": "d1", "Subject": "s"}).to_string()),
+        ("GET", "/api/v2.0/me/messages/d1") => j(json!({"IsDraft": true, "Subject": "s", "ToRecipients": [{"EmailAddress": {"Address": "b@x.it"}}]})),
+        ("POST", "/api/v2.0/me/messages/d1/send") => (202, "application/json", String::new()),
         ("POST", "/api/conversations.list") => j(
             json!({"ok": true, "channels": [{"id": "D1", "is_im": true, "user": "U1"}, {"id": "C1", "name": "general", "topic": {"value": "t"}}], "response_metadata": {"next_cursor": ""}}),
         ),
@@ -191,6 +197,10 @@ fn the_server_end_to_end() {
         assert_eq!(sent["data"], json!({"status": "sent", "draft_id": null, "subject": "s", "to": ["b@x.it"], "cc": [], "bcc": []}));
         let mail = log.lock().unwrap().iter().find(|e| e.1.ends_with("/sendmail")).map(|e| e.2.clone()).unwrap();
         assert_eq!(mail, r#"{"Message":{"Subject":"s","Body":{"ContentType":"HTML","Content":"<p>hi</p>"},"ToRecipients":[{"EmailAddress":{"Address":"b@x.it","Name":"Bob"}}]},"SaveToSentItems":"true"}"#);
+        // Outlook draft sent: the bodyless POST to /send
+        let d = tool(port, "email_send", json!({"account_id": "outlook:a@x.it", "to": ["b@x.it"], "subject": "s", "text": "x", "draft": true})).await;
+        let ds = tool(port, "email_draft_send", json!({"account_id": "outlook:a@x.it", "draft_id": d["data"]["draft_id"]})).await;
+        assert_eq!((ds["data"]["status"].as_str(), ds["data"]["to"].clone()), (Some("sent"), json!(["b@x.it"])));
 
         // Gmail draft: the MIME the agent gets, handles in the answer
         let g = tool(port, "email_send", json!({"account_id": "gmail:g@x.it", "to": ["b@x.it"], "subject": "Caffè", "text": "x", "draft": true})).await;

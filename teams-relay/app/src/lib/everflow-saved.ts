@@ -20,7 +20,8 @@ function readStore(slot: number, since: number, maxRows: number): SavedSlot {
   let db: Database.Database | null = null;
   try {
     db = new Database(slotDbPath(slot), { readonly: true, fileMustExist: true });
-    db.pragma("busy_timeout = 8000");
+    // short: every active slot is read in turn within the 60 s the communication service waits
+    db.pragma("busy_timeout = 2000");
     db.pragma("query_only = ON");
     db.pragma("trusted_schema = OFF");
     const snapshot = db.prepare(STORE_QUERY).pluck().get(since, maxRows + 1);

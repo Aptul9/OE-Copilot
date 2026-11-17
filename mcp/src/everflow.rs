@@ -7,6 +7,7 @@
 //! Host outside MCP_HTTP_HOSTS, 403 with Origin, 401 without the token, 404 when EVERFLOW_TOKEN or the backend is off.
 
 use crate::http::{App, Body, MAX_BODY, bearer_matches, empty, header, json};
+use crate::slack::Lookup;
 use http_body_util::BodyExt;
 use hyper::body::Incoming;
 use hyper::{Request, Response};
@@ -126,6 +127,7 @@ async fn agent(app: &App, v: Map<String, Value>) -> Response<Body> {
         let (status, text) = match gateway.raw(path, body.as_ref(), MAX_ANSWER - total).await {
             Ok(r) => r,
             Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return too_large(),
+            Err(crate::Error::Comm { code: "INTERRUPTED", .. }) => (502, json!({ "errore": "OE Copilot agent answer interrupted" }).to_string()),
             Err(_) => (502, json!({ "errore": "OE Copilot agent unreachable" }).to_string()),
         };
         total += text.len();
@@ -156,6 +158,10 @@ async fn slack(app: &App, v: Map<String, Value>) -> Response<Body> {
             None | Some(Value::Null) => {}
             Some(Value::Object(p)) => {
                 for (k, v) in p {
+                    // the session's token is the only one: a second one in the form would override it on Slack's side
+                    if k.eq_ignore_ascii_case("token") {
+                        return error(400, "params cannot carry a token");
+                    }
                     let Some(v) = v.as_str() else { return error(400, "params must be strings") };
                     params.push((k.clone(), v.to_string()));
                 }
@@ -164,15 +170,19 @@ async fn slack(app: &App, v: Map<String, Value>) -> Response<Body> {
         }
         calls.push((method.to_string(), params));
     }
-    if !slack.knows(workspace) {
-        return error(404, "unknown Slack workspace");
-    }
+    // the store is read once: every request of the call uses the same session
+    let session = match slack.lookup(workspace) {
+        Lookup::Missing => return error(404, "unknown Slack workspace"),
+        Lookup::Unusable => return error(502, "slack session unusable"),
+        Lookup::Ready(s) => s,
+    };
     let mut out = vec![];
     let mut total = 0usize;
     for (method, params) in &calls {
-        let (status, text) = match slack.raw(workspace, method, params, MAX_ANSWER - total).await {
+        let (status, text) = match slack.raw(&session, method, params, MAX_ANSWER - total).await {
             Ok(r) => r,
             Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return too_large(),
+            Err(crate::Error::Comm { code: "INTERRUPTED", .. }) => (502, json!({ "ok": false, "error": "slack_answer_interrupted" }).to_string()),
             Err(_) => (502, json!({ "ok": false, "error": "slack_unreachable" }).to_string()),
         };
         total += text.len();
@@ -196,6 +206,7 @@ async fn teams(app: &App, query: &str) -> Response<Body> {
             .expect("response"),
         Ok((status, _)) => error(502, &format!("teams relay HTTP {status}")),
         Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => too_large(),
+        Err(crate::Error::Comm { code: "INTERRUPTED", .. }) => error(502, "teams relay answer interrupted"),
         Err(_) => error(502, "teams relay unreachable"),
     }
 }

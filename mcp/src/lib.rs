@@ -62,10 +62,11 @@ pub fn http_client() -> &'static reqwest::Client {
     })
 }
 
-/// A response body as text, read in chunks; past `max_bytes` it is an error, never a cut body.
+/// A response body as text, read in chunks; past `max_bytes` it is TOO_LARGE, a body cut off by the other side is
+/// INTERRUPTED, never a cut body. Bytes that are not UTF-8 become U+FFFD, as the TeamsRelay route reads its stores.
 pub async fn text_body(mut r: reqwest::Response, max_bytes: usize) -> Result<String> {
     let mut out: Vec<u8> = vec![];
-    while let Some(chunk) = r.chunk().await.map_err(|e| Error::provider(format!("response body: {e}")))? {
+    while let Some(chunk) = r.chunk().await.map_err(|_| Error::comm("INTERRUPTED", "answer interrupted"))? {
         if out.len() + chunk.len() > max_bytes {
             return Err(Error::comm("TOO_LARGE", "answer too large"));
         }

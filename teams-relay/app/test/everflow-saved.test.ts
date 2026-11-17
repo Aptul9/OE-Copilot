@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { GET } from "@/app/api/everflow/saved/route";
 import { appDb, claimSlot, migrateAppSchema, setSlotStopped } from "@/lib/appdb";
@@ -100,6 +101,42 @@ describe("GET /api/everflow/saved", () => {
   it("max_rows + 1 rows", async () => {
     const { slots } = (await (await get("since=0&max_rows=1")).json()) as { slots: Slot[] };
     expect(JSON.parse(slots[0].snapshot!).messages).toHaveLength(2);
+  });
+
+  it("a WAL store with a writer holding an open transaction still reads its committed rows", async () => {
+    const writer = new Database(path.join(dataDir, String(first), "messages.db"));
+    try {
+      writer.exec("BEGIN IMMEDIATE");
+      writer.prepare("INSERT INTO chat_messages(chat, idx, mid, author, text, mine, reacts, extra) VALUES('BIANCHI Luca', 9, '1790433000000', 'BIANCHI Luca', 'uncommitted', 0, '', '')").run();
+      const { slots } = (await (await get("since=0&max_rows=10")).json()) as { slots: Slot[] };
+      expect(JSON.parse(slots[0].snapshot!).messages).toHaveLength(2);
+    } finally {
+      writer.exec("ROLLBACK");
+      writer.close();
+    }
+  });
+
+  it("text that is not UTF-8 is replaced, not the whole slot lost", async () => {
+    const db = new Database(path.join(dataDir, String(second), "messages.db"));
+    db.prepare("INSERT INTO chat_messages(chat, idx, mid, author, text, mine, reacts, extra) VALUES('BIANCHI Luca', 9, '1790433000000', 'BIANCHI Luca', CAST(x'ff41' AS TEXT), 0, '', '')").run();
+    db.close();
+    const { slots } = (await (await get("since=1790433000000&max_rows=10")).json()) as { slots: Slot[] };
+    expect(JSON.parse(slots[1].snapshot!).messages[0].text).toBe("\uFFFDA");
+  });
+
+  it("a store locked by its agent is that slot's error within a short wait", async () => {
+    const locker = new Database(path.join(dataDir, String(first), "messages.db"));
+    try {
+      locker.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; UPDATE state SET v=v WHERE k='state';");
+      const started = Date.now();
+      const { slots } = (await (await get("since=0&max_rows=10")).json()) as { slots: Slot[] };
+      expect(Date.now() - started).toBeLessThan(4000);
+      expect(slots[0]).toEqual({ slot: first, error: "store-unavailable" });
+      expect(slots[1].snapshot).toBeTypeOf("string");
+    } finally {
+      locker.exec("ROLLBACK");
+      locker.close();
+    }
   });
 
   it("missing store is that slot's error", async () => {

@@ -155,6 +155,15 @@ pub struct Slack {
     path: String,
 }
 
+/// A workspace session read from the store, for `Slack::raw`.
+pub struct Session(Workspace);
+
+pub enum Lookup {
+    Missing,
+    Unusable,
+    Ready(Session),
+}
+
 enum Fail {
     /// Slack answered ok:false with this error code
     Slack(String),
@@ -188,6 +197,11 @@ impl Slack {
 
     /// Exact profile key, then the profile field, the workspace id, the workspace name: each only when unambiguous.
     fn workspace(&self, profile: &str) -> Result<Workspace> {
+        Self::session(&self.config(profile).ok_or_else(failed)?)
+    }
+
+    /// The store entry of a workspace, found as `workspace` says.
+    fn config(&self, profile: &str) -> Option<Value> {
         let store = self.store();
         let ws = store.get("workspaces").and_then(Value::as_object).cloned().unwrap_or_default();
         let config = ws.get(profile).cloned().or_else(|| {
@@ -201,7 +215,11 @@ impl Slack {
             }
             None
         });
-        let c = config.ok_or_else(failed)?;
+        config
+    }
+
+    /// The session of a store entry: browser (https *.slack.com origin, xoxc token, d cookie) or standard token.
+    fn session(c: &Value) -> Result<Workspace> {
         let s = |k: &str| c.get(k).and_then(Value::as_str).map(String::from);
         let auth = match s("auth_type").as_deref() {
             Some("browser") => Auth::Browser {
@@ -215,15 +233,20 @@ impl Slack {
         Ok(Workspace { user_id: s("user_id"), auth })
     }
 
-    /// Whether the store has this workspace (profile key, profile, workspace id or name, as `workspace` finds it).
-    pub fn knows(&self, workspace: &str) -> bool {
-        self.workspace(workspace).is_ok()
+    /// A workspace for Everflow (everflow.rs), read from the store once per call: absent, present with a session that
+    /// cannot be used, or ready.
+    pub fn lookup(&self, workspace: &str) -> Lookup {
+        match self.config(workspace) {
+            None => Lookup::Missing,
+            Some(c) => Self::session(&c).map_or(Lookup::Unusable, |w| Lookup::Ready(Session(w))),
+        }
     }
 
     /// One call for Everflow (everflow.rs): the same session and headers as `attempt`, through the same limiter, no
-    /// retry; the status and the body as text, at most `max_bytes`. The caller checks the method.
-    pub async fn raw(&self, workspace: &str, method: &str, params: &[(String, String)], max_bytes: usize) -> Result<(u16, String)> {
-        let w = self.workspace(workspace)?;
+    /// retry; the status and the body as text, at most `max_bytes`. The caller checks the method and the params. Not
+    /// reaching Slack is UNREACHABLE.
+    pub async fn raw(&self, session: &Session, method: &str, params: &[(String, String)], max_bytes: usize) -> Result<(u16, String)> {
+        let w = &session.0;
         let _slot = LIMITER.slots.acquire().await.expect("limiter");
         {
             let mut last = LIMITER.last.lock().await;
@@ -249,7 +272,12 @@ impl Slack {
             }
             Auth::Standard { token } => req = req.header("Authorization", format!("Bearer {token}")),
         }
-        let r = req.header("Content-Type", "application/x-www-form-urlencoded").body(form.finish()).send().await.map_err(|_| failed())?;
+        let r = req
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .body(form.finish())
+            .send()
+            .await
+            .map_err(|_| Error::comm("UNREACHABLE", "Slack unreachable"))?;
         let status = r.status().as_u16();
         Ok((status, crate::text_body(r, max_bytes).await?))
     }

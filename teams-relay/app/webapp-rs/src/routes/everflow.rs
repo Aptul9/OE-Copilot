@@ -42,7 +42,9 @@ async fn get(req: Req) -> Res {
     let max_rows = integer(req.query_param("max_rows"), 1, 100_000);
     let (Some(since), Some(max_rows)) = (since, max_rows) else { return http(400, "since (ms) and max_rows (1 to 100000) are required") };
     let Some(user) = crate::mcp::mcp_user_id()? else { return http(503, "The administrator of .env does not exist") };
-    json(saved_since(&user, since, max_rows)?)
+    // the stores are read on a blocking thread: the server is one thread, and a store an agent holds locked waits
+    let saved = tokio::task::spawn_blocking(move || saved_since(&user, since, max_rows)).await.map_err(|e| Error::Internal(format!("everflow saved: {e}")))?;
+    json(saved?)
 }
 
 /// Saved messages of every active Teams account of a user; a store that cannot be read is that slot's error, the
@@ -68,10 +70,14 @@ fn read_store(slot: i64, since: i64, limit: i64) -> Option<String> {
         return None;
     }
     let c = Connection::open_with_flags(&file, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX).ok()?;
-    c.busy_timeout(std::time::Duration::from_millis(8000)).ok()?;
+    // short: every active slot is read in turn within the 60 s the communication service waits
+    c.busy_timeout(std::time::Duration::from_millis(STORE_BUSY_MS)).ok()?;
     c.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;").ok()?;
-    c.query_row(STORE_QUERY, [since, limit], |r| r.get::<_, String>(0)).ok()
+    // bytes that are not UTF-8 become U+FFFD, as the sqlite3 output read over SSH was decoded, rather than the whole slot failing
+    c.query_row(STORE_QUERY, [since, limit], |r| Ok(String::from_utf8_lossy(r.get_ref(0)?.as_bytes()?).into_owned())).ok()
 }
+
+const STORE_BUSY_MS: u64 = 2000;
 
 #[cfg(test)]
 mod tests {
@@ -189,6 +195,40 @@ mod tests {
         let (_, capped) = get("since=0&max_rows=1", ok).await;
         let saved: Value = serde_json::from_str(capped["slots"][0]["snapshot"].as_str().unwrap()).unwrap();
         assert_eq!(saved["messages"].as_array().unwrap().len(), 2);
+
+        // a WAL store with a writer holding an open transaction still reads its committed rows
+        let writer = rusqlite::Connection::open(slot_db_path(first)).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+        writer
+            .execute("INSERT INTO chat_messages(chat, idx, mid, author, text, mine, reacts, extra) VALUES('BIANCHI Luca', 9, '1790433000000', 'BIANCHI Luca', 'uncommitted', 0, '', '')", [])
+            .unwrap();
+        let (status, open) = get("since=0&max_rows=10", ok).await;
+        assert_eq!(status, 200);
+        let saved: Value = serde_json::from_str(open["slots"][0]["snapshot"].as_str().unwrap()).unwrap();
+        assert_eq!(saved["messages"].as_array().unwrap().len(), 2);
+        writer.execute_batch("ROLLBACK").unwrap();
+        drop(writer);
+
+        // text that is not UTF-8 is replaced, not the whole slot lost
+        let db = rusqlite::Connection::open(slot_db_path(second)).unwrap();
+        db.execute("INSERT INTO chat_messages(chat, idx, mid, author, text, mine, reacts, extra) VALUES('BIANCHI Luca', 9, '1790433000000', 'BIANCHI Luca', CAST(x'ff41' AS TEXT), 0, '', '')", [])
+            .unwrap();
+        drop(db);
+        let (_, bad) = get("since=1790433000000&max_rows=10", ok).await;
+        let saved: Value = serde_json::from_str(bad["slots"][1]["snapshot"].as_str().expect("second slot keeps its snapshot")).unwrap();
+        assert_eq!(saved["messages"][0]["text"], "\u{FFFD}A");
+
+        // a store locked by its agent is that slot's error within a short wait, the others are still read
+        let locker = rusqlite::Connection::open(slot_db_path(first)).unwrap();
+        locker.execute_batch("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; UPDATE state SET v=v WHERE k='state';").unwrap();
+        let started = std::time::Instant::now();
+        let (status, locked) = get("since=0&max_rows=10", ok).await;
+        assert_eq!(status, 200);
+        assert!(started.elapsed() < std::time::Duration::from_secs(4), "{:?}", started.elapsed());
+        assert_eq!(locked["slots"][0], json!({"slot": first, "error": "store-unavailable"}));
+        assert!(locked["slots"][1]["snapshot"].is_string());
+        locker.execute_batch("ROLLBACK").unwrap();
+        drop(locker);
 
         // missing store is that slot's error
         std::fs::remove_file(slot_db_path(second)).unwrap();

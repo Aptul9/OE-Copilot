@@ -300,6 +300,20 @@ fn the_server_end_to_end() {
         assert_eq!(sent.2, "token=xoxc-1&channel=C1&limit=200");
         assert!(sent.3.ends_with("|cookie=d=xoxd%2F1"), "{}", sent.3);
         assert_eq!(everflow(port, "POST", "slack", &json!({"workspace": "T9", "requests": [{"method": "auth.test"}]}).to_string(), &[]).await.0, 404);
+        // a caller cannot bring its own Slack token next to the session's
+        log.lock().unwrap().clear();
+        for key in ["token", "TOKEN"] {
+            let req = json!({"workspace": "T1", "requests": [{"method": "auth.test", "params": {key: "xoxp-other"}}]});
+            assert_eq!(everflow(port, "POST", "slack", &req.to_string(), &[]).await.0, 400, "{key}");
+        }
+        assert!(log.lock().unwrap().is_empty());
+        // a workspace in the store whose session cannot be used is said so, not reported as Slack unreachable
+        let mut stored: Value = serde_json::from_str(&std::fs::read_to_string(&store).unwrap()).unwrap();
+        stored["workspaces"]["T2"] = json!({"workspace_id": "T2", "workspace_url": "https://two.slack.com/", "auth_type": "browser", "user_id": "U2"});
+        std::fs::write(&store, stored.to_string()).unwrap();
+        let (s, body) = everflow(port, "POST", "slack", &json!({"workspace": "T2", "requests": [{"method": "auth.test"}]}).to_string(), &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("slack session unusable".into())));
+        assert!(log.lock().unwrap().is_empty());
 
         // teams_forwards_saved
         let (s, body) = everflow(port, "GET", "teams?since=1790431000000&max_rows=10", "", &[]).await;

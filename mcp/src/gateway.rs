@@ -61,7 +61,8 @@ impl Gateway {
         Ok(payload)
     }
 
-    /// The same call for Everflow (everflow.rs): any status, the body as text, at most `max_bytes`.
+    /// The same call for Everflow (everflow.rs): any status, the body as text, at most `max_bytes`. Not reaching the
+    /// agent is UNREACHABLE.
     pub async fn raw(&self, path: &str, body: Option<&Value>, max_bytes: usize) -> Result<(u16, String)> {
         if !ENDPOINTS.contains(&path) {
             return Err(Error::provider("Unknown communication endpoint"));
@@ -75,7 +76,7 @@ impl Gateway {
         if let Some(b) = body {
             req = req.body(serde_json::to_vec(b).unwrap_or_default());
         }
-        let r = req.send().await.map_err(|e| Error::provider(format!("Communication service: {e}")))?;
+        let r = req.send().await.map_err(|_| Error::comm("UNREACHABLE", "OE Copilot agent unreachable"))?;
         let status = r.status().as_u16();
         Ok((status, crate::text_body(r, max_bytes).await?))
     }

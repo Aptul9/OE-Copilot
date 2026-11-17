@@ -72,6 +72,7 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
         ("POST", "/api/communication/read") if body.contains("down@x.it") => (502, "application/json", r#"{"errore":"Outlook non raggiungibile"}"#.into()),
         ("POST", "/api/communication/read") => j(json!({"value": [{"Id": "m1"}]})),
         ("POST", "/api/conversations.history") => j(json!({"ok": true, "messages": [{"ts": "1700000000.000100", "text": "hi"}]})),
+        ("GET", "/api/everflow/saved") if pq.contains("since=7&") => (200, "application/json", "x".repeat(64 * 1024 * 1024 + 1)),
         ("GET", "/api/everflow/saved") if credentials.starts_with("authorization=Bearer relay-token|") => {
             j(json!({"slots": [{"slot": 3, "snapshot": "{\"state\":{}}"}, {"slot": 7, "error": "store-unavailable"}], "asked": pq}))
         }
@@ -306,6 +307,9 @@ fn the_server_end_to_end() {
         let r: Value = serde_json::from_str(&body).unwrap();
         assert_eq!(r["slots"], json!([{"slot": 3, "snapshot": "{\"state\":{}}"}, {"slot": 7, "error": "store-unavailable"}]));
         assert_eq!(r["asked"], json!("/api/everflow/saved?since=1790431000000&max_rows=10"));
+        // an answer over the cap is its own status (507), never a cut body and never the 502 of a backend that is down
+        let (s, body) = everflow(port, "GET", "teams?since=7&max_rows=10", "", &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (507, Some("answer too large".into())));
         assert_eq!(everflow(port, "GET", "teams?since=x&max_rows=10", "", &[]).await.0, 400);
         assert_eq!(everflow(port, "GET", "teams?since=1", "", &[]).await.0, 400);
 

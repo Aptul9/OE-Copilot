@@ -71,7 +71,7 @@ Everflow reads every source it takes from this host through three routes, with o
 | `POST /everflow/slack` | `{"workspace": "T...", "requests": [{"method", "params"?}]}`, at most 100, string params. Methods: `auth.test`, `client.counts`, `subscriptions.thread.getView`, `conversations.history`, `conversations.replies`, `conversations.info`, `users.info`. Unknown workspace: 404 | The same shape, Slack's status and body; the session comes from the slackcli store, through the Slack limiter, no retry |
 | `GET /everflow/teams?since=<ms>&max_rows=<n>` | `max_rows` 1 to 100000 | TeamsRelay `GET /api/everflow/saved` with its `MCP_TOKEN`, body unchanged on 200; any other status or no answer = 502 `{"error"}` |
 
-An answer above 64 MiB stops the call with 502 `{"error":"answer too large"}`, never a cut body. A backend that is off (no Teams, no Slack, no agent) answers 404 on its route.
+An answer above 64 MiB stops the call with 507 `{"error":"answer too large"}` (Everflow: `<source>.result-limit`), never a cut body. A backend that is off (no Teams, no Slack, no agent) answers 404 on its route.
 
 ## Unified contract
 

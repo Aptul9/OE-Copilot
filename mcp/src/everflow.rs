@@ -21,8 +21,13 @@ const AGENT_POST: [&str; 3] = ["/api/communication/read", "/api/communication/gm
 const SLACK_METHODS: [&str; 7] =
     ["auth.test", "client.counts", "subscriptions.thread.getView", "conversations.history", "conversations.replies", "conversations.info", "users.info"];
 const MAX_REQUESTS: usize = 100;
-/// The whole answer of one call; past it the call stops with 502 rather than a cut answer.
+/// The whole answer of one call; past it the call stops with 507 rather than a cut answer.
 const MAX_ANSWER: usize = 64 * 1024 * 1024;
+
+/// 507: this answer is over MAX_ANSWER; Everflow reports it as <source>.result-limit, apart from a backend that is down (502).
+fn too_large() -> Response<Body> {
+    error(507, "answer too large")
+}
 
 fn error(status: u16, message: &str) -> Response<Body> {
     json(status, &json!({ "error": message }), &[])
@@ -120,7 +125,7 @@ async fn agent(app: &App, v: Map<String, Value>) -> Response<Body> {
     for (path, body) in &calls {
         let (status, text) = match gateway.raw(path, body.as_ref(), MAX_ANSWER - total).await {
             Ok(r) => r,
-            Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return error(502, "answer too large"),
+            Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return too_large(),
             Err(_) => (502, json!({ "errore": "OE Copilot agent unreachable" }).to_string()),
         };
         total += text.len();
@@ -167,7 +172,7 @@ async fn slack(app: &App, v: Map<String, Value>) -> Response<Body> {
     for (method, params) in &calls {
         let (status, text) = match slack.raw(workspace, method, params, MAX_ANSWER - total).await {
             Ok(r) => r,
-            Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return error(502, "answer too large"),
+            Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return too_large(),
             Err(_) => (502, json!({ "ok": false, "error": "slack_unreachable" }).to_string()),
         };
         total += text.len();
@@ -190,7 +195,7 @@ async fn teams(app: &App, query: &str) -> Response<Body> {
             .body(http_body_util::Full::new(bytes::Bytes::from(body)).boxed_unsync())
             .expect("response"),
         Ok((status, _)) => error(502, &format!("teams relay HTTP {status}")),
-        Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => error(502, "answer too large"),
+        Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => too_large(),
         Err(_) => error(502, "teams relay unreachable"),
     }
 }

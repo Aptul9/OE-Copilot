@@ -16,7 +16,10 @@ use std::sync::{Arc, Mutex};
 
 const TOKEN: &str = "0123456789abcdef0123456789abcdef-test";
 
-type Log = Arc<Mutex<Vec<(String, String, String)>>>;
+/// What each backend was asked: method, path and query, body, and the Authorization and Cookie headers.
+type Log = Arc<Mutex<Vec<(String, String, String, String)>>>;
+
+const EVERFLOW: &str = "everflow-token-0123456789abcdef0123456789";
 
 fn jwt(upn: &str) -> String {
     use base64::Engine;
@@ -39,11 +42,16 @@ async fn backend(log: Log) -> u16 {
                         let method = req.method().to_string();
                         let pq = req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_default();
                         let sized = req.headers().contains_key("content-length") || req.headers().contains_key("transfer-encoding");
+                        let h = |k: &str| req.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+                        let credentials = format!("authorization={}|cookie={}", h("authorization"), h("cookie"));
                         let body = String::from_utf8_lossy(&req.into_body().collect().await.unwrap().to_bytes()).to_string();
-                        log.lock().unwrap().push((method.clone(), pq.clone(), body.clone()));
+                        log.lock().unwrap().push((method.clone(), pq.clone(), body.clone(), credentials.clone()));
                         // like Outlook: a POST must say how long it is
-                        let (status, ctype, out) =
-                            if method == "POST" && !sized { (411, "text/html", "Length Required".into()) } else { answer(port, &method, &pq, &body) };
+                        let (status, ctype, out) = if method == "POST" && !sized {
+                            (411, "text/html", "Length Required".into())
+                        } else {
+                            answer(port, &method, &pq, &body, &credentials)
+                        };
                         Ok::<_, std::convert::Infallible>(
                             Response::builder().status(status).header("content-type", ctype).body(Full::new(Bytes::from(out))).unwrap(),
                         )
@@ -56,10 +64,18 @@ async fn backend(log: Log) -> u16 {
     port
 }
 
-fn answer(port: u16, method: &str, pq: &str, body: &str) -> (u16, &'static str, String) {
+fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (u16, &'static str, String) {
     let j = |v: Value| (200, "application/json", v.to_string());
     let path = pq.split('?').next().unwrap_or("");
     match (method, path) {
+        ("GET", "/api/communication/accounts") => j(json!({"accounts": [{"upn": "a@x.it", "status": "ok"}]})),
+        ("POST", "/api/communication/read") if body.contains("down@x.it") => (502, "application/json", r#"{"errore":"Outlook non raggiungibile"}"#.into()),
+        ("POST", "/api/communication/read") => j(json!({"value": [{"Id": "m1"}]})),
+        ("POST", "/api/conversations.history") => j(json!({"ok": true, "messages": [{"ts": "1700000000.000100", "text": "hi"}]})),
+        ("GET", "/api/everflow/saved") if credentials.starts_with("authorization=Bearer relay-token|") => {
+            j(json!({"slots": [{"slot": 3, "snapshot": "{\"state\":{}}"}, {"slot": 7, "error": "store-unavailable"}], "asked": pq}))
+        }
+        ("GET", "/api/everflow/saved") => (401, "application/json", r#"{"detail":"Missing or wrong token"}"#.into()),
         ("GET", "/api/token-posta") => j(json!({"account": [{"upn": "a@x.it", "token": jwt("a@x.it")}]})),
         ("GET", "/api/communication/google/accounts") => j(json!({"accounts": [{"provider": "gmail", "account": "g@x.it", "status": "ok"}]})),
         ("POST", "/api/communication/gmail/write") => j(json!({"id": "d1", "message": {"id": "m1", "threadId": "t1"}})),
@@ -145,10 +161,8 @@ fn the_server_end_to_end() {
             teams: Teams::from_env(Some(&format!("http://127.0.0.1:{b}/mcp")), Some("relay-token")).unwrap(),
             slack: Some(Slack::new(store.to_str().unwrap())),
         };
-        let app = Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into() });
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::task::spawn_local(serve(app, listener, std::future::pending()));
+        let app = Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into(), everflow: Some(EVERFLOW.into()) });
+        let port = start(app).await;
 
         // the wire, as the TypeScript server answered
         let (s, t, body) = post(port, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}"#, &[]).await;
@@ -228,6 +242,134 @@ fn the_server_end_to_end() {
         assert!(posted["data"].get("permalink").is_none());
         assert_eq!(tool(port, "chat_search", json!({"account_id": "slack:T1", "query": "none"})).await["data"], json!({}));
         assert_eq!(tool(port, "chat_send", json!({"account_id": "slack:T1", "conversation_id": conv, "text": "  "})).await["code"], json!("INVALID_INPUT"));
+
+        // Everflow: everflow_routes_need_their_own_token
+        let accounts = json!({"requests": [{"path": "/api/communication/accounts"}]}).to_string();
+        let mcp_bearer = format!("Bearer {TOKEN}");
+        let ef_bearer = format!("Bearer {EVERFLOW}");
+        assert_eq!(everflow(port, "POST", "agent", &accounts, &[]).await.0, 200);
+        for refused in [vec![("Authorization", "")], vec![("Authorization", mcp_bearer.as_str())], vec![("Authorization", "Bearer wrong")]] {
+            assert_eq!(everflow(port, "POST", "agent", &accounts, &refused).await.0, 401, "{refused:?}");
+        }
+        assert_eq!(everflow(port, "POST", "agent", &accounts, &[("Origin", "https://x")]).await.0, 403);
+        assert_eq!(everflow(port, "POST", "agent", &accounts, &[("Host", "evil")]).await.0, 421);
+        assert_eq!(post(port, r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#, &[("Authorization", ef_bearer.as_str())]).await.0, 401);
+        assert_eq!(everflow(port, "POST", "nothing", &accounts, &[]).await.0, 404);
+        assert_eq!(everflow(port, "GET", "agent", "", &[]).await.0, 405);
+
+        // agent_passes_status_and_body_through
+        log.lock().unwrap().clear();
+        let two = json!({"requests": [
+            {"path": "/api/communication/read", "body": {"account": "a@x.it", "path": "me/MailFolders/Inbox/messages"}},
+            {"path": "/api/communication/read", "body": {"account": "down@x.it", "path": "me/MailFolders/Inbox/messages"}},
+        ]});
+        let (s, body) = everflow(port, "POST", "agent", &two.to_string(), &[]).await;
+        assert_eq!(s, 200);
+        let r: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(r, json!({"responses": [{"status": 200, "body": "{\"value\":[{\"Id\":\"m1\"}]}"}, {"status": 502, "body": "{\"errore\":\"Outlook non raggiungibile\"}"}]}));
+        let asked: Vec<(String, String, String, String)> = log.lock().unwrap().clone();
+        assert_eq!(asked.len(), 2);
+        assert_eq!(asked[0].2, r#"{"account":"a@x.it","path":"me/MailFolders/Inbox/messages"}"#);
+        assert!(asked[0].3.starts_with("authorization=Bearer key|"));
+        let (s, body) = everflow(port, "POST", "agent", &accounts, &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["responses"][0]["status"].clone()), (200, json!(200)));
+
+        // agent_refuses_paths_outside_the_list
+        log.lock().unwrap().clear();
+        for bad in ["/api/communication/gmail/write", "/api/x", "/api/communication/read?x=1", "/api/token-posta"] {
+            let req = json!({"requests": [{"path": "/api/communication/accounts"}, {"path": bad, "body": {}}]});
+            assert_eq!(everflow(port, "POST", "agent", &req.to_string(), &[]).await.0, 400, "{bad}");
+        }
+        assert_eq!(everflow(port, "POST", "agent", "{nope", &[]).await.0, 400);
+        assert_eq!(everflow(port, "POST", "agent", r#"{"requests":[{"path":"/api/communication/read"}]}"#, &[]).await.0, 400);
+        assert!(log.lock().unwrap().is_empty());
+
+        // slack_reads_only_the_read_methods
+        let req = |method: &str| json!({"workspace": "T1", "requests": [{"method": method, "params": {"channel": "C1", "limit": "200"}}]}).to_string();
+        assert_eq!(everflow(port, "POST", "slack", &req("chat.postMessage"), &[]).await.0, 400);
+        assert_eq!(everflow(port, "POST", "slack", &json!({"workspace": "../x", "requests": []}).to_string(), &[]).await.0, 400);
+        assert_eq!(everflow(port, "POST", "slack", &json!({"workspace": "T1", "requests": [{"method": "auth.test", "params": {"n": 1}}]}).to_string(), &[]).await.0, 400);
+        assert!(log.lock().unwrap().is_empty());
+        let (s, body) = everflow(port, "POST", "slack", &req("conversations.history"), &[]).await;
+        assert_eq!(s, 200);
+        let r: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(r["responses"][0]["status"], json!(200));
+        assert_eq!(serde_json::from_str::<Value>(r["responses"][0]["body"].as_str().unwrap()).unwrap()["messages"][0]["ts"], json!("1700000000.000100"));
+        let sent = log.lock().unwrap().iter().find(|e| e.1 == "/api/conversations.history").cloned().unwrap();
+        assert_eq!(sent.2, "token=xoxc-1&channel=C1&limit=200");
+        assert!(sent.3.ends_with("|cookie=d=xoxd%2F1"), "{}", sent.3);
+        assert_eq!(everflow(port, "POST", "slack", &json!({"workspace": "T9", "requests": [{"method": "auth.test"}]}).to_string(), &[]).await.0, 404);
+
+        // teams_forwards_saved
+        let (s, body) = everflow(port, "GET", "teams?since=1790431000000&max_rows=10", "", &[]).await;
+        assert_eq!(s, 200);
+        let r: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(r["slots"], json!([{"slot": 3, "snapshot": "{\"state\":{}}"}, {"slot": 7, "error": "store-unavailable"}]));
+        assert_eq!(r["asked"], json!("/api/everflow/saved?since=1790431000000&max_rows=10"));
+        assert_eq!(everflow(port, "GET", "teams?since=x&max_rows=10", "", &[]).await.0, 400);
+        assert_eq!(everflow(port, "GET", "teams?since=1", "", &[]).await.0, 400);
+
+        // more_than_100_requests_is_refused
+        let many: Vec<Value> = (0..101).map(|_| json!({"path": "/api/communication/accounts"})).collect();
+        assert_eq!(everflow(port, "POST", "agent", &json!({"requests": many}).to_string(), &[]).await.0, 400);
+        let many: Vec<Value> = (0..101).map(|_| json!({"method": "auth.test"})).collect();
+        assert_eq!(everflow(port, "POST", "slack", &json!({"workspace": "T1", "requests": many}).to_string(), &[]).await.0, 400);
+
+        // without EVERFLOW_TOKEN the routes are off; a relay that does not answer or refuses is 502 on teams
+        let comm = Communication {
+            outlook: Outlook::new(Tokens::new(&broker, "key").unwrap()),
+            google: Some(Gateway::from_broker(&broker, "key").unwrap()),
+            teams: Teams::from_env(Some("http://127.0.0.1:9/mcp"), Some("relay-token")).unwrap(),
+            slack: None,
+        };
+        let off = start(Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into(), everflow: None })).await;
+        assert_eq!(everflow(off, "POST", "agent", &accounts, &[]).await.0, 404);
+        let comm = Communication {
+            outlook: Outlook::new(Tokens::new(&broker, "key").unwrap()),
+            google: None,
+            teams: Teams::from_env(Some("http://127.0.0.1:9/mcp"), Some("relay-token")).unwrap(),
+            slack: None,
+        };
+        let down = start(Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into(), everflow: Some(EVERFLOW.into()) })).await;
+        let (s, body) = everflow(down, "GET", "teams?since=0&max_rows=10", "", &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay unreachable".into())));
+        assert_eq!(everflow(down, "POST", "agent", &accounts, &[]).await.0, 404);
+        assert_eq!(everflow(down, "POST", "slack", &req("auth.test"), &[]).await.0, 404);
+        let comm = Communication {
+            outlook: Outlook::new(Tokens::new(&broker, "key").unwrap()),
+            google: None,
+            teams: Teams::from_env(Some(&format!("http://127.0.0.1:{b}/mcp")), Some("not-the-relay-token")).unwrap(),
+            slack: None,
+        };
+        let refused = start(Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into(), everflow: Some(EVERFLOW.into()) })).await;
+        let (s, body) = everflow(refused, "GET", "teams?since=0&max_rows=10", "", &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay HTTP 401".into())));
         let _ = std::fs::remove_dir_all(&dir);
     });
+}
+
+async fn start(app: Arc<App>) -> u16 {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::task::spawn_local(serve(app, listener, std::future::pending()));
+    port
+}
+
+/// A call to /everflow/<route> with EVERFLOW_TOKEN and the right Host; `headers` replace or add.
+async fn everflow(port: u16, method: &str, route: &str, body: &str, headers: &[(&str, &str)]) -> (u16, String) {
+    let auth = format!("Bearer {EVERFLOW}");
+    let mut all: Vec<(&str, &str)> = vec![("Host", "mcp.test"), ("Authorization", &auth), ("Content-Type", "application/json")];
+    for (k, v) in headers {
+        all.retain(|(x, _)| !x.eq_ignore_ascii_case(k));
+        if !v.is_empty() {
+            all.push((k, v));
+        }
+    }
+    let url = format!("http://127.0.0.1:{port}/everflow/{route}");
+    let mut req = if method == "GET" { reqwest::Client::new().get(url) } else { reqwest::Client::new().post(url).body(body.to_string()) };
+    for (k, v) in all {
+        req = req.header(k, v);
+    }
+    let r = req.send().await.unwrap();
+    (r.status().as_u16(), r.text().await.unwrap())
 }

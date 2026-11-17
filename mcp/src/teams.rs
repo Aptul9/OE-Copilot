@@ -40,6 +40,22 @@ impl Teams {
         }
     }
 
+    /// The relay's saved messages since a time, for Everflow (everflow.rs): GET /api/everflow/saved at the origin of the
+    /// relay address, with the same token. The status and the body as text, at most `max_bytes`.
+    pub async fn saved(&self, since: u64, max_rows: u32, max_bytes: usize) -> Result<(u16, String)> {
+        let mut url = self.url.join("/api/everflow/saved").map_err(|_| Error::provider("url"))?;
+        url.query_pairs_mut().append_pair("since", &since.to_string()).append_pair("max_rows", &max_rows.to_string());
+        let r = http_client()
+            .get(url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(60))
+            .send()
+            .await
+            .map_err(|e| Error::provider(format!("Teams relay: {e}")))?;
+        let status = r.status().as_u16();
+        Ok((status, crate::text_body(r, max_bytes).await?))
+    }
+
     async fn request(&self, name: &str, args: Value) -> std::result::Result<Value, String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let body = json!({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": name, "arguments": args}});

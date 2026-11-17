@@ -22,10 +22,12 @@ Streamable HTTP, stateless, as the TypeScript SDK 2.4 served 2025-era clients: e
 | `POST /mcp` | MCP. Needs `Authorization: Bearer <MCP_HTTP_TOKEN>` (constant-time compare), a `Host` listed in `MCP_HTTP_HOSTS` (421 otherwise: DNS rebinding), no `Origin` header (403: no browser callers), body up to 4 MiB (413), `Content-Type: application/json` (415), `Accept` with both `application/json` and `text/event-stream` (406) |
 | `GET`, `DELETE /mcp` | 405 `Method not allowed.`: no sessions |
 | `GET /healthz` | `{"ok":true}`, no auth, no backend call |
+| `/everflow/*` | Read-only routes for Everflow, `Authorization: Bearer <EVERFLOW_TOKEN>`; see "Everflow" |
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `MCP_HTTP_TOKEN` | | Client bearer token, at least 32 characters |
+| `EVERFLOW_TOKEN` | | Bearer of `/everflow/*`, at least 32 characters, different from `MCP_HTTP_TOKEN`; unset = those routes answer 404 |
 | `MCP_HTTP_HOSTS` | | Comma-separated `Host` values accepted on `/mcp` |
 | `OUTLOOK_MCP_BROKER_URL` | | OE Copilot token broker (`http://agent:8180/api/token-posta`); Gmail and Google Chat go to the same origin |
 | `OUTLOOK_MCP_BROKER_KEY` | | Agent `API_KEY` |
@@ -58,6 +60,18 @@ Client registration, OpenCode (`opencode.jsonc`):
 ```
 
 Claude Code: `claude mcp add --transport http --scope user communication https://teams.example.com/communication/mcp --header "Authorization: Bearer <token>"`.
+
+### Everflow
+
+Everflow reads every source it takes from this host through three routes, with one read-only token (`src/everflow.rs`). `EVERFLOW_TOKEN` opens only these routes and `MCP_HTTP_TOKEN` never does; `Host` and `Origin` rules are those of `/mcp`. The routes forward the requests Everflow already speaks, so its parsers see the same bodies as before.
+
+| Route | Request | Answer |
+|---|---|---|
+| `POST /everflow/agent` | `{"requests": [{"path", "body"?}]}`, at most 100. Paths: `/api/communication/accounts` (no body), `/api/communication/read`, `/api/communication/gmail/read`, `/api/communication/gchat/read` (object body). Anything else: 400 before any call | `{"responses": [{"status", "body"}]}` in request order: the agent's status and body as text; agent unreachable = 502 for that request |
+| `POST /everflow/slack` | `{"workspace": "T...", "requests": [{"method", "params"?}]}`, at most 100, string params. Methods: `auth.test`, `client.counts`, `subscriptions.thread.getView`, `conversations.history`, `conversations.replies`, `conversations.info`, `users.info`. Unknown workspace: 404 | The same shape, Slack's status and body; the session comes from the slackcli store, through the Slack limiter, no retry |
+| `GET /everflow/teams?since=<ms>&max_rows=<n>` | `max_rows` 1 to 100000 | TeamsRelay `GET /api/everflow/saved` with its `MCP_TOKEN`, body unchanged on 200; any other status or no answer = 502 `{"error"}` |
+
+An answer above 64 MiB stops the call with 502 `{"error":"answer too large"}`, never a cut body. A backend that is off (no Teams, no Slack, no agent) answers 404 on its route.
 
 ## Unified contract
 

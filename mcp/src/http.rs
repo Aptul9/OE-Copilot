@@ -2,6 +2,7 @@
 //! holds only MCP_HTTP_TOKEN.
 //!   POST/GET/DELETE /mcp   Authorization: Bearer <MCP_HTTP_TOKEN>, Host in MCP_HTTP_HOSTS, no Origin (no browser callers)
 //!   GET /healthz           {"ok":true}, no auth, no backend call: for the container healthcheck
+//!   /everflow/*            Authorization: Bearer <EVERFLOW_TOKEN>, read-only routes for Everflow (everflow.rs)
 
 use crate::communication::Communication;
 use crate::mcp::{self, Kind, error_body, kind};
@@ -27,6 +28,8 @@ pub struct App {
     pub comm: Communication,
     pub token: String,
     pub hosts: HashSet<String>,
+    /// EVERFLOW_TOKEN: the bearer of the read-only /everflow/* routes (everflow.rs); None turns them off
+    pub everflow: Option<String>,
 }
 
 /// MCP_HTTP_HOSTS: comma-separated Host header values.
@@ -34,7 +37,7 @@ pub fn hosts_from_env(raw: &str) -> HashSet<String> {
     raw.split(',').map(|h| h.trim().to_lowercase()).filter(|h| !h.is_empty()).collect()
 }
 
-fn empty(status: u16, headers: &[(&str, &str)]) -> Response<Body> {
+pub(crate) fn empty(status: u16, headers: &[(&str, &str)]) -> Response<Body> {
     let mut r = Response::builder().status(status);
     for (k, v) in headers {
         r = r.header(*k, *v);
@@ -42,7 +45,7 @@ fn empty(status: u16, headers: &[(&str, &str)]) -> Response<Body> {
     r.body(Empty::new().boxed_unsync()).expect("response")
 }
 
-fn json(status: u16, body: &Value, headers: &[(&str, &str)]) -> Response<Body> {
+pub(crate) fn json(status: u16, body: &Value, headers: &[(&str, &str)]) -> Response<Body> {
     let mut r = Response::builder().status(status).header("content-type", "application/json");
     for (k, v) in headers {
         r = r.header(*k, *v);
@@ -50,14 +53,14 @@ fn json(status: u16, body: &Value, headers: &[(&str, &str)]) -> Response<Body> {
     r.body(Full::new(Bytes::from(crate::js::stringify(body))).boxed_unsync()).expect("response")
 }
 
-fn bearer_matches(header: Option<&str>, token: &str) -> bool {
+pub(crate) fn bearer_matches(header: Option<&str>, token: &str) -> bool {
     let got = header.unwrap_or("").as_bytes();
     let want = format!("Bearer {token}");
     let want = want.as_bytes();
     got.len() == want.len() && got.iter().zip(want).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0
 }
 
-fn header<'a>(req: &'a Request<Incoming>, name: &str) -> Option<&'a str> {
+pub(crate) fn header<'a>(req: &'a Request<Incoming>, name: &str) -> Option<&'a str> {
     req.headers().get(name).and_then(|v| v.to_str().ok())
 }
 
@@ -76,6 +79,9 @@ pub async fn handle(app: Arc<App>, req: Request<Incoming>) -> (Response<Body>, S
 async fn route(app: Arc<App>, req: Request<Incoming>, path: &str) -> Response<Body> {
     if path == "/healthz" && req.method() == hyper::Method::GET {
         return json(200, &serde_json::json!({"ok": true}), &[]);
+    }
+    if path.starts_with("/everflow/") {
+        return crate::everflow::handle(&app, req, path).await;
     }
     if path != "/mcp" {
         return empty(404, &[]);

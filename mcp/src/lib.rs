@@ -3,6 +3,7 @@
 
 pub mod calendar;
 pub mod communication;
+pub mod everflow;
 pub mod gateway;
 pub mod gmail;
 pub mod html;
@@ -59,6 +60,18 @@ pub fn http_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).connect_timeout(std::time::Duration::from_secs(15)).build().expect("HTTP client")
     })
+}
+
+/// A response body as text, read in chunks; past `max_bytes` it is an error, never a cut body.
+pub async fn text_body(mut r: reqwest::Response, max_bytes: usize) -> Result<String> {
+    let mut out: Vec<u8> = vec![];
+    while let Some(chunk) = r.chunk().await.map_err(|e| Error::provider(format!("response body: {e}")))? {
+        if out.len() + chunk.len() > max_bytes {
+            return Err(Error::comm("TOO_LARGE", "answer too large"));
+        }
+        out.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
 /// The JSON of a response body, or None when it is not JSON.

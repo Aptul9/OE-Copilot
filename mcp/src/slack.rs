@@ -215,6 +215,45 @@ impl Slack {
         Ok(Workspace { user_id: s("user_id"), auth })
     }
 
+    /// Whether the store has this workspace (profile key, profile, workspace id or name, as `workspace` finds it).
+    pub fn knows(&self, workspace: &str) -> bool {
+        self.workspace(workspace).is_ok()
+    }
+
+    /// One call for Everflow (everflow.rs): the same session and headers as `attempt`, through the same limiter, no
+    /// retry; the status and the body as text, at most `max_bytes`. The caller checks the method.
+    pub async fn raw(&self, workspace: &str, method: &str, params: &[(String, String)], max_bytes: usize) -> Result<(u16, String)> {
+        let w = self.workspace(workspace)?;
+        let _slot = LIMITER.slots.acquire().await.expect("limiter");
+        {
+            let mut last = LIMITER.last.lock().await;
+            if let Some(t) = *last {
+                tokio::time::sleep(Duration::from_millis(200).saturating_sub(t.elapsed())).await;
+            }
+            *last = Some(Instant::now());
+        }
+        let mut form = form_urlencoded::Serializer::new(String::new());
+        if let Auth::Browser { xoxc, .. } = &w.auth {
+            form.append_pair("token", xoxc);
+        }
+        for (k, v) in params {
+            form.append_pair(k, v);
+        }
+        let mut req = http_client().post(format!("{}/api/{method}", api_base(&w.auth))).timeout(Duration::from_secs(30));
+        match &w.auth {
+            Auth::Browser { xoxd, .. } => {
+                req = req
+                    .header("Cookie", format!("d={}", crate::js::encode_uri_component(xoxd)))
+                    .header("Origin", "https://app.slack.com")
+                    .header("User-Agent", "Mozilla/5.0 (compatible; SlackCLI/0.1.0)");
+            }
+            Auth::Standard { token } => req = req.header("Authorization", format!("Bearer {token}")),
+        }
+        let r = req.header("Content-Type", "application/x-www-form-urlencoded").body(form.finish()).send().await.map_err(|_| failed())?;
+        let status = r.status().as_u16();
+        Ok((status, crate::text_body(r, max_bytes).await?))
+    }
+
     async fn attempt(&self, w: &Workspace, method: &str, params: &[(&str, String)]) -> std::result::Result<Value, (Option<u16>, Option<u64>, bool, Fail)> {
         let _slot = LIMITER.slots.acquire().await.expect("limiter");
         {

@@ -60,4 +60,23 @@ impl Gateway {
         }
         Ok(payload)
     }
+
+    /// The same call for Everflow (everflow.rs): any status, the body as text, at most `max_bytes`.
+    pub async fn raw(&self, path: &str, body: Option<&Value>, max_bytes: usize) -> Result<(u16, String)> {
+        if !ENDPOINTS.contains(&path) {
+            return Err(Error::provider("Unknown communication endpoint"));
+        }
+        let url = self.base.join(path).map_err(|_| Error::provider("url"))?;
+        let mut req = match body {
+            Some(_) => http_client().post(url),
+            None => http_client().get(url),
+        };
+        req = req.header("Authorization", format!("Bearer {}", self.key)).header("Content-Type", "application/json").timeout(Duration::from_secs(30));
+        if let Some(b) = body {
+            req = req.body(serde_json::to_vec(b).unwrap_or_default());
+        }
+        let r = req.send().await.map_err(|e| Error::provider(format!("Communication service: {e}")))?;
+        let status = r.status().as_u16();
+        Ok((status, crate::text_body(r, max_bytes).await?))
+    }
 }

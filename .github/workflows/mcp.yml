@@ -53,11 +53,16 @@ jobs:
           OUTLOOK_MCP_BROKER_KEY: ${{ secrets.API_KEY }}
           OUTLOOK_MCP_TEAMS_URL: ${{ vars.OUTLOOK_MCP_TEAMS_URL }}
           OUTLOOK_MCP_TEAMS_TOKEN: ${{ secrets.MCP_TOKEN }}
+          # read-only bearer of /everflow/*; without the secret those routes stay off
+          EVERFLOW_TOKEN: ${{ secrets.EVERFLOW_TOKEN }}
         run: |
-          for k in MCP_HTTP_TOKEN MCP_HTTP_HOSTS OUTLOOK_MCP_BROKER_URL OUTLOOK_MCP_BROKER_KEY OUTLOOK_MCP_TEAMS_URL OUTLOOK_MCP_TEAMS_TOKEN; do
-            [ -n "${!k}" ] || { echo "$k is empty in the environment mcp" >&2; exit 1; }
-            printf '%s=%s\n' "$k" "${!k}"
-          done > /tmp/mcp.env
+          {
+            for k in MCP_HTTP_TOKEN MCP_HTTP_HOSTS OUTLOOK_MCP_BROKER_URL OUTLOOK_MCP_BROKER_KEY OUTLOOK_MCP_TEAMS_URL OUTLOOK_MCP_TEAMS_TOKEN; do
+              [ -n "${!k}" ] || { echo "$k is empty in the environment mcp" >&2; exit 1; }
+              printf '%s=%s\n' "$k" "${!k}"
+            done
+            [ -z "$EVERFLOW_TOKEN" ] || printf 'EVERFLOW_TOKEN=%s\n' "$EVERFLOW_TOKEN"
+          } > /tmp/mcp.env
           ssh "$TARGET" "umask 077; cat > $MCP_DIR/.env.new && mv $MCP_DIR/.env.new $MCP_DIR/.env" < /tmp/mcp.env
           rm -f /tmp/mcp.env
 

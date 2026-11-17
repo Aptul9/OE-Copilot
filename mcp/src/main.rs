@@ -51,6 +51,13 @@ async fn run() {
     if token.len() < MIN_TOKEN {
         fail(&format!("MCP_HTTP_TOKEN must contain at least {MIN_TOKEN} characters"));
     }
+    let everflow = env("EVERFLOW_TOKEN");
+    if everflow.as_ref().is_some_and(|t| t.len() < MIN_TOKEN) {
+        fail(&format!("EVERFLOW_TOKEN must contain at least {MIN_TOKEN} characters, or be unset to turn /everflow off"));
+    }
+    if everflow.as_deref() == Some(token.as_str()) {
+        fail("EVERFLOW_TOKEN must differ from MCP_HTTP_TOKEN");
+    }
     let hosts = hosts_from_env(&env("MCP_HTTP_HOSTS").unwrap_or_default());
     if hosts.is_empty() {
         fail("MCP_HTTP_HOSTS must list the accepted Host headers");
@@ -68,14 +75,15 @@ async fn run() {
     };
     let slack = env("SLACK_WORKSPACES").map(|p| Slack::new(&p));
     let comm = Communication { outlook: Outlook::new(tokens), google: Some(google), teams, slack };
-    let app = Arc::new(App { comm, token, hosts });
+    let app = Arc::new(App { comm, token, hosts, everflow });
     let bind = env("BIND_HOST").unwrap_or_else(|| "127.0.0.1".into());
     let port = port();
     let listener = tokio::net::TcpListener::bind((bind.as_str(), port)).await.unwrap_or_else(|e| fail(&format!("cannot listen on {bind}:{port}: {e}")));
     eprintln!(
-        "communication-mcp: remote MCP on {bind}:{port}/mcp, Teams {}, Slack {}",
+        "communication-mcp: remote MCP on {bind}:{port}/mcp, Teams {}, Slack {}, Everflow {}",
         if app.comm.teams.is_some() { "on" } else { "off" },
-        if app.comm.slack.is_some() { "on" } else { "off" }
+        if app.comm.slack.is_some() { "on" } else { "off" },
+        if app.everflow.is_some() { "on" } else { "off" }
     );
     let stop = async {
         let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("signal");

@@ -4,6 +4,7 @@ pub mod accounts;
 pub mod admin;
 pub mod calls;
 pub mod events;
+pub mod everflow;
 pub mod messages;
 pub mod relay;
 
@@ -18,6 +19,7 @@ pub fn table() -> &'static [Route] {
         t.extend(admin::routes());
         t.extend(calls::routes());
         t.extend(events::routes());
+        t.extend(everflow::routes());
         t.extend(messages::routes());
         t.extend(relay::routes());
         t.extend(crate::mcp::routes());

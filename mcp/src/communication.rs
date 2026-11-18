@@ -31,7 +31,7 @@ const GMAIL_CAPS: [&str; 2] = ["email.read", "email.write"];
 const GCHAT_CAPS: [&str; 8] = ["chat.list", "chat.read", "chat.search", "chat.send", "chat.edit", "chat.delete", "chat.react", "chat.attachment"];
 const TEAMS_CAPS: [&str; 7] = ["chat.list", "chat.read", "chat.send", "chat.edit", "chat.delete", "chat.react", "chat.attachment"];
 
-type Args = serde_json::Map<String, Value>;
+pub type Args = serde_json::Map<String, Value>;
 
 fn s<'a>(x: &'a Args, k: &str) -> Option<&'a str> {
     x.get(k).and_then(Value::as_str)
@@ -823,6 +823,9 @@ pub async fn run(c: &Communication, name: &str, x: &Args) -> Result<Value> {
     }
     if name == "calendar_events" {
         return c.calendar_events(x).await;
+    }
+    if x.get("download") == Some(&Value::Bool(true)) {
+        return crate::files::link(c, name, x).await;
     }
     let (family, op) = name.split_once('_').ok_or_else(|| Error::provider("tool"))?;
     let a = c.account(s(x, "account_id").unwrap_or("")).await?;

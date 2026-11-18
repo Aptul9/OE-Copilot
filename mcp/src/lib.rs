@@ -4,6 +4,7 @@
 pub mod calendar;
 pub mod communication;
 pub mod everflow;
+pub mod files;
 pub mod gateway;
 pub mod gmail;
 pub mod html;

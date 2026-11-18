@@ -3,6 +3,7 @@
 //!   POST/GET/DELETE /mcp   Authorization: Bearer <MCP_HTTP_TOKEN>, Host in MCP_HTTP_HOSTS, no Origin (no browser callers)
 //!   GET /healthz           {"ok":true}, no auth, no backend call: for the container healthcheck
 //!   /everflow/*            Authorization: Bearer <EVERFLOW_TOKEN>, read-only routes for Everflow (everflow.rs)
+//!   GET /files/<ticket>    an attachment through a signed ten-minute link, no bearer (files.rs)
 
 use crate::communication::Communication;
 use crate::mcp::{self, Kind, error_body, kind};
@@ -82,6 +83,9 @@ async fn route(app: Arc<App>, req: Request<Incoming>, path: &str) -> Response<Bo
     }
     if path.starts_with("/everflow/") {
         return crate::everflow::handle(&app, req, path).await;
+    }
+    if path.starts_with("/files/") {
+        return crate::files::handle(&app, req).await;
     }
     if path != "/mcp" {
         return empty(404, &[]);

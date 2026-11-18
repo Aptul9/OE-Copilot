@@ -23,6 +23,7 @@ Streamable HTTP, stateless, as the TypeScript SDK 2.4 served 2025-era clients: e
 | `GET`, `DELETE /mcp` | 405 `Method not allowed.`: no sessions |
 | `GET /healthz` | `{"ok":true}`, no auth, no backend call |
 | `/everflow/*` | Read-only routes for Everflow, `Authorization: Bearer <EVERFLOW_TOKEN>`; see "Everflow" |
+| `GET /files/<ticket>` | One attachment through a download link (see "Download links"): no bearer, same `Host` and `Origin` rules as `/mcp`. 404 unknown link, 410 expired, 400 `{code, message}` for a tool error, 502 provider failure |
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -34,6 +35,7 @@ Streamable HTTP, stateless, as the TypeScript SDK 2.4 served 2025-era clients: e
 | `OUTLOOK_MCP_TEAMS_URL`, `OUTLOOK_MCP_TEAMS_TOKEN` | | TeamsRelay `/mcp` and its `MCP_TOKEN`; empty URL = no Teams |
 | `SLACK_WORKSPACES` | `/slackcli/workspaces.json` (image) | slackcli workspace store; unset = no Slack |
 | `COMMUNICATION_ID_KEY` | | Key of the resource handles; compose sets it to `MCP_HTTP_TOKEN`, so handles survive restarts |
+| `MCP_PUBLIC_URL` | `https://<first non-loopback MCP_HTTP_HOSTS name>/communication` | Public base of the download links |
 | `PORT` | `8190` | Listen port |
 | `BIND_HOST` | `127.0.0.1` (`0.0.0.0` in the image) | Listen address |
 
@@ -81,6 +83,10 @@ Mail compose, same schema for Outlook and Gmail: `email_send` (to, cc, bcc, repl
 
 Outlook lists follow same-collection pagination links (at most 20 pages) and report `has_more`, `incomplete` and `stop_reason`. Teams reads its saved chat window: no search, no threads, no uploads. Google Chat search scans recent topics.
 
+### Download links
+
+`email_attachment` and `chat_attachment` take `download: true`: the answer is `{download_url, expires_at}` in place of the bytes, at once, so the bytes never pass through the model. The client saves the file with `curl -fsSL -o <file> <url>`. The link works ten minutes, with no token: it is the tool call itself, signed with the handle key and its expiry (`src/files.rs`, `identity::ticket`). The server keeps nothing; the GET fetches the attachment from the provider and answers it with its type and, when the provider gives it, its name. Outlook attached items and links have no file (`NO_FILE`); Teams gives one attachment per link, `index` picks it.
+
 Slack: the calls slackcli 0.19.1 made, from the same workspace store (browser session: `xoxc` token and `d` cookie, sent only to the https `*.slack.com` workspace origin), with its pacing (two calls at a time, 200 ms between starts) and retries (a 429 for any call, a 5xx or network failure for reads only). Answers keep the slackcli `--json` shapes. Edit and delete check that the message is the user's own.
 
 ## Differences from the TypeScript server
@@ -88,6 +94,7 @@ Slack: the calls slackcli 0.19.1 made, from the same workspace store (browser se
 - No local mode: no stdio entry, no SSH or service-gateway token source, no local file attachments. `ts/` still has them.
 - Slack without the slackcli subprocess: a failed Slack call reads `Slack request failed; write outcome may be unknown`; an uploaded file keeps its name (slackcli saw it as `0-<name>`).
 - `serverInfo.version` is `5.0.0`.
+- Download links (`download` on `email_attachment` and `chat_attachment`, `GET /files/*`) exist only here.
 - The 2026-07-28 protocol revision (per-request `_meta` envelope) is not served; no client uses it.
 
 ## Checks

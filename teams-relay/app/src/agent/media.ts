@@ -15,8 +15,9 @@ const LOGO_EVERY = 86_400_000;
 // Where Microsoft keeps the images of the sign-in branding of organizations (aadcdn.msauthimages.net,
 // aadcdn.msftauthimages.net)
 const BRANDING_HOST = /^https:\/\/[a-z0-9-]+\.(msauthimages|msftauthimages)\.net\//;
-// Where chatsvc messages point their images (AMS): eu-api.asm.skype.com...
-const AMS_HOST = /^https:\/\/[a-z0-9-]+\.asm\.skype\.com\//;
+// Where chatsvc messages point their images (AMS): eu-api.asm.skype.com..., or its Teams gateway
+// it-prod.asyncgw.teams.microsoft.com... (prod, 2026-11-18), which takes the same token
+const AMS_HOST = /^https:\/\/[a-z0-9-]+\.(asm\.skype\.com|asyncgw\.teams\.microsoft\.com)\//;
 const PNG_MAGIC = Buffer.from("89504e470d0a1a0a", "hex");
 // PNG or JPEG by the first bytes: the formats of a sign-in logo
 const logoExt = (d: Buffer) => (d.subarray(0, 8).equals(PNG_MAGIC) ? "png" : d[0] === 0xff && d[1] === 0xd8 && d[2] === 0xff ? "jpg" : null);

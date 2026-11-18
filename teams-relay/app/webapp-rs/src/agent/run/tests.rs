@@ -301,11 +301,19 @@ fn opens_a_chat_through_chatsvc_and_marks_it_read() {
 
 #[test]
 fn saves_the_image_of_a_message_with_the_chatsvc_token_once() {
+    // AMS, and its Teams gateway
+    for ams in
+        ["https://eu-api.asm.skype.com/v1/objects/0-weu-d2-abc/views/imgo", "https://it-prod.asyncgw.teams.microsoft.com/v1/objects/0-itn-d3-abc/views/imgo"]
+    {
+        saves_the_image_from(ams);
+    }
+}
+
+fn saves_the_image_from(ams: &'static str) {
     run(async {
         let w = World::new(&[]);
         *w.chats.borrow_mut() = vec![one_to_one("19:anna@unq.gbl.spaces", "anna", "hello", 1, true)];
         read_list(&w.l).await;
-        let ams = "https://eu-api.asm.skype.com/v1/objects/0-weu-d2-abc/views/imgo";
         let mut jpeg = vec![0xff, 0xd8, 0xff, 0xe0];
         jpeg.extend(std::iter::repeat_n(1u8, 2000));
         let image = jpeg.clone();

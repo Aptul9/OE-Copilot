@@ -18,7 +18,9 @@ const LOGO_EVERY_MS: i64 = 86_400_000;
 pub const MAX_DOWNLOAD: usize = 100_000_000;
 const MEDIA_EXT: [(&str, &str); 4] = [("image/png", "png"), ("image/jpeg", "jpg"), ("image/gif", "gif"), ("image/webp", "webp")];
 static BRANDING_HOST: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^https://[a-z0-9-]+\.(msauthimages|msftauthimages)\.net/").expect("fixed"));
-static AMS_HOST: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^https://[a-z0-9-]+\.asm\.skype\.com/").expect("fixed"));
+/// AMS, or its Teams gateway (asyncgw), which takes the same token (src/agent/media.ts)
+static AMS_HOST: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^https://[a-z0-9-]+\.(asm\.skype\.com|asyncgw\.teams\.microsoft\.com)/").expect("fixed"));
 /// The names the web app serves: 16 hex characters and an extension (MEDIA_NAME)
 static MEDIA_NAME: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"^[0-9a-f]{16}\.(png|jpg|gif|webp)$").expect("fixed"));
 

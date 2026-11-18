@@ -89,6 +89,10 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
         ("POST", "/api/v2.0/me/messages") => (201, "application/json", json!({"Id": "d1", "Subject": "s"}).to_string()),
         ("GET", "/api/v2.0/me/messages/d1") => j(json!({"IsDraft": true, "Subject": "s", "ToRecipients": [{"EmailAddress": {"Address": "b@x.it"}}]})),
         ("POST", "/api/v2.0/me/messages/d1/send") => (202, "application/json", String::new()),
+        ("GET", "/api/v2.0/me/messages/m1/attachments") => j(json!({"value": [{"Id": "a1", "Name": "Q3 report.pdf", "Size": 5}]})),
+        ("GET", "/api/v2.0/me/messages/m1/attachments/a1") => {
+            j(json!({"Id": "a1", "Name": "Q3 report.pdf", "ContentType": "application/pdf", "ContentBytes": "aGVsbG8="}))
+        }
         ("POST", "/api/conversations.list") => j(
             json!({"ok": true, "channels": [{"id": "D1", "is_im": true, "user": "U1"}, {"id": "C1", "name": "general", "topic": {"value": "t"}}], "response_metadata": {"next_cursor": ""}}),
         ),
@@ -154,6 +158,7 @@ fn the_server_end_to_end() {
             std::env::set_var("COMMUNICATION_ID_KEY", TOKEN);
             std::env::set_var("OUTLOOK_MCP_TEST_REST", format!("http://127.0.0.1:{b}/api/v2.0"));
             std::env::set_var("SLACK_TEST_BASE", format!("http://127.0.0.1:{b}"));
+            std::env::set_var("MCP_PUBLIC_URL", "https://mcp.test/communication/");
         }
         let broker = format!("http://127.0.0.1:{b}/api/token-posta");
         let comm = Communication {
@@ -216,6 +221,39 @@ fn the_server_end_to_end() {
         let d = tool(port, "email_send", json!({"account_id": "outlook:a@x.it", "to": ["b@x.it"], "subject": "s", "text": "x", "draft": true})).await;
         let ds = tool(port, "email_draft_send", json!({"account_id": "outlook:a@x.it", "draft_id": d["data"]["draft_id"]})).await;
         assert_eq!((ds["data"]["status"].as_str(), ds["data"]["to"].clone()), (Some("sent"), json!(["b@x.it"])));
+
+        // attachment download link: the link at once, the bytes on a GET without the MCP token
+        let atts = tool(port, "email_attachments", json!({"account_id": "outlook:a@x.it", "message_id": items[0]["id"]})).await;
+        let att = atts["data"]["items"][0]["id"].clone();
+        log.lock().unwrap().clear();
+        let dl = tool(port, "email_attachment", json!({"account_id": "outlook:a@x.it", "attachment_id": att, "download": true})).await;
+        assert!(dl["data"]["expires_at"].as_str().unwrap().ends_with('Z'));
+        let file_path = dl["data"]["download_url"].as_str().unwrap().strip_prefix("https://mcp.test/communication/files/").unwrap().to_string();
+        assert!(!log.lock().unwrap().iter().any(|e| e.1.contains("/attachments")));
+        let get = |path: String, headers: Vec<(&'static str, &'static str)>| async move {
+            let mut req = reqwest::Client::new().get(format!("http://127.0.0.1:{port}/files/{path}"));
+            if !headers.iter().any(|(k, _)| *k == "Host") {
+                req = req.header("Host", "mcp.test");
+            }
+            for (k, v) in headers {
+                req = req.header(k, v);
+            }
+            req.send().await.unwrap()
+        };
+        let r = get(file_path.clone(), vec![]).await;
+        assert_eq!(r.status().as_u16(), 200);
+        let h = |k: &str| r.headers().get(k).map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+        assert_eq!(h("content-type"), "application/pdf");
+        assert_eq!(h("content-disposition"), "attachment; filename=\"Q3 report.pdf\"; filename*=UTF-8''Q3%20report.pdf");
+        assert_eq!(r.text().await.unwrap(), "hello");
+        assert_eq!(get(file_path.clone(), vec![("Host", "evil")]).await.status().as_u16(), 421);
+        assert_eq!(get(file_path.clone(), vec![("Origin", "https://x")]).await.status().as_u16(), 403);
+        let (body, _) = file_path.split_once('.').unwrap();
+        assert_eq!(get(format!("{body}.AAAA"), vec![]).await.status().as_u16(), 404);
+        let old = communication_mcp::identity::ticket("email_attachment", &json!({"account_id": "outlook:a@x.it", "attachment_id": att}), 1);
+        assert_eq!(get(old, vec![]).await.status().as_u16(), 410);
+        let other = tool(port, "email_attachment", json!({"account_id": "gmail:g@x.it", "attachment_id": att, "download": true})).await;
+        assert_eq!(other["code"], json!("ACCOUNT_MISMATCH"));
 
         // Gmail draft: the MIME the agent gets, handles in the answer
         let g = tool(port, "email_send", json!({"account_id": "gmail:g@x.it", "to": ["b@x.it"], "subject": "Caffè", "text": "x", "draft": true})).await;

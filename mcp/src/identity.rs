@@ -55,7 +55,8 @@ impl Resource {
     }
 }
 
-pub fn resource(account: &str, kind: &str, id: &str) -> Result<Resource> {
+/// The body of an id signed here, None for anything else.
+fn signed_body(id: &str) -> Option<&str> {
     let mut parts = id.split('.');
     let body = parts.next().unwrap_or("");
     let sig = parts.next().unwrap_or("");
@@ -63,9 +64,33 @@ pub fn resource(account: &str, kind: &str, id: &str) -> Result<Resource> {
     let expected = mac(body);
     let got = base64_decode_lenient(sig);
     let same = got.len() == expected.len() && got.iter().zip(&expected).fold(0u8, |d, (a, b)| d | (a ^ b)) == 0;
-    if body.is_empty() || extra.is_some_and(|e| !e.is_empty()) || !same {
-        return Err(Error::comm("INVALID_RESOURCE", "Invalid resource handle; list resources again"));
+    (!body.is_empty() && !extra.is_some_and(|e| !e.is_empty()) && same).then_some(body)
+}
+
+/// A download ticket (files.rs): the tool call it stands for and its expiry (Unix seconds), signed like the handles.
+/// Its kind, "download", is no handle kind: a ticket opens no resource and a handle opens no download.
+pub fn ticket(tool: &str, args: &Value, expires: u64) -> String {
+    let mut c = Obj::new();
+    c.insert("args".into(), args.clone());
+    c.insert("exp".into(), json!(expires));
+    resource_id("", "download", tool, c)
+}
+
+/// The tool, arguments and expiry of a ticket signed here.
+pub fn open_ticket(t: &str) -> Option<(String, Obj, u64)> {
+    let value: Value = serde_json::from_slice(&base64_decode_lenient(signed_body(t)?)).ok()?;
+    if value.get("kind").and_then(Value::as_str) != Some("download") {
+        return None;
     }
+    let tool = value.get("native").and_then(Value::as_str)?.to_string();
+    let args = value.pointer("/context/args").and_then(Value::as_object)?.clone();
+    Some((tool, args, value.pointer("/context/exp").and_then(Value::as_u64)?))
+}
+
+pub fn resource(account: &str, kind: &str, id: &str) -> Result<Resource> {
+    let Some(body) = signed_body(id) else {
+        return Err(Error::comm("INVALID_RESOURCE", "Invalid resource handle; list resources again"));
+    };
     let value: Value = serde_json::from_slice(&base64_decode_lenient(body)).map_err(|_| Error::comm("INVALID_RESOURCE", "Invalid resource handle"))?;
     let ok = value.get("account").and_then(Value::as_str) == Some(account) && value.get("kind").and_then(Value::as_str) == Some(kind);
     let native = value.get("native").and_then(Value::as_str);
@@ -96,6 +121,18 @@ mod tests {
         assert_eq!(code(resource("outlook:a@b.c", "email_attachment", &format!("{h}.x"))), "INVALID_RESOURCE");
         let (body, _) = h.split_once('.').unwrap();
         assert_eq!(code(resource("outlook:a@b.c", "email_attachment", &format!("{body}.AAAA"))), "INVALID_RESOURCE");
+    }
+
+    #[test]
+    fn tickets() {
+        let t = ticket("email_attachment", &json!({"account_id": "outlook:a@b.c", "attachment_id": "h"}), 1_800_000_000);
+        let (tool, args, exp) = open_ticket(&t).unwrap();
+        assert_eq!((tool.as_str(), args.get("attachment_id"), exp), ("email_attachment", Some(&json!("h")), 1_800_000_000));
+        let (body, _) = t.split_once('.').unwrap();
+        assert!(open_ticket(&format!("{body}.AAAA")).is_none());
+        // a handle is no ticket, a ticket is no handle
+        assert!(open_ticket(&handle("outlook:a@b.c", "email_attachment", "x")).is_none());
+        assert!(resource("outlook:a@b.c", "email_attachment", &t).is_err());
     }
 
     #[test]

@@ -57,7 +57,8 @@ impl Media {
         if src.is_empty() || self.failed.borrow().contains(&attempt) {
             return None;
         }
-        let ams = regex::Regex::new(r"^https://[a-z0-9-]+\.asm\.skype\.com/").expect("fixed");
+        // AMS, or its Teams gateway (asyncgw), which takes the same token
+        let ams = regex::Regex::new(r"^https://[a-z0-9-]+\.(asm\.skype\.com|asyncgw\.teams\.microsoft\.com)/").expect("fixed");
         let mut got = None;
         if !token.is_empty() && ams.is_match(src) {
             match send(&self.http, "GET", src, vec![("Authorization", format!("Bearer {token}"))], vec![], 30_000).await {

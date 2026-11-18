@@ -75,11 +75,14 @@ describe("images of messages", () => {
     }) as typeof fetch;
     const p = page([]);
     const ams = "https://eu-api.asm.skype.com/v1/objects/0-weu-d2-o1/views/imgo";
+    const gateway = "https://it-prod.asyncgw.teams.microsoft.com/v1/objects/0-itn-d3-o1/views/imgo";
     expect(await new Media(dir, tempDir(), get).image(p.page, "f6", ams, "tok")).toBe("f6.png");
     expect(await new Media(tempDir(), tempDir(), get).image(null, "g7", ams, "tok")).toBe("g7.png");
+    expect(await new Media(tempDir(), tempDir(), get).image(p.page, "g8", gateway, "tok")).toBe("g8.png");
     expect(asked).toEqual([
       { url: ams, auth: "Bearer tok" },
       { url: ams, auth: "Bearer tok" },
+      { url: gateway, auth: "Bearer tok" },
     ]);
     expect(p.srcs).toEqual([]);
     expect(fs.readFileSync(path.join(dir, "f6.png"))).toEqual(PNG);

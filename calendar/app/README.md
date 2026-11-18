@@ -25,6 +25,8 @@ npx tauri build --no-bundle --config src-tauri/tauri.conf.local.json
 
 Un file solo, senza installer: l'exe copiato come `%LOCALAPPDATA%\Programs\OE Copilot\OE Copilot.exe`, nient'altro nella cartella, e un collegamento *OE Copilot* nel menu Start. Per aggiornare: *Esci* dal menu dell'icona, l'exe nuovo sopra il vecchio, riavvio dal menu Start.
 
+L'exe da scaricare è `OE-Copilot-Windows-x64.exe` su `https://servizi.everbright.it/prodotti/`, scheda *OE Copilot*. Lo fa `.github/workflows/app-windows.yml` a ogni push su main che tocca `calendar/app/`: prove, build con l'indirizzo della variabile del repository `OE_URL`, avvio di prova dell'exe (`scripts/prova-pacchetto-windows.ps1`), poi caricamento dell'exe e del suo `OE-Copilot-Windows-x64.json` (versione, sha256, byte, commit). La versione è quella di `tauri.conf.json` più il numero del run (`OE_BUILD`): `0.1.0+57`, che nelle proprietà del file e sulla pagina ha 57 come quarta cifra. Niente caricamenti a mano.
+
 Login e profilo di WebView2 stanno in `%LOCALAPPDATA%\com.oecopilot.desktop`, legati all'identificativo e non al percorso: sostituire l'exe lascia il login. Gli errori di avvio vanno in `errore.log`, nella stessa cartella.
 
 ## Cambiare server
@@ -114,5 +116,5 @@ Aggiornamento automatico (il repository è privato), firma del codice, pulsanti 
 
 ## Prove
 
-- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina di avvio e quello del sito, con il nucleo finto. La Action non prova `app/`.
+- `cargo test` (in `src-tauri/`) prova il nucleo dei promemoria (ora di Roma, anticipi, testi, allarmi di Android), indirizzi ammessi, link di Teams e righe dell'avviso; `npm test` (in `app/`) lo script della pagina di avvio e quello del sito, con il nucleo finto. La Action `app-windows.yml` fa girare `npm test` e l'avvio di prova dell'exe, non `cargo test`.
 - Una build di prova accanto a quella vera vuole un altro identificativo, con una seconda `--config` (`{ "productName": "OE Copilot Prova", "identifier": "com.oecopilot.desktop.prova" }`): con lo stesso condivide profilo, istanza unica e avvio con Windows.

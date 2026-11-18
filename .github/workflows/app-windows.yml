@@ -1,0 +1,134 @@
+name: App Windows
+
+# L'exe di OE Copilot per Windows (calendar/app). A ogni PR si costruisce e si prova; a ogni push su main va anche tra i download
+# di servizi.everbright.it, dove lo mostra la pagina /prodotti/. L'indirizzo del sito con cui parte l'app è la variabile del
+# repository OE_URL: non sta in nessun file.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "calendar/app/**"
+      - ".github/workflows/app-windows.yml"
+  pull_request:
+    paths:
+      - "calendar/app/**"
+      - ".github/workflows/app-windows.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-windows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  exe:
+    name: Exe
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: calendar/app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: calendar/app/package-lock.json
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: calendar/app/src-tauri -> target
+
+      - name: Dipendenze
+        run: npm ci --no-audit --no-fund
+
+      - name: Prove
+        run: npm test
+
+      # la versione dell'exe è quella di tauri.conf.json più il numero del run (0.1.0+57: per Windows la quarta cifra è 57)
+      - name: Configurazione
+        env:
+          OE_URL: ${{ vars.OE_URL }}
+          OE_BUILD: ${{ github.run_number }}
+        run: node scripts/configura.mjs --release
+
+      - name: Costruzione
+        run: npx tauri build --no-bundle --config src-tauri/tauri.conf.local.json
+
+      - name: Pacchetto
+        run: ./scripts/pacchetto-windows.ps1
+
+      - name: Avvio dell'exe scaricato
+        run: ./scripts/prova-pacchetto-windows.ps1 -Exe src-tauri/target/pacchetto/OE-Copilot-Windows-x64.exe
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: oe-copilot-windows-x64
+          path: |
+            calendar/app/src-tauri/target/pacchetto/OE-Copilot-Windows-x64.exe
+            calendar/app/src-tauri/target/pacchetto/OE-Copilot-Windows-x64.json
+            calendar/app/src-tauri/target/pacchetto/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  servizi:
+    name: Pubblica su servizi.everbright.it
+    needs: exe
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # un caricamento alla volta: un main più nuovo aspetta invece di correre contro uno più vecchio
+    concurrency:
+      group: servizi-download-oe-copilot
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: oe-copilot-windows-x64
+          path: release
+
+      - name: Carica l'exe provato tra i download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SSH_KEY: ${{ secrets.SERVIZI_DOWNLOAD_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SERVIZI_KNOWN_HOSTS }}
+          TARGET: servizi@${{ secrets.SERVIZI_HOST }}
+          BASE: https://servizi.everbright.it/download
+          NAME: OE-Copilot-Windows-x64
+        run: |
+          set -euo pipefail
+          cd release
+          sha256sum --check SHA256SUMS.txt
+          hash=$(cut -d' ' -f1 SHA256SUMS.txt)
+          test "$(jq -r .sha256 "$NAME.json")" = "$hash"
+          test "$(jq -r .commit "$NAME.json")" = "$GITHUB_SHA"
+          test "$(jq -r .file "$NAME.json")" = "$NAME.exe"
+          test "$(jq -r .bytes "$NAME.json")" = "$(stat -c %s "$NAME.exe")"
+          # un run che finisce dopo uno più nuovo non rimette al suo posto la build più vecchia
+          published=$(curl -fsS --max-time 30 "$BASE/$NAME.json" | jq -r .commit || true)
+          if [ -n "$published" ] && [ "$published" != "null" ]; then
+            status=$(gh api "repos/$GH_REPO/compare/$published...$GITHUB_SHA" --jq .status)
+            if [ "$status" = "behind" ]; then
+              echo "La build pubblicata ($published) è più nuova: download lasciato com'è."
+              exit 0
+            fi
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # il comando forzato della chiave (ricevi-build) accetta solo "<nome>.zip|exe|json <sha256>" con il file su stdin
+          ssh "$TARGET" "$NAME.exe $hash" < "$NAME.exe"
+          test "$(curl -fsS --max-time 60 "$BASE/$NAME.exe" | sha256sum | cut -d' ' -f1)" = "$hash"
+          # il JSON che legge la pagina dei prodotti va per ultimo: non nomina mai un exe che non c'è ancora
+          meta=$(sha256sum "$NAME.json" | cut -d' ' -f1)
+          ssh "$TARGET" "$NAME.json $meta" < "$NAME.json"
+          test "$(curl -fsS --max-time 30 "$BASE/$NAME.json" | sha256sum | cut -d' ' -f1)" = "$meta"
+          echo "$BASE/$NAME.exe $hash $(jq -r .version "$NAME.json")"

@@ -5,6 +5,7 @@
 //   node scripts/configura.mjs --prova    aggiunge il comando di prova del menu dell'icona (solo per le prove)
 //   node scripts/configura.mjs --android  applica anche tauri.android.conf.json (identificativo e simili dell'app Android)
 //   node scripts/configura.mjs --emulatore  OE_URL può essere http://10.0.2.2:<porta> (il PC visto dall'emulatore, solo per le prove)
+//   OE_BUILD=<numero>                       la versione diventa <versione>+<numero> (la pipeline app-windows.yml, col numero del run)
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -67,6 +68,12 @@ function unisci(base, patch) {
 let configurazione = JSON.parse(readFileSync(join(cartella, "tauri.conf.json"), "utf8"));
 if (android) configurazione = unisci(configurazione, JSON.parse(readFileSync(join(cartella, "tauri.android.conf.json"), "utf8")));
 configurazione = sostituisci(configurazione);
+// OE_BUILD, il numero della build della pipeline: la versione diventa <versione>+<numero>, che Windows mostra come 0.1.0.<numero>
+const build = (process.env.OE_BUILD ?? "").trim();
+if (build) {
+  if (!/^[1-9][0-9]{0,4}$/.test(build) || Number(build) > 65535) fallisci(`OE_BUILD deve essere un numero da 1 a 65535: "${build}"`);
+  configurazione.version = `${configurazione.version}+${build}`;
+}
 if (prova) {
   for (const capacita of configurazione.app.security.capabilities) capacita.permissions.push("allow-prova-menu");
 }
@@ -74,7 +81,7 @@ for (const capacita of configurazione.app.security.capabilities) {
   if (capacita.permissions.some((p) => p === "core:default" || p.endsWith(":default"))) fallisci("la capability remota non ammette permessi default");
 }
 writeFileSync(join(cartella, "tauri.conf.local.json"), JSON.stringify(configurazione, null, 2) + "\n");
-console.log(`configura: tauri.conf.local.json scritto${prova ? " (con i comandi di prova)" : ""}${android ? " (Android)" : ""}`);
+console.log(`configura: tauri.conf.local.json scritto, versione ${configurazione.version}${prova ? " (con i comandi di prova)" : ""}${android ? " (Android)" : ""}`);
 
 if (android && release) {
   const proprieta = process.env.OE_KEYSTORE_PROPERTIES || join(homedir(), ".oe-copilot", "android", "keystore.properties");

@@ -609,6 +609,7 @@ export class Communication {
     let r: any;
     if (x.cursor && a.provider !== "slack")
       unsupported(a.provider, "chat cursor");
+    if (x.refresh && a.provider !== "teams") unsupported(a.provider, "refresh");
     if (op === "send" && !x.text?.trim() && !x.files?.length)
       throw new CommunicationError(
         "INVALID_INPUT",
@@ -722,6 +723,8 @@ export class Communication {
         attachment: "get_attachment",
       };
       if (!tools[op]) return unsupported(a.provider, op);
+      // refresh: Teams opens the chat first, so its newest messages and images are saved (and it reads as read)
+      if (op === "read" && x.refresh) tools.read = "refresh_chat";
       if (op !== "list" && !c)
         throw new CommunicationError(
           "INVALID_INPUT",
@@ -765,6 +768,7 @@ export class Communication {
 const str = z.string().min(1).max(4000);
 const scope = { account_id: str };
 const size = z.number().int().min(1).max(100).default(20);
+const REFRESH = "Teams only: open the chat in Teams first, so its newest messages and images are saved before reading. Teams then marks the chat read.";
 export function registerCommunication(server: McpServer, c: Communication) {
   const tool = (
     name: string,
@@ -983,7 +987,13 @@ export function registerCommunication(server: McpServer, c: Communication) {
   );
   tool(
     "chat_read",
-    { ...scope, conversation_id: str, thread_id: str.optional(), limit: size },
+    {
+      ...scope,
+      conversation_id: str,
+      thread_id: str.optional(),
+      limit: size,
+      refresh: z.boolean().optional().describe(REFRESH),
+    },
     true,
     call("chat", "read"),
   );

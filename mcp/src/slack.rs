@@ -204,7 +204,7 @@ impl Slack {
     fn config(&self, profile: &str) -> Option<Value> {
         let store = self.store();
         let ws = store.get("workspaces").and_then(Value::as_object).cloned().unwrap_or_default();
-        let config = ws.get(profile).cloned().or_else(|| {
+        ws.get(profile).cloned().or_else(|| {
             for field in ["profile", "workspace_id", "workspace_name"] {
                 let hits: Vec<&Value> = ws.values().filter(|c| c.get(field).and_then(Value::as_str) == Some(profile)).collect();
                 match hits.len() {
@@ -214,8 +214,7 @@ impl Slack {
                 }
             }
             None
-        });
-        config
+        })
     }
 
     /// The session of a store entry: browser (https *.slack.com origin, xoxc token, d cookie) or standard token.

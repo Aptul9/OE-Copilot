@@ -456,6 +456,13 @@ async fn notify_new(l: &Rc<Light>, rows: &[ChatEntry]) {
             l.notifier.message(&chat, &body, &chat).await;
         }
     }
+    let own = l.detector.borrow_mut().take_own();
+    for chat in own {
+        let l2 = l.clone();
+        tokio::task::spawn_local(keep_slot(async move {
+            let _ = save_chat(&l2, &chat).await;
+        }));
+    }
     // a muted chat with something new: the feed tells whether it is a mention of you
     if !l.detector.borrow_mut().take_muted().is_empty() {
         l.due_activity.set(0);

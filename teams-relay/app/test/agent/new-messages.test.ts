@@ -26,6 +26,15 @@ describe("new message detection", () => {
     expect(d.scan([row("Anna Rossi", "You: on my way", "10:32"), row("Luca Bianchi", "Tu: va bene", "10:33")])).toEqual([]);
   });
 
+  it("hands your own new messages over to be saved, once, without a notice", () => {
+    const d = primed(row("Anna Rossi", "ciao", "10:30"), row("Luca Bianchi", "You: ok", "9:00"), row("Anna Rossi (You)", "notes", "9:00"));
+    expect(d.scan([row("Anna Rossi", "You: on my way", "10:32"), row("Luca Bianchi", "You: ok", "9:00"), row("Anna Rossi (You)", "You: more", "9:05")])).toEqual([]);
+    expect(d.takeOwn()).toEqual(["Anna Rossi"]);
+    expect(d.takeOwn()).toEqual([]);
+    expect(d.scan([row("Anna Rossi", "You: on my way", "10:32"), row("Marco Neri", "Tu: ciao", "10:40")])).toEqual([]);
+    expect(d.takeOwn()).toEqual([]);
+  });
+
   it("names the chat when it turns unread without an incoming preview", () => {
     const d = primed(row("Project Alpha", "You: deployed", "9:58"));
     expect(d.scan([row("Project Alpha", "You: deployed", "9:58", true)])).toEqual([{ chat: "Project Alpha", body: "New message from Project Alpha" }]);

@@ -141,7 +141,7 @@ pub fn parse_teams_message_html(raw: &str, my_name: Option<&str>) -> Parsed {
     let text = unescape_html(&strip_tags(&raw_text)).replace('\u{a0}', " ");
     let text = re(r"[ \t]+\n").replace_all(&text, "\n");
     let text = re(r"\n{3,}").replace_all(&text, "\n\n");
-    let text = cut(js_trim(&text), 2000);
+    let text = cut(js_trim(&text), 20000);
     let html = re(r"(?i)^(\s|<div>|<p>[\s\x{a0}&nbsp;]*</p>)+").replace(&with_mentions, "");
     let html = re(r"(?i)(<p>[\s\x{a0}&nbsp;]*</p>|\s)+$").replace(&html, "");
     let html = cut(js_trim(&html), 20000);

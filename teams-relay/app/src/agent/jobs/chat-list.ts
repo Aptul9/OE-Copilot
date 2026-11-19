@@ -34,6 +34,7 @@ export async function notifyNew(a: Agent, rows: readonly ListRow[]) {
     if (shown) void markReadViaApi(a, chat);
     else await a.notifier.message(chat, body, chat);
   }
+  for (const chat of a.detector.takeOwn()) void saveChatViaApi(a, chat).catch(() => undefined);
   const muted = a.detector.takeMuted();
   if (muted.length) {
     log.info("chats", "muted chat with something new: reading Activity for a mention", { chats: muted.join(", ") });

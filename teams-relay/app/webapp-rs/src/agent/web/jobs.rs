@@ -408,6 +408,13 @@ pub async fn notify_new(a: &Rc<Agent>, rows: &[ChatEntry]) {
             a.notifier.message(&chat, &body, &chat).await;
         }
     }
+    let own = a.detector.borrow_mut().take_own();
+    for chat in own {
+        let a2 = a.clone();
+        tokio::task::spawn_local(async move {
+            save_chat_via_api(&a2, &chat).await;
+        });
+    }
     let muted = a.detector.borrow_mut().take_muted();
     if !muted.is_empty() {
         info("chats", "muted chat with something new: reading Activity for a mention", &[("chats", muted.join(", ").into())]);

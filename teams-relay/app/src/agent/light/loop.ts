@@ -167,6 +167,7 @@ async function notifyNew(l: Light, rows: Parameters<Light["detector"]["scan"]>[0
     if (shown) void markRead(l, chat);
     else await l.notifier.message(chat, body, chat);
   }
+  for (const chat of l.detector.takeOwn()) void saveChat(l, chat).catch(() => undefined);
   // a muted chat with something new: the feed tells whether it is a mention of you
   if (l.detector.takeMuted().length) l.due.activity = 0;
 }

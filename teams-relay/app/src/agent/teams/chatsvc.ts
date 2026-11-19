@@ -456,7 +456,7 @@ export function parseTeamsMessageHtml(
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, 2000);
+    .slice(0, 20000);
 
   // Clean HTML keeping safe tags
   const html = withMentions

@@ -24,6 +24,7 @@ pub struct Detector {
     unread: HashMap<String, bool>,
     last_notified: HashMap<String, String>,
     muted_news: Vec<String>,
+    own_news: Vec<String>,
 }
 
 impl Detector {
@@ -40,6 +41,10 @@ impl Detector {
             if self.primed && !is_self_chat(&ch.name) {
                 let inbound = !preview.is_empty() && !outbound.is_match(&preview);
                 let changed = inbound && self.last.contains_key(&ch.name) && !self.shown(&ch.name, &preview, &ch.time);
+                // a message of yours sent from another Teams client: no notice, but the saved chat must take it
+                if outbound.is_match(&preview) && self.last.contains_key(&ch.name) && !self.shown(&ch.name, &preview, &ch.time) {
+                    self.own_news.push(ch.name.clone());
+                }
                 let became_unread = self.unread.get(&ch.name) != Some(&true) && ch.unread;
                 if changed || became_unread {
                     let key = format!("{sig}|{}", if ch.unread { "u" } else { "r" });
@@ -71,6 +76,11 @@ impl Detector {
     /// Muted chats with something new since the last call.
     pub fn take_muted(&mut self) -> Vec<String> {
         std::mem::take(&mut self.muted_news)
+    }
+
+    /// Chats whose list now shows a new message of yours since the last call: saved again, never notified.
+    pub fn take_own(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.own_news)
     }
 
     /// The chat showed this message before: same text at the same time, or at the time it had before it turned into a
@@ -116,6 +126,18 @@ mod tests {
         assert_eq!(d.scan(&[row("Project Alpha", "You: deployed", "9:58", true, false)]), [new("Project Alpha", "New message from Project Alpha")]);
         let mut d = primed(&[r("Anna Rossi", "ciao", "10:30")]);
         assert_eq!(d.scan(&[row("Marco Neri", "hello", "10:40", true, false), r("Sara Gialli", "hi", "10:41")]), [new("Marco Neri", "hello")]);
+    }
+
+    #[test]
+    fn a_new_message_of_yours_is_saved_not_notified() {
+        let mut d = primed(&[r("Anna Rossi", "ciao", "10:30"), r("Luca Bianchi", "You: ok", "9:00"), r("Anna Rossi (You)", "notes", "9:00")]);
+        assert!(
+            d.scan(&[r("Anna Rossi", "You: on my way", "10:32"), r("Luca Bianchi", "You: ok", "9:00"), r("Anna Rossi (You)", "You: more", "9:05")]).is_empty()
+        );
+        assert_eq!(d.take_own(), ["Anna Rossi"]);
+        assert!(d.take_own().is_empty());
+        assert!(d.scan(&[r("Anna Rossi", "You: on my way", "10:32"), r("Marco Neri", "Tu: ciao", "10:40")]).is_empty());
+        assert!(d.take_own().is_empty());
     }
 
     #[test]

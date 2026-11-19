@@ -26,6 +26,7 @@ export class NewMessageDetector {
   private readonly unread = new Map<string, boolean>();
   private readonly lastNotified = new Map<string, string>();
   private mutedNews: string[] = [];
+  private ownNews: string[] = [];
 
   scan(chats: readonly ListedChat[]): NewMessage[] {
     const out: NewMessage[] = [];
@@ -36,6 +37,8 @@ export class NewMessageDetector {
       if (this.primed && !isSelfChat(ch.name)) {
         const inbound = !!preview && !TEXTS.outbound.test(preview);
         const changed = inbound && this.last.has(ch.name) && !this.shown(ch.name, preview, ch.time);
+        // a message of yours sent from another Teams client: no notice, but the saved chat must take it
+        if (TEXTS.outbound.test(preview) && this.last.has(ch.name) && !this.shown(ch.name, preview, ch.time)) this.ownNews.push(ch.name);
         const becameUnread = this.unread.get(ch.name) !== true && ch.unread;
         if (changed || becameUnread) {
           const key = `${sig}|${ch.unread ? "u" : "r"}`;
@@ -58,6 +61,13 @@ export class NewMessageDetector {
   takeMuted(): string[] {
     const chats = this.mutedNews;
     this.mutedNews = [];
+    return chats;
+  }
+
+  // Chats whose list now shows a new message of yours since the last call: saved again, never notified
+  takeOwn(): string[] {
+    const chats = this.ownNews;
+    this.ownNews = [];
     return chats;
   }
 

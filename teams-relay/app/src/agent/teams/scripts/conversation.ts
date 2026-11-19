@@ -153,7 +153,7 @@ export function readMessages({ s, t }: { s: Selectors; t: Texts }): PageMessage[
       .replace(/(<p>[\s ]*<\/p>|\s)+(?=(<\/div>)*$)/, "")
       .slice(0, 20000);
     const mentionsMe = !!(body && body.querySelector(`${s.mentionBox}[aria-label="${t.mentionedYou}"]`));
-    out.push({ mid: e.getAttribute("data-mid") || "", author: author.slice(0, 60), text: text.slice(0, 2000), mine, reacts, quote, images, files, reactions, status, edited, html, mentionsMe, avsrc, deleted });
+    out.push({ mid: e.getAttribute("data-mid") || "", author: author.slice(0, 60), text: text.slice(0, 20000), mine, reacts, quote, images, files, reactions, status, edited, html, mentionsMe, avsrc, deleted });
   }
   return out;
 }

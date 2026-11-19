@@ -483,7 +483,8 @@ fn everid_intestazione_solo_da_caddy() {
     con_gateway(|p| async move {
         let radice = format!("{}/", p.base);
         let finto = [("x-authentik-email", EMAIL)];
-        let api_cfg = || chiedi("POST", &format!("{}/api/get_config", p.base), &[("x-authentik-email", EMAIL), ("content-type", "application/json")], Some(b"[]".to_vec()));
+        let url_cfg = format!("{}/api/get_config", p.base);
+        let api_cfg = || chiedi("POST", &url_cfg, &[("x-authentik-email", EMAIL), ("content-type", "application/json")], Some(b"[]".to_vec()));
         // spento (predefinito): l'intestazione non conta, anche da Caddy
         imposta("EVERID_PROXY", Some("127.0.0.1"));
         let r = chiedi("GET", &radice, &finto, None).await;

@@ -1,7 +1,9 @@
 // The desktop tab with its switcher of the accounts (/remote) on a page of its own, for test/desktop-switcher.test.ts:
 // the accounts of one user, the one asked for in ?account=N.
-import { createRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { DesktopSwitcher } from "@/components/DesktopSwitcher";
+import { RemoteExported } from "@/components/ExportedPages";
 import type { Account } from "@/lib/client";
 
 const base: Account = {
@@ -64,4 +66,12 @@ const accounts: Account[] = [
 (window as unknown as { fixture: Account[] }).fixture = accounts;
 
 const initial = Number(q.get("account"));
-createRoot(document.getElementById("root")!).render(<DesktopSwitcher accounts={accounts} initial={initial} />);
+const root = document.getElementById("root")!;
+if (q.has("exported")) {
+  // ?exported: the page of the Rust web app, the HTML of the build (no account) hydrated with the values of the server
+  root.innerHTML = renderToString(<RemoteExported />);
+  (window as unknown as { __TR__: unknown }).__TR__ = { accounts, initial };
+  hydrateRoot(root, <RemoteExported />);
+} else {
+  createRoot(root).render(<DesktopSwitcher accounts={accounts} initial={initial} />);
+}

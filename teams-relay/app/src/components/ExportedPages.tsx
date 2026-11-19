@@ -51,9 +51,13 @@ export function SettingsExported() {
   return <Settings user={v.user} passwordManaged={v.passwordManaged} />;
 }
 
+const NO_REMOTE = { accounts: [] as Account[], initial: 0 };
+
+// The switcher keeps the address of the desktop from its first render: the values of the server mount it again, or
+// the first render in the browser (no account) leaves the desktop with no address, a blank page
 export function RemoteExported() {
-  const v = useServerValues({ accounts: [] as Account[], initial: 0 });
-  return <DesktopSwitcher accounts={v.accounts} initial={v.initial} />;
+  const v = useServerValues(NO_REMOTE);
+  return <DesktopSwitcher key={v === NO_REMOTE ? "build" : "server"} accounts={v.accounts} initial={v.initial} />;
 }
 
 // One page for every status slug: the server sends status.html with the answer of the slug

@@ -24,3 +24,8 @@ export function contentDisposition(name: string): string {
   const ascii = name.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "_");
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
+
+// The same, for a file shown in place (a thumbnail) rather than saved
+export function inlineDisposition(name: string): string {
+  return `inline; filename*=UTF-8''${encodeURIComponent(name)}`;
+}

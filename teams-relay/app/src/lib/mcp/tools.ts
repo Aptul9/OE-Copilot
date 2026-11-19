@@ -328,41 +328,101 @@ export type Content =
 
 type Attachment = { index: number; kind: "image" | "file"; name?: string; shown: boolean; note?: string; link?: string };
 
+// An attachment of a saved message: an image (a file of data/N/media, or its link) or a file by its link
+export type MessageAttachment = { kind: "image"; f?: string; url?: string } | { kind: "file"; name: string; url: string };
+
+// The images (first, in order), then the files of a message: index N of the tools is item N-1
+export function attachmentsOf(m: Message): MessageAttachment[] {
+  return [
+    ...(m.images ?? []).map((im) => ({ kind: "image" as const, f: im.f, url: im.url })),
+    ...(m.files ?? []).map((f) => ({ kind: "file" as const, name: f.name, url: f.url })),
+  ];
+}
+
+// The bytes of an attachment, or why there are none (tooLarge: only its size stops it). link: where the web or the
+// app shows it
+export type Fetched = { data: Buffer; type: string; link?: string } | { note: string; link?: string; tooLarge?: true };
+
+const tooLarge = (size: number, link?: string): Fetched => ({ note: `${Math.round(size / 1e6)} MB, too large to carry here`, tooLarge: true, ...(link ? { link } : {}) });
+
+// Content type of a file by its name
+export function fileType(name: string): string {
+  const ext = path.extname(name).slice(1).toLowerCase();
+  return FILE_TYPES[ext] ?? (TEXT_EXT.test(ext) ? "text/plain" : "application/octet-stream");
+}
+
 // An image of a message the page could not fetch, by its public link (Giphy...): HTTPS to a named host only, never
 // an address of the server's own network
-async function publicImage(url: string): Promise<{ data: Buffer; type: string } | string> {
+async function publicImage(url: string, max: number): Promise<Fetched> {
+  const no = (note: string): Fetched => ({ note, link: url });
   let u: URL;
   try {
     u = new URL(url);
   } catch {
-    return "not a link";
+    return no("not a link");
   }
   const host = u.hostname.replace(/^\[|\]$/g, "");
-  if (u.protocol !== "https:" || net.isIP(host) || !host.includes(".") || /(^|\.)(localhost|local|internal|lan)$/i.test(host)) return "not a public link";
+  if (u.protocol !== "https:" || net.isIP(host) || !host.includes(".") || /(^|\.)(localhost|local|internal|lan)$/i.test(host)) return no("not a public link");
   if (/(^|\.)(asm\.skype\.com|teams\.microsoft\.com|teams\.cloud\.microsoft)$/i.test(host)) {
-    return "Teams keeps this image behind the sign-in of the account and it is not saved yet: refresh_chat saves it";
+    return no("Teams keeps this image behind the sign-in of the account and it is not saved yet: refresh_chat saves it");
   }
   try {
     const r = await fetch(u, { redirect: "error", signal: AbortSignal.timeout(15_000) });
     const type = (r.headers.get("content-type") ?? "").split(";")[0].trim();
-    if (!r.ok || !type.startsWith("image/")) return `the link answered ${r.status} ${type || "without a type"}`;
-    if (Number(r.headers.get("content-length") ?? 0) > MAX_INLINE) return "larger than 8 MB";
+    if (!r.ok || !type.startsWith("image/")) return no(`the link answered ${r.status} ${type || "without a type"}`);
+    const declared = Number(r.headers.get("content-length") ?? 0);
+    if (declared > max) return tooLarge(declared, url);
     const data = Buffer.from(await r.arrayBuffer());
-    return data.length > MAX_INLINE ? "larger than 8 MB" : { data, type };
+    return data.length > max ? tooLarge(data.length, url) : { data, type };
   } catch (e) {
-    return `not fetched: ${(e as Error).message}`;
+    return no(`not fetched: ${(e as Error).message}`);
   }
 }
 
 // The file of a finished download: a relay uploads it to the server right after, so it may come a little later
-async function downloaded(slot: number, f: string, wait: Wait): Promise<Buffer | null> {
+async function downloaded(slot: number, f: string, wait: Wait): Promise<string | null> {
   const file = path.join(slotDir(slot), "files", f);
   const deadline = Date.now() + Math.min(wait.timeoutMs, 20_000);
   for (;;) {
-    if (fs.existsSync(file)) return fs.readFileSync(file);
+    if (fs.existsSync(file)) return file;
     if (Date.now() > deadline) return null;
     await sleep(wait.pollMs);
   }
+}
+
+// A file of the slot, at most `max` bytes
+function readUpTo(file: string, max: number, type: string, link?: string): Fetched {
+  const size = fs.statSync(file).size;
+  if (size > max) return tooLarge(size, link);
+  return { data: fs.readFileSync(file), type, ...(link ? { link } : {}) };
+}
+
+// The bytes of one attachment of a message of a slot, at most `max`: a saved image, a public image link, a SharePoint
+// or OneDrive file the agent downloads with the Teams session (the download command, waited for)
+export async function fetchAttachment(slot: number, x: MessageAttachment, max: number, wait: Wait = COMMAND_WAIT): Promise<Fetched> {
+  if (x.kind === "image") {
+    if (x.f && MEDIA_NAME.test(x.f)) {
+      const file = path.join(slotDir(slot), "media", x.f);
+      if (fs.existsSync(file)) return readUpTo(file, max, IMAGE_TYPES[path.extname(x.f).slice(1) as ImageExt]);
+    }
+    if (!x.url) return { note: "the image is not saved on the server (yet): refresh_chat saves the images of the chat" };
+    return publicImage(x.url, max);
+  }
+  if (!isSharePointUrl(x.url)) return { note: "not on SharePoint or OneDrive: not downloaded", link: x.url };
+  let ran: Ran;
+  try {
+    ran = await run(slot, "download", x.url, JSON.stringify({ name: x.name } satisfies DownloadArgs), wait);
+  } catch (e) {
+    return { note: (e as Error).message, link: x.url };
+  }
+  const res = DownloadResult.safeParse(ran.result);
+  if (ran.status !== "done" || !res.success || !FILE_NAME.test(res.data.f)) {
+    return { note: ran.status === "pending" ? "download still queued: ask again in a minute" : "Teams did not give the file", link: x.url };
+  }
+  const file = await downloaded(slot, res.data.f, wait);
+  const link = `${config.appUrl}/files/${res.data.f}?a=${slot}&name=${encodeURIComponent(x.name)}`;
+  if (!file) return { note: "downloaded, not on the server yet: ask again in a minute", link };
+  return readUpTo(file, max, fileType(x.name), link);
 }
 
 // The images (first, in order) and files of a saved message, as content of the answer: images to look at, text files
@@ -371,83 +431,29 @@ export async function getAttachment(userId: string, a: MessageRef & { index?: nu
   const s = accountOf(userId, a.account);
   const m = withSlot(s.slot, (r) => r.messages(a.chat).find((x) => x.mid === a.message_id));
   if (!m) throw new ToolError("No saved message with this id in this chat: read_chat gives the ids (refresh_chat for current ones)");
-  const all = [
-    ...(m.images ?? []).map((im) => ({ kind: "image" as const, f: im.f, url: im.url })),
-    ...(m.files ?? []).map((f) => ({ kind: "file" as const, name: f.name, url: f.url })),
-  ];
+  const all = attachmentsOf(m);
   if (!all.length) throw new ToolError("This message has no image or file");
   if (a.index !== undefined && (a.index < 1 || a.index > all.length)) throw new ToolError(`index out of range: the message has ${all.length} attachment(s)`);
-  const picked = a.index === undefined ? all.map((x, i) => ({ ...x, index: i + 1 })) : [{ ...all[a.index - 1], index: a.index }];
+  const picked = a.index === undefined ? all.map((x, i) => ({ x, index: i + 1 })) : [{ x: all[a.index - 1], index: a.index }];
 
   const blocks: Content[] = [];
   const list: Attachment[] = [];
-  for (const x of picked) {
-    if (x.kind === "image") {
-      const at: Attachment = { index: x.index, kind: "image", shown: false };
-      list.push(at);
-      if (x.f && MEDIA_NAME.test(x.f)) {
-        const file = path.join(slotDir(s.slot), "media", x.f);
-        if (fs.existsSync(file)) {
-          blocks.push({ type: "image", data: fs.readFileSync(file).toString("base64"), mimeType: IMAGE_TYPES[path.extname(x.f).slice(1) as ImageExt] });
-          at.shown = true;
-          continue;
-        }
-      }
-      if (!x.url) {
-        at.note = "the image is not saved on the server (yet): refresh_chat saves the images of the chat";
-        continue;
-      }
-      const got = await publicImage(x.url);
-      if (typeof got === "string") {
-        at.note = got;
-        at.link = x.url;
-      } else {
-        blocks.push({ type: "image", data: got.data.toString("base64"), mimeType: got.type });
-        at.shown = true;
-      }
-      continue;
-    }
-    const at: Attachment = { index: x.index, kind: "file", name: x.name, shown: false };
+  for (const { x, index } of picked) {
+    const at: Attachment = { index, kind: x.kind, ...(x.kind === "file" ? { name: x.name } : {}), shown: false };
     list.push(at);
-    if (!isSharePointUrl(x.url)) {
-      at.note = "not on SharePoint or OneDrive: not downloaded";
-      at.link = x.url;
+    const got = await fetchAttachment(s.slot, x, MAX_INLINE, wait);
+    if (got.link) at.link = got.link;
+    if ("note" in got) {
+      at.note = got.tooLarge && x.kind === "file" ? `${got.note}: open the link signed in to the app` : got.note;
       continue;
     }
-    let ran: Ran;
-    try {
-      ran = await run(s.slot, "download", x.url, JSON.stringify({ name: x.name } satisfies DownloadArgs), wait);
-    } catch (e) {
-      at.note = (e as Error).message;
-      at.link = x.url;
-      continue;
-    }
-    const res = DownloadResult.safeParse(ran.result);
-    if (ran.status !== "done" || !res.success || !FILE_NAME.test(res.data.f)) {
-      at.note = ran.status === "pending" ? "download still queued: ask again in a minute" : "Teams did not give the file";
-      at.link = x.url;
-      continue;
-    }
-    const data = await downloaded(s.slot, res.data.f, wait);
-    const link = `${config.appUrl}/files/${res.data.f}?a=${s.slot}&name=${encodeURIComponent(x.name)}`;
-    at.link = link;
-    if (!data) {
-      at.note = "downloaded, not on the server yet: ask again in a minute";
-      continue;
-    }
-    if (data.length > MAX_INLINE) {
-      at.note = `${Math.round(data.length / 1e6)} MB, too large to carry here: open the link signed in to the app`;
-      continue;
-    }
-    const ext = path.extname(x.name).slice(1).toLowerCase();
-    const type = FILE_TYPES[ext] ?? (TEXT_EXT.test(ext) ? "text/plain" : "application/octet-stream");
-    if (type.startsWith("image/")) {
-      blocks.push({ type: "image", data: data.toString("base64"), mimeType: type });
-    } else if (type === "text/plain") {
-      const text = data.toString("utf8");
+    if (got.type.startsWith("image/")) {
+      blocks.push({ type: "image", data: got.data.toString("base64"), mimeType: got.type });
+    } else if (got.type === "text/plain" && x.kind === "file") {
+      const text = got.data.toString("utf8");
       blocks.push({ type: "text", text: `--- ${x.name} ---\n${text.slice(0, MAX_TEXT)}${text.length > MAX_TEXT ? "\n[cut]" : ""}` });
     } else {
-      blocks.push({ type: "resource", resource: { uri: link, mimeType: type, blob: data.toString("base64") } });
+      blocks.push({ type: "resource", resource: { uri: got.link ?? "", mimeType: got.type, blob: got.data.toString("base64") } });
     }
     at.shown = true;
   }

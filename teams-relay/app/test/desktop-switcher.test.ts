@@ -92,6 +92,17 @@ describe("the desktop tab", () => {
     await close();
   });
 
+  it("opens the desktop on the account asked for in the page of the Rust web app, hydrated with the values of the server", async () => {
+    const { page, errors, loads, pressed, frame, close } = await open("http://app.test/remote?account=2&exported");
+
+    expect(await frame()).toBe("/api/desktop/2");
+    expect(await pressed()).toBe("User Test");
+    expect(new URL(page.url()).search).toBe("?account=2");
+    expect(loads).toEqual([2]);
+    expect(errors).toEqual([]);
+    await close();
+  });
+
   it("pulls down the accounts whose window is on the desktop at a click on the arrow, and puts them away at the next", async () => {
     const { page, arrow, shown, picks, pressed, close } = await open("http://app.test/remote?account=2");
 

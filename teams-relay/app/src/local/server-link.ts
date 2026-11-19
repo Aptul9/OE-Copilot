@@ -5,7 +5,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { nowSeconds } from "@/agent/context";
 import { Agent, fetch as undiciFetch } from "undici";
-import type webpush from "web-push";
+import type * as webpush from "web-push";
 import type { z } from "zod";
 import { errorText, log } from "@/agent/log";
 import type { Notify } from "@/agent/push/notifier";

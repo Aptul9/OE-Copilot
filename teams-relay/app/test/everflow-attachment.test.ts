@@ -140,7 +140,7 @@ describe("GET /api/everflow/attachment", () => {
   });
 
   it("no such account, message or index is 404", async () => {
-    for (const more of [{ slot: other }, { slot: stopped }, { slot: 999 }, { mid: "1" }, { chat: "Nobody" }, { index: 6 }]) {
+    for (const more of [{ slot: other }, { slot: stopped }, { slot: 999 }, { mid: "1" }, { chat: "Nobody" }, { index: 6 }] as Record<string, string | number>[]) {
       const r = await ask(1, more);
       expect(r.status, JSON.stringify(more)).toBe(404);
       expect((await r.json()).error).toBeTypeOf("string");

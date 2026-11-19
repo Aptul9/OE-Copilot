@@ -30,7 +30,7 @@ export const GET = route(async (req) => {
   if (req.headers.has("origin")) throw new HttpError(403, "Requests from web pages are not accepted");
   if (!tokenMatches(req.headers.get("authorization"))) throw new HttpError(401, "Missing or wrong token", { "WWW-Authenticate": 'Bearer realm="teamsrelay"' });
   const query = new URL(req.url).searchParams;
-  const slot = integer(query.get("slot"), 0, 1_000_000);
+  const slot = integer(query.get("slot"), 0, 0xffffffff);
   const mid = query.get("mid") ?? "";
   const index = integer(query.get("index"), 1, 1000);
   const chat = query.get("chat") ?? "";

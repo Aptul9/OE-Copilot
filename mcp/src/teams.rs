@@ -16,6 +16,14 @@ pub struct Teams {
     next: AtomicU64,
 }
 
+/// The relay's answer to an attachment request: status, the two headers Everflow needs, the body as bytes.
+pub struct Attachment {
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub disposition: Option<String>,
+    pub body: Vec<u8>,
+}
+
 impl Teams {
     /// None when the URL is unset (Teams off). https, or http on localhost or a container name; token required.
     pub fn from_env(url: Option<&str>, token: Option<&str>) -> std::result::Result<Option<Self>, String> {
@@ -54,6 +62,27 @@ impl Teams {
             .map_err(|e| Error::provider(format!("Teams relay: {e}")))?;
         let status = r.status().as_u16();
         Ok((status, crate::text_body(r, max_bytes).await?))
+    }
+
+    /// One image or file of a saved message, for Everflow (everflow.rs): GET /api/everflow/attachment at the origin of
+    /// the relay address, with the same token. The relay may wait for a download by the agent, hence the long timeout.
+    pub async fn attachment(&self, slot: u32, chat: &str, mid: &str, index: u16, max_bytes: usize) -> Result<Attachment> {
+        let mut url = self.url.join("/api/everflow/attachment").map_err(|_| Error::provider("url"))?;
+        url.query_pairs_mut()
+            .append_pair("slot", &slot.to_string())
+            .append_pair("chat", chat)
+            .append_pair("mid", mid)
+            .append_pair("index", &index.to_string());
+        let r = http_client()
+            .get(url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .timeout(Duration::from_secs(90))
+            .send()
+            .await
+            .map_err(|e| Error::provider(format!("Teams relay: {e}")))?;
+        let header = |name: &str| r.headers().get(name).and_then(|v| v.to_str().ok()).map(String::from);
+        let (status, content_type, disposition) = (r.status().as_u16(), header("content-type"), header("content-disposition"));
+        Ok(Attachment { status, content_type, disposition, body: crate::bytes_body(r, max_bytes).await? })
     }
 
     async fn request(&self, name: &str, args: Value) -> std::result::Result<Value, String> {

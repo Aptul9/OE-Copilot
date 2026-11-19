@@ -3,6 +3,7 @@
 //!   POST /everflow/agent   {"requests": [{"path", "body"?}]}  -> {"responses": [{"status", "body"}]}  OE Copilot agent reads
 //!   POST /everflow/slack   {"workspace", "requests": [{"method", "params"?}]} -> the same, Slack Web API reads
 //!   GET  /everflow/teams?since=<ms>&max_rows=<n>               -> the TeamsRelay answer of /api/everflow/saved
+//!   GET  /everflow/teams/attachment?slot&chat&mid&index        -> the bytes of /api/everflow/attachment
 //! Statuses and bodies of the agent and Slack pass through per request; anything else answers like /mcp: 421 for a
 //! Host outside MCP_HTTP_HOSTS, 403 with Origin, 401 without the token, 404 when EVERFLOW_TOKEN or the backend is off.
 
@@ -24,6 +25,8 @@ const SLACK_METHODS: [&str; 7] =
 const MAX_REQUESTS: usize = 100;
 /// The whole answer of one call; past it the call stops with 507 rather than a cut answer.
 const MAX_ANSWER: usize = 64 * 1024 * 1024;
+/// One attachment; the relay itself refuses one over 20 MB (413), so 507 means a relay that did not.
+const MAX_ATTACHMENT: usize = 20 * 1024 * 1024;
 
 /// 507: this answer is over MAX_ANSWER; Everflow reports it as <source>.result-limit, apart from a backend that is down (502).
 fn too_large() -> Response<Body> {
@@ -57,8 +60,9 @@ pub async fn handle(app: &App, req: Request<Incoming>, path: &str) -> Response<B
             Err(r) => *r,
         },
         ("/everflow/teams", "GET") => teams(app, req.uri().query().unwrap_or("")).await,
+        ("/everflow/teams/attachment", "GET") => teams_attachment(app, req.uri().query().unwrap_or("")).await,
         ("/everflow/agent" | "/everflow/slack", _) => empty(405, &[("Allow", "POST")]),
-        ("/everflow/teams", _) => empty(405, &[("Allow", "GET")]),
+        ("/everflow/teams" | "/everflow/teams/attachment", _) => empty(405, &[("Allow", "GET")]),
         _ => empty(404, &[]),
     }
 }
@@ -209,6 +213,44 @@ async fn teams(app: &App, query: &str) -> Response<Body> {
         Err(crate::Error::Comm { code: "INTERRUPTED", .. }) => error(502, "teams relay answer interrupted"),
         Err(_) => error(502, "teams relay unreachable"),
     }
+}
+
+/// One image or file of a saved message: the bytes with their type and name on 200; the relay's JSON on 404 (no such
+/// account, message or index), 409 (cannot be given now, with the reason) and 413 (over 20 MB); any other status 502.
+async fn teams_attachment(app: &App, query: &str) -> Response<Body> {
+    let Some(teams) = app.comm.teams.as_ref() else { return empty(404, &[]) };
+    let param = |name: &str| form_urlencoded::parse(query.as_bytes()).find(|(k, _)| k == name).map(|(_, v)| v.into_owned());
+    let digits = |v: Option<String>, max: usize| v.filter(|s| !s.is_empty() && s.len() <= max && s.bytes().all(|b| b.is_ascii_digit()));
+    let slot = digits(param("slot"), 10).and_then(|s| s.parse::<u32>().ok());
+    let mid = digits(param("mid"), 20);
+    let index = digits(param("index"), 4).and_then(|s| s.parse::<u16>().ok()).filter(|n| (1..=1000).contains(n));
+    // the relay counts as JavaScript does, in UTF-16 units
+    let chat = param("chat").filter(|c| !c.is_empty() && c.encode_utf16().count() <= 400);
+    let (Some(slot), Some(chat), Some(mid), Some(index)) = (slot, chat, mid, index) else {
+        return error(400, "slot, chat (1 to 400 characters), mid (digits) and index (1 to 1000) are required");
+    };
+    let a = match teams.attachment(slot, &chat, &mid, index, MAX_ATTACHMENT).await {
+        Ok(a) => a,
+        Err(crate::Error::Comm { code: "TOO_LARGE", .. }) => return too_large(),
+        Err(crate::Error::Comm { code: "INTERRUPTED", .. }) => return error(502, "teams relay answer interrupted"),
+        Err(_) => return error(502, "teams relay unreachable"),
+    };
+    let r = match a.status {
+        200 => {
+            let mut r = Response::builder()
+                .status(200)
+                .header("content-type", a.content_type.as_deref().unwrap_or("application/octet-stream"))
+                .header("cache-control", "private, max-age=86400")
+                .header("x-content-type-options", "nosniff");
+            if let Some(d) = &a.disposition {
+                r = r.header("content-disposition", d.as_str());
+            }
+            r
+        }
+        404 | 409 | 413 => Response::builder().status(a.status).header("content-type", "application/json"),
+        status => return error(502, &format!("teams relay HTTP {status}")),
+    };
+    r.body(http_body_util::Full::new(bytes::Bytes::from(a.body)).boxed_unsync()).unwrap_or_else(|_| error(502, "teams relay answer unusable"))
 }
 
 #[cfg(test)]

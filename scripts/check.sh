@@ -59,6 +59,8 @@ check_calendar() {
     && test "$(docker compose config --services | sort | tr '\n' ' ')" = "agent caddy-ui gateway ")
   step "calendar: images end to end"
   bash scripts/integrazione.sh
+  step "calendar: EverID in front of the interface"
+  bash scripts/everid.sh
 }
 
 check_teams_relay() {

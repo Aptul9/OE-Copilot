@@ -85,6 +85,8 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
             "@odata.nextLink": format!("http://127.0.0.1:{port}/api/v2.0/me/MailFolders('Inbox')/messages?$skip=2"),
         })),
         ("GET", "/api/v2.0/me/MailFolders('Inbox')/messages") => j(json!({"value": [{"Id": "m2", "IsRead": false}, {"Id": "m3", "IsRead": false}]})),
+        ("GET", "/api/v2.0/me/MailFolders/SentItems/messages") => j(json!({"value": [{"Id": "s1", "IsRead": true}]})),
+        ("GET", "/api/v2.0/me/messages/m1") => j(json!({"Id": "m1", "Subject": "Native", "HasAttachments": false})),
         ("POST", "/api/v2.0/me/sendmail") => (202, "application/json", String::new()),
         ("POST", "/api/v2.0/me/messages") => (201, "application/json", json!({"Id": "d1", "Subject": "s"}).to_string()),
         ("GET", "/api/v2.0/me/messages/d1") => j(json!({"IsDraft": true, "Subject": "s", "ToRecipients": [{"EmailAddress": {"Address": "b@x.it"}}]})),
@@ -104,7 +106,7 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
             let req: Value = serde_json::from_str(body).unwrap_or(Value::Null);
             let id = req["id"].clone();
             let result = match req["params"]["name"].as_str() {
-                Some("list_accounts") => json!({"content": [{"type": "text", "text": "{\"accounts\":[{\"slot\":3,\"name\":\"Work\"}]}"}]}),
+                Some("list_accounts") => json!({"content": [{"type": "text", "text": "{\"accounts\":[{\"slot\":3,\"name\":\"Work\",\"email\":\"w@x.it\"}]}"}]}),
                 _ => json!({"content": [{"type": "text", "text": "nope"}], "isError": true}),
             };
             (200, "text/event-stream", format!("event: message\ndata: {}\n\n", json!({"result": result, "jsonrpc": "2.0", "id": id})))
@@ -210,6 +212,20 @@ fn the_server_end_to_end() {
         let l3 = tool(port, "email_list", json!({"account_id": "outlook:a@x.it", "limit": 3})).await;
         assert_eq!(l3["data"]["items"].as_array().unwrap().iter().map(|m| m["Id"].as_str().unwrap()).collect::<Vec<_>>(), ["m1", "m2", "m3"]);
         assert_eq!(l3["data"]["pages"], json!(2));
+        // an id another system kept: a bare or differently written address names the one account of the tool's family
+        for loose in ["a@x.it", "A@X.it", "OUTLOOK:a@x.it", "outlook:A@x.it"] {
+            assert_eq!(tool(port, "email_list", json!({"account_id": loose, "limit": 1})).await["account_id"], json!("outlook:a@x.it"), "{loose}");
+        }
+        assert_eq!(tool(port, "chat_list", json!({"account_id": "teamsrelay:w@x.it"})).await["code"], json!("PROVIDER_ERROR"));
+        for unknown in [("email_list", "w@x.it"), ("chat_list", "a@x.it"), ("chat_list", "nobody@x.it"), ("email_list", "gmail:a@x.it"), ("email_list", "a")] {
+            assert_eq!(tool(port, unknown.0, json!({"account_id": unknown.1})).await["code"], json!("UNKNOWN_ACCOUNT"), "{unknown:?}");
+        }
+        // and a native Outlook id or well-known folder name; anything handle-shaped is still checked
+        assert_eq!(tool(port, "email_read", json!({"account_id": "outlook:a@x.it", "message_id": "m1"})).await["data"]["Subject"], json!("Native"));
+        let sent_items = tool(port, "email_list", json!({"account_id": "outlook:a@x.it", "folder_id": "sentitems"})).await;
+        assert_eq!(sent_items["data"]["items"][0]["Id"], json!("s1"));
+        assert_eq!(tool(port, "email_read", json!({"account_id": "outlook:a@x.it", "message_id": "m1.forged"})).await["code"], json!("INVALID_RESOURCE"));
+        assert_eq!(tool(port, "email_read", json!({"account_id": "gmail:g@x.it", "message_id": "m1"})).await["code"], json!("INVALID_RESOURCE"));
         // a handle of this account works, the same handle on another account does not
         let read = tool(port, "email_read", json!({"account_id": "gmail:g@x.it", "message_id": items[0]["id"]})).await;
         assert_eq!(read["code"], json!("ACCOUNT_MISMATCH"));

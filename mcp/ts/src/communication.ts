@@ -145,6 +145,7 @@ export class Communication {
             provider: "teams",
             native: String(a.slot),
             name: a.name || a.email,
+            ...(a.email ? { email: a.email } : {}),
             capabilities: [
               "chat.list",
               "chat.read",
@@ -169,11 +170,12 @@ export class Communication {
     }
     return out;
   }
-  async account(id: string): Promise<Account> {
+  // family is the tool's, email or chat: an id that names no account exactly may still name one of that family.
+  async account(id: string, family: "email" | "chat" = "email"): Promise<Account> {
     if (!id)
       throw new CommunicationError("ACCOUNT_REQUIRED", "account_id required");
     const split = id.indexOf(":");
-    if(split<1 || id.endsWith(':'))throw new CommunicationError('UNKNOWN_ACCOUNT','Unknown exact account_id');
+    if (split < 1 || id.endsWith(":")) return this.alias(id, family);
     const provider = id.slice(0, split);
     const native = id.slice(split + 1);
     let found: any;
@@ -200,11 +202,7 @@ export class Communication {
       found = unpack(await this.teams.call("list_accounts", {})).accounts?.find(
         (v: any) => String(v.slot) === native,
       );
-    if (!found)
-      throw new CommunicationError(
-        "UNKNOWN_ACCOUNT",
-        "Unknown exact account_id",
-      );
+    if (!found) return this.alias(id, family);
     return {
       account_id: id,
       provider,
@@ -213,9 +211,33 @@ export class Communication {
       capabilities: [],
     };
   }
+  // The one account of the family whose address an inexact id carries: a bare address, another prefix such as teamsrelay:,
+  // another letter case. A known provider prefix keeps to that provider. The answer and every handle carry the exact id.
+  private async alias(id: string, family: "email" | "chat"): Promise<Account> {
+    const split = id.indexOf(":");
+    const prefix = split < 0 ? "" : id.slice(0, split);
+    const address = (split < 0 ? id : id.slice(split + 1)).toLowerCase();
+    const providers = ["outlook", "gmail", "gchat", "teams", "slack"].includes(prefix) ? [prefix]
+      : family === "chat" ? ["teams", "gchat", "slack"] : ["outlook", "gmail"];
+    const hits = !address.includes("@") ? [] : (await this.accounts()).filter((a: any) => providers.includes(a.provider)
+      && [a.native, a.name, a.email].some((v) => typeof v === "string" && v.toLowerCase() === address));
+    if (hits.length !== 1)
+      throw new CommunicationError("UNKNOWN_ACCOUNT", "Unknown exact account_id");
+    const a: any = hits[0];
+    return { account_id: a.account_id, provider: a.provider, native: String(a.native), name: a.name || a.native, capabilities: [] };
+  }
   async email(a: Account, op: string, x: any): Promise<any> {
-    const id = (kind: string, value: string) =>
-      resource(a.account_id, kind, value).native;
+    // A handle signed here; for an Outlook message, thread or folder also the Outlook id itself (one another system kept,
+    // or a well-known folder name such as sentitems): it goes out with this account's own token, so it reaches nothing else.
+    const id = (kind: string, value: string) => {
+      try {
+        return resource(a.account_id, kind, value).native;
+      } catch (e) {
+        if (a.provider === "outlook" && ["email", "email_thread", "folder"].includes(kind) && value && !value.includes(".")
+          && e instanceof CommunicationError && e.code === "INVALID_RESOURCE") return value;
+        throw e;
+      }
+    };
     const wrap = (m: any) => ({
       ...m,
       id: resourceId(a.account_id, "email", String(m.Id || m.id)),
@@ -792,7 +814,7 @@ export function registerCommunication(server: McpServer, c: Communication) {
     errors: c.errors,
   }));
   const call = (family: "email" | "chat", op: string) => async (x: any) => {
-    const a = await c.account(x.account_id);
+    const a = await c.account(x.account_id, family);
     return {
       account_id: a.account_id,
       provider: a.provider,

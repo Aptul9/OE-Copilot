@@ -3,7 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import type { AddressInfo } from "node:net";
 import net from "node:net";
-import webpush from "web-push";
+import * as webpush from "web-push";
 
 // A push service on 127.0.0.1 standing in for Google's, Apple's or Mozilla's: it decrypts what it receives with the
 // keys of the device it made up (RFC 8291, aes128gcm) and checks the VAPID signature (RFC 8292). The agent's own

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import webpush from "web-push";
+import * as webpush from "web-push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfigError } from "@/shared/env";
 import { CALL_TTL, PUSH_TTL } from "@/agent/logic/notify";

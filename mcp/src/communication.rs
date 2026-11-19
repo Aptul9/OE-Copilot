@@ -592,6 +592,9 @@ impl Communication {
         if x.get("cursor").is_some_and(truthy) && a.provider != "slack" {
             return unsupported(&a.provider, "chat cursor");
         }
+        if truthy_opt(x.get("refresh")) && a.provider != "teams" {
+            return unsupported(&a.provider, "refresh");
+        }
         let text_empty = s(x, "text").is_none_or(|t| t.trim().is_empty());
         let has_files = x.get("files").and_then(Value::as_array).is_some_and(|f| !f.is_empty());
         if op == "send" && text_empty && !has_files {
@@ -726,6 +729,8 @@ impl Communication {
                 let teams = self.teams.as_ref().expect("checked");
                 let tool = match op {
                     "list" => "list_chats",
+                    // refresh: Teams opens the chat first, so its newest messages and images are saved (and it reads as read)
+                    "read" if truthy_opt(x.get("refresh")) => "refresh_chat",
                     "read" => "read_chat",
                     "send" => "send_message",
                     "edit" => "edit_message",

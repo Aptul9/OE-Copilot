@@ -107,6 +107,9 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
             let id = req["id"].clone();
             let result = match req["params"]["name"].as_str() {
                 Some("list_accounts") => json!({"content": [{"type": "text", "text": "{\"accounts\":[{\"slot\":3,\"name\":\"Work\",\"email\":\"w@x.it\"}]}"}]}),
+                Some(read @ ("read_chat" | "refresh_chat")) if req["params"]["arguments"]["chat"] == "Anna" => {
+                    json!({"content": [{"type": "text", "text": json!({"messages": [{"mid": "1", "text": read}]}).to_string()}]})
+                }
                 _ => json!({"content": [{"type": "text", "text": "nope"}], "isError": true}),
             };
             (200, "text/event-stream", format!("event: message\ndata: {}\n\n", json!({"result": result, "jsonrpc": "2.0", "id": id})))
@@ -281,6 +284,13 @@ fn the_server_end_to_end() {
         // Teams through the relay
         let t = tool(port, "chat_list", json!({"account_id": "teams:3"})).await;
         assert_eq!(t["code"], json!("PROVIDER_ERROR"));
+        // refresh asks the relay to open the chat in Teams first; Teams only
+        let anna = communication_mcp::identity::handle("teams:3", "conversation", "Anna");
+        for (refresh, relay_tool) in [(json!(false), "read_chat"), (json!(true), "refresh_chat")] {
+            let r = tool(port, "chat_read", json!({"account_id": "teams:3", "conversation_id": anna, "refresh": refresh})).await;
+            assert_eq!(r["data"]["messages"][0]["text"], json!(relay_tool));
+        }
+        assert_eq!(tool(port, "chat_read", json!({"account_id": "slack:T1", "conversation_id": communication_mcp::identity::handle("slack:T1", "conversation", "C1"), "refresh": true})).await["code"], json!("UNSUPPORTED_CAPABILITY"));
 
         // Slack: the conversations and users slackcli printed, the send it made
         log.lock().unwrap().clear();

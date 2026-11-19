@@ -50,11 +50,11 @@ pub async fn handle(app: &App, req: Request<Incoming>, path: &str) -> Response<B
     match (path, method.as_str()) {
         ("/everflow/agent", "POST") => match read(req).await {
             Ok(v) => agent(app, v).await,
-            Err(r) => r,
+            Err(r) => *r,
         },
         ("/everflow/slack", "POST") => match read(req).await {
             Ok(v) => slack(app, v).await,
-            Err(r) => r,
+            Err(r) => *r,
         },
         ("/everflow/teams", "GET") => teams(app, req.uri().query().unwrap_or("")).await,
         ("/everflow/agent" | "/everflow/slack", _) => empty(405, &[("Allow", "POST")]),
@@ -63,36 +63,36 @@ pub async fn handle(app: &App, req: Request<Incoming>, path: &str) -> Response<B
     }
 }
 
-/// The JSON object of a request body, at most MAX_BODY.
-async fn read(req: Request<Incoming>) -> Result<Map<String, Value>, Response<Body>> {
+/// The JSON object of a request body, at most MAX_BODY. The refusal is boxed: a Response is too large to travel in an Err.
+async fn read(req: Request<Incoming>) -> Result<Map<String, Value>, Box<Response<Body>>> {
     let declared = header(&req, "content-length").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
     if declared > MAX_BODY as u64 {
-        return Err(empty(413, &[("Connection", "close")]));
+        return Err(Box::new(empty(413, &[("Connection", "close")])));
     }
     let mut body = req.into_body();
     let mut bytes: Vec<u8> = vec![];
     while let Some(frame) = body.frame().await {
-        let Ok(frame) = frame else { return Err(empty(400, &[("Connection", "close")])) };
+        let Ok(frame) = frame else { return Err(Box::new(empty(400, &[("Connection", "close")]))) };
         if let Some(d) = frame.data_ref() {
             bytes.extend_from_slice(d);
             if bytes.len() > MAX_BODY {
-                return Err(empty(413, &[("Connection", "close")]));
+                return Err(Box::new(empty(413, &[("Connection", "close")])));
             }
         }
     }
     match serde_json::from_slice::<Value>(&bytes) {
         Ok(Value::Object(m)) => Ok(m),
-        _ => Err(error(400, "the body must be a JSON object")),
+        _ => Err(Box::new(error(400, "the body must be a JSON object"))),
     }
 }
 
 /// The `requests` list, at most MAX_REQUESTS, each an object.
-fn requests(v: &Map<String, Value>) -> Result<Vec<Map<String, Value>>, Response<Body>> {
-    let Some(list) = v.get("requests").and_then(Value::as_array) else { return Err(error(400, "requests must be a list")) };
+fn requests(v: &Map<String, Value>) -> Result<Vec<Map<String, Value>>, Box<Response<Body>>> {
+    let Some(list) = v.get("requests").and_then(Value::as_array) else { return Err(Box::new(error(400, "requests must be a list"))) };
     if list.len() > MAX_REQUESTS {
-        return Err(error(400, &format!("at most {MAX_REQUESTS} requests per call")));
+        return Err(Box::new(error(400, &format!("at most {MAX_REQUESTS} requests per call"))));
     }
-    list.iter().map(|r| r.as_object().cloned().ok_or_else(|| error(400, "each request must be an object"))).collect()
+    list.iter().map(|r| r.as_object().cloned().ok_or_else(|| Box::new(error(400, "each request must be an object")))).collect()
 }
 
 /// Answers in request order; the running total stays under MAX_ANSWER.
@@ -105,7 +105,7 @@ async fn agent(app: &App, v: Map<String, Value>) -> Response<Body> {
     let Some(gateway) = app.comm.google.as_ref() else { return empty(404, &[]) };
     let list = match requests(&v) {
         Ok(l) => l,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     // every request is checked before the first call
     let mut calls: Vec<(String, Option<Value>)> = vec![];
@@ -145,7 +145,7 @@ async fn slack(app: &App, v: Map<String, Value>) -> Response<Body> {
     }
     let list = match requests(&v) {
         Ok(l) => l,
-        Err(r) => return r,
+        Err(r) => return *r,
     };
     let mut calls: Vec<(String, Vec<(String, String)>)> = vec![];
     for r in &list {

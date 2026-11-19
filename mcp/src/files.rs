@@ -46,7 +46,7 @@ fn public_host(hosts: &str) -> Option<String> {
 
 /// The answer of a call with `download: true`: the handles are checked now, the attachment is fetched on the GET.
 pub async fn link(c: &Communication, name: &str, x: &Args) -> Result<Value> {
-    let a = c.account(x.get("account_id").and_then(Value::as_str).unwrap_or("")).await?;
+    let a = c.account(x.get("account_id").and_then(Value::as_str).unwrap_or(""), if name.starts_with("chat_") { "chat" } else { "email" }).await?;
     let kinds: &[(&str, &str)] = if name == "email_attachment" {
         &[("attachment_id", "email_attachment")]
     } else {

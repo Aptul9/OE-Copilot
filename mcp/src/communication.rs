@@ -145,6 +145,7 @@ impl Communication {
                         o.insert("provider".into(), json!("teams"));
                         o.insert("native".into(), json!(string(a.get("slot"))));
                         set(&mut o, "name", or(&[a.get("name"), a.get("email")]).cloned());
+                        set(&mut o, "email", a.get("email").cloned());
                         o.insert("capabilities".into(), json!(TEAMS_CAPS));
                         out.push(Value::Object(o));
                     }
@@ -160,12 +161,13 @@ impl Communication {
         (out, errors)
     }
 
-    pub async fn account(&self, id: &str) -> Result<Account> {
+    /// `family` is the tool's, `email` or `chat`: an id that names no account exactly may still name one of that family.
+    pub async fn account(&self, id: &str, family: &str) -> Result<Account> {
         if id.is_empty() {
             return Err(Error::comm("ACCOUNT_REQUIRED", "account_id required"));
         }
         let unknown = || Error::comm("UNKNOWN_ACCOUNT", "Unknown exact account_id");
-        let Some(split) = id.find(':').filter(|i| *i >= 1 && !id.ends_with(':')) else { return Err(unknown()) };
+        let Some(split) = id.find(':').filter(|i| *i >= 1 && !id.ends_with(':')) else { return self.alias(id, family).await.ok_or_else(unknown) };
         let provider = &id[..split];
         let native = &id[split + 1..];
         let found = match provider {
@@ -194,9 +196,33 @@ impl Communication {
             _ => false,
         };
         if !found {
-            return Err(unknown());
+            return self.alias(id, family).await.ok_or_else(unknown);
         }
         Ok(Account { account_id: id.to_string(), provider: provider.to_string(), native: native.to_string() })
+    }
+
+    /// The one account of the family whose address an inexact id carries: a bare address, another prefix such as
+    /// `teamsrelay:`, another letter case. A known provider prefix keeps to that provider. The answer and every handle
+    /// carry the exact id.
+    async fn alias(&self, id: &str, family: &str) -> Option<Account> {
+        let (prefix, address) = id.split_once(':').map_or(("", id), |(p, rest)| (p, rest));
+        if !address.contains('@') {
+            return None;
+        }
+        let providers = if ["outlook", "gmail", "gchat", "teams", "slack"].contains(&prefix) {
+            vec![prefix]
+        } else if family == "chat" {
+            vec!["teams", "gchat", "slack"]
+        } else {
+            vec!["outlook", "gmail"]
+        };
+        let (list, _) = self.accounts().await;
+        let mut hits = list.iter().filter(|a| {
+            providers.contains(&a.get("provider").and_then(Value::as_str).unwrap_or(""))
+                && ["native", "name", "email"].iter().any(|k| a.get(*k).and_then(Value::as_str).is_some_and(|v| v.eq_ignore_ascii_case(address)))
+        });
+        let (Some(a), None) = (hits.next(), hits.next()) else { return None };
+        Some(Account { account_id: string(a.get("account_id")), provider: string(a.get("provider")), native: string(a.get("native")) })
     }
 
     pub async fn email(&self, a: &Account, op: &str, x: &Args) -> Result<Value> {
@@ -336,7 +362,19 @@ impl Communication {
     async fn outlook_email(&self, a: &Account, op: &str, x: &Args) -> Result<Value> {
         let acct = a.account_id.as_str();
         let o = &self.outlook;
-        let id = |kind: &str, key: &str| resource(acct, kind, s(x, key).unwrap_or("")).map(|r| r.native);
+        // a handle signed here; for a message, thread or folder also the Outlook id itself (one another system kept, or a
+        // well-known folder name such as sentitems): it goes out with this account's own token, so it reaches nothing else
+        let id = |kind: &str, key: &str| {
+            let raw = s(x, key).unwrap_or("");
+            match resource(acct, kind, raw) {
+                Err(Error::Comm { code: "INVALID_RESOURCE", .. })
+                    if ["email", "email_thread", "folder"].contains(&kind) && !raw.is_empty() && !raw.contains('.') =>
+                {
+                    Ok(raw.to_string())
+                }
+                r => r.map(|r| r.native),
+            }
+        };
         let files: Vec<InlineFile> = x
             .get("files")
             .and_then(Value::as_array)
@@ -747,7 +785,7 @@ impl Communication {
     }
 
     pub async fn calendar_list(&self, x: &Args) -> Result<Value> {
-        let a = self.account(s(x, "account_id").unwrap_or("")).await?;
+        let a = self.account(s(x, "account_id").unwrap_or(""), "email").await?;
         if a.provider != "outlook" {
             return unsupported(&a.provider, "calendar");
         }
@@ -764,7 +802,7 @@ impl Communication {
     }
 
     pub async fn calendar_events(&self, x: &Args) -> Result<Value> {
-        let a = self.account(s(x, "account_id").unwrap_or("")).await?;
+        let a = self.account(s(x, "account_id").unwrap_or(""), "email").await?;
         if a.provider != "outlook" {
             return unsupported(&a.provider, "calendar");
         }
@@ -828,7 +866,7 @@ pub async fn run(c: &Communication, name: &str, x: &Args) -> Result<Value> {
         return crate::files::link(c, name, x).await;
     }
     let (family, op) = name.split_once('_').ok_or_else(|| Error::provider("tool"))?;
-    let a = c.account(s(x, "account_id").unwrap_or("")).await?;
+    let a = c.account(s(x, "account_id").unwrap_or(""), family).await?;
     let data = match family {
         "email" => c.email(&a, op, x).await?,
         "chat" => c.chat(&a, op, x).await?,

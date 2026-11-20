@@ -530,18 +530,21 @@ fn is_share_point_url(url: &str) -> bool {
 }
 
 /// An image of a message the page could not fetch, by its public link (Giphy...): HTTPS to a named host only, never
-/// an address of the server's own network. The bytes and the type, or why not.
-async fn public_image(url: &str) -> Result<(Vec<u8>, String), String> {
+/// an address of the server's own network, at most `max` bytes. The bytes and the type, or why not and whether only
+/// its size stopped it.
+async fn public_image(url: &str, max: usize) -> Result<(Vec<u8>, String), (String, bool)> {
+    let no = |why: &str| Err((why.to_string(), false));
+    let large = || Err((format!("larger than {} MB", max / 1_000_000), true));
     static LOCAL: LazyLock<regex::Regex> = LazyLock::new(|| regex::Regex::new(r"(?i)(^|\.)(localhost|local|internal|lan)$").expect("fixed"));
     static TEAMS: LazyLock<regex::Regex> =
         LazyLock::new(|| regex::Regex::new(r"(?i)(^|\.)(asm\.skype\.com|teams\.microsoft\.com|teams\.cloud\.microsoft)$").expect("fixed"));
-    let Ok(u) = url::Url::parse(url) else { return Err("not a link".into()) };
+    let Ok(u) = url::Url::parse(url) else { return no("not a link") };
     let host = u.host_str().unwrap_or("").trim_start_matches('[').trim_end_matches(']').to_string();
     if u.scheme() != "https" || host.parse::<std::net::IpAddr>().is_ok() || !host.contains('.') || LOCAL.is_match(&host) {
-        return Err("not a public link".into());
+        return no("not a public link");
     }
     if TEAMS.is_match(&host) {
-        return Err("Teams keeps this image behind the sign-in of the account and it is not saved yet: refresh_chat saves it".into());
+        return no("Teams keeps this image behind the sign-in of the account and it is not saved yet: refresh_chat saves it");
     }
     let fetch = async {
         let r = crate::http_client().get(u.as_str()).send().await.map_err(|_| "fetch failed".to_string())?;
@@ -552,23 +555,53 @@ async fn public_image(url: &str) -> Result<(Vec<u8>, String), String> {
         let header = |k: &str| r.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
         let kind = header("content-type").split(';').next().unwrap_or("").trim().to_string();
         if !r.status().is_success() || !kind.starts_with("image/") {
-            return Ok(Err(format!("the link answered {} {}", r.status().as_u16(), if kind.is_empty() { "without a type" } else { &kind })));
+            return Ok(no(&format!("the link answered {} {}", r.status().as_u16(), if kind.is_empty() { "without a type" } else { &kind })));
         }
         let length = r.headers().get("content-length").and_then(|v| v.to_str().ok()).map(|v| js::number(Some(&json!(v)))).unwrap_or(0.0);
-        if length > MAX_INLINE as f64 {
-            return Ok(Err("larger than 8 MB".into()));
+        if length > max as f64 {
+            return Ok(large());
         }
         let data = r.bytes().await.map_err(|_| "fetch failed".to_string())?;
-        if data.len() > MAX_INLINE {
-            return Ok(Err("larger than 8 MB".into()));
+        if data.len() > max {
+            return Ok(large());
         }
         Ok(Ok((data.to_vec(), kind)))
     };
     match tokio::time::timeout(Duration::from_secs(15), fetch).await {
         Ok(Ok(r)) => r,
-        Ok(Err(e)) => Err(format!("not fetched: {e}")),
-        Err(_) => Err("not fetched: The operation was aborted due to timeout".into()),
+        Ok(Err(e)) => no(&format!("not fetched: {e}")),
+        Err(_) => no("not fetched: The operation was aborted due to timeout"),
     }
+}
+
+/// A saved image of the slot (data/N/media): its bytes and type, None when the name is not one or the file is gone.
+fn saved_image(slot: i64, f: Option<&Value>) -> Option<(Vec<u8>, &'static str)> {
+    let f = f.and_then(Value::as_str).filter(|f| MEDIA_NAME.is_match(f))?;
+    let data = std::fs::read(slot_dir(slot).join("media").join(f)).ok()?;
+    Some((data, crate::uploads::image_type(&extname(f)[1..])))
+}
+
+/// A SharePoint or OneDrive file downloaded with the Teams session (the download command, waited for): its saved name
+/// and bytes, or why not, with the saved name when the download ran but the file has not reached the server yet.
+async fn download(slot: i64, url: &str, raw_name: Option<&Value>, wait: Wait) -> Result<(String, Vec<u8>), (String, Option<String>)> {
+    let mut args = Map::new();
+    set(&mut args, "name", raw_name.cloned());
+    let ran = run(slot, "download", url, &js::stringify(&Value::Object(args)), wait).await.map_err(|e| (message_of(e), None))?;
+    let f = ran.result.get("f").and_then(Value::as_str).filter(|_| ran.result.is_object()).map(String::from);
+    let Some(f) = f.filter(|f| ran.status == "done" && FILE_NAME.is_match(f)) else {
+        let note = if ran.status == "pending" { "download still queued: ask again in a minute" } else { "Teams did not give the file" };
+        return Err((note.into(), None));
+    };
+    match downloaded(slot, &f, wait).await {
+        Some(data) => Ok((f, data)),
+        None => Err(("downloaded, not on the server yet: ask again in a minute".into(), Some(f))),
+    }
+}
+
+/// Content type of a file by its name: Office, PDF, images, text, or bytes.
+fn type_of_file(name: &str) -> &'static str {
+    let ext = extname(name).get(1..).unwrap_or("").to_lowercase();
+    file_type(&ext).unwrap_or(if TEXT_EXT.is_match(&ext) { "text/plain" } else { "application/octet-stream" })
 }
 
 /// The file of a finished download: a relay uploads it to the server right after, so it may come a little later.
@@ -594,6 +627,15 @@ struct Item {
     url: Option<Value>,
 }
 
+/// The images (first, in order), then the files of a saved message: index N of the tools is item N-1.
+fn items(m: &Value) -> Vec<Item> {
+    let list_of = |k: &str| m.get(k).and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut all: Vec<Item> =
+        list_of("images").iter().map(|im| Item { image: true, f: im.get("f").cloned(), name: None, url: im.get("url").cloned() }).collect();
+    all.extend(list_of("files").iter().map(|f| Item { image: false, f: None, name: f.get("name").cloned(), url: f.get("url").cloned() }));
+    all
+}
+
 /// The images (first, in order) and files of a saved message, as content of the answer: images to look at, text files
 /// as text, other files as embedded resources. index: 1-based, the images first, then the files; all when missing.
 pub async fn get_attachment(user_id: &str, a: &Map<String, Value>, wait: Wait) -> Res<Vec<Value>> {
@@ -602,10 +644,7 @@ pub async fn get_attachment(user_id: &str, a: &Map<String, Value>, wait: Wait) -
     let mid = arg_str(a, "message_id");
     let m = with_slot(s.slot, |r| Ok(r.messages(chat).into_iter().find(|x| x.get("mid").and_then(Value::as_str) == Some(mid))))?;
     let Some(m) = m else { return refuse("No saved message with this id in this chat: read_chat gives the ids (refresh_chat for current ones)") };
-    let list_of = |k: &str| m.get(k).and_then(Value::as_array).cloned().unwrap_or_default();
-    let mut all: Vec<Item> =
-        list_of("images").iter().map(|im| Item { image: true, f: im.get("f").cloned(), name: None, url: im.get("url").cloned() }).collect();
-    all.extend(list_of("files").iter().map(|f| Item { image: false, f: None, name: f.get("name").cloned(), url: f.get("url").cloned() }));
+    let all = items(&m);
     if all.is_empty() {
         return refuse("This message has no image or file");
     }
@@ -629,18 +668,14 @@ pub async fn get_attachment(user_id: &str, a: &Map<String, Value>, wait: Wait) -
         if x.image {
             at.insert("kind".into(), json!("image"));
             at.insert("shown".into(), json!(false));
-            let saved = x.f.as_ref().and_then(Value::as_str).filter(|f| MEDIA_NAME.is_match(f)).and_then(|f| {
-                let data = std::fs::read(slot_dir(s.slot).join("media").join(f)).ok()?;
-                Some((data, crate::uploads::image_type(&extname(f)[1..])))
-            });
-            if let Some((data, kind)) = saved {
+            if let Some((data, kind)) = saved_image(s.slot, x.f.as_ref()) {
                 blocks.push(json!({ "type": "image", "data": js::base64_std(&data), "mimeType": kind }));
                 at.insert("shown".into(), json!(true));
             } else if !truthy_opt(x.url.as_ref()) {
                 at.insert("note".into(), json!("the image is not saved on the server (yet): refresh_chat saves the images of the chat"));
             } else {
-                match public_image(url).await {
-                    Err(why) => {
+                match public_image(url, MAX_INLINE).await {
+                    Err((why, _)) => {
                         at.insert("note".into(), json!(why));
                         at.insert("link".into(), json!(url));
                     }
@@ -685,37 +720,23 @@ async fn file_block(
         set(at, "link", raw_url.cloned());
         return None;
     }
-    let mut args = Map::new();
-    set(&mut args, "name", raw_name.cloned());
-    let ran = match run(s.slot, "download", url, &js::stringify(&Value::Object(args)), wait).await {
-        Ok(r) => r,
-        Err(e) => {
-            at.insert("note".into(), json!(message_of(e)));
-            at.insert("link".into(), json!(url));
+    let app_link = |f: &str| format!("{}/files/{f}?a={}&name={}", crate::config::app_url(), s.slot, js::encode_uri_component(name));
+    let (f, data) = match download(s.slot, url, raw_name, wait).await {
+        Ok(got) => got,
+        Err((note, saved)) => {
+            at.insert("note".into(), json!(note));
+            at.insert("link".into(), json!(saved.map_or_else(|| url.to_string(), |f| app_link(&f))));
             return None;
         }
     };
-    let f = ran.result.get("f").and_then(Value::as_str).filter(|_| ran.result.is_object()).map(String::from);
-    let Some(f) = f.filter(|f| ran.status == "done" && FILE_NAME.is_match(f)) else {
-        let note = if ran.status == "pending" { "download still queued: ask again in a minute" } else { "Teams did not give the file" };
-        at.insert("note".into(), json!(note));
-        at.insert("link".into(), json!(url));
-        return None;
-    };
-    let data = downloaded(s.slot, &f, wait).await;
-    let link = format!("{}/files/{f}?a={}&name={}", crate::config::app_url(), s.slot, js::encode_uri_component(name));
+    let link = app_link(&f);
     at.insert("link".into(), json!(link));
-    let Some(data) = data else {
-        at.insert("note".into(), json!("downloaded, not on the server yet: ask again in a minute"));
-        return None;
-    };
     if data.len() > MAX_INLINE {
         let mb = (data.len() as f64 / 1e6 + 0.5).floor();
         at.insert("note".into(), json!(format!("{} MB, too large to carry here: open the link signed in to the app", js::number_to_string(mb))));
         return None;
     }
-    let ext = extname(name).get(1..).unwrap_or("").to_lowercase();
-    let kind = file_type(&ext).unwrap_or(if TEXT_EXT.is_match(&ext) { "text/plain" } else { "application/octet-stream" });
+    let kind = type_of_file(name);
     Some(if kind.starts_with("image/") {
         json!({ "type": "image", "data": js::base64_std(&data), "mimeType": kind })
     } else if kind == "text/plain" {
@@ -726,6 +747,54 @@ async fn file_block(
     } else {
         json!({ "type": "resource", "resource": { "uri": link, "mimeType": kind, "blob": js::base64_std(&data) } })
     })
+}
+
+/// The bytes of one attachment, its type and a file name; or the status and why not.
+pub type Attachment = Result<(Vec<u8>, String, String), (u16, String)>;
+
+fn too_large(size: usize) -> (u16, String) {
+    (413, format!("{} MB, too large to carry here", js::number_to_string((size as f64 / 1e6 + 0.5).floor())))
+}
+
+/// One attachment of a saved message of a slot, at most `max` bytes, for Everflow (routes/everflow.rs, as fetchAttachment
+/// of src/lib/mcp/tools.ts): a saved image, a public image link, a SharePoint or OneDrive file the agent downloads with
+/// the Teams session. 404 no such message or index; 409 it cannot be given now (account without a browser, download
+/// still queued, image not saved yet); 413 over `max`.
+pub async fn attachment_bytes(slot: i64, chat: &str, mid: &str, index: usize, max: usize, wait: Wait) -> Res<Attachment> {
+    let m = with_slot(slot, |r| Ok(r.messages(chat).into_iter().find(|x| x.get("mid").and_then(Value::as_str) == Some(mid))))?;
+    let Some(m) = m else { return Ok(Err((404, "No saved message with this id in this chat".into()))) };
+    let all = items(&m);
+    if index < 1 || index > all.len() {
+        return Ok(Err((404, format!("index out of range: the message has {} attachment(s)", all.len()))));
+    }
+    let x = &all[index - 1];
+    let url = x.url.as_ref().and_then(Value::as_str).unwrap_or("");
+    if x.image {
+        if let Some((data, kind)) = saved_image(slot, x.f.as_ref()) {
+            if data.len() > max {
+                return Ok(Err(too_large(data.len())));
+            }
+            let name = x.f.as_ref().and_then(Value::as_str).unwrap_or("image").to_string();
+            return Ok(Ok((data, kind.to_string(), name)));
+        }
+        if !truthy_opt(x.url.as_ref()) {
+            return Ok(Err((409, "the image is not saved on the server (yet): refresh_chat saves the images of the chat".into())));
+        }
+        return Ok(match public_image(url, max).await {
+            Ok((data, kind)) => Ok((data, kind, format!("image-{index}"))),
+            Err((why, true)) => Err((413, why)),
+            Err((why, false)) => Err((409, why)),
+        });
+    }
+    if !is_share_point_url(url) {
+        return Ok(Err((409, "not on SharePoint or OneDrive: not downloaded".into())));
+    }
+    let name = x.name.as_ref().map_or_else(|| "file".to_string(), |n| js::string(Some(n)));
+    match download(slot, url, x.name.as_ref(), wait).await {
+        Ok((_, data)) if data.len() > max => Ok(Err(too_large(data.len()))),
+        Ok((_, data)) => Ok(Ok((data, type_of_file(&name).to_string(), name))),
+        Err((note, _)) => Ok(Err((409, note))),
+    }
 }
 
 /// (e as Error).message: the detail of an HttpError, the text of anything else.

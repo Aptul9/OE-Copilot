@@ -3,7 +3,7 @@
 //! and their relay browser tools are not served: only the MCP_TOKEN bearer.
 
 mod schema;
-mod tools;
+pub(crate) mod tools;
 mod wire;
 
 use crate::route;

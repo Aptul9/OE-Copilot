@@ -46,6 +46,9 @@ async fn backend(log: Log) -> u16 {
                         let credentials = format!("authorization={}|cookie={}", h("authorization"), h("cookie"));
                         let body = String::from_utf8_lossy(&req.into_body().collect().await.unwrap().to_bytes()).to_string();
                         log.lock().unwrap().push((method.clone(), pq.clone(), body.clone(), credentials.clone()));
+                        if pq.starts_with("/api/everflow/attachment?") {
+                            return Ok::<_, std::convert::Infallible>(relay_attachment(&pq, &credentials));
+                        }
                         // like Outlook: a POST must say how long it is
                         let (status, ctype, out) = if method == "POST" && !sized {
                             (411, "text/html", "Length Required".into())
@@ -391,6 +394,53 @@ fn the_server_end_to_end() {
         assert_eq!(everflow(port, "GET", "teams?since=x&max_rows=10", "", &[]).await.0, 400);
         assert_eq!(everflow(port, "GET", "teams?since=1", "", &[]).await.0, 400);
 
+        // teams_attachment_passes_bytes_through
+        log.lock().unwrap().clear();
+        let q = |index: &str| format!("slot=3&chat=BIANCHI%20Luca%20%26%20co&mid=1790432000000&index={index}");
+        let (s, h, body) = attachment(port, &q("1"), &[]).await;
+        assert_eq!((s, body.as_slice()), (200, IMAGE.as_slice()));
+        assert_eq!(h, ["image/png", "inline; filename*=UTF-8''00112233445566aa.png", "private, max-age=86400"]);
+        let asked = log.lock().unwrap().iter().find(|e| e.1.starts_with("/api/everflow/attachment")).cloned().unwrap();
+        assert_eq!(asked.1, "/api/everflow/attachment?slot=3&chat=BIANCHI+Luca+%26+co&mid=1790432000000&index=1");
+        assert!(asked.3.starts_with("authorization=Bearer relay-token|"));
+        // the relay's refusals pass with their reason; a 200 without a type is octet-stream
+        for (index, status, error) in [("2", 409, "runs without a browser"), ("3", 404, "index out of range"), ("4", 413, "too large")] {
+            let (s, h, body) = attachment(port, &q(index), &[]).await;
+            assert_eq!((s, h[0].as_str()), (status, "application/json"), "{index}");
+            assert!(serde_json::from_slice::<Value>(&body).unwrap()["error"].as_str().unwrap().contains(error), "{index}");
+        }
+        let (s, body) = everflow(port, "GET", &format!("teams/attachment?{}", q("5")), "", &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (507, Some("answer too large".into())));
+        let (s, h, body) = attachment(port, &q("6"), &[]).await;
+        assert_eq!((s, h[0].as_str(), body.as_slice()), (200, "application/octet-stream", b"raw".as_slice()));
+        let (s, body) = everflow(port, "GET", &format!("teams/attachment?{}", q("7")), "", &[]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay HTTP 500".into())));
+        // the guards of the other routes, and parameters checked before any call
+        log.lock().unwrap().clear();
+        assert_eq!(attachment(port, &q("1"), &[("Authorization", mcp_bearer.as_str())]).await.0, 401);
+        assert_eq!(attachment(port, &q("1"), &[("Origin", "https://x")]).await.0, 403);
+        assert_eq!(everflow(port, "POST", &format!("teams/attachment?{}", q("1")), "", &[]).await.0, 405);
+        let long = "x".repeat(401);
+        let emoji = "%F0%9F%98%80".repeat(201);
+        for bad in [
+            "chat=a&mid=1&index=1".to_string(),
+            "slot=x&chat=a&mid=1&index=1".into(),
+            "slot=-1&chat=a&mid=1&index=1".into(),
+            "slot=99999999999&chat=a&mid=1&index=1".into(),
+            "slot=3&mid=1&index=1".into(),
+            "slot=3&chat=&mid=1&index=1".into(),
+            format!("slot=3&chat={long}&mid=1&index=1"),
+            format!("slot=3&chat={emoji}&mid=1&index=1"),
+            "slot=3&chat=a&mid=abc&index=1".into(),
+            "slot=3&chat=a&mid=123456789012345678901&index=1".into(),
+            "slot=3&chat=a&mid=1&index=0".into(),
+            "slot=3&chat=a&mid=1&index=1001".into(),
+            "slot=3&chat=a&mid=1".into(),
+        ] {
+            assert_eq!(attachment(port, &bad, &[]).await.0, 400, "{bad}");
+        }
+        assert!(log.lock().unwrap().is_empty());
+
         // more_than_100_requests_is_refused
         let many: Vec<Value> = (0..101).map(|_| json!({"path": "/api/communication/accounts"})).collect();
         assert_eq!(everflow(port, "POST", "agent", &json!({"requests": many}).to_string(), &[]).await.0, 400);
@@ -415,6 +465,8 @@ fn the_server_end_to_end() {
         let down = start(Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into(), everflow: Some(EVERFLOW.into()) })).await;
         let (s, body) = everflow(down, "GET", "teams?since=0&max_rows=10", "", &[]).await;
         assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay unreachable".into())));
+        let (s, _, body) = attachment(down, "slot=3&chat=a&mid=1&index=1", &[]).await;
+        assert_eq!((s, serde_json::from_slice::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay unreachable".into())));
         assert_eq!(everflow(down, "POST", "agent", &accounts, &[]).await.0, 404);
         assert_eq!(everflow(down, "POST", "slack", &req("auth.test"), &[]).await.0, 404);
         let comm = Communication {
@@ -426,8 +478,36 @@ fn the_server_end_to_end() {
         let refused = start(Arc::new(App { comm, token: TOKEN.into(), hosts: ["mcp.test".to_string()].into(), everflow: Some(EVERFLOW.into()) })).await;
         let (s, body) = everflow(refused, "GET", "teams?since=0&max_rows=10", "", &[]).await;
         assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay HTTP 401".into())));
+        let (s, _, body) = attachment(refused, "slot=3&chat=a&mid=1&index=1", &[]).await;
+        assert_eq!((s, serde_json::from_slice::<Value>(&body).unwrap()["error"].as_str().map(String::from)), (502, Some("teams relay HTTP 401".into())));
         let _ = std::fs::remove_dir_all(&dir);
     });
+}
+
+/// Bytes that are not UTF-8: an attachment must come through as it is, never as text.
+const IMAGE: [u8; 8] = [0x89, b'P', b'N', b'G', 0xff, 0x00, 0xfe, 0x80];
+
+/// TeamsRelay GET /api/everflow/attachment: the answer chosen by index.
+fn relay_attachment(pq: &str, credentials: &str) -> Response<Full<Bytes>> {
+    let r = |status: u16| Response::builder().status(status);
+    let j = |status: u16, error: &str| r(status).header("content-type", "application/json").body(Full::new(Bytes::from(json!({"error": error}).to_string()))).unwrap();
+    if !credentials.starts_with("authorization=Bearer relay-token|") {
+        return j(401, "Missing or wrong token");
+    }
+    let index = pq.split("index=").nth(1).unwrap_or("");
+    match index {
+        "1" => r(200)
+            .header("content-type", "image/png")
+            .header("content-disposition", "inline; filename*=UTF-8''00112233445566aa.png")
+            .body(Full::new(Bytes::from_static(&IMAGE)))
+            .unwrap(),
+        "2" => j(409, "This Teams account runs without a browser: calls and downloads need Always on in Settings"),
+        "3" => j(404, "index out of range: the message has 2 attachment(s)"),
+        "4" => j(413, "21 MB, too large to carry here"),
+        "5" => r(200).header("content-type", "application/pdf").body(Full::new(Bytes::from(vec![0u8; 20 * 1024 * 1024 + 1]))).unwrap(),
+        "6" => r(200).body(Full::new(Bytes::from_static(b"raw"))).unwrap(),
+        _ => j(500, "Internal error"),
+    }
 }
 
 async fn start(app: Arc<App>) -> u16 {
@@ -454,4 +534,19 @@ async fn everflow(port: u16, method: &str, route: &str, body: &str, headers: &[(
     }
     let r = req.send().await.unwrap();
     (r.status().as_u16(), r.text().await.unwrap())
+}
+
+/// GET /everflow/teams/attachment with EVERFLOW_TOKEN: status, the headers named, the body as bytes.
+async fn attachment(port: u16, query: &str, headers: &[(&str, &str)]) -> (u16, Vec<String>, Vec<u8>) {
+    let auth = format!("Bearer {EVERFLOW}");
+    let mut req = reqwest::Client::new().get(format!("http://127.0.0.1:{port}/everflow/teams/attachment?{query}")).header("Host", "mcp.test");
+    if !headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("authorization")) {
+        req = req.header("Authorization", auth);
+    }
+    for (k, v) in headers {
+        req = req.header(*k, *v);
+    }
+    let r = req.send().await.unwrap();
+    let h = ["content-type", "content-disposition", "cache-control"].map(|k| r.headers().get(k).map(|v| v.to_str().unwrap().to_string()).unwrap_or_default());
+    (r.status().as_u16(), h.to_vec(), r.bytes().await.unwrap().to_vec())
 }

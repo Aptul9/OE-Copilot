@@ -11,6 +11,7 @@ pub mod checks;
 pub mod commands;
 pub mod config;
 pub mod control;
+pub mod everid;
 pub mod hubs;
 pub mod js;
 pub mod light;

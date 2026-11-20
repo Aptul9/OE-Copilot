@@ -102,8 +102,10 @@ fn drop_stream(id: Option<u64>) {
     }
 }
 
-pub async fn handle(req: hyper::Request<Incoming>) -> Resp {
+pub async fn handle(req: hyper::Request<Incoming>, peer: Option<std::net::IpAddr>) -> Resp {
     let (mut parts, body) = req.into_parts();
+    // X-Authentik-* count only when they come from the Caddy of this compose (everid::screen)
+    crate::everid::screen(&mut parts.headers, peer, &crate::config::everid_proxy_host()).await;
     let path = parts.uri.path().to_string();
     let query = parts.uri.query().unwrap_or("").to_string();
     let method = parts.method.as_str().to_string();
@@ -197,18 +199,19 @@ pub async fn serve(listener: tokio::net::TcpListener, stop: impl Future<Output =
     let open = std::sync::Arc::new(tokio::sync::Semaphore::new(SLOTS as usize));
     tokio::pin!(stop);
     loop {
-        let (stream, _) = tokio::select! {
+        let (stream, addr) = tokio::select! {
             accepted = listener.accept() => match accepted {
                 Ok(a) => a,
                 Err(_) => continue,
             },
             _ = &mut stop => break,
         };
+        let peer = Some(addr.ip());
         let mut down = shutdown.subscribe();
         let guard = open.clone().try_acquire_owned().ok();
         tokio::task::spawn_local(async move {
             let _guard = guard;
-            let service = hyper::service::service_fn(|req| async move { Ok::<Resp, Infallible>(handle(req).await) });
+            let service = hyper::service::service_fn(move |req| async move { Ok::<Resp, Infallible>(handle(req, peer).await) });
             let conn = hyper::server::conn::http1::Builder::new()
                 .timer(hyper_util::rt::TokioTimer::new())
                 .header_read_timeout(Duration::from_secs(30))

@@ -103,6 +103,38 @@ pub fn is_env_admin(email: Option<&str>) -> bool {
     !env.is_empty() && email.unwrap_or("").trim().to_lowercase() == env
 }
 
+/// EVERID_MODE=on: Caddy sends the pages through the EverID outpost and they sign in from X-Authentik-Email (everid.rs).
+pub fn everid_on() -> bool {
+    var("EVERID_MODE").trim() == "on"
+}
+
+/// The EverID group that may use this app, app-teams by default.
+pub fn everid_group() -> String {
+    or("EVERID_GROUP", "app-teams")
+}
+
+/// EVERID_PROXY_HOST: the only peer whose X-Authentik-* headers count, by name on the compose network (everid::screen).
+pub fn everid_proxy_host() -> String {
+    or("EVERID_PROXY_HOST", "caddy")
+}
+
+/// EVERID_ALIASES: `everid-email=local-email` pairs, comma separated, for users whose EverID address is not the one of
+/// their account here.
+pub fn everid_aliases() -> Vec<(String, String)> {
+    var("EVERID_ALIASES")
+        .split(',')
+        .filter_map(|p| p.split_once('='))
+        .map(|(a, b)| (a.trim().to_lowercase(), b.trim().to_lowercase()))
+        .filter(|(a, b)| !a.is_empty() && !b.is_empty())
+        .collect()
+}
+
+/// The password sign-in: always with EverID off, so that turning EverID off never locks anyone out; with EverID on
+/// until PASSWORD_LOGIN=0.
+pub fn password_login() -> bool {
+    !everid_on() || var("PASSWORD_LOGIN").trim() != "0"
+}
+
 pub const ENV_PASSWORD_MESSAGE: &str = "The password of this administrator is set by ADMIN_PASSWORD in .env";
 
 /// The exported pages and public files of the UI (`next build` with TR_EXPORT=1).

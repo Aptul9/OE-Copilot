@@ -4,7 +4,22 @@
 	https_port {$HTTPS_PORT:443}
 }
 
+# EverID sign-in in front of the pages: everid/off.caddy or everid/on.caddy, by EVERID_MODE (.env). Any other value is
+# refused by deploy/render-env.sh and by the Caddyfile check of remote-deploy.sh before this Caddy restarts.
+import everid/{$EVERID_MODE:off}.caddy
+
 {$DOMAIN} {
+	# who is signed in to EverID comes only from its outpost (everid_gate): the same headers sent by a client are dropped
+	# before any handle runs (request_header comes before handle in Caddy's order)
+	request_header -X-Authentik-*
+	import everid_routes
+	# the pages of the web app, the only paths where it reads X-Authentik-Email
+	@pages path / /admin /settings /remote /login
+	handle @pages {
+		import everid_gate
+		encode zstd gzip
+		reverse_proxy webapp:8090
+	}
 	# Remote desktop of the browsers container on /desktop/: the browser window of every Teams account.
 	# Caddy asks the web app whether the session cookie belongs to a user with an account before letting a
 	# request through.
@@ -13,6 +28,7 @@
 	@deskslot path_regexp deskslot ^/desktop/([0-9]+)/?$
 	redir @deskslot /api/desktop/{re.deskslot.1} 302
 	handle /desktop/* {
+		import everid_gate
 		forward_auth webapp:8090 {
 			uri /api/authcheck
 			# the check is a plain HTTP request even when the original one is a websocket (the desktop

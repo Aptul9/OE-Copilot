@@ -1,0 +1,65 @@
+name: TeamsRelay check
+
+# Checks of a pull request that touches teams-relay/: no deploy and no secret. teams-relay.yml deploys after the merge.
+on:
+  pull_request:
+    paths:
+      - "teams-relay/**"
+      - "!teams-relay/mobile/**"
+      - "scripts/check.sh"
+      - ".github/workflows/teams-relay.yml"
+      - ".github/workflows/teams-relay-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  caddy:
+    name: Caddyfile and deploy scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # teams-caddy holds port 80 and the sslh fallback of the whole host: both EverID modes must load, any other value must not
+      - name: Caddyfile, EverID off and on
+        run: |
+          for mode in off on; do
+            docker run --rm --network none -e DOMAIN=teams.example.com -e EVERID_MODE=$mode -e EVERID_OUTPOST=http://172.17.0.1:9000 \
+              -v "$PWD/teams-relay/caddy:/etc/caddy:ro" caddy:2.11.8-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          done
+          if docker run --rm --network none -e DOMAIN=teams.example.com -e EVERID_MODE=bogus \
+            -v "$PWD/teams-relay/caddy:/etc/caddy:ro" caddy:2.11.8-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; then
+            echo "EVERID_MODE=bogus loaded" >&2; exit 1
+          fi
+
+      - name: Shell syntax and render-env
+        working-directory: teams-relay
+        run: |
+          bash -n deploy/remote-deploy.sh
+          bash -n deploy/render-env.sh
+          bash -n deploy/test-everid-caddy.sh
+          TR_DOMAIN=x TR_EVERID_MODE=on deploy/render-env.sh | grep -qx 'EVERID_MODE=on'
+          if TR_DOMAIN=x TR_EVERID_MODE=bogus deploy/render-env.sh; then echo "render-env accepted EVERID_MODE=bogus" >&2; exit 1; fi
+
+      - name: Compose file
+        working-directory: teams-relay
+        run: DOMAIN=example.com docker compose config -q
+
+      # sign-in redirect, exempt routes and spoofed X-Authentik-* headers, through the real Caddyfile
+      - name: EverID gate behaviour
+        working-directory: teams-relay
+        run: bash deploy/test-everid-caddy.sh
+
+  webapp:
+    name: Rust web app tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # cmake builds libopus for the calling worker (audiopus_sys static), as in app/Dockerfile
+      - name: cargo test
+        working-directory: teams-relay/app/webapp-rs
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq cmake >/dev/null
+          cargo test --locked

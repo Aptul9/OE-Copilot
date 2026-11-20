@@ -4,6 +4,8 @@
 # mandato dal client non arriva mai al gateway, nemmeno sulle strade libere. Serve Docker; gira anche in Git Bash su Windows.
 #   bash calendar/scripts/everid.sh      (lo lancia scripts/check.sh calendar --docker)
 set -euo pipefail
+# grep -q legge tutto l'ingresso: con pipefail, `curl ... | grep -q` fermato alla prima riga uguale fa morire curl di SIGPIPE (141)
+grep() { case "${1:-}" in -q) shift; command grep "$@" >/dev/null ;; -qi) shift; command grep -i "$@" >/dev/null ;; *) command grep "$@" ;; esac; }
 docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
 srv=$(cd "$(dirname "$0")/../server" && { pwd -W 2>/dev/null || pwd; })
 rete=oe-everid-prova

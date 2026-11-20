@@ -38,8 +38,8 @@ outpost='
 		respond "outpost" 200
 	}
 }'
-ids+=("$(docker run -d --network "$rete" --network-alias outpost --entrypoint sh caddy:2.11.4-alpine \
-  -c 'printf "%s" "$CF" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile' -e CF="$outpost")")
+ids+=("$(docker run -d --network "$rete" --network-alias outpost -e CF="$outpost" --entrypoint sh caddy:2.11.4-alpine \
+  -c 'printf "%s" "$CF" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile')")
 ids+=("$(docker run -d --network "$rete" --network-alias gateway --read-only --tmpfs /tmp -e GATEWAY_DB=/tmp/gw.db -e OE_DATI=/tmp/dati \
   -e AGENTE_URL=http://agent:8180 -e AGENTE_CHIAVE=prova -e MCP_TOKEN=mcp-di-prova -e APP_URL=http://ui.test:8080 \
   -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" -e ADMIN_EMAIL="$email" -e ADMIN_PASSWORD="$pw" \

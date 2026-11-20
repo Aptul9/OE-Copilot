@@ -4,13 +4,60 @@
 
 use crate::route;
 use crate::server::Route;
-use crate::web::{Error, Req, Res, http, json};
+use crate::web::{Error, Req, Res, bytes, http, json, json_with};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
 
 pub fn routes() -> Vec<Route> {
-    vec![route!("GET", "/api/everflow/saved", get)]
+    vec![route!("GET", "/api/everflow/saved", get), route!("GET", "/api/everflow/attachment", attachment)]
 }
+
+/// Largest attachment /api/everflow/attachment gives.
+const MAX_ATTACHMENT: usize = 20_000_000;
+
+/// ?slot=<n>&chat=<chat as saved>&mid=<numeric id>&index=<1-based, images first, then files, as get_attachment>
+/// (src/app/api/everflow/attachment/route.ts): 200 the bytes; 404 {"error"} no such account, message or index; 409
+/// {"error"} it cannot be given now; 413 {"error"} over 20 MB.
+async fn attachment(req: Req) -> Res {
+    if crate::config::mcp_token().is_empty() {
+        return http(404, "Not found");
+    }
+    if req.headers.contains_key("origin") {
+        return http(403, "Requests from web pages are not accepted");
+    }
+    if !crate::mcp::token_matches(req.header("authorization").as_deref()) {
+        return Err(Error::Http(401, "Missing or wrong token".into(), vec![("WWW-Authenticate".into(), "Bearer realm=\"teamsrelay\"".into())]));
+    }
+    let slot = integer(req.query_param("slot"), 0, 0xffff_ffff);
+    let index = integer(req.query_param("index"), 1, 1000);
+    let mid = req.query_param("mid").unwrap_or_default();
+    let chat = req.query_param("chat").unwrap_or_default();
+    let mid_ok = !mid.is_empty() && mid.len() <= 20 && mid.bytes().all(|b| b.is_ascii_digit());
+    let (Some(slot), Some(index)) = (slot, index) else { return http(400, BAD_ATTACHMENT) };
+    if !mid_ok || chat.is_empty() || chat.encode_utf16().count() > 400 {
+        return http(400, BAD_ATTACHMENT);
+    }
+    let Some(user) = crate::mcp::mcp_user_id()? else { return http(503, "The administrator of .env does not exist") };
+    let refused = |status: u16, error: &str| Ok(json_with(status, &json!({ "error": error })));
+    if !crate::appdb::slots_of(&user)?.iter().any(|s| s.slot == slot && s.stopped == 0) {
+        return refused(404, "No active Teams account with this slot");
+    }
+    match crate::mcp::tools::attachment_bytes(slot, &chat, &mid, index as usize, MAX_ATTACHMENT, crate::mcp::tools::COMMAND_WAIT).await? {
+        Err((status, why)) => refused(status, &why),
+        Ok((data, kind, name)) => {
+            let kind = if kind.is_empty() { "application/octet-stream".to_string() } else { kind };
+            Ok(bytes(200, &[
+                ("content-type", kind),
+                ("content-length", data.len().to_string()),
+                ("content-disposition", format!("inline; filename*=UTF-8''{}", crate::js::encode_uri_component(&name))),
+                ("cache-control", "private, max-age=86400".into()),
+                ("x-content-type-options", "nosniff".into()),
+            ], data))
+        }
+    }
+}
+
+const BAD_ATTACHMENT: &str = "slot, chat (at most 400 characters), mid (digits) and index (1 to 1000) are required";
 
 /// The query Everflow ran on each slot store over SSH (storeQuery in everflow src/watchers/relay.ts): one JSON text with
 /// the account (state me, last_scan_ts, state), the muted chats and the saved messages with a numeric id at or after
@@ -133,6 +180,16 @@ mod tests {
         (status, serde_json::from_slice(&body).unwrap_or(Value::Null))
     }
 
+    async fn attachment(query: &str, auth: &str) -> (u16, String, Vec<u8>) {
+        let mut h = hyper::header::HeaderMap::new();
+        h.insert("authorization", hyper::header::HeaderValue::from_str(auth).unwrap());
+        let req = Req { method: "GET".into(), path: "/api/everflow/attachment".into(), query: query.into(), headers: h, body: Bytes::new(), params: vec![], stream_id: None };
+        let r = super::attachment(req).await.unwrap_or_else(error_response);
+        let status = r.status().as_u16();
+        let kind = r.headers().get("content-type").map(|v| v.to_str().unwrap().to_string()).unwrap_or_default();
+        (status, kind, r.into_body().collect().await.unwrap().to_bytes().to_vec())
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn everflow_saved() {
         let _env = crate::TEST_ENV.lock().unwrap_or_else(|p| p.into_inner());
@@ -236,6 +293,23 @@ mod tests {
         assert_eq!(status, 200);
         assert!(missing["slots"][0]["snapshot"].is_string());
         assert_eq!(missing["slots"][1], json!({"slot": second, "error": "store-unavailable"}));
+
+        // attachment: saved image, index out of range, file not on SharePoint, someone else's slot, no token
+        let media = crate::slotdb::slot_dir(first).join("media");
+        std::fs::create_dir_all(&media).unwrap();
+        std::fs::write(media.join("0123456789abcdef.png"), b"\x89PNGfixture").unwrap();
+        let extra = r#"{"images":[{"f":"0123456789abcdef.png","w":1,"h":1}],"files":[{"name":"a.pdf","url":"https://example.invalid/a.pdf"}]}"#;
+        let db = rusqlite::Connection::open(slot_db_path(first)).unwrap();
+        db.execute("INSERT INTO chat_messages(chat, idx, mid, author, text, mine, reacts, extra) VALUES('BIANCHI Luca', 20, '1790434000000', 'BIANCHI Luca', 'shot', 0, '', ?)", [extra]).unwrap();
+        drop(db);
+        let q = |i: u32| format!("slot={first}&chat=BIANCHI%20Luca&mid=1790434000000&index={i}");
+        let (status, kind, body) = attachment(&q(1), &auth).await;
+        assert_eq!((status, kind.as_str(), body.as_slice()), (200, "image/png", &b"\x89PNGfixture"[..]));
+        assert_eq!(attachment(&q(2), &auth).await.0, 409);
+        assert_eq!(attachment(&q(3), &auth).await.0, 404);
+        assert_eq!(attachment(&format!("slot={other}&chat=BIANCHI%20Luca&mid=1790434000000&index=1"), &auth).await.0, 404);
+        assert_eq!(attachment(&q(1), "Bearer wrong").await.0, 401);
+        assert_eq!(attachment(&format!("slot={first}&chat=BIANCHI%20Luca&mid=12x&index=1"), &auth).await.0, 400);
 
         // off without MCP_TOKEN
         set_env("MCP_TOKEN", "");

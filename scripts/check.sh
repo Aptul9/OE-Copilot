@@ -46,7 +46,8 @@ check_calendar() {
   # the HTTP goldens live in server/strumenti/golden: the whole server folder is mounted. A Windows GNU toolchain has no C compiler
   # for ring and the bundled SQLite, hence the Linux Rust image as for teams-relay
   if [ "$docker" = 1 ]; then
-    docker run --rm -v "$(cd server && (pwd -W 2>/dev/null || pwd)):/server:ro" -w /server/agente-rs -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+    # not as root: the agent's golden scenarios *-senza-permessi chmod calendar.db to 000 and expect a read error, which root never gets
+    docker run --rm --user 10001:10001 -v "$(cd server && (pwd -W 2>/dev/null || pwd)):/server:ro" -w /server/agente-rs -e CARGO_HOME=/tmp/cargo -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
   elif command -v cargo >/dev/null; then
     (cd server/agente-rs && cargo test --locked)
   else

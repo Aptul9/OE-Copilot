@@ -18,6 +18,7 @@ docker build -q -t oe-copilot-gateway-rs -f "$srv/agente-rs/gateway.Dockerfile" 
 docker network rm "$rete" >/dev/null 2>&1 || true
 docker network create "$rete" >/dev/null
 ids=()
+trap 'echo "everid.sh: riga $LINENO: $BASH_COMMAND" >&2' ERR
 trap 'rc=$?; [ $rc = 0 ] || for i in "${ids[@]}"; do docker logs --tail 30 "$i"; done; docker rm -f "${ids[@]}" >/dev/null 2>&1; docker network rm "$rete" >/dev/null' EXIT
 
 # l'outpost finto: con il cookie everid=ok risponde 200 e l'email, senza rimanda alla pagina di EverID
@@ -90,7 +91,7 @@ test "$(codice "${ui[@]}" "${finto[@]}" $C/condividi/x.ics)" = 404
 docker rm -f "$cd_id" >/dev/null
 cd_id=$(caddy ""); ids+=("$cd_id")
 pronto
-test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "${ui[@]}" "${finto[@]}" $C/)" = "307 http://ui.test:8080/login?next=%2F"
+test "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "${ui[@]}" "${finto[@]}" $C/)" = "307 $C/login?next=%2F"
 test "$(codice "${ui[@]}" "${finto[@]}" -H 'x-authentik-email: '"$email" -X POST -H 'Content-Type: application/json' -d '[]' $C/api/get_config)" = 401
 test "$(codice "${ui[@]}" "${finto[@]}" $C/logos/personale.png)" = 302
 

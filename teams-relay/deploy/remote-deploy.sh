@@ -108,12 +108,36 @@ start() {
   # shellcheck disable=SC2046
   dc up -d $(services)
   echo "$fcm_sum" > .fcm-sum
-  # Caddy has no image to rebuild and reads the mounted Caddyfile: rsync replaces it with a new file and
-  # the container would keep seeing the old one. If it changed, restart (certificates stay in the volume).
-  caddy_sum="$(sha256sum caddy/Caddyfile | cut -d' ' -f1)"
+  # Caddy has no image to rebuild and reads the mounted caddy/ folder: if a file of it changed, restart (certificates
+  # stay in the volume).
+  caddy_sum="$(cat caddy/Caddyfile caddy/everid/*.caddy 2>/dev/null | sha256sum | cut -d' ' -f1)"
   if [ "$caddy_sum" != "$(cat .caddyfile-sum 2>/dev/null)" ]; then
     dc restart caddy && echo "$caddy_sum" > .caddyfile-sum
   fi
+}
+
+# This Caddy holds port 80 and the HTTPS fallback of sslh for every site of the host: a Caddyfile it cannot load would
+# stop the certificates of all of them. The new Caddyfile is loaded with the new .env in a throwaway container (no
+# ports) before anything restarts.
+caddy_valid() {
+  dc run --rm --no-deps -T caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/tmp/teamsrelay-caddy-check.log 2>&1 \
+    || { tail -5 /tmp/teamsrelay-caddy-check.log >&2; return 1; }
+}
+
+# The code saved by `backup` and the .env it ran with, then a start
+rollback() {
+  [ -f "$BACKUP" ] || return 0
+  code_files | xargs -r rm -rf
+  tar -xzf "$BACKUP"
+  rm -f .caddyfile-sum
+  # the old code may not read the new .env (a release before the shared accounts refuses SHARED_BROKER_* without its
+  # slot list): it runs with the .env it ran with
+  if [ -f "$ENV_BACKUP" ]; then
+    (umask 077 && cp "$ENV_BACKUP" .env)
+    echo "rollback: previous .env restored" >&2
+  fi
+  start
+  healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
 }
 
 case "${1:-}" in
@@ -126,6 +150,11 @@ case "${1:-}" in
     [ -f .env ] || { echo ".env missing in $TR_DIR: the first setup is manual (see docs/setup.md)" >&2; exit 1; }
     preflight
     echo "deploy $sha"
+    if ! caddy_valid; then
+      echo "caddy/ does not load with this .env: nothing restarted, previous code and .env back" >&2
+      rollback
+      exit 1
+    fi
     start
     if healthy; then
       echo "$sha" > .deployed-sha
@@ -136,19 +165,7 @@ case "${1:-}" in
     fi
     echo "the web app does not answer after the deploy of $sha: rollback" >&2
     dc logs --tail 40 webapp >&2 || true
-    if [ -f "$BACKUP" ]; then
-      code_files | xargs -r rm -rf
-      tar -xzf "$BACKUP"
-      rm -f .caddyfile-sum
-      # the old code may not read the new .env (a release before the shared accounts refuses SHARED_BROKER_* without its
-      # slot list): it runs with the .env it ran with
-      if [ -f "$ENV_BACKUP" ]; then
-        (umask 077 && cp "$ENV_BACKUP" .env)
-        echo "rollback: previous .env restored" >&2
-      fi
-      start
-      healthy && echo "rollback done: $(cat .deployed-sha 2>/dev/null || echo previous version)" >&2
-    fi
+    rollback
     exit 1
     ;;
   *)

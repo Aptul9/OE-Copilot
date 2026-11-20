@@ -1,0 +1,6 @@
+# EverID off (EVERID_MODE=off, the default): the pages answer as before, signed in with the password of the web app.
+(everid_routes) {
+}
+
+(everid_gate) {
+}

@@ -78,7 +78,9 @@ check_teams_relay() {
   step "teams-relay: Rust web app"
   # a Windows GNU toolchain has no C compiler for ring and the bundled SQLite, hence the Linux Rust image
   if [ "$docker" = 1 ]; then
-    docker run --rm -v "$(pwd -W 2>/dev/null || pwd)/webapp-rs:/webapp-rs:ro" -w /webapp-rs -e CARGO_TARGET_DIR=/tmp/target rust:1 cargo test --locked
+    # cmake builds libopus for the calling worker (audiopus_sys static), as in app/Dockerfile; its CMakeLists predates CMake 4
+    docker run --rm -v "$(pwd -W 2>/dev/null || pwd)/webapp-rs:/webapp-rs:ro" -w /webapp-rs -e CARGO_TARGET_DIR=/tmp/target -e CMAKE_POLICY_VERSION_MINIMUM=3.5 rust:1 \
+      sh -c 'apt-get update -qq && apt-get install -y -qq cmake >/dev/null && cargo test --locked'
   elif command -v cargo >/dev/null; then
     # NODE_BIN: the light host's calling worker test runs a real Node on its IPC channel
     (cd webapp-rs && NODE_BIN="$(command -v node)" cargo test --locked)
@@ -107,7 +109,10 @@ check_teams_relay() {
   docker compose config -q
   docker compose --env-file compose.local.env -f docker-compose.yml -f compose.local.yml config -q
   step "teams-relay: Caddyfile"
-  docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
+  # both EverID modes (caddy/everid), as remote-deploy.sh loads it before a restart
+  for mode in off on; do
+    EVERID_MODE=$mode docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile
+  done
   docker compose down -v --remove-orphans 2>/dev/null
   step "teams-relay: images"
   # the two build targets of docker-compose.yml; the browsers image runs node agent.cjs --check and node

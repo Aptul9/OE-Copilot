@@ -1,0 +1,24 @@
+# EverID on (EVERID_MODE=on): the pages and the remote desktop go through the Authentik outpost of EverID (proxy provider
+# "teams", group app-teams) before the web app. The outpost answers 200 with the X-Authentik-* headers of the signed-in
+# person, or sends the browser to id.everbright.it. The web app turns X-Authentik-Email into its own session
+# (app/webapp-rs/src/everid.rs). The API, /mcp, the relays, the service worker, the push endpoints and the status pages
+# stay outside: they keep their bearer tokens and the session cookie.
+# EVERID_OUTPOST: the outpost as the Caddy container reaches it (docker-compose.yml).
+
+# the outpost's own paths on this host: sign-in callback and sign-out (/outpost.goauthentik.io/sign_out)
+(everid_routes) {
+	handle /outpost.goauthentik.io/* {
+		reverse_proxy {$EVERID_OUTPOST}
+	}
+}
+
+(everid_gate) {
+	forward_auth {$EVERID_OUTPOST} {
+		uri /outpost.goauthentik.io/auth/caddy
+		copy_headers X-Authentik-Username X-Authentik-Groups X-Authentik-Email X-Authentik-Name X-Authentik-Uid X-Authentik-Jwt X-Authentik-Meta-App
+		trusted_proxies private_ranges
+		# the check is a plain HTTP request even for the websocket of the desktop
+		header_up -Upgrade
+		header_up -Connection
+	}
+}

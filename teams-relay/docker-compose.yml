@@ -100,6 +100,12 @@ services:
       SHARED_ACCOUNTS_OWNER: ${SHARED_ACCOUNTS_OWNER:-}
       SHARED_ACCOUNTS_URL: ${SHARED_ACCOUNTS_URL:-}
       DESKTOP_URL: ${DESKTOP_URL:-}
+      # EverID (app/webapp-rs/src/everid.rs): on as in Caddy, the group of this app, everid=local address pairs, and
+      # PASSWORD_LOGIN=0 to turn the password sign-in off while EverID is on
+      EVERID_MODE: ${EVERID_MODE:-off}
+      EVERID_GROUP: ${EVERID_GROUP:-}
+      EVERID_ALIASES: ${EVERID_ALIASES:-}
+      PASSWORD_LOGIN: ${PASSWORD_LOGIN:-}
       APP_DB: /data/app.db
       # days and clock times of the status pages (src/lib/status-pages.ts), as in the browsers container
       TZ: ${TZ:-UTC}
@@ -136,11 +142,15 @@ services:
     environment:
       - DOMAIN=${DOMAIN:?set DOMAIN in .env}
       - HTTPS_PORT=${HTTPS_PORT:-443}
+      # EverID in front of the pages (caddy/everid/*.caddy): off or on, and its outpost as this container reaches it
+      - EVERID_MODE=${EVERID_MODE:-off}
+      - EVERID_OUTPOST=${EVERID_OUTPOST:-http://172.17.0.1:9000}
     ports:
       - "80:80"
       - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
     volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # the folder, not the file: the Caddyfile imports everid/, and rsync replacing a file stays visible in a folder mount
+      - ./caddy:/etc/caddy:ro
       - tr_caddy_data:/data
       - tr_caddy_config:/config
     networks: [tr_default, tr_desktop]

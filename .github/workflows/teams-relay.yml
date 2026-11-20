@@ -107,6 +107,12 @@ jobs:
           TR_SHARED_BROKER_KEY: ${{ secrets.TEAMS_BROKER_KEY }}
           TR_SHARED_ACCOUNTS_OWNER: ${{ vars.SHARED_ACCOUNTS_OWNER }}
           TR_SHARED_ACCOUNTS_URL: ${{ vars.SHARED_ACCOUNTS_URL }}
+          # EverID in front of the pages (caddy/everid, app/webapp-rs/src/everid.rs)
+          TR_EVERID_MODE: ${{ vars.EVERID_MODE }}
+          TR_EVERID_OUTPOST: ${{ vars.EVERID_OUTPOST }}
+          TR_EVERID_GROUP: ${{ vars.EVERID_GROUP }}
+          TR_EVERID_ALIASES: ${{ vars.EVERID_ALIASES }}
+          TR_PASSWORD_LOGIN: ${{ vars.PASSWORD_LOGIN }}
         run: |
           teams-relay/deploy/render-env.sh > /tmp/tr.env
           grep -Eq '^(BETTER_AUTH_SECRET|SESSION_SECRET)=.{32,}' /tmp/tr.env || { echo "no session key of at least 32 characters in the pipeline variables" >&2; exit 1; }

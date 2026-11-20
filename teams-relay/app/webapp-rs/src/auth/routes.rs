@@ -372,6 +372,10 @@ pub async fn handle(r: &Req) -> Resp {
     if !exists(&r.method, p) {
         return response(404, vec![], None);
     }
+    // EverID on with PASSWORD_LOGIN=0: the pages sign in through EverID only (everid.rs)
+    if p == "/sign-in/email" && !crate::config::password_login() {
+        return json_response(403, vec![], Some(json!({ "message": "Password sign-in is off: sign in with EverID", "code": "PASSWORD_LOGIN_OFF" })));
+    }
     let query = form_urlencoded::parse(r.query.as_bytes()).fold(Map::new(), |mut m, (k, v)| {
         m.insert(k.into_owned(), Value::String(v.into_owned()));
         m

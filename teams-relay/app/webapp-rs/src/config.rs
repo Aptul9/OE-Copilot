@@ -113,6 +113,11 @@ pub fn everid_group() -> String {
     or("EVERID_GROUP", "app-teams")
 }
 
+/// EVERID_PROXY_HOST: the only peer whose X-Authentik-* headers count, by name on the compose network (everid::screen).
+pub fn everid_proxy_host() -> String {
+    or("EVERID_PROXY_HOST", "caddy")
+}
+
 /// EVERID_ALIASES: `everid-email=local-email` pairs, comma separated, for users whose EverID address is not the one of
 /// their account here.
 pub fn everid_aliases() -> Vec<(String, String)> {

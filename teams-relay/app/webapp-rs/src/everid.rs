@@ -8,6 +8,38 @@
 use crate::auth::cookie::{self, EXPIRES_S};
 use crate::auth::{read_session, rows};
 use crate::web::{Req, Res, Resp, now_ms};
+use hyper::header::HeaderMap;
+use std::net::IpAddr;
+
+fn is_everid_header(name: &str) -> bool {
+    name.starts_with("x-authentik-")
+}
+
+/// Drops X-Authentik-* from a request whose peer is not `proxy` (the Caddy of this compose, by name): any other
+/// container on the compose network reaches this port directly and could otherwise sign in as anyone. Only requests
+/// that carry such a header pay the name lookup.
+pub async fn screen(headers: &mut HeaderMap, peer: Option<IpAddr>, proxy: &str) {
+    if !headers.keys().any(|k| is_everid_header(k.as_str())) {
+        return;
+    }
+    if let Some(peer) = peer
+        && is_host(peer, proxy).await
+    {
+        return;
+    }
+    let names: Vec<_> = headers.keys().filter(|k| is_everid_header(k.as_str())).cloned().collect();
+    for name in names {
+        headers.remove(name);
+    }
+}
+
+async fn is_host(peer: IpAddr, host: &str) -> bool {
+    let peer = peer.to_canonical();
+    match tokio::net::lookup_host((host, 0)).await {
+        Ok(mut addrs) => addrs.any(|a| a.ip().to_canonical() == peer),
+        Err(_) => false,
+    }
+}
 
 /// What a page request does about EverID.
 pub enum Step {
@@ -96,6 +128,38 @@ mod tests {
             h.append(*k, HeaderValue::from_str(v).expect("header"));
         }
         Req { method: "GET".into(), path: "/".into(), query: String::new(), headers: h, body: Bytes::new(), params: vec![], stream_id: None }
+    }
+
+    const SPOOF: &str = concat!("spoof", "@", "example.com");
+
+    fn spoofed() -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("x-authentik-email", HeaderValue::from_static(SPOOF));
+        h.insert("x-authentik-groups", HeaderValue::from_static("app-teams"));
+        h.insert("cookie", HeaderValue::from_static("a=b"));
+        h
+    }
+
+    #[tokio::test]
+    async fn everid_headers_only_from_the_proxy() {
+        let gone = |h: &HeaderMap| h.get("x-authentik-email").is_none() && h.get("x-authentik-groups").is_none();
+        // another container on the network: the EverID headers are dropped, the others stay
+        let mut h = spoofed();
+        screen(&mut h, Some(IpAddr::from([10, 1, 2, 3])), "localhost").await;
+        assert!(gone(&h));
+        assert_eq!(h.get("cookie").expect("cookie"), "a=b");
+        // no peer address, or a proxy name that does not resolve
+        let mut h = spoofed();
+        screen(&mut h, None, "localhost").await;
+        assert!(gone(&h));
+        let mut h = spoofed();
+        screen(&mut h, Some(IpAddr::from([127, 0, 0, 1])), "no-such-proxy.invalid").await;
+        assert!(gone(&h));
+        // the proxy itself keeps them
+        let me = tokio::net::lookup_host(("localhost", 0)).await.expect("localhost").next().expect("address").ip();
+        let mut h = spoofed();
+        screen(&mut h, Some(me), "localhost").await;
+        assert_eq!(h.get("x-authentik-email").expect("email"), SPOOF);
     }
 
     #[test]

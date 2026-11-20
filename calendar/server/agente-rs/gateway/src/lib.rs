@@ -17,6 +17,7 @@ pub mod db;
 pub mod disponibilita;
 pub mod etichette;
 pub mod eventi;
+pub mod everid;
 pub mod fuso;
 pub mod gateway;
 pub mod ics;

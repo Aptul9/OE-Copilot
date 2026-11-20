@@ -475,3 +475,78 @@ fn il_server_mcp_della_posta() {
         assert_eq!(mcp(&p.base, &auth, &chiamata(13, "send_email", ogg! { "subject": "x" })).await.json()["result"]["content"][0]["text"].as_str(), Some("'to' recipient is required for sending new email"));
     });
 }
+
+/// EverID (everid.rs): X-Authentik-Email vale solo con EVERID=on e solo da EVERID_PROXY. Qui il client delle prove arriva da 127.0.0.1:
+/// con EVERID_PROXY=127.0.0.1 è Caddy, con un altro indirizzo è un client qualunque che si inventa l'intestazione.
+#[test]
+fn everid_intestazione_solo_da_caddy() {
+    con_gateway(|p| async move {
+        let radice = format!("{}/", p.base);
+        let finto = [("x-authentik-email", EMAIL)];
+        let url_cfg = format!("{}/api/get_config", p.base);
+        let api_cfg = || chiedi("POST", &url_cfg, &[("x-authentik-email", EMAIL), ("content-type", "application/json")], Some(b"[]".to_vec()));
+        // spento (predefinito): l'intestazione non conta, anche da Caddy
+        imposta("EVERID_PROXY", Some("127.0.0.1"));
+        let r = chiedi("GET", &radice, &finto, None).await;
+        assert_eq!((r.stato, r.h("location")), (307, Some("/login?next=%2F")));
+        assert_eq!(api_cfg().await.stato, 401);
+        // acceso, ma la richiesta non viene da Caddy: intestazione tolta
+        imposta("EVERID", Some("on"));
+        imposta("EVERID_PROXY", Some("10.0.0.5"));
+        let r = chiedi("GET", &radice, &finto, None).await;
+        assert_eq!((r.stato, r.h("location")), (307, Some("/login?next=%2F")));
+        assert_eq!(api_cfg().await.stato, 401);
+        // acceso e da Caddy: l'utente è il proprietario, la pagina c'è e Esci passa da EverID
+        imposta("EVERID_PROXY", Some("127.0.0.1"));
+        let r = chiedi("GET", &radice, &finto, None).await;
+        assert_eq!(r.stato, 200, "{}", r.testo);
+        assert_eq!(r.valori().in_js(), r#"{"accesso2fa":"off","esci":"/outpost.goauthentik.io/sign_out"}"#);
+        assert_eq!(api_cfg().await.stato, 200);
+        let l = chiedi("GET", &format!("{}/login?next=/sicurezza", p.base), &finto, None).await;
+        assert_eq!(l.stato, 307);
+        // un'email che non è un utente del gateway non entra
+        let r = chiedi("GET", &radice, &[("x-authentik-email", "⟦RG:3bc89a03⟧")], None).await;
+        assert_eq!(r.stato, 307);
+        // con la sola password la pagina non ha l'uscita di EverID
+        let c = accedi(&p.base).await;
+        let r = chiedi("GET", &radice, &[("cookie", &c)], None).await;
+        assert_eq!(r.valori().in_js(), r#"{"accesso2fa":"off"}"#);
+    });
+}
+
+/// Le strade pubbliche e quelle con un accesso loro rispondono senza EverID e senza sessione anche con EVERID=on.
+#[test]
+fn everid_strade_libere() {
+    con_gateway(|p| async move {
+        imposta("EVERID", Some("on"));
+        imposta("EVERID_PROXY", Some("10.0.0.5"));
+        assert_eq!(get(&format!("{}/salute", p.base)).await.stato, 200);
+        assert_eq!(get(&format!("{}/disponibilita", p.base)).await.stato, 200);
+        assert_ne!(get(&format!("{}/api/disponibilita?da=2026-11-23&a=2026-11-30", p.base)).await.stato, 401);
+        let lista = mcp(&p.base, &[("authorization", &format!("Bearer {MCP}"))], &ogg! { "jsonrpc": "2.0", "id": 1, "method": "tools/list" }).await;
+        assert_eq!(lista.stato, 200);
+        assert_eq!(lista.json()["result"]["tools"].as_arr().unwrap().len(), 10);
+        // un link che non esiste è 404 come prima, non un rimando all'accesso
+        assert_eq!(get(&format!("{}/condividi/{}.ics", p.base, "a".repeat(43))).await.stato, 404);
+    });
+}
+
+/// ACCESSO_PASSWORD=off: l'accesso con la password non c'è più, EverID sì.
+#[test]
+fn everid_senza_password() {
+    con_gateway(|p| async move {
+        imposta("ACCESSO_PASSWORD", Some("off"));
+        let r = chiedi(
+            "POST",
+            &format!("{}/api/auth/sign-in/email", p.base),
+            &[("origin", APP), ("content-type", "application/json")],
+            Some(ogg! { "email": EMAIL, "password": PASSWORD }.in_js().into_bytes()),
+        )
+        .await;
+        assert_eq!(r.stato, 404);
+        assert!(r.h("set-cookie").is_none());
+        imposta("EVERID", Some("on"));
+        imposta("EVERID_PROXY", Some("127.0.0.1"));
+        assert_eq!(chiedi("GET", &format!("{}/", p.base), &[("x-authentik-email", EMAIL)], None).await.stato, 200);
+    });
+}

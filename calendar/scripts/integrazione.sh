@@ -3,6 +3,8 @@
 # compose, su dati inventati. Sono i passi che faceva la CI di OE Copilot. Serve Docker; gira anche in Git Bash su Windows.
 #   bash calendar/scripts/integrazione.sh      (lo lancia scripts/check.sh calendar --docker)
 set -euo pipefail
+# grep -q legge tutto l'ingresso: con pipefail, `curl ... | grep -q` fermato alla prima riga uguale fa morire curl di SIGPIPE (141)
+grep() { case "${1:-}" in -q) shift; command grep "$@" >/dev/null ;; -qi) shift; command grep -i "$@" >/dev/null ;; *) command grep "$@" ;; esac; }
 # Git Bash: i percorsi negli argomenti di docker sono quelli del container e non diventano percorsi di Windows; il resto
 # (curl -o /dev/null) resta convertito
 docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }

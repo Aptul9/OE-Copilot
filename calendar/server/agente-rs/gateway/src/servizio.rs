@@ -94,6 +94,9 @@ async fn instrada(r: &mut Richiesta<'_>) -> Resp {
             return non_ammesso("GET, POST");
         }
         let resto = percorso.strip_prefix("/api/auth").unwrap_or("");
+        if resto == "/sign-in/email" && !crate::everid::accesso_con_password() {
+            return json(404, &ogg! { "error": "accesso con password spento: si entra con EverID" });
+        }
         if !crate::secondo_fattore::percorso_ammesso(config::auth2fa(), &metodo, resto) {
             return json(404, &ogg! { "error": "secondo fattore non attivo" });
         }
@@ -134,6 +137,7 @@ pub struct Gateway;
 impl Gestore for Gateway {
     async fn gestisci(&self, r: &mut Richiesta<'_>) -> Esito {
         let testa = r.metodo == "HEAD";
+        crate::everid::filtra(r).await;
         let x = instrada(r).await;
         let mut intestazioni = x.intestazioni;
         let senza_corpo = matches!(x.stato, 204 | 304) || (100..200).contains(&x.stato);

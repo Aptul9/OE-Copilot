@@ -1,0 +1,39 @@
+name: Calendar checks
+
+# I controlli di scripts/check.sh calendar --docker a ogni PR che tocca il calendario: gli stessi che si lanciano a mano prima di un
+# push su main, su una macchina pulita. Il deploy resta calendar.yml, solo su main.
+on:
+  pull_request:
+    paths:
+      - "shared/**"
+      - "calendar/server/**"
+      - "calendar/scripts/**"
+      - "scripts/check.sh"
+      - ".github/workflows/calendar-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calendar-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Generate shared account UI
+        run: node shared/sync.mjs
+
+      - name: scripts/check.sh calendar --docker
+        run: bash scripts/check.sh calendar --docker

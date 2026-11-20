@@ -618,6 +618,10 @@ fn uscita(ctx: &mut Ctx) -> Uscita<Json> {
 /// L'utente della sessione di una richiesta, verificata sul database (non basta la presenza del cookie): come auth.api.getSession, che
 /// rinnova la sessione nel database ma non manda cookie.
 pub fn sessione_corrente(intestazioni: &[(String, String)], url: &url::Url) -> Esito<Option<(Sessione, Utente)>> {
+    // l'utente passato da EverID (everid.rs): l'intestazione arriva fin qui solo da Caddy
+    if let Some(u) = crate::everid::utente(intestazioni) {
+        return Ok(Some((crate::everid::sessione(&u), u)));
+    }
     let r = Richiesta { metodo: "GET", url, intestazioni, corpo: &[] };
     let mut ctx = Ctx::nuovo(&r, config::auth2fa());
     match ctx.leggi_sessione(false) {

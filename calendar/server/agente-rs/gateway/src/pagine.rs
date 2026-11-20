@@ -106,7 +106,14 @@ pub fn servi_pagina(percorso: &str, url: &url::Url, intestazioni: &[(String, Str
     Some(match percorso {
         "/" => match sessione() {
             None => rimando(&login_url("/")),
-            Some(_) => pagina("index.html", &ogg! { "accesso2fa": auth2fa().nome() }, 200, testa),
+            Some(_) => {
+                let mut valori = ogg! { "accesso2fa": auth2fa().nome() };
+                // entrati da EverID: Esci chiude anche la sessione di EverID (lib/esci.ts)
+                if let (Json::Obj(m), Some(_)) = (&mut valori, crate::everid::utente(intestazioni)) {
+                    m.insert("esci", crate::everid::USCITA.to_string());
+                }
+                pagina("index.html", &valori, 200, testa)
+            }
         },
         "/login" => {
             let next = url.query_pairs().find(|(k, _)| k == "next").map(|(_, v)| v.into_owned());

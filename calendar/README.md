@@ -228,6 +228,8 @@ Nomi delle aziende, ordine dei calendari, sigle, loghi e schede del Timesheet st
 
 **Aziende inoltrate.** Un flusso (per esempio Power Automate) può copiare le riunioni di un account aperto solo nel browser nel calendario di un'altra casella, con un prefisso nel titolo come `Copia: Riunione`. In `aziende_inoltrate` vanno la casella che le riceve (`via`), il prefisso (`prefisso`, espressione regolare) e, facoltativo, il `colore`. Le copie si mostrano come l'azienda d'origine, senza prefisso. Il pallino segue la casella che le ospita: un flusso fermo non si vede.
 
+**Accesso con EverID.** Con `EVERID_UPSTREAM` (l'outpost di Authentik, `host:porta`) Caddy chiede l'accesso a EverID con `forward_auth` (provider proxy `calendar`) prima di passare l'interfaccia al gateway; `/outpost.goauthentik.io/*` va all'outpost, e Esci passa da `/outpost.goauthentik.io/sign_out`. Fuori da EverID restano il nome di `MEET_HOST`, `/mcp` (token bearer), `/condividi/` e `/salute`. Caddy toglie le intestazioni `X-Authentik-*` mandate dal client su ogni nome e ogni strada. Con `EVERID=on` il gateway fa entrare l'utente con l'email di `X-Authentik-Email`, solo se la richiesta arriva da `EVERID_PROXY` (di norma il servizio `caddy-ui`) e solo se l'email è un utente del gateway (`ADMIN_EMAIL`). L'accesso con la password resta finché `ACCESSO_PASSWORD=off`. Prova: `calendar/scripts/everid.sh`.
+
 ### 4.8 Lo schermo del telefono nel browser
 
 Tolto con il telefono virtuale (PR 132). `/telefono/` porta alla pagina principale.

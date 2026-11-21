@@ -89,11 +89,12 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      # EverID davanti all'interfaccia (README.md 4.7, gateway/src/everid.rs): EVERID=on prende l'email di X-Authentik-Email, solo da
-      # EVERID_PROXY (il servizio caddy-ui); ACCESSO_PASSWORD=off toglie l'accesso con la password. Predefiniti: off e on
+      # Il gateway verifica le credenziali lato server; EVERID=on abilita il modulo anche con la vecchia configurazione.
       - EVERID=${EVERID:-off}
-      - EVERID_PROXY=${EVERID_PROXY:-caddy-ui}
       - ACCESSO_PASSWORD=${ACCESSO_PASSWORD:-on}
+      - EVERID_ACCESSO=${EVERID_ACCESSO:-${EVERID:-off}}
+      - EVERID_URL=${EVERID_URL:-https://id.everbright.it}
+      - EVERID_GRUPPO=${EVERID_GRUPPO:-app-calendar}
     volumes:
       - ./ui-dati:/dati
     ports:
@@ -119,8 +120,6 @@ services:
     environment:
       - UI_HOST=${UI_HOST:-}
       - MEET_HOST=${MEET_HOST:-}
-      # l'outpost di EverID (Authentik), host:porta; vuoto, niente forward_auth
-      - EVERID_UPSTREAM=${EVERID_UPSTREAM:-}
     depends_on:
       gateway:
         condition: service_healthy

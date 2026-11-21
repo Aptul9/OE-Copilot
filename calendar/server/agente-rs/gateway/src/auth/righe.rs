@@ -196,6 +196,14 @@ pub fn crea_sessione(user_id: &str, non_ricordare: bool, ip: &str, browser: &str
     Ok(trova_sessione(&token)?.expect("appena inserita").0)
 }
 
+/// Mark sessions created only after the external identity check.
+pub fn marca_sessione_esterna(s: &mut Sessione) -> Esito<()> {
+    let id = format!("external_{}", s.id);
+    db()?.execute(r#"UPDATE "session" SET id = ? WHERE id = ?"#, params![id, s.id])?;
+    s.id = id;
+    Ok(())
+}
+
 pub fn elimina_sessione(token: &str) -> Esito<()> {
     db()?.execute(r#"DELETE FROM "session" WHERE token = ?"#, [token])?;
     Ok(())

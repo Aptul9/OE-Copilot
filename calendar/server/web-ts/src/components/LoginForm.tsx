@@ -23,7 +23,7 @@ function erroreCodice(e: { status?: number; code?: string }, recupero: boolean):
   return { testo: recupero ? "Codice di recupero errato" : "Codice errato", ricomincia: false };
 }
 
-export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa }) {
+export function LoginForm({ next, modo = "off", accessoEsterno = false }: { next: string; modo?: Modo2fa; accessoEsterno?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
@@ -42,7 +42,7 @@ export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa
     const { data, error } = await authClient.signIn.email({ email: email.trim(), password, rememberMe: true });
     setBusy(false);
     if (error) {
-      setError(error.status === 429 ? error.message || "Troppi tentativi, riprova tra qualche minuto" : "Email o password errate");
+      setError(error.status === 429 ? error.message || "Troppi tentativi, riprova tra qualche minuto" : error.status === 403 ? "Accesso negato" : error.status === 503 ? "Accesso temporaneamente non disponibile" : "Credenziali non valide");
       return;
     }
     // password giusta ma manca il codice: il server non ha dato nessuna sessione
@@ -113,11 +113,11 @@ export function LoginForm({ next, modo = "off" }: { next: string; modo?: Modo2fa
               {!inCodice && (
                 <>
                   <Field>
-                    <FieldLabel htmlFor="email">Email</FieldLabel>
+                    <FieldLabel htmlFor="email">{accessoEsterno ? "Email o nome utente" : "Email"}</FieldLabel>
                     <Input
                       id="email"
                       name="email"
-                      type="email"
+                      type={accessoEsterno ? "text" : "email"}
                       autoCapitalize="none"
                       autoCorrect="off"
                       autoComplete="username"

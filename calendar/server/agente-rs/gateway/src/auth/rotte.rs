@@ -173,7 +173,7 @@ impl<'a> Ctx<'a> {
         let Some(token) = token else { return Ok(None) };
         let non_ricordare = self.firmato(cookie::NON_RICORDARE).is_some();
         let trovata = righe::trova_sessione(&token).map_err(|_| errore(500, "FAILED_TO_GET_SESSION", "Failed to get session"))?;
-        let Some((s, u)) = trovata.filter(|(s, _)| s.expires_at >= ora) else {
+        let Some((s, u)) = trovata.filter(|(s, _)| s.expires_at >= ora && (!crate::everid_accesso::attivo() || s.id.starts_with("external_"))) else {
             self.elimina_cookie_sessione(false);
             if let Ok(Some(_)) = righe::trova_sessione(&token) {
                 let _ = righe::elimina_sessione(&token);
@@ -555,7 +555,7 @@ async fn accesso(ctx: &mut Ctx<'_>) -> Uscita<(u16, Json)> {
         }
     }
     let corpo = esito?;
-    if ctx.modo != Modo2fa::Off {
+    if ctx.modo != Modo2fa::Off && !crate::everid_accesso::attivo() {
         if let Some(r) = super::due_fattori::dopo_accesso(ctx)? {
             return Ok((200, r));
         }
@@ -568,11 +568,28 @@ async fn accesso_con_password(ctx: &mut Ctx<'_>) -> Uscita<Json> {
     controllo_form(ctx)?;
     let email = corpo.get("email").and_then(Json::as_str).unwrap_or("").to_string();
     let password = corpo.get("password").and_then(Json::as_str).unwrap_or("").to_string();
-    if !email_valida(&email) {
+    if !crate::everid_accesso::attivo() && !email_valida(&email) {
         return Err(errore(400, "INVALID_EMAIL", "Invalid email"));
     }
     if crate::py::lunghezza_js(&password) > PASSWORD_MAX {
+        if crate::everid_accesso::attivo() { return Err(errore(401, "INVALID_EMAIL_OR_PASSWORD", "Invalid email or password")); }
         return Err(errore(400, "PASSWORD_TOO_LONG", "Password too long"));
+    }
+    if crate::everid_accesso::attivo() {
+        let non_valido = || errore(401, "INVALID_EMAIL_OR_PASSWORD", "Invalid email or password");
+        if email.trim().is_empty() || password.is_empty() { return Err(non_valido()); }
+        let verified = match crate::everid_accesso::controlla(email.trim(), &password).await {
+            crate::everid_accesso::Esito::Dentro(email) => email,
+            crate::everid_accesso::Esito::NonValide => return Err(non_valido()),
+            crate::everid_accesso::Esito::Fuori => return Err(errore(403, "ACCESS_DENIED", "Access denied")),
+            crate::everid_accesso::Esito::Guasto => return Err(errore(503, "AUTH_UNAVAILABLE", "Authentication unavailable")),
+        };
+        let Some(u) = righe::utente_per_email(&verified)? else { return Err(errore(403, "ACCESS_DENIED", "Access denied")); };
+        let non_ricordare = corpo.get("rememberMe") == Some(&Json::Bool(false));
+        let mut s = righe::crea_sessione(&u.id, non_ricordare, &ctx.ip(), &ctx.browser(), ctx.ora())?;
+        righe::marca_sessione_esterna(&mut s)?;
+        ctx.imposta_cookie_sessione(&s, &u, Some(non_ricordare));
+        return Ok(ogg! { "redirect": false, "token": s.token, "user": u.json() });
     }
     let utente = righe::utente_per_email(&email)?;
     let hash = match &utente {
@@ -618,10 +635,6 @@ fn uscita(ctx: &mut Ctx) -> Uscita<Json> {
 /// L'utente della sessione di una richiesta, verificata sul database (non basta la presenza del cookie): come auth.api.getSession, che
 /// rinnova la sessione nel database ma non manda cookie.
 pub fn sessione_corrente(intestazioni: &[(String, String)], url: &url::Url) -> Esito<Option<(Sessione, Utente)>> {
-    // l'utente passato da EverID (everid.rs): l'intestazione arriva fin qui solo da Caddy
-    if let Some(u) = crate::everid::utente(intestazioni) {
-        return Ok(Some((crate::everid::sessione(&u), u)));
-    }
     let r = Richiesta { metodo: "GET", url, intestazioni, corpo: &[] };
     let mut ctx = Ctx::nuovo(&r, config::auth2fa());
     match ctx.leggi_sessione(false) {

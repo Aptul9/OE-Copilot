@@ -24,7 +24,7 @@ function useValoriServer<T>(predefiniti: T): T {
 }
 
 const HOME = { accesso2fa: "off" as Modo2fa };
-const LOGIN = { next: "/", modo: "off" as Modo2fa };
+const LOGIN = { next: "/", modo: "off" as Modo2fa, accessoEsterno: false };
 const SICUREZZA = { modo: "totp" as Exclude<Modo2fa, "off">, email: "", attivo: false };
 const DISPONIBILITA = { gruppo: "" };
 
@@ -35,7 +35,7 @@ export function HomeEsportata() {
 
 export function LoginEsportata() {
   const v = useValoriServer(LOGIN);
-  return <LoginForm next={v.next} modo={v.modo} />;
+  return <LoginForm next={v.next} modo={v.modo} accessoEsterno={v.accessoEsterno} />;
 }
 
 // key: SicurezzaForm tiene `attivo` nel suo stato, e la pagina pubblica legge per gruppo; con i valori veri si ricomincia da capo

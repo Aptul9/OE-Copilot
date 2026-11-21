@@ -18,6 +18,7 @@ pub mod disponibilita;
 pub mod etichette;
 pub mod eventi;
 pub mod everid;
+pub mod everid_accesso;
 pub mod fuso;
 pub mod gateway;
 pub mod ics;

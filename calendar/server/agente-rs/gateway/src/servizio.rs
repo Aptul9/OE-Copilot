@@ -94,8 +94,11 @@ async fn instrada(r: &mut Richiesta<'_>) -> Resp {
             return non_ammesso("GET, POST");
         }
         let resto = percorso.strip_prefix("/api/auth").unwrap_or("");
-        if resto == "/sign-in/email" && !crate::everid::accesso_con_password() {
-            return json(404, &ogg! { "error": "accesso con password spento: si entra con EverID" });
+        if resto == "/sign-in/email" && !crate::everid_accesso::attivo() && !crate::everid::accesso_con_password() {
+            return json(404, &ogg! { "error": "accesso disattivato" });
+        }
+        if crate::everid_accesso::attivo() && (resto.starts_with("/passkey/") || resto.starts_with("/two-factor/")) {
+            return json(404, &ogg! { "error": "accesso non disponibile" });
         }
         if !crate::secondo_fattore::percorso_ammesso(config::auth2fa(), &metodo, resto) {
             return json(404, &ogg! { "error": "secondo fattore non attivo" });

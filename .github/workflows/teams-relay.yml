@@ -73,7 +73,7 @@ jobs:
       - name: Upload code
         run: |
           # runtime data (.env, Chromium profiles, databases, VAPID keys, Firebase key) stays on the server
-          rsync -az --delete \
+          rsync -az --no-group --no-owner --delete \
             --exclude .git/ --exclude .github/ --exclude .env --exclude node_modules/ --exclude .next/ \
             --exclude /config/ --exclude /data/ --exclude /vapid/ --exclude /fcm/ --exclude .deployed-sha --exclude .caddyfile-sum --exclude .fcm-sum \
             teams-relay/ "$TARGET:$TR_DIR/"

@@ -29,7 +29,7 @@
 		Referrer-Policy no-referrer
 	}
 
-	# Le intestazioni di EverID le scrive solo forward_auth qui sotto: quelle mandate dal client si tolgono su ogni nome e ogni strada
+	# Identity headers supplied by clients are discarded on every route.
 	request_header -X-Authentik-*
 
 	# Nome a parte per la disponibilità pubblica (MEET_HOST, facoltativo): la radice è /disponibilita e del resto del sito
@@ -52,22 +52,6 @@
 	@libero path /salute /mcp /condividi/*
 	handle @libero {
 		reverse_proxy gateway:3000
-	}
-
-	# EverID (Authentik, provider proxy "calendar"): con EVERID_UPSTREAM l'interfaccia chiede l'accesso a EverID, che passa l'email
-	# al gateway (EVERID=on, everid.rs). Vuoto, non scatta e resta l'accesso del gateway. Il valore dopo i due punti serve solo
-	# a far leggere la configurazione: con EVERID_UPSTREAM vuoto questo blocco non si usa.
-	@everid expression `"{$EVERID_UPSTREAM}" != ""`
-	handle @everid {
-		route {
-			reverse_proxy /outpost.goauthentik.io/* {$EVERID_UPSTREAM:127.0.0.1:9}
-			forward_auth {$EVERID_UPSTREAM:127.0.0.1:9} {
-				uri /outpost.goauthentik.io/auth/caddy
-				# maiuscole e minuscole come le scrive Authentik, altrimenti arrivano vuote
-				copy_headers X-Authentik-Email X-Authentik-Username X-Authentik-Groups X-Authentik-Name X-Authentik-Uid
-			}
-			reverse_proxy gateway:3000
-		}
 	}
 
 	handle {

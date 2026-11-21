@@ -107,11 +107,7 @@ pub fn servi_pagina(percorso: &str, url: &url::Url, intestazioni: &[(String, Str
         "/" => match sessione() {
             None => rimando(&login_url("/")),
             Some(_) => {
-                let mut valori = ogg! { "accesso2fa": auth2fa().nome() };
-                // entrati da EverID: Esci chiude anche la sessione di EverID (lib/esci.ts)
-                if let (Json::Obj(m), Some(_)) = (&mut valori, crate::everid::utente(intestazioni)) {
-                    m.insert("esci", crate::everid::USCITA.to_string());
-                }
+                let valori = ogg! { "accesso2fa": if crate::everid_accesso::attivo() { "off" } else { auth2fa().nome() } };
                 pagina("index.html", &valori, 200, testa)
             }
         },
@@ -120,7 +116,7 @@ pub fn servi_pagina(percorso: &str, url: &url::Url, intestazioni: &[(String, Str
             let next = safe_next(next.as_deref());
             match sessione() {
                 Some(_) => rimando(&next),
-                None => pagina("login.html", &ogg! { "next": next, "modo": auth2fa().nome() }, 200, testa),
+                None => pagina("login.html", &ogg! { "next": next, "modo": if crate::everid_accesso::attivo() { "off" } else { auth2fa().nome() }, "accessoEsterno": crate::everid_accesso::attivo() }, 200, testa),
             }
         }
         "/sicurezza" => {

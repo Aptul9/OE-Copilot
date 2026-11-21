@@ -156,7 +156,7 @@ fn pagine_senza_e_con_la_sessione() {
         assert_eq!((r.stato, r.h("location")), (307, Some("/login?next=%2F")));
         let l = get(&format!("{}/login?next=/sicurezza", p.base)).await;
         assert_eq!((l.stato, l.h("content-type"), l.h("cache-control")), (200, Some("text/html; charset=utf-8"), Some("private, no-cache, no-store, max-age=0, must-revalidate")));
-        assert_eq!(l.valori().in_js(), r#"{"next":"/sicurezza","modo":"off"}"#);
+        assert_eq!(l.valori().in_js(), r#"{"next":"/sicurezza","modo":"off","accessoEsterno":false}"#);
         // un ritorno che esce dal sito torna alla radice
         assert_eq!(get(&format!("{}/login?next=https://evil.test/", p.base)).await.valori()["next"].as_str(), Some("/"));
         let d = get(&format!("{}/disponibilita?gruppo=%20lavoro%20", p.base)).await;
@@ -476,8 +476,7 @@ fn il_server_mcp_della_posta() {
     });
 }
 
-/// EverID (everid.rs): X-Authentik-Email vale solo con EVERID=on e solo da EVERID_PROXY. Qui il client delle prove arriva da 127.0.0.1:
-/// con EVERID_PROXY=127.0.0.1 è Caddy, con un altro indirizzo è un client qualunque che si inventa l'intestazione.
+/// Identity headers never authenticate a request, including requests from the proxy address.
 #[test]
 fn everid_intestazione_solo_da_caddy() {
     con_gateway(|p| async move {
@@ -496,21 +495,16 @@ fn everid_intestazione_solo_da_caddy() {
         let r = chiedi("GET", &radice, &finto, None).await;
         assert_eq!((r.stato, r.h("location")), (307, Some("/login?next=%2F")));
         assert_eq!(api_cfg().await.stato, 401);
-        // acceso e da Caddy: l'utente è il proprietario, la pagina c'è e Esci passa da EverID
+        // Even a request from the proxy cannot supply an authenticated identity.
         imposta("EVERID_PROXY", Some("127.0.0.1"));
         let r = chiedi("GET", &radice, &finto, None).await;
-        assert_eq!(r.stato, 200, "{}", r.testo);
-        assert_eq!(r.valori().in_js(), r#"{"accesso2fa":"off","esci":"/outpost.goauthentik.io/sign_out"}"#);
-        assert_eq!(api_cfg().await.stato, 200);
+        assert_eq!(r.stato, 307);
+        assert_eq!(api_cfg().await.stato, 401);
         let l = chiedi("GET", &format!("{}/login?next=/sicurezza", p.base), &finto, None).await;
-        assert_eq!(l.stato, 307);
+        assert_eq!(l.stato, 200);
         // un'email che non è un utente del gateway non entra
         let r = chiedi("GET", &radice, &[("x-authentik-email", "⟦RG:3bc89a03⟧")], None).await;
         assert_eq!(r.stato, 307);
-        // con la sola password la pagina non ha l'uscita di EverID
-        let c = accedi(&p.base).await;
-        let r = chiedi("GET", &radice, &[("cookie", &c)], None).await;
-        assert_eq!(r.valori().in_js(), r#"{"accesso2fa":"off"}"#);
     });
 }
 
@@ -547,6 +541,78 @@ fn everid_senza_password() {
         assert!(r.h("set-cookie").is_none());
         imposta("EVERID", Some("on"));
         imposta("EVERID_PROXY", Some("127.0.0.1"));
-        assert_eq!(chiedi("GET", &format!("{}/", p.base), &[("x-authentik-email", EMAIL)], None).await.stato, 200);
+        assert_eq!(chiedi("GET", &format!("{}/", p.base), &[("x-authentik-email", EMAIL)], None).await.stato, 307);
+    });
+}
+
+struct Identity;
+
+impl Gestore for Identity {
+    async fn gestisci(&self, r: &mut Richiesta<'_>) -> Esito {
+        let path = r.url.split('?').next().unwrap_or("").to_string();
+        let cookie = r.intestazione("cookie").unwrap_or("").to_string();
+        let csrf = r.intestazione("x-authentik-csrf").unwrap_or("").to_string();
+        let method = r.metodo.clone();
+        let body = r.leggi_corpo().await.unwrap_or_default();
+        let input = Json::analizza(&String::from_utf8_lossy(&body)).unwrap_or(Json::Null);
+        if path == "/api/v3/core/brands/current/" {
+            return risposta(200, "OK", &[("content-type", "application/json"), ("set-cookie", "authentik_csrf=csrf-test; Path=/")], br#"{"flow_authentication":"test-flow"}"#.to_vec());
+        }
+        if path == "/api/v3/flows/executor/test-flow/" {
+            if method == "GET" && cookie.contains("auth=ok") {
+                return json(200, &ogg! { "component": "xak-flow-redirect", "to": "https://elsewhere.invalid/" });
+            }
+            if method == "GET" { return json(200, &ogg! { "component": "ak-stage-identification", "password_fields": false }); }
+            if csrf != "csrf-test" { return risposta(403, "Forbidden", &[], vec![]); }
+            match input["component"].as_str().unwrap_or("") {
+                "ak-stage-identification" => {
+                    let name = input["uid_field"].as_str().unwrap_or("");
+                    if name == "redirect" { return risposta(302, "Found", &[("location", "http://example.invalid/steal")], vec![]); }
+                    if name == "mfa" { return json(200, &ogg! { "component": "ak-stage-authenticator-validate" }); }
+                    let cookie = if name == "denied" { "group=no; Path=/" } else if name == "cookiepath" { "group=yes; Path=/unrelated" } else { "group=yes; Path=/" };
+                    return risposta(200, "OK", &[("content-type", "application/json"), ("set-cookie", cookie)], br#"{"component":"ak-stage-password"}"#.to_vec());
+                }
+                "ak-stage-password" if input["password"].as_str() == Some("valid-test") => {
+                    return risposta(302, "Found", &[("location", "/api/v3/flows/executor/test-flow/?query="), ("set-cookie", "auth=ok; Path=/")], vec![]);
+                }
+                _ => return json(200, &ogg! { "component": "ak-stage-password", "response_errors": ogg! { "password": "invalid" } }),
+            }
+        }
+        if path == "/api/v3/core/users/me/" && cookie.contains("auth=ok") {
+            let group = if cookie.contains("group=yes") { "app-calendar" } else { "other" };
+            return json(200, &ogg! { "user": ogg! { "is_active": true, "email": EMAIL, "groups": Json::Arr(vec![ogg! { "name": group }]) } });
+        }
+        risposta(404, "Not Found", &[], vec![])
+    }
+}
+
+#[test]
+fn accesso_esterno_su_http() {
+    con_gateway(|p| async move {
+        let old = accedi(&p.base).await;
+        let identity = ascolta(Rc::new(Identity)).await;
+        imposta("EVERID_URL", Some(&identity));
+        imposta("EVERID", Some("on"));
+        imposta("ACCESSO_PASSWORD", Some("off"));
+        let root = format!("{}/", p.base);
+        assert_eq!(chiedi("GET", &root, &[("cookie", &old)], None).await.stato, 307);
+        let login = |name: &str, pass: &str| ogg! { "email": name, "password": pass, "rememberMe": true }.in_js().into_bytes();
+        let endpoint = format!("{}/api/auth/sign-in/email", p.base);
+        let headers = [("origin", APP), ("content-type", "application/json")];
+        assert_eq!(chiedi("POST", &endpoint, &headers, Some(login("long", &"a".repeat(129)))).await.stato, 401);
+        for (name, pass, expected) in [("invalid", "wrong", 401), ("mfa", "valid-test", 401), ("denied", "valid-test", 403), ("cookiepath", "valid-test", 403), ("redirect", "valid-test", 503)] {
+            let result = chiedi("POST", &endpoint, &headers, Some(login(name, pass))).await;
+            assert_eq!(result.stato, expected, "scenario {name}");
+            assert!(result.h("set-cookie").is_none());
+        }
+        let good = chiedi("POST", &endpoint, &headers, Some(login("valid", "valid-test"))).await;
+        assert_eq!(good.stato, 200, "{}", good.testo);
+        let cookie = good.h("set-cookie").unwrap().split(';').next().unwrap().to_string();
+        assert_eq!(chiedi("GET", &root, &[("cookie", &cookie)], None).await.stato, 200);
+        let logout = chiedi("POST", &format!("{}/api/auth/sign-out", p.base), &[("origin", APP), ("cookie", &cookie), ("content-type", "application/json")], Some(b"{}".to_vec())).await;
+        assert_eq!(logout.stato, 200);
+        assert_eq!(chiedi("GET", &root, &[("cookie", &cookie)], None).await.stato, 307);
+        assert_eq!(get(&format!("{}/disponibilita", p.base)).await.stato, 200);
+        assert_eq!(mcp(&p.base, &[("authorization", &format!("Bearer {MCP}"))], &ogg! { "jsonrpc": "2.0", "id": 1, "method": "tools/list" }).await.stato, 200);
     });
 }

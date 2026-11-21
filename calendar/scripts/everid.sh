@@ -1,21 +1,19 @@
 #!/bin/bash
-# EverID davanti all'interfaccia (README.md 4.7): Caddy e il gateway in Rust veri, con un outpost di Authentik finto. Prova che
-# l'interfaccia chiede l'accesso a EverID, che meet, /mcp, /condividi/ e /salute non passano da EverID, e che un X-Authentik-Email
-# mandato dal client non arriva mai al gateway, nemmeno sulle strade libere. Serve Docker; gira anche in Git Bash su Windows.
+# Test proxy: local login, public routes, bearer MCP and spoofed identity headers.
+# The Authentik flow itself is tested with the HTTP fixture in gateway/tests/servizio.rs.
 #   bash calendar/scripts/everid.sh      (lo lancia scripts/check.sh calendar --docker)
 set -euo pipefail
 # grep -q legge tutto l'ingresso: con pipefail, `curl ... | grep -q` fermato alla prima riga uguale fa morire curl di SIGPIPE (141)
 grep() { case "${1:-}" in -q) shift; command grep "$@" >/dev/null ;; -qi) shift; command grep -i "$@" >/dev/null ;; *) command grep "$@" ;; esac; }
 docker() { MSYS_NO_PATHCONV=1 command docker "$@"; }
 srv=$(cd "$(dirname "$0")/../server" && { pwd -W 2>/dev/null || pwd; })
-rete=oe-everid-prova
+rete="oe-everid-prova-$$"
 email=prova@example.com
 pw=$(openssl rand -hex 16 | tr -d '\r')
 
 docker build -q -t oe-copilot-caddy "$srv/caddy-ui" >/dev/null
 docker build -q -t oe-copilot-gateway-rs -f "$srv/agente-rs/gateway.Dockerfile" --build-context web="$srv/web-ts" "$srv/agente-rs" >/dev/null
 
-docker network rm "$rete" >/dev/null 2>&1 || true
 docker network create "$rete" >/dev/null
 ids=()
 trap 'echo "everid.sh: riga $LINENO: $BASH_COMMAND" >&2' ERR
@@ -60,12 +58,11 @@ uguale() { [ "$1" = "$2" ] || { echo "everid.sh riga ${BASH_LINENO[0]}: avuto [$
 pronto() { for _ in $(seq 1 60); do [ "$(codice "${ui[@]}" $C/salute)" = 200 ] && [ "$(codice -k $M/)" = 200 ] && return 0; sleep 1; done; return 1; }
 pronto
 
-echo "== interfaccia: senza EverID rimanda a EverID, con EverID entra"
-uguale "$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "${ui[@]}" $C/)" "302 https://id.example/login"
-uguale "$(codice "${ui[@]}" -X POST -H 'Content-Type: application/json' -d '[]' $C/api/get_config)" 302
-curl -fsS "${ui[@]}" -b everid=ok $C/ | grep -q '"esci":"/outpost.goauthentik.io/sign_out"'
-uguale "$(codice "${ui[@]}" -b everid=ok -X POST -H 'Content-Type: application/json' -d '[]' $C/api/get_config)" 200
-uguale "$(curl -s "${ui[@]}" $C/outpost.goauthentik.io/sign_out)" outpost
+echo "== interface: local login without external redirects"
+uguale "$(codice "${ui[@]}" $C/)" 307
+uguale "$(codice "${ui[@]}" $C/login)" 200
+uguale "$(codice "${ui[@]}" -X POST -H 'Content-Type: application/json' -d '[]' $C/api/get_config)" 401
+uguale "$(codice "${ui[@]}" $C/outpost.goauthentik.io/sign_out)" 302
 
 echo "== strade libere: nessun rimando a EverID"
 uguale "$(codice "${ui[@]}" $C/salute)" 200
@@ -80,7 +77,7 @@ uguale "$(codice "${meet[@]}" $M/login)" 302
 echo "== intestazione inventata dal client: Caddy la toglie ovunque"
 finto=(-H "X-Authentik-Email: $email")
 # sull'interfaccia: senza il cookie di EverID resta il rimando, l'intestazione del client non basta
-uguale "$(codice "${ui[@]}" "${finto[@]}" $C/)" 302
+uguale "$(codice "${ui[@]}" "${finto[@]}" $C/)" 307
 # su meet, che non passa da EverID, la pagina resta quella pubblica e il resto rimanda alla radice
 uguale "$(codice "${meet[@]}" "${finto[@]}" $M/disponibilita)" 200
 uguale "$(codice "${meet[@]}" "${finto[@]}" -X POST -H 'Content-Type: application/json' -d '[]' $M/api/get_config)" 302

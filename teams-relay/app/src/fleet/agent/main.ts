@@ -1,17 +1,23 @@
 // The fleet agent: one host-side process, separate from the relay, that runs the enabled fleet components and the
-// reverse tunnels that publish them on the hub VM. node dist/fleet-agent.cjs. Config is fleet.config.json next to
-// package.json (or FLEET_CONFIG). Runs under pm2 beside the relay; pm2 keeps it alive and brings it back at logon.
+// reverse tunnels that publish them on the hub VM. node dist/fleet-agent.cjs. Config comes from fleet.env (or FLEET_ENV /
+// relay.env) when FLEET_VM is set, otherwise fleet.config.json (or FLEET_CONFIG). Runs under pm2 beside the relay; pm2
+// keeps it alive and brings it back at logon.
+import fs from "node:fs";
 import path from "node:path";
 import { ConfigError } from "@/shared/env";
 import { errorText, log } from "@/agent/log";
 import { cmdApiConfig } from "@/fleet/cmdapi/config";
 import { startCmdApi, type CmdApiServer } from "@/fleet/cmdapi/server";
 import { loadOrCreateHostKey, startSshServer, type SshServer } from "@/fleet/ssh/server";
-import { cmdapiLocalPort, loadAgentConfigFile, sshLocalPort, type AgentConfig } from "./config";
+import { cmdapiLocalPort, loadAgentConfig, sshLocalPort, type AgentConfig } from "./config";
 import { superviseTunnel, type TunnelHandle } from "./tunnel";
 
-function configPath(): string {
-  return process.env.FLEET_CONFIG || path.resolve(process.cwd(), "fleet.config.json");
+function loadEnvFiles(): void {
+  const envFile = process.env.FLEET_ENV ? path.resolve(process.cwd(), process.env.FLEET_ENV) : path.resolve(process.cwd(), "fleet.env");
+  if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
+  else if (process.env.FLEET_ENV) throw new ConfigError(`fleet env not found: ${envFile}`);
+  const relayEnv = path.resolve(process.cwd(), "relay.env");
+  if (fs.existsSync(relayEnv)) process.loadEnvFile(relayEnv);
 }
 
 async function start(config: AgentConfig): Promise<void> {
@@ -55,7 +61,8 @@ async function start(config: AgentConfig): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const config = loadAgentConfigFile(configPath());
+  loadEnvFiles();
+  const config = loadAgentConfig(process.env, process.cwd());
   log.info("fleet", `agent start: vm=${config.vm} cmdapi=${config.cmdapi.enabled} ssh=${config.ssh.enabled}`);
   await start(config);
   // stay up even when nothing is enabled: pm2 would otherwise treat an exit as a crash and flap

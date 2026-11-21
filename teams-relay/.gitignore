@@ -15,6 +15,7 @@ vapid/
 /app/fleet.hosts.json
 # Fleet agent config on a host: its cmdapi token and ssh authorized keys
 /app/fleet.config.json
+/app/fleet.env
 caddy_data/
 caddy_config/
 

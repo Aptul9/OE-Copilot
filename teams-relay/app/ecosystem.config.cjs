@@ -7,12 +7,14 @@
 // hub VM. It is opt-in: set FLEET_AGENT=on in relay.env to have pm2 start it here, or run it standalone with
 // `npm run fleet:agent`. Nothing fleet runs otherwise. See docs/design/2026-10-01-fleet-remote-management.md.
 
-// relay.env next to this file (pm2 does not load it on its own); a missing file is fine, the process environment is
-// then the only source
-try {
-  process.loadEnvFile(`${__dirname}/relay.env`);
-} catch {
-  // no relay.env: rely on the process environment
+// fleet.env and relay.env next to this file (pm2 does not load them on its own); missing files are fine, the process
+// environment is then the only source
+for (const name of ["fleet.env", "relay.env"]) {
+  try {
+    process.loadEnvFile(`${__dirname}/${name}`);
+  } catch {
+    // absent file: skip
+  }
 }
 
 const restart = { exp_backoff_restart_delay: 1000, min_uptime: 10000, max_restarts: 50, time: true };

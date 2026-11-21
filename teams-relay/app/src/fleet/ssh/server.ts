@@ -6,6 +6,7 @@
 import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { Server, utils, type AuthContext, type Connection, type ParsedKey } from "ssh2";
 import { errorText, log } from "@/agent/log";
@@ -90,6 +91,27 @@ export function startSshServer(opts: SshServerOptions): Promise<SshServer> {
     client.on("authentication", (ctx) => authorize(ctx, allowed));
     client.on("error", (e) => log.warn("ssh", errorText(e)));
     client.on("ready", () => {
+      client.on("tcpip", (accept, reject, info) => {
+        const upstream = net.connect({ host: info.destIP, port: info.destPort });
+        const onConnectError = () => reject();
+        upstream.once("error", onConnectError);
+        upstream.once("connect", () => {
+          upstream.removeListener("error", onConnectError);
+          const stream = accept();
+          if (!stream) {
+            upstream.destroy();
+            return;
+          }
+          upstream.on("error", () => stream.destroy());
+          stream.on("error", () => upstream.destroy());
+          stream.on("close", () => upstream.destroy());
+          upstream.on("close", () => {
+            if (!upstream.readableEnded) stream.destroy();
+          });
+          stream.pipe(upstream);
+          upstream.pipe(stream);
+        });
+      });
       client.on("session", (accept) => {
         const session = accept();
         // a client may request a pty before the shell; acknowledge it (there is no real pty behind it)

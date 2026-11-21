@@ -64,7 +64,7 @@ npm run relay                   # start
 
 ```bash
 cd app
-npm run fleet:agent             # agent, from fleet.config.json
+npm run fleet:agent             # agent, from fleet.env (or fleet.config.json)
 npm run fleet -- status all     # control hosts in fleet.hosts.json: exec | update | status
 ```
 
@@ -87,4 +87,4 @@ npm run lint
 npm run build
 ```
 
-Config: `.env.example` (server), `app/relay.env.example` (local relay), `app/fleet.config.example.json` and `app/fleet.hosts.example.json` (fleet).
+Config: `.env.example` (server), `app/relay.env.example` (local relay), `app/fleet.env.example`, `app/fleet.config.example.json` and `app/fleet.hosts.example.json` (fleet).

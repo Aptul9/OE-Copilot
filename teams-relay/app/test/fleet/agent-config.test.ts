@@ -1,7 +1,10 @@
 // The fleet agent's config file (fleet.config.json): one hub VM, and per-component enable with its own VM loopback port.
 // cmdapi and ssh are independent; each off by default; an enabled component must carry what it needs.
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { cmdapiLocalPort, parseAgentConfig, sshLocalPort } from "@/fleet/agent/config";
+import { cmdapiLocalPort, loadAgentConfig, parseAgentConfig, parseAgentEnv, sshLocalPort } from "@/fleet/agent/config";
+import { tempDir } from "../helpers";
 
 const KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEY test@host";
 
@@ -101,5 +104,47 @@ describe("instance offset", () => {
 
   it("refuses an instance that pushes a bound port past 65535", () => {
     expect(() => parseAgentConfig({ instance: 100, vm: "oracle-vm", cmdapi: { enabled: true, localPort: 65500, vmPort: 8766, token: "t".repeat(32) } })).toThrow(/65535/);
+  });
+});
+
+describe("agent env config (fleet.env)", () => {
+  it("parses ssh library mode with inline authorized keys and defaults", () => {
+    const c = parseAgentEnv({
+      FLEET_VM: "oracle-vm",
+      FLEET_SSH: "1",
+      FLEET_SSH_VM_PORT: "8822",
+      FLEET_SSH_AUTHORIZED_KEYS: `${KEY}; ${KEY}`,
+    });
+    expect(c.vm).toBe("oracle-vm");
+    expect(c.cmdapi.enabled).toBe(false);
+    expect(c.ssh.enabled).toBe(true);
+    expect(c.ssh.mode).toBe("library");
+    expect(c.ssh.vmPort).toBe(8822);
+    expect(c.ssh.vmPortSpan).toBe(1);
+    expect(sshLocalPort(c)).toBe(2022);
+    expect(c.ssh.authorizedKeys).toEqual([KEY, KEY]);
+  });
+
+  it("loads authorized keys from FLEET_SSH_AUTHORIZED_KEYS_FILE and skips comments", () => {
+    const dir = tempDir();
+    fs.writeFileSync(path.join(dir, "ak"), `# comment\n\n${KEY}\n`);
+    const c = parseAgentEnv(
+      {
+        FLEET_VM: "oracle-vm",
+        FLEET_SSH: "on",
+        FLEET_SSH_VM_PORT: "8822",
+        FLEET_SSH_AUTHORIZED_KEYS_FILE: "ak",
+      },
+      dir,
+    );
+    expect(c.ssh.authorizedKeys).toEqual([KEY]);
+  });
+
+  it("prefers FLEET_VM env over fleet.config.json unless FLEET_CONFIG is explicitly set", () => {
+    const dir = tempDir();
+    fs.writeFileSync(path.join(dir, "fleet.config.json"), JSON.stringify({ vm: "from-json" }));
+    expect(loadAgentConfig({ FLEET_VM: "from-env" }, dir).vm).toBe("from-env");
+    expect(loadAgentConfig({}, dir).vm).toBe("from-json");
+    expect(loadAgentConfig({ FLEET_VM: "from-env", FLEET_CONFIG: "fleet.config.json" }, dir).vm).toBe("from-json");
   });
 });

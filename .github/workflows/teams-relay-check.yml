@@ -38,14 +38,16 @@ jobs:
           bash -n deploy/remote-deploy.sh
           bash -n deploy/render-env.sh
           bash -n deploy/test-everid-caddy.sh
-          TR_DOMAIN=x TR_EVERID_MODE=on deploy/render-env.sh | grep -qx 'EVERID_MODE=on'
+          TR_DOMAIN=x TR_EVERID_MODE=on TR_EVERID_AUTH_URL=https://id.example deploy/render-env.sh | grep -qx 'EVERID_MODE=on'
+          TR_DOMAIN=x TR_EVERID_MODE=on TR_EVERID_AUTH_URL=https://id.example deploy/render-env.sh | grep -qx 'EVERID_AUTH_URL=https://id.example'
+          if TR_DOMAIN=x TR_EVERID_MODE=on deploy/render-env.sh; then echo "render-env accepted missing EVERID_AUTH_URL" >&2; exit 1; fi
           if TR_DOMAIN=x TR_EVERID_MODE=bogus deploy/render-env.sh; then echo "render-env accepted EVERID_MODE=bogus" >&2; exit 1; fi
 
       - name: Compose file
         working-directory: teams-relay
         run: DOMAIN=example.com docker compose config -q
 
-      # sign-in redirect, exempt routes and spoofed X-Authentik-* headers, through the real Caddyfile
+      # local sign-in routing, exempt routes and spoofed X-Authentik-* headers, through the real Caddyfile
       - name: EverID gate behaviour
         working-directory: teams-relay
         run: bash deploy/test-everid-caddy.sh

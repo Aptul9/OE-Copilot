@@ -104,7 +104,7 @@ fn drop_stream(id: Option<u64>) {
 
 pub async fn handle(req: hyper::Request<Incoming>, peer: Option<std::net::IpAddr>) -> Resp {
     let (mut parts, body) = req.into_parts();
-    // X-Authentik-* count only when they come from the Caddy of this compose (everid::screen)
+    // Identity headers never authenticate a request.
     crate::everid::screen(&mut parts.headers, peer, &crate::config::everid_proxy_host()).await;
     let path = parts.uri.path().to_string();
     let query = parts.uri.query().unwrap_or("").to_string();

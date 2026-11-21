@@ -1,8 +1,11 @@
 // The fleet agent's configuration, read from fleet.config.json (holds the cmdapi token and the ssh authorized keys, so
 // it is never committed). One hub VM; cmdapi and ssh are independent components, each off unless enabled, and an
 // enabled component must carry what it needs (a VM loopback port, plus a token for cmdapi or at least one key for ssh).
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { z } from "zod";
-import { ConfigError, issuesText, readJsonFile } from "@/shared/env";
+import { ConfigError, issuesText, parseEnv, readJsonFile } from "@/shared/env";
 
 const Port = z.number().int().min(1).max(65535);
 const Span = z.number().int().min(1).max(64);
@@ -89,3 +92,82 @@ export function parseAgentConfig(obj: unknown): AgentConfig {
 }
 
 export const loadAgentConfigFile = (file: string): AgentConfig => parseAgentConfig(readJsonFile(file, "fleet config"));
+
+const Flag = z.enum(["0", "1", "false", "true", "off", "on"]).default("0");
+const EnvPort = z.coerce.number().int().min(1).max(65535);
+const EnvSpan = z.coerce.number().int().min(1).max(64);
+
+const EnvSchema = z.object({
+  FLEET_VM: z.string().min(1),
+  FLEET_INSTANCE: z.coerce.number().int().min(0).default(0),
+  FLEET_CMDAPI: Flag,
+  FLEET_CMDAPI_VM_PORT: EnvPort.optional(),
+  FLEET_CMDAPI_VM_SPAN: EnvSpan.optional(),
+  FLEET_CMDAPI_LOCAL_PORT: EnvPort.optional(),
+  FLEET_CMDAPI_TOKEN: z.string().default(""),
+  FLEET_CMDAPI_CWD: z.string().default(""),
+  FLEET_CMDAPI_TIMEOUT: z.coerce.number().positive().optional(),
+  FLEET_SSH: Flag,
+  FLEET_SSH_MODE: z.enum(["library", "system"]).optional(),
+  FLEET_SSH_VM_PORT: EnvPort.optional(),
+  FLEET_SSH_VM_SPAN: EnvSpan.optional(),
+  FLEET_SSH_LOCAL_PORT: EnvPort.optional(),
+  FLEET_SSH_HOST_KEY: z.string().optional(),
+  FLEET_SSH_AUTHORIZED_KEYS: z.string().default(""),
+  FLEET_SSH_AUTHORIZED_KEYS_FILE: z.string().default(""),
+});
+
+const flagOn = (v: string) => v === "1" || v === "true" || v === "on";
+
+function splitKeyLines(raw: string, sep: RegExp): string[] {
+  return raw
+    .split(sep)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !s.startsWith("#"));
+}
+
+export function parseAgentEnv(env: Record<string, string | undefined>, cwd = process.cwd()): AgentConfig {
+  const e = parseEnv(EnvSchema, env);
+  const keys = splitKeyLines(e.FLEET_SSH_AUTHORIZED_KEYS, /[;\r\n]+/);
+  if (e.FLEET_SSH_AUTHORIZED_KEYS_FILE) {
+    const expanded = e.FLEET_SSH_AUTHORIZED_KEYS_FILE.replace(/^~(?=[\\/])/, os.homedir());
+    const file = path.resolve(cwd, expanded);
+    let text: string;
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      throw new ConfigError(`FLEET_SSH_AUTHORIZED_KEYS_FILE not found: ${file}`);
+    }
+    keys.push(...splitKeyLines(text, /[\r\n]+/));
+  }
+  return parseAgentConfig({
+    vm: e.FLEET_VM,
+    instance: e.FLEET_INSTANCE,
+    cmdapi: {
+      enabled: flagOn(e.FLEET_CMDAPI),
+      vmPort: e.FLEET_CMDAPI_VM_PORT,
+      vmPortSpan: e.FLEET_CMDAPI_VM_SPAN,
+      localPort: e.FLEET_CMDAPI_LOCAL_PORT,
+      token: e.FLEET_CMDAPI_TOKEN,
+      cwd: e.FLEET_CMDAPI_CWD,
+      timeout: e.FLEET_CMDAPI_TIMEOUT,
+    },
+    ssh: {
+      enabled: flagOn(e.FLEET_SSH),
+      mode: e.FLEET_SSH_MODE,
+      vmPort: e.FLEET_SSH_VM_PORT,
+      vmPortSpan: e.FLEET_SSH_VM_SPAN,
+      localPort: e.FLEET_SSH_LOCAL_PORT,
+      hostKeyFile: e.FLEET_SSH_HOST_KEY,
+      authorizedKeys: keys,
+    },
+  });
+}
+
+export function loadAgentConfig(env: Record<string, string | undefined> = process.env, cwd = process.cwd()): AgentConfig {
+  if (env.FLEET_CONFIG) return loadAgentConfigFile(path.resolve(cwd, env.FLEET_CONFIG));
+  if (env.FLEET_VM && env.FLEET_VM.trim() !== "") return parseAgentEnv(env, cwd);
+  const jsonFile = path.resolve(cwd, "fleet.config.json");
+  if (fs.existsSync(jsonFile)) return loadAgentConfigFile(jsonFile);
+  throw new ConfigError("fleet config not found: set FLEET_VM in fleet.env (see fleet.env.example) or create fleet.config.json");
+}

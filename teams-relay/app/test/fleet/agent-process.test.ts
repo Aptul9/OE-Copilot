@@ -66,4 +66,40 @@ describe("fleet agent process", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).stdout).toContain("agenttest");
   });
+
+  it("boots from a fleet.env file without fleet.config.json", async () => {
+    const dir = tempDir();
+    const bundle = path.join(dir, "fleet-agent.cjs");
+    await build(bundleOptions("fleet-agent", bundle));
+    const port = await freePort();
+    const vmPort = await freePort();
+    fs.writeFileSync(
+      path.join(dir, "fleet.env"),
+      `FLEET_VM=localhost\nFLEET_CMDAPI=1\nFLEET_CMDAPI_VM_PORT=${vmPort}\nFLEET_CMDAPI_LOCAL_PORT=${port}\nFLEET_CMDAPI_TOKEN=${TOKEN}\n`,
+    );
+    const envOnly: Record<string, string | undefined> = { ...process.env, NODE_PATH: path.join(APP, "node_modules") };
+    delete envOnly.FLEET_CONFIG;
+    delete envOnly.FLEET_VM;
+    const child = spawn(process.execPath, [bundle], { cwd: dir, env: envOnly as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
+    try {
+      const envUrl = await new Promise<string>((resolve, reject) => {
+        let buf = "";
+        const timer = setTimeout(() => reject(new Error(`env agent did not start; saw: ${buf}`)), 15000);
+        const onData = (c: Buffer) => {
+          buf += c;
+          const m = buf.match(/listening on (http:\/\/\S+)/);
+          if (m) {
+            clearTimeout(timer);
+            resolve(m[1]);
+          }
+        };
+        child.stdout!.on("data", onData);
+        child.stderr!.on("data", onData);
+        child.once("error", reject);
+      });
+      expect((await (await fetch(`${envUrl}/health`)).json()).ok).toBe(true);
+    } finally {
+      child.kill();
+    }
+  });
 });

@@ -48,11 +48,12 @@ async fn request(client: &reqwest::Client, cookies: &mut Cookies, url: &str, bod
     }
     let mut response = req.send().await.map_err(|_| ())?;
     // The executor advances by redirecting a POST back to itself. Do not send credentials or cookies to any other URL.
-    if post && response.status() == reqwest::StatusCode::FOUND {
+    for _ in 0..5 {
+        if !post || !matches!(response.status().as_u16(), 301 | 302 | 303) { break; }
         cookies.update(response.headers());
         let location = response.headers().get(reqwest::header::LOCATION).and_then(|v| v.to_str().ok()).ok_or(())?;
         let original = url::Url::parse(url).map_err(|_| ())?;
-        let target = original.join(location).map_err(|_| ())?;
+        let target = response.url().join(location).map_err(|_| ())?;
         if target.origin() != original.origin() || target.path() != original.path() || !target.username().is_empty() || target.password().is_some() || target.fragment().is_some() {
             return Err(());
         }
@@ -206,7 +207,9 @@ mod tests {
                         else if scenario == "mfa" { "ak-stage-authenticator-validate" }
                         else if posts == 1 { "ak-stage-password" }
                         else { "xak-flow-redirect" };
-                    if scenario == "redirect-loop" && posts > 0 {
+                    if posts == 2 && scenario == "allowed" && !first.contains("stage=done") {
+                        (302, json!({}), "Location: ?stage=done\r\n".to_string())
+                    } else if scenario == "redirect-loop" && posts > 0 {
                         (302, json!({}), "Location: /api/v3/flows/executor/accesso/?query=\r\n".to_string())
                     } else {
                         (200, json!({"component":component}), String::new())

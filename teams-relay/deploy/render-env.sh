@@ -13,7 +13,7 @@ KEYS=(
   VAPID_SUBJECT TZ HTTPS_PORT HTTPS_BIND
   NTFY_ENABLED NTFY_URL NTFY_TOPIC NATIVE_CALLS LIGHT_HOST LIGHT_RUST SUPERVISOR_RUST AGENT_RUST CALLS_RUST DESKTOP_ON_DEMAND
   SHARED_BROKER_URL SHARED_BROKER_KEY SHARED_ACCOUNTS_OWNER SHARED_ACCOUNTS_URL
-  EVERID_MODE EVERID_OUTPOST EVERID_GROUP EVERID_ALIASES PASSWORD_LOGIN
+  EVERID_MODE EVERID_OUTPOST EVERID_GROUP EVERID_ALIASES EVERID_AUTH_URL PASSWORD_LOGIN
 )
 
 # EVERID_MODE names the file Caddy imports (caddy/everid/<mode>.caddy): another value would stop Caddy, which holds port 80
@@ -22,6 +22,13 @@ case "${TR_EVERID_MODE:-}" in
   ""|off|on) ;;
   *) echo "EVERID_MODE must be off or on, not '${TR_EVERID_MODE}'" >&2; exit 1 ;;
 esac
+
+if [ "${TR_EVERID_MODE:-off}" = on ]; then
+  case "${TR_EVERID_AUTH_URL:-}" in
+    https://?*) ;;
+    *) echo "EVERID_AUTH_URL must be an HTTPS identity-service URL when EVERID_MODE=on" >&2; exit 1 ;;
+  esac
+fi
 
 # The supervisor refuses to start on one of SHARED_BROKER_URL and SHARED_BROKER_KEY without the other, which would stop
 # every Teams account. The key is the repository secret TEAMS_BROKER_KEY, which the calendar agent uses too: without the

@@ -9,11 +9,10 @@
 import everid/{$EVERID_MODE:off}.caddy
 
 {$DOMAIN} {
-	# who is signed in to EverID comes only from its outpost (everid_gate): the same headers sent by a client are dropped
-	# before any handle runs (request_header comes before handle in Caddy's order)
+	# Drop client identity headers before any route runs.
 	request_header -X-Authentik-*
 	import everid_routes
-	# the pages of the web app, the only paths where it reads X-Authentik-Email
+	# Pages check the web app session.
 	@pages path / /admin /settings /remote /login
 	handle @pages {
 		import everid_gate

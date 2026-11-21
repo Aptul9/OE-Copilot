@@ -100,11 +100,11 @@ services:
       SHARED_ACCOUNTS_OWNER: ${SHARED_ACCOUNTS_OWNER:-}
       SHARED_ACCOUNTS_URL: ${SHARED_ACCOUNTS_URL:-}
       DESKTOP_URL: ${DESKTOP_URL:-}
-      # EverID (app/webapp-rs/src/everid.rs): on as in Caddy, the group of this app, everid=local address pairs, and
-      # PASSWORD_LOGIN=0 to turn the password sign-in off while EverID is on
+      # On: the form checks credentials against the identity service and maps its email to an existing local user.
       EVERID_MODE: ${EVERID_MODE:-off}
       EVERID_GROUP: ${EVERID_GROUP:-}
       EVERID_ALIASES: ${EVERID_ALIASES:-}
+      EVERID_AUTH_URL: ${EVERID_AUTH_URL:-}
       PASSWORD_LOGIN: ${PASSWORD_LOGIN:-}
       APP_DB: /data/app.db
       # days and clock times of the status pages (src/lib/status-pages.ts), as in the browsers container

@@ -29,7 +29,7 @@ export function LoginForm({ next }: { next: string }) {
     const { data, error } = await authClient.signIn.email({ email: email.trim(), password });
     setBusy(false);
     if (error) {
-      setError(error.status === 429 ? "Too many attempts, try again in a few minutes" : "Wrong email or password");
+      setError(error.status === 429 ? "Too many attempts, try again in a few minutes" : error.status === 403 ? "This account has no access" : error.status >= 500 ? "Sign-in service unavailable" : "Wrong username or password");
       return;
     }
     // an MCP client signing in (OAuth): the client of better-auth already follows it to the consent screen
@@ -45,7 +45,7 @@ export function LoginForm({ next }: { next: string }) {
         <CardHeader className="justify-items-center gap-2 text-center">
           <LogoTile className="mb-2 size-12 rounded-2xl" />
           <CardTitle className="text-xl">Sign in to TeamsRelay</CardTitle>
-          <CardDescription>Use the account an administrator created for you.</CardDescription>
+          <CardDescription>Use your account to sign in.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submit}>
@@ -57,10 +57,10 @@ export function LoginForm({ next }: { next: string }) {
                 </Alert>
               )}
               <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <FieldLabel htmlFor="email">Username or email</FieldLabel>
                 <Input
                   id="email"
-                  type="email"
+                  type="text"
                   autoCapitalize="none"
                   autoCorrect="off"
                   autoComplete="username"

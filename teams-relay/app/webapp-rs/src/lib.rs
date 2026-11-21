@@ -12,6 +12,7 @@ pub mod commands;
 pub mod config;
 pub mod control;
 pub mod everid;
+pub mod everid_form;
 pub mod hubs;
 pub mod js;
 pub mod light;

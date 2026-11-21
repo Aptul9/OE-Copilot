@@ -145,36 +145,12 @@ pub async fn serve(method: &str, path: &str, query: &str, headers: &HeaderMap) -
     if let Some(f) = static_file(path) {
         return serve_file(&f, path, head);
     }
-    let mut req =
+    let req =
         Req { method: "GET".into(), path: path.into(), query: query.into(), headers: headers.clone(), body: Bytes::new(), params: vec![], stream_id: None };
-    // EverID (everid.rs): the person the outpost let through gets a session before the page checks it
-    let mut set_cookie = vec![];
-    if matches!(path, "/" | "/admin" | "/login" | "/remote" | "/settings") {
-        match crate::everid::step(&req) {
-            Ok(crate::everid::Step::Keep) => {}
-            Ok(crate::everid::Step::Refuse(r)) => return r,
-            Ok(crate::everid::Step::Signed { cookie, set_cookie: lines }) => {
-                match hyper::header::HeaderValue::from_str(&cookie) {
-                    Ok(v) => {
-                        req.headers.insert(hyper::header::COOKIE, v);
-                    }
-                    Err(_) => return crate::web::empty(400),
-                }
-                set_cookie = lines;
-            }
-            Err(e) => return crate::web::error_response(e),
-        }
-    }
-    let mut out = match render(&req, head) {
+    match render(&req, head) {
         Ok(r) => r,
         Err(e) => crate::web::error_response(e),
-    };
-    for l in set_cookie {
-        if let Ok(v) = hyper::header::HeaderValue::from_str(&l) {
-            out.headers_mut().append(hyper::header::SET_COOKIE, v);
-        }
     }
-    out
 }
 
 fn render(req: &Req, head: bool) -> crate::web::Res {
@@ -193,7 +169,6 @@ fn render(req: &Req, head: bool) -> crate::web::Res {
             let next = safe_next(req.query_param("next").as_deref());
             match current_user(req)? {
                 Some(_) => to(&next),
-                None if !crate::config::password_login() => crate::everid::refused("Password sign-in is off: sign in with EverID"),
                 None => page("login.html", &json!({ "next": next }), 200, head, None, false),
             }
         }

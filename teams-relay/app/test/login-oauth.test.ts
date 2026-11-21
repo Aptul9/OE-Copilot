@@ -51,7 +51,7 @@ afterAll(async () => {
 async function signIn(url: string) {
   bodies.length = 0;
   await page.goto(url);
-  await page.getByLabel("Email").fill("admin@teamsrelay.test");
+  await page.getByLabel("Username or email").fill("admin@teamsrelay.test");
   await page.getByLabel("Password", { exact: true }).fill("local-admin-password-123");
   await page.getByRole("button", { name: "Sign in" }).click();
 }

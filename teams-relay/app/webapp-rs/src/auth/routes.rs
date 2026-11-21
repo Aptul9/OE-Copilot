@@ -372,10 +372,6 @@ pub async fn handle(r: &Req) -> Resp {
     if !exists(&r.method, p) {
         return response(404, vec![], None);
     }
-    // EverID on with PASSWORD_LOGIN=0: the pages sign in through EverID only (everid.rs)
-    if p == "/sign-in/email" && !crate::config::password_login() {
-        return json_response(403, vec![], Some(json!({ "message": "Password sign-in is off: sign in with EverID", "code": "PASSWORD_LOGIN_OFF" })));
-    }
     let query = form_urlencoded::parse(r.query.as_bytes()).fold(Map::new(), |mut m, (k, v)| {
         m.insert(k.into_owned(), Value::String(v.into_owned()));
         m
@@ -472,6 +468,34 @@ async fn sign_in(ctx: &mut Ctx<'_>) -> Out<Value> {
     form_check(ctx)?;
     let email = body.get("email").and_then(Value::as_str).unwrap_or("").to_string();
     let password = body.get("password").and_then(Value::as_str).unwrap_or("").to_string();
+    if crate::config::everid_on() {
+        ctx.header_out("cache-control", "no-store");
+        use crate::everid_form::Outcome;
+        let email = match crate::everid_form::verify(&email, &password).await {
+            Outcome::Allowed(email) => crate::everid::local_email(&email, &crate::config::everid_aliases()),
+            Outcome::Invalid => return Err(api_error(401, "INVALID_CREDENTIALS", "Invalid username or password")),
+            Outcome::Forbidden => return Err(api_error(403, "ACCESS_DENIED", "This account has no access")),
+            Outcome::Unavailable => return Err(api_error(502, "AUTH_UNAVAILABLE", "Sign-in service unavailable")),
+        };
+        let Some(user) = rows::user_by_email(&email)? else {
+            return Err(api_error(403, "ACCESS_DENIED", "This account has no access"));
+        };
+        ban_check(&user, ctx.now())?;
+        let dont_remember = body.get("rememberMe") == Some(&Value::Bool(false));
+        let agent = ctx.r.header("user-agent").unwrap_or_default();
+        let session = rows::create_session(&user.id, dont_remember, &ctx.ip(), &agent, ctx.now())?;
+        ctx.set_session_cookie(&session, Some(dont_remember));
+        let back = body.get("callbackURL").and_then(Value::as_str).map(str::to_string);
+        let mut result = Map::new();
+        result.insert("redirect".into(), back.is_some().into());
+        result.insert("token".into(), session.token.clone().into());
+        if let Some(back) = back {
+            ctx.header_out("location", &back);
+            result.insert("url".into(), back.into());
+        }
+        result.insert("user".into(), user.json());
+        return Ok(Value::Object(result));
+    }
     if !valid_email(&email) {
         return Err(api_error(400, "INVALID_EMAIL", "Invalid email"));
     }

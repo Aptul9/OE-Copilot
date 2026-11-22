@@ -27,7 +27,7 @@ RUN cp -r node_modules/@roamhq /agent/node_modules/ \
 
 # The web app, the light host, the supervisor and the browser agent in Rust (webapp-rs): static binaries. jiff carries the time zone database and reqwest the
 # certificate roots, so they need no system file. Pinned by digest as calendar/server/agente-rs/Dockerfile.
-FROM rust:1-alpine@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS webrs
+FROM rust:1-alpine@sha256:8d0e82abfdf9a38071e07cabc5afba4ddbe077631a80e4e742a760c38beadc33 AS webrs
 # cmake builds libopus for the calling worker (audiopus_sys static); its CMakeLists predates CMake 4
 RUN apk add --no-cache musl-dev cmake make
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5

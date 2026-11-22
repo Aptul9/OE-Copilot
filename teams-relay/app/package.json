@@ -28,23 +28,23 @@
     "fleet:agent": "node dist/fleet-agent.cjs"
   },
   "dependencies": {
-    "@better-auth/mcp": "1.7.22",
-    "@better-auth/oauth-provider": "1.7.22",
+    "@better-auth/mcp": "1.7.26",
+    "@better-auth/oauth-provider": "1.7.26",
     "@modelcontextprotocol/server": "2.4.0",
-    "@playwright/mcp": "0.0.85",
+    "@playwright/mcp": "0.0.86",
     "@roamhq/wrtc": "0.10.0",
-    "better-auth": "1.7.22",
-    "better-sqlite3": "13.1.1",
+    "better-auth": "1.7.26",
+    "better-sqlite3": "13.2.0",
     "class-variance-authority": "0.7.1",
     "cn": "0.5.2",
-    "dompurify": "3.4.17",
+    "dompurify": "3.4.18",
     "geist": "1.9.2",
     "google-auth-library": "11.3.4",
-    "lucide-react": "1.72.0",
+    "lucide-react": "1.76.0",
     "next": "16.4.6",
     "next-themes": "0.4.6",
     "opusscript": "0.1.1",
-    "playwright-core": "1.65.0",
+    "playwright-core": "1.65.1",
     "pm2": "7.1.2",
     "radix-ui": "1.8.1",
     "react": "19.3.1",
@@ -53,7 +53,7 @@
     "ssh2": "1.17.0",
     "undici": "8.12.4",
     "web-push": "4.0.0",
-    "ws": "8.22.2",
+    "ws": "8.23.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -67,13 +67,13 @@
     "@types/web-push": "3.6.4",
     "@types/ws": "8.18.2",
     "esbuild": "0.28.2",
-    "eslint": "10.14.0",
+    "eslint": "10.15.0",
     "eslint-config-next": "16.4.6",
-    "postcss": "8.5.32",
+    "postcss": "8.5.33",
     "shadcn": "4.23.0",
     "tailwindcss": "4.3.5",
     "tw-animate-css": "1.4.0",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }

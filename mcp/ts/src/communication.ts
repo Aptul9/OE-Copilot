@@ -610,6 +610,8 @@ export class Communication {
     if (x.cursor && a.provider !== "slack")
       unsupported(a.provider, "chat cursor");
     if (x.refresh && a.provider !== "teams") unsupported(a.provider, "refresh");
+    if (x.mentions?.length && a.provider !== "teams")
+      unsupported(a.provider, "mentions");
     if (op === "send" && !x.text?.trim() && !x.files?.length)
       throw new CommunicationError(
         "INVALID_INPUT",
@@ -742,6 +744,7 @@ export class Communication {
         account: Number(a.native),
         chat: c?.native,
         text: x.text,
+        mentions: x.mentions,
         message_id: m?.native,
         reply_to: op === "send" ? m?.native : undefined,
         reaction: x.emoji,
@@ -769,6 +772,7 @@ const str = z.string().min(1).max(4000);
 const scope = { account_id: str };
 const size = z.number().int().min(1).max(100).default(20);
 const REFRESH = "Teams only: open the chat in Teams first, so its newest messages and images are saved before reading. Teams then marks the chat read.";
+const MENTIONS = "Teams only: people to tag, each written as @Name in text and listed here as Name, exactly as the chat members are called. Not with message_id.";
 export function registerCommunication(server: McpServer, c: Communication) {
   const tool = (
     name: string,
@@ -1017,6 +1021,11 @@ export function registerCommunication(server: McpServer, c: Communication) {
         .optional(),
       thread_id: str.optional(),
       message_id: str.optional(),
+      mentions: z
+        .array(z.string().min(1).max(100))
+        .max(20)
+        .optional()
+        .describe(MENTIONS),
     },
     false,
     call("chat", "send"),

@@ -595,6 +595,9 @@ impl Communication {
         if truthy_opt(x.get("refresh")) && a.provider != "teams" {
             return unsupported(&a.provider, "refresh");
         }
+        if x.get("mentions").and_then(Value::as_array).is_some_and(|m| !m.is_empty()) && a.provider != "teams" {
+            return unsupported(&a.provider, "mentions");
+        }
         let text_empty = s(x, "text").is_none_or(|t| t.trim().is_empty());
         let has_files = x.get("files").and_then(Value::as_array).is_some_and(|f| !f.is_empty());
         if op == "send" && text_empty && !has_files {
@@ -756,6 +759,7 @@ impl Communication {
                 args.insert("account".into(), crate::outlook::num(slot));
                 set(&mut args, "chat", c_native.clone().map(Value::String));
                 set(&mut args, "text", x.get("text").cloned());
+                set(&mut args, "mentions", x.get("mentions").cloned());
                 set(&mut args, "message_id", m.as_ref().map(|m| json!(m.native)));
                 set(&mut args, "reply_to", if op == "send" { m.as_ref().map(|m| json!(m.native)) } else { None });
                 set(&mut args, "reaction", x.get("emoji").cloned());

@@ -113,6 +113,7 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
                 Some(read @ ("read_chat" | "refresh_chat")) if req["params"]["arguments"]["chat"] == "Anna" => {
                     json!({"content": [{"type": "text", "text": json!({"messages": [{"mid": "1", "text": read}]}).to_string()}]})
                 }
+                Some("send_message") if req["params"]["arguments"]["chat"] == "Anna" => json!({"content": [{"type": "text", "text": "{\"ok\":true}"}]}),
                 _ => json!({"content": [{"type": "text", "text": "nope"}], "isError": true}),
             };
             (200, "text/event-stream", format!("event: message\ndata: {}\n\n", json!({"result": result, "jsonrpc": "2.0", "id": id})))
@@ -294,6 +295,15 @@ fn the_server_end_to_end() {
             assert_eq!(r["data"]["messages"][0]["text"], json!(relay_tool));
         }
         assert_eq!(tool(port, "chat_read", json!({"account_id": "slack:T1", "conversation_id": communication_mcp::identity::handle("slack:T1", "conversation", "C1"), "refresh": true})).await["code"], json!("UNSUPPORTED_CAPABILITY"));
+        // people tagged go to the relay as its mentions; Teams only
+        let r = tool(port, "chat_send", json!({"account_id": "teams:3", "conversation_id": anna, "text": "@VERDI Carla look", "mentions": ["VERDI Carla"]})).await;
+        assert_eq!(r["data"]["ok"], json!(true));
+        let sent: Value = log.lock().unwrap().iter().rev().find(|e| e.2.contains("\"send_message\"")).map(|e| serde_json::from_str(&e.2).unwrap()).unwrap();
+        assert_eq!(sent["params"]["arguments"]["mentions"], json!(["VERDI Carla"]));
+        assert_eq!(
+            tool(port, "chat_send", json!({"account_id": "slack:T1", "conversation_id": communication_mcp::identity::handle("slack:T1", "conversation", "C1"), "text": "@x", "mentions": ["x"]})).await["code"],
+            json!("UNSUPPORTED_CAPABILITY")
+        );
 
         // Slack: the conversations and users slackcli printed, the send it made
         log.lock().unwrap().clear();

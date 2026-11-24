@@ -505,7 +505,10 @@ impl Communication {
         let handle_of = |kind: &str, key: &str| -> Result<Option<Resource>> {
             if x.get(key).is_some_and(truthy) { resource(acct, kind, s(x, key).unwrap_or("")).map(Some) } else { Ok(None) }
         };
-        let c = handle_of("conversation", "conversation_id")?;
+        let c = match s(x, "conversation_id") {
+            Some(id) if a.provider == "slack" && crate::slack::native_conversation(id) => Some(Resource { native: id.to_string(), context: Obj::new() }),
+            _ => handle_of("conversation", "conversation_id")?,
+        };
         let m = handle_of("chat_message", "message_id")?;
         let t = handle_of("chat_thread", "thread_id")?;
         if let (Some(m), Some(c)) = (&m, &c)
@@ -636,8 +639,17 @@ impl Communication {
                     o.insert("conversations".into(), map_list(&r, "conversations", &conversation).unwrap_or(json!([])));
                     return Ok(Value::Object(o));
                 }
-                if let Some(l) = map_list(&r, "matches", &message) {
-                    o.insert("matches".into(), l);
+                if let Some(found) = r.get("matches").and_then(Value::as_array) {
+                    // each match names its conversation, the same handle chat_list gives, so read and reply follow a search
+                    let l = found
+                        .iter()
+                        .map(|v| {
+                            let mut mo = obj(&message(v));
+                            set(&mut mo, "conversation_id", v.get("channel").filter(|ch| truthy_opt(ch.get("id"))).map(|ch| conversation(ch)["id"].clone()));
+                            Value::Object(mo)
+                        })
+                        .collect();
+                    o.insert("matches".into(), Value::Array(l));
                     return Ok(Value::Object(o));
                 }
                 if let Some(l) = map_list(&r, "messages", &message) {

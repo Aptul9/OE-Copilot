@@ -98,9 +98,15 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
         ("GET", "/api/v2.0/me/messages/m1/attachments/a1") => {
             j(json!({"Id": "a1", "Name": "Q3 report.pdf", "ContentType": "application/pdf", "ContentBytes": "aGVsbG8="}))
         }
-        ("POST", "/api/conversations.list") => j(
+        ("POST", "/api/users.conversations") => j(
             json!({"ok": true, "channels": [{"id": "D1", "is_im": true, "user": "U1"}, {"id": "C1", "name": "general", "topic": {"value": "t"}}], "response_metadata": {"next_cursor": ""}}),
         ),
+        ("POST", "/api/conversations.replies") => j(json!({"ok": true, "messages": [{"ts": "1700000000.000100", "text": "parent", "reply_count": 1}]})),
+        ("POST", "/api/search.messages") if body.contains("query=dm") => j(json!({"ok": true, "messages": {"total": 1, "matches": [{
+            "iid": "i1", "ts": "1700000000.000200", "user": "U1", "text": "in the dm",
+            "channel": {"id": "D1", "is_im": true, "name": "U1"},
+            "permalink": "https://acme.slack.com/archives/D1/p1700000000000200?thread_ts=1700000000.000100&cid=D1",
+        }]}})),
         ("POST", "/api/users.info") => j(json!({"ok": true, "user": {"id": "U1", "name": "me", "real_name": "Me", "profile": {"email": "me@x.it"}}})),
         ("POST", "/api/chat.postMessage") => j(json!({"ok": true, "ts": "1700000000.000100", "channel": "C1"})),
         ("POST", "/api/chat.getPermalink") => j(json!({"ok": false, "error": "no_permission"})),
@@ -312,14 +318,46 @@ fn the_server_end_to_end() {
         assert_eq!(s["data"]["users"], json!([{"id": "U1", "name": "me", "real_name": "Me", "email": "me@x.it"}]));
         assert!(s["data"].get("next_cursor").is_none());
         assert_eq!(s["data"]["conversations"][1]["topic"], json!("t"));
-        let call = log.lock().unwrap().iter().find(|e| e.1 == "/api/conversations.list").map(|e| e.2.clone()).unwrap();
+        // only the user's own conversations: never conversations.list, which pages the whole workspace before a DM
+        let call = log.lock().unwrap().iter().find(|e| e.1 == "/api/users.conversations").map(|e| e.2.clone()).unwrap();
         assert_eq!(call, "token=xoxc-1&types=public_channel%2Cprivate_channel%2Cmpim%2Cim&limit=5&exclude_archived=false");
+        assert!(!log.lock().unwrap().iter().any(|e| e.1 == "/api/conversations.list"));
+        let dm = s["data"]["conversations"][0]["id"].as_str().unwrap().to_string();
         let conv = s["data"]["conversations"][1]["id"].as_str().unwrap().to_string();
         let posted = tool(port, "chat_send", json!({"account_id": "slack:T1", "conversation_id": conv, "text": "hello"})).await;
         assert_eq!((posted["data"]["channel_id"].as_str(), posted["data"]["ts"].as_str()), (Some("C1"), Some("1700000000.000100")));
         assert!(posted["data"].get("permalink").is_none());
         assert_eq!(tool(port, "chat_search", json!({"account_id": "slack:T1", "query": "none"})).await["data"], json!({}));
         assert_eq!(tool(port, "chat_send", json!({"account_id": "slack:T1", "conversation_id": conv, "text": "  "})).await["code"], json!("INVALID_INPUT"));
+        // a search match names its conversation and thread: search, read, reply without listing
+        let found = tool(port, "chat_search", json!({"account_id": "slack:T1", "query": "dm"})).await;
+        let hit = &found["data"]["matches"][0];
+        assert_eq!(hit["conversation_id"].as_str(), Some(dm.as_str()), "{found}");
+        let thread = hit["thread_id"].as_str().expect("thread from the permalink").to_string();
+        log.lock().unwrap().clear();
+        let read = tool(port, "chat_read", json!({"account_id": "slack:T1", "conversation_id": hit["conversation_id"]})).await;
+        assert_eq!((read["data"]["channel_id"].as_str(), read["data"]["messages"][0]["text"].as_str()), (Some("D1"), Some("hi")));
+        let in_thread = tool(port, "chat_read", json!({"account_id": "slack:T1", "conversation_id": hit["conversation_id"], "thread_id": thread})).await;
+        assert_eq!(in_thread["data"]["messages"][0]["text"], json!("parent"));
+        let replied = tool(port, "chat_send", json!({"account_id": "slack:T1", "conversation_id": hit["conversation_id"], "thread_id": thread, "text": "ok"})).await;
+        assert_eq!(replied["data"]["channel_id"], json!("D1"));
+        let calls: Vec<(String, String)> = log.lock().unwrap().iter().map(|e| (e.1.clone(), e.2.clone())).collect();
+        assert!(calls.contains(&("/api/conversations.history".into(), "token=xoxc-1&channel=D1&limit=20".into())), "{calls:?}");
+        assert!(calls.contains(&("/api/conversations.replies".into(), "token=xoxc-1&channel=D1&ts=1700000000.000100&limit=20".into())), "{calls:?}");
+        assert!(calls.contains(&("/api/chat.postMessage".into(), "token=xoxc-1&channel=D1&text=ok&thread_ts=1700000000.000100".into())), "{calls:?}");
+        // the match's message handle fits its conversation handle; the fake has no auth.test, so the call stops there
+        let mine = tool(port, "chat_delete", json!({"account_id": "slack:T1", "conversation_id": hit["conversation_id"], "message_id": hit["id"]})).await;
+        assert_eq!(mine["code"], json!("PROVIDER_ERROR"));
+        assert!(log.lock().unwrap().iter().any(|e| e.1 == "/api/auth.test"));
+        // and a Slack id as Slack writes it, on the Slack account only
+        log.lock().unwrap().clear();
+        let raw = tool(port, "chat_read", json!({"account_id": "slack:T1", "conversation_id": "D0CANCD317C"})).await;
+        assert_eq!(raw["data"]["channel_id"], json!("D0CANCD317C"));
+        assert!(log.lock().unwrap().iter().any(|e| e.1 == "/api/conversations.history" && e.2.contains("channel=D0CANCD317C")));
+        for refused in ["d0cancd317c", "U0BRH984NAC", "D1", "D0CANCD317C.x"] {
+            assert_eq!(tool(port, "chat_read", json!({"account_id": "slack:T1", "conversation_id": refused})).await["code"], json!("INVALID_RESOURCE"), "{refused}");
+        }
+        assert_eq!(tool(port, "chat_read", json!({"account_id": "teams:3", "conversation_id": "D0CANCD317C"})).await["code"], json!("INVALID_RESOURCE"));
 
         // Everflow: everflow_routes_need_their_own_token
         let accounts = json!({"requests": [{"path": "/api/communication/accounts"}]}).to_string();

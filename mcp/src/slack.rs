@@ -15,7 +15,7 @@ const FAILED: &str = "Slack request failed; write outcome may be unknown";
 const CAPABILITIES: [&str; 8] = ["chat.list", "chat.read", "chat.search", "chat.send", "chat.edit", "chat.delete", "chat.react", "chat.attachment"];
 
 /// Methods safe to repeat after an ambiguous failure (5xx, network error); anything else is retried on a 429 only.
-const READ_METHODS: [&str; 10] = [
+const READ_METHODS: [&str; 11] = [
     "auth.test",
     "chat.getPermalink",
     "conversations.history",
@@ -24,9 +24,17 @@ const READ_METHODS: [&str; 10] = [
     "files.info",
     "messages.list",
     "search.messages",
+    "users.conversations",
     "users.info",
     "conversations.info",
 ];
+
+/// A conversation id as Slack writes it: C channel, G private channel or group DM, D direct message. On a Slack account
+/// it stands for a conversation handle: the workspace session decides what it opens, as it does for slackcli.
+pub fn native_conversation(id: &str) -> bool {
+    static ID: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[CDG][A-Z0-9]{8,}$").expect("fixed"));
+    ID.is_match(id)
+}
 
 fn failed() -> Error {
     Error::comm("PROVIDER_ERROR", FAILED)
@@ -439,7 +447,9 @@ impl Slack {
                 if let Some(c) = a.cursor.clone().filter(|c| !c.is_empty()) {
                     p.push(("cursor", c));
                 }
-                let r = self.ok(&w, "conversations.list", &p).await?;
+                // the user's own conversations: conversations.list pages every public channel of the workspace before
+                // the first DM (tens of thousands at ITV)
+                let r = self.ok(&w, "users.conversations", &p).await?;
                 let channels = r.get("channels").and_then(Value::as_array).cloned().unwrap_or_default();
                 let ims: Vec<String> =
                     channels.iter().filter(|c| truthy_opt(c.get("is_im")) && truthy_opt(c.get("user"))).map(|c| crate::js::string(c.get("user"))).collect();
@@ -521,7 +531,21 @@ impl Slack {
                         &[("query", query.clone()), ("count", limit), ("page", "1".into()), ("sort", "timestamp".into()), ("sort_dir", "desc".into())],
                     )
                     .await?;
-                let matches = r.pointer("/messages/matches").and_then(Value::as_array).cloned().unwrap_or_default();
+                let mut matches = r.pointer("/messages/matches").and_then(Value::as_array).cloned().unwrap_or_default();
+                // a reply's match carries its thread only in the permalink
+                for m in &mut matches {
+                    let from_link = m
+                        .get("permalink")
+                        .and_then(Value::as_str)
+                        .and_then(|p| url::Url::parse(p).ok())
+                        .and_then(|u| u.query_pairs().find(|(k, _)| k == "thread_ts").map(|(_, v)| v.into_owned()))
+                        .filter(|t| TS.is_match(t));
+                    if let (Some(t), Value::Object(o)) = (from_link, &mut *m)
+                        && !truthy_opt(o.get("thread_ts"))
+                    {
+                        o.insert("thread_ts".into(), json!(t));
+                    }
+                }
                 if matches.is_empty() {
                     // slackcli prints nothing for no match
                     return Ok(json!({}));

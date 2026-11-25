@@ -40,6 +40,10 @@ import everid/{$EVERID_MODE:off}.caddy
 	# Remote MCP of mail, calendars and Teams (repo Aptul9/Outlook-MCP, ts/compose.yml) at /communication/mcp, when a
 	# container named communication-mcp runs on this compose network; without it this path alone answers 502
 	handle_path /communication/* {
+		# a tool call carrying files at the schema cap; the same limit as MCP_MAX_BODY in mcp/src/http.rs
+		request_body {
+			max_size 40MiB
+		}
 		reverse_proxy communication-mcp:8190
 	}
 	handle {

@@ -120,6 +120,29 @@ pub fn attachment_objects(files: &[InlineFile]) -> Result<Vec<Value>> {
         .collect()
 }
 
+/// Outlook takes a file under this size in one POST; from it up to 150 MB, only through an upload session.
+const LARGE: usize = 3_000_000;
+
+/// The decoded size of checked base64.
+fn decoded_len(a: &Value) -> usize {
+    let b = a.get("ContentBytes").and_then(Value::as_str).unwrap_or("");
+    b.len() / 4 * 3 - b.bytes().rev().take_while(|c| *c == b'=').count()
+}
+
+/// Each file on the message: under LARGE in one POST, from it through an upload session.
+async fn attach(o: &Outlook, account: &str, message_id: &str, atts: &[Value]) -> Result<()> {
+    for a in atts {
+        if decoded_len(a) < LARGE {
+            o.request(account, &format!("me/messages/{}/attachments", q(message_id)), "POST", Some(a), &[]).await?;
+        } else {
+            let field = |k: &str| a.get(k).and_then(Value::as_str).unwrap_or("");
+            let bytes = crate::js::base64_decode_lenient(field("ContentBytes"));
+            o.upload(account, message_id, field("Name"), field("ContentType"), &bytes).await?;
+        }
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 pub struct SendOptions {
     pub to: Option<Vec<String>>,
@@ -210,18 +233,15 @@ async fn via_draft(o: &Outlook, account: &str, target: &str, action: &str, opt: 
     }
     let steps = async {
         o.request(account, &draft_path, "PATCH", Some(&Value::Object(patch)), &[]).await?;
-        for a in &atts {
-            o.request(account, &format!("{draft_path}/attachments"), "POST", Some(a), &[]).await?;
-        }
+        attach(o, account, &draft_id, &atts).await?;
         if !opt.save_as_draft {
             o.request(account, &format!("{draft_path}/send"), "POST", None, &[]).await?;
         }
         Ok::<(), Error>(())
     };
+    // the draft was made by this call and the caller gets no id for it: none is left half built
     if let Err(e) = steps.await {
-        if !opt.save_as_draft {
-            let _ = o.request(account, &draft_path, "DELETE", None, &[]).await;
-        }
+        let _ = o.request(account, &draft_path, "DELETE", None, &[]).await;
         return Err(e);
     }
     let subject = match opt.subject.as_deref().filter(|s| !s.is_empty()) {
@@ -281,13 +301,23 @@ pub async fn send_email(o: &Outlook, account: &str, opt: &SendOptions) -> Result
         cc: addr_list(&cc_r),
         bcc: addr_list(&bcc_r),
     };
-    if opt.save_as_draft {
+    // sendmail carries the files inline, in one request Outlook refuses past a few MB: from LARGE in total the
+    // message is built as a draft, the files attached one by one, then sent
+    if opt.save_as_draft || atts.iter().map(decoded_len).sum::<usize>() >= LARGE {
         let draft = o.request(account, "me/messages", "POST", Some(&Value::Object(message)), &[]).await?;
         let id = string(draft.get("Id"));
-        for a in &atts {
-            o.request(account, &format!("me/messages/{}/attachments", q(&id)), "POST", Some(a), &[]).await?;
+        let steps = async {
+            attach(o, account, &id, &atts).await?;
+            if !opt.save_as_draft {
+                o.request(account, &format!("me/messages/{}/send", q(&id)), "POST", None, &[]).await?;
+            }
+            Ok::<(), Error>(())
+        };
+        if let Err(e) = steps.await {
+            let _ = o.request(account, &format!("me/messages/{}", q(&id)), "DELETE", None, &[]).await;
+            return Err(e);
         }
-        return Ok(result("draft", Some(id)));
+        return Ok(if opt.save_as_draft { result("draft", Some(id)) } else { result("sent", None) });
     }
     if !atts.is_empty() {
         message.insert("Attachments".into(), Value::Array(atts));
@@ -368,9 +398,7 @@ pub async fn update_draft(o: &Outlook, account: &str, id: &str, opt: &DraftUpdat
     } else {
         o.request(account, &format!("me/messages/{}", q(id)), "PATCH", Some(&Value::Object(patch.clone())), &[]).await?
     };
-    for a in &atts {
-        o.request(account, &format!("me/messages/{}/attachments", q(id)), "POST", Some(a), &[]).await?;
-    }
+    attach(o, account, id, &atts).await?;
     let mut merged = d;
     merged.extend(patch);
     merged.extend(crate::js::obj(&after));

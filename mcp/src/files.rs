@@ -144,6 +144,7 @@ pub async fn handle(app: &App, req: Request<Incoming>) -> Response<Body> {
     }
     let f = match run(&app.comm, &tool, &args).await.and_then(|r| file_of(&r)) {
         Ok(f) => f,
+        Err(Error::Comm { code: "PROVIDER_ERROR", message }) => return error(502, "PROVIDER_ERROR", &message),
         Err(Error::Comm { code, message }) => return error(400, code, &message),
         Err(Error::Provider(_)) => return error(502, "PROVIDER_ERROR", "Provider request failed"),
     };

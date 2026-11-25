@@ -188,7 +188,9 @@ impl Directory {
             Some(c) => c.session(slot, account).await.ok().flatten(),
             None => None,
         };
-        let Some(session) = captured.or_else(|| MicrosoftSession::load(&folder.join("session.json"))) else {
+        // a saved session of another address (an earlier sign-in of the slot) is no session: the browser asks again
+        let saved = || MicrosoftSession::load(&folder.join("session.json")).filter(|s| crate::agent::js_trim(&s.login_hint).to_lowercase() == account);
+        let Some(session) = captured.or_else(saved) else {
             return Ok(json!({ "ok": false, "interaction": true }));
         };
         if crate::agent::js_trim(&session.login_hint).to_lowercase() != account {
@@ -376,6 +378,14 @@ mod tests {
             assert_eq!(d.connect(&json!({"account": "mario@example.com", "slot": 4})).await.unwrap_err().status, 409);
             let d = directory(&net, Some(temp_dir()), Some(Rc::new(FakeCapture { session: None, proxy: None })));
             assert_eq!(d.connect(&json!({"account": "mario@example.com", "slot": 4})).await.expect("none"), json!({"ok": false, "interaction": true}));
+            // a session saved by an earlier sign-in of another address: the browser sign-in, not a dead end
+            let stale = temp_dir();
+            std::fs::create_dir_all(stale.join("4")).expect("dir");
+            MicrosoftSession::save(&stale.join("4").join("session.json"), &session("anna@example.com")).expect("saved");
+            let before = net.requests().len();
+            let d = directory(&net, Some(stale), Some(Rc::new(FakeCapture { session: None, proxy: None })));
+            assert_eq!(d.connect(&json!({"account": "mario@example.com", "slot": 4})).await.expect("stale"), json!({"ok": false, "interaction": true}));
+            assert_eq!(net.requests().len(), before);
             for bad in
                 [json!({"account": "mario@example.com", "slot": 0}), json!({"account": "mario@example.com", "slot": 1.5}), json!({"account": "me", "slot": 2})]
             {

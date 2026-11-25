@@ -127,7 +127,9 @@ export function directory(
     connect: async body => {
       if (!dataDir || !Number.isInteger(body.slot) || body.slot < 1 || body.slot > 9999 || !EMAIL.test(body.account)) throw new AccountError(400, "Invalid sign-in slot");
       const folder = path.join(dataDir, String(body.slot));
-      const session = await capture?.(body.slot, body.account).catch(() => null) ?? SessionAuth.load(path.join(folder, "session.json"));
+      // a saved session of another address (an earlier sign-in of the slot) is no session: the browser asks again
+      const saved = SessionAuth.load(path.join(folder, "session.json"));
+      const session = await capture?.(body.slot, body.account).catch(() => null) ?? (saved?.loginHint.trim().toLowerCase() === body.account ? saved : null);
       if (!session) return { ok: false, interaction: true };
       if (session.loginHint.trim().toLowerCase() !== body.account) throw new AccountError(409, "Microsoft session identity mismatch");
       const token = LightToken.load(path.join(folder, "light-token.json"));

@@ -35,9 +35,10 @@ it("imports a matching saved session through the narrow agent route, never retur
   expect(
     await broker.connect!({ id: "job", account: "user@example.com", slot: 3 }),
   ).toEqual({ ok: true, route: "outlook-web" });
-  await expect(
-    broker.connect!({ id: "job", account: "other@example.com", slot: 3 }),
-  ).rejects.toThrow("identity");
+  // a session saved by an earlier sign-in of another address: the browser sign-in, not a dead end
+  expect(
+    await broker.connect!({ id: "job", account: "other@example.com", slot: 3 }),
+  ).toEqual({ ok: false, interaction: true });
   expect(fetchFn).toHaveBeenCalledTimes(1);
 });
 

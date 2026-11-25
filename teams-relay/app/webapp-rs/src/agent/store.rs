@@ -167,6 +167,10 @@ impl Store {
         let _ = self.c.execute("UPDATE chats SET unread=0, mention=0 WHERE name=?", [name]);
     }
 
+    pub fn mark_activity_read(&self, id: &str) {
+        let _ = self.c.execute("UPDATE activity SET unread=0 WHERE id=?", [id]);
+    }
+
     pub fn is_known_chat(&self, name: &str) -> bool {
         self.c.query_row("SELECT 1 FROM chats WHERE name=?", [name], |_| Ok(())).optional().ok().flatten().is_some()
     }

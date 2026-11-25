@@ -111,7 +111,7 @@ mod tests {
         let _env = crate::TEST_ENV.lock().unwrap_or_else(|p| p.into_inner());
         // SAFETY: the tests that set the environment hold TEST_ENV
         unsafe { std::env::set_var("TZ", "UTC") };
-        let n = |a: Value, read: bool| Notification { activity: a.as_object().cloned().expect("object"), read };
+        let n = |a: Value, read: bool| Notification { activity: a.as_object().cloned().expect("object"), mid: String::new(), read };
         let feed = light_feed(
             &[
                 n(

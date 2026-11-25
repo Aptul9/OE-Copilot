@@ -16,6 +16,7 @@ pub mod mcp;
 pub mod outlook;
 pub mod schema;
 pub mod send;
+pub mod skills;
 pub mod slack;
 pub mod teams;
 pub mod tokens;

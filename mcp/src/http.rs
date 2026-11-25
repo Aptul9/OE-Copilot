@@ -20,6 +20,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 pub const MAX_BODY: usize = 4 * 1024 * 1024;
+/// POST /mcp: a tool call at its schema's cap (5 files of 6,000,000 base64 characters, ~31.7 MB of JSON) with room for
+/// escaping.
+pub const MCP_MAX_BODY: usize = 40 * 1024 * 1024;
 pub const MIN_TOKEN: usize = 32;
 const KEEP_ALIVE: Duration = Duration::from_secs(15);
 
@@ -106,7 +109,7 @@ async fn route(app: Arc<App>, req: Request<Incoming>, path: &str) -> Response<Bo
         _ => return empty(405, &[("Allow", "POST, GET, DELETE")]),
     }
     let declared = header(&req, "content-length").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-    if declared > MAX_BODY as u64 {
+    if declared > MCP_MAX_BODY as u64 {
         return empty(413, &[("Connection", "close")]);
     }
     let accept = header(&req, "accept").unwrap_or("").to_string();
@@ -119,7 +122,7 @@ async fn route(app: Arc<App>, req: Request<Incoming>, path: &str) -> Response<Bo
         let Ok(frame) = frame else { return empty(400, &[("Connection", "close")]) };
         if let Some(d) = frame.data_ref() {
             bytes.extend_from_slice(d);
-            if bytes.len() > MAX_BODY {
+            if bytes.len() > MCP_MAX_BODY {
                 return empty(413, &[("Connection", "close")]);
             }
         }

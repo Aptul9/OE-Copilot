@@ -60,17 +60,16 @@ impl Outlook {
                 // a POST without a length gets 411 from Outlook (messages/{id}/send)
                 req = req.header("Content-Length", "0");
             }
-            let r = req.send().await.map_err(|e| Error::provider(format!("Outlook request failed: {e}")))?;
+            let path = p.split('?').next().unwrap_or("");
+            let r = req.send().await.map_err(|e| failed(method, path, e))?;
             let status = r.status().as_u16();
             if status == 401 && retry {
                 retry = false;
                 continue;
             }
-            let text = r.text().await.map_err(|e| Error::provider(format!("Outlook body: {e}")))?;
-            let path = p.split('?').next().unwrap_or("");
+            let text = r.text().await.map_err(|e| failed(method, path, e))?;
             if !(200..300).contains(&status) {
-                let cut: String = text.chars().take(300).collect();
-                return Err(Error::provider(format!("Outlook API error {status} on {method} {path}: {cut}")));
+                return Err(outlook_error(status, method, path, &text));
             }
             if text.is_empty() {
                 return Ok(json!({}));
@@ -78,6 +77,75 @@ impl Outlook {
             return serde_json::from_str(&text).map_err(|_| Error::provider(format!("Outlook API answered non-JSON on {method} {path}")));
         }
     }
+
+    /// A file of 3 MB or more on a message: an upload session, then the bytes in ranges under 4 MB to the address it
+    /// gives, which carries its own authorization: no token goes with them.
+    pub async fn upload(&self, account: &str, message_id: &str, name: &str, content_type: &str, bytes: &[u8]) -> Result<()> {
+        let total = bytes.len();
+        let mut item = json!({"AttachmentType": "File", "Name": name, "Size": total});
+        if !content_type.is_empty() {
+            item["ContentType"] = json!(content_type);
+        }
+        let session = format!("me/messages/{}/attachments/createUploadSession", q(message_id));
+        let s = self.request(account, &session, "POST", Some(&json!({"AttachmentItem": item})), &[]).await?;
+        let url = s.get("UploadUrl").and_then(Value::as_str).unwrap_or("");
+        let same_host = |u: &str| url::Url::parse(u).ok().map(|u| u.origin());
+        if url.is_empty() || same_host(url) != same_host(&rest_base()) {
+            return Err(Error::comm("PROVIDER_ERROR", "Outlook upload session address is not on the Outlook API host"));
+        }
+        let mut start = 0;
+        while start < total {
+            let end = (start + UPLOAD_CHUNK).min(total);
+            let r = http_client()
+                .put(url)
+                .timeout(Duration::from_secs(120))
+                .header("Content-Type", "application/octet-stream")
+                .header("Content-Range", format!("bytes {start}-{}/{total}", end - 1))
+                .body(bytes[start..end].to_vec())
+                .send()
+                .await;
+            let refused = match r {
+                Ok(r) => {
+                    let status = r.status().as_u16();
+                    let text = r.text().await.unwrap_or_default();
+                    match status {
+                        201 if end == total => return Ok(()),
+                        200 if end < total => None,
+                        200..300 => Some(Error::comm("PROVIDER_ERROR", format!("Outlook upload of {name} stopped at byte {end} of {total} with {status}"))),
+                        _ => Some(outlook_error(status, "PUT", "upload session", &text)),
+                    }
+                }
+                Err(e) => Some(failed("PUT", "upload session", e)),
+            };
+            if let Some(e) = refused {
+                let _ = http_client().delete(url).timeout(Duration::from_secs(30)).send().await;
+                return Err(e);
+            }
+            start = end;
+        }
+        Err(Error::comm("PROVIDER_ERROR", format!("Attachment {name} is empty")))
+    }
+}
+
+/// Byte range per PUT of an upload session: Outlook wants each under 4 MB.
+const UPLOAD_CHUNK: usize = 3 * 1024 * 1024;
+
+/// Outlook's own status, error code and message as the tool error; long ids in the path shortened, the text cut short.
+fn outlook_error(status: u16, method: &str, path: &str, text: &str) -> Error {
+    let e = serde_json::from_str::<Value>(text).ok().and_then(|v| v.get("error").cloned());
+    let field = |k: &str| e.as_ref().and_then(|e| e.get(k)).and_then(Value::as_str).unwrap_or("").to_string();
+    let detail = if e.is_some() { format!("{}: {}", field("code"), field("message")) } else { text.trim().to_string() };
+    let detail: String = detail.chars().take(300).collect();
+    Error::comm("PROVIDER_ERROR", format!("Outlook answered {status} on {method} {}: {detail}", shape(path)))
+}
+
+/// No answer from Outlook; the URL stays out of the text (an upload address carries a token).
+fn failed(method: &str, path: &str, e: reqwest::Error) -> Error {
+    Error::comm("PROVIDER_ERROR", format!("Outlook request {method} {} failed: {}; write outcome may be unknown", shape(path), e.without_url()))
+}
+
+fn shape(path: &str) -> String {
+    path.split('/').map(|s| if s.len() > 40 { "{id}" } else { s }).collect::<Vec<_>>().join("/")
 }
 
 fn well_known(name: &str) -> Option<&'static str> {

@@ -23,7 +23,7 @@ Skills: the guides in `src/skills/<name>/SKILL.md` (`accounts`, `mail-sweep`, `s
 
 | Path | Answer |
 |---|---|
-| `POST /mcp` | MCP. Needs `Authorization: Bearer <MCP_HTTP_TOKEN>` (constant-time compare), a `Host` listed in `MCP_HTTP_HOSTS` (421 otherwise: DNS rebinding), no `Origin` header (403: no browser callers), body up to 4 MiB (413), `Content-Type: application/json` (415), `Accept` with both `application/json` and `text/event-stream` (406) |
+| `POST /mcp` | MCP. Needs `Authorization: Bearer <MCP_HTTP_TOKEN>` (constant-time compare), a `Host` listed in `MCP_HTTP_HOSTS` (421 otherwise: DNS rebinding), no `Origin` header (403: no browser callers), body up to 40 MiB (413; a tool call with 5 files at the 6,000,000-character cap is ~31.7 MB), `Content-Type: application/json` (415), `Accept` with both `application/json` and `text/event-stream` (406) |
 | `GET`, `DELETE /mcp` | 405 `Method not allowed.`: no sessions |
 | `GET /healthz` | `{"ok":true}`, no auth, no backend call |
 | `/everflow/*` | Read-only routes for Everflow, `Authorization: Bearer <EVERFLOW_TOKEN>`; see "Everflow" |
@@ -86,6 +86,8 @@ Tools: `communication_accounts`, `email_folders|list|search|read|thread|send|rep
 
 Mail compose, same schema for Outlook and Gmail: `email_send` (to, cc, bcc, reply_to, files, draft; HTML body when the text looks like HTML), `email_reply` and `email_reply_all` (thread kept, original quoted, to/cc added to the original recipients), `email_forward` (comment, original attachments kept), `email_draft_update` (recipient lists replace, text replaces the author part and keeps the quote, files added), `email_draft_send`, `email_draft_delete`. `email_send.message_id` is the old reply path (recipients replace the original ones, no quote).
 
+Outlook files: under 3,000,000 bytes in one POST on `attachments`; from there up to Outlook's 150 MB, through an upload session (`attachments/createUploadSession`, then PUT ranges of 3 MiB to its pre-authenticated `UploadUrl`, no token, until 201). A new message whose files reach 3,000,000 bytes in total is built as a draft, its files attached one by one, then sent (`sendmail` carries them inline in one request). A draft this call made is deleted when a later step fails. An Outlook refusal is the tool error `PROVIDER_ERROR` with Outlook's status, error code and message (`Outlook answered 413 on POST me/messages/{id}/attachments: ErrorX: ...`).
+
 Outlook lists follow same-collection pagination links (at most 20 pages) and report `has_more`, `incomplete` and `stop_reason`. Teams reads its saved chat window: no search, no threads, no uploads. Google Chat search scans recent topics.
 
 ### Download links
@@ -99,6 +101,7 @@ Slack: the calls slackcli 0.19.1 made, from the same workspace store (browser se
 - No local mode: no stdio entry, no SSH or service-gateway token source, no local file attachments. `ts/` still has them.
 - Slack without the slackcli subprocess: a failed Slack call reads `Slack request failed; write outcome may be unknown`; an uploaded file keeps its name (slackcli saw it as `0-<name>`).
 - `serverInfo.version` is `5.0.0`.
+- Outlook upload sessions for files of 3 MB or more, a 40 MiB body limit (4 MiB there), and Outlook's status and message in its tool errors exist only here.
 - Download links (`download` on `email_attachment` and `chat_attachment`, `GET /files/*`) exist only here.
 - The 2026-07-28 protocol revision, skills and resources exist only here. Tool descriptions match (`NOTES` in `ts/src/communication.ts`).
 

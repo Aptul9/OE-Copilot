@@ -43,7 +43,7 @@ async fn backend(log: Log) -> u16 {
                         let pq = req.uri().path_and_query().map(|p| p.to_string()).unwrap_or_default();
                         let sized = req.headers().contains_key("content-length") || req.headers().contains_key("transfer-encoding");
                         let h = |k: &str| req.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
-                        let credentials = format!("authorization={}|cookie={}", h("authorization"), h("cookie"));
+                        let credentials = format!("authorization={}|range={}|cookie={}", h("authorization"), h("content-range"), h("cookie"));
                         let body = String::from_utf8_lossy(&req.into_body().collect().await.unwrap().to_bytes()).to_string();
                         log.lock().unwrap().push((method.clone(), pq.clone(), body.clone(), credentials.clone()));
                         if pq.starts_with("/api/everflow/attachment?") {
@@ -94,6 +94,21 @@ fn answer(port: u16, method: &str, pq: &str, body: &str, credentials: &str) -> (
         ("POST", "/api/v2.0/me/messages") => (201, "application/json", json!({"Id": "d1", "Subject": "s"}).to_string()),
         ("GET", "/api/v2.0/me/messages/d1") => j(json!({"IsDraft": true, "Subject": "s", "ToRecipients": [{"EmailAddress": {"Address": "b@x.it"}}]})),
         ("POST", "/api/v2.0/me/messages/d1/send") => (202, "application/json", String::new()),
+        ("DELETE", "/api/v2.0/me/messages/d1") => (204, "application/json", String::new()),
+        ("POST", "/api/v2.0/me/messages/d1/attachments") if body.contains("refuse.bin") => {
+            (413, "application/json", json!({"error": {"code": "ErrorRequestEntityTooLarge", "message": "too big"}}).to_string())
+        }
+        ("POST", "/api/v2.0/me/messages/d1/attachments") => (201, "application/json", json!({"Id": "a2"}).to_string()),
+        ("POST", "/api/v2.0/me/messages/d1/attachments/createUploadSession") => {
+            (201, "application/json", json!({"UploadUrl": format!("http://127.0.0.1:{port}/upload/s1?authtoken=t"), "NextExpectedRanges": ["0-"]}).to_string())
+        }
+        // like Outlook: 200 and the next range until the last byte, then 201
+        ("PUT", "/upload/s1") => {
+            let range = credentials.split("|range=bytes ").nth(1).and_then(|r| r.split('|').next()).unwrap_or("");
+            let (end, total) = range.split_once('-').and_then(|(_, r)| r.split_once('/')).unwrap_or(("0", "0"));
+            let (end, total) = (end.parse::<u64>().unwrap_or(0), total.parse::<u64>().unwrap_or(1));
+            if end + 1 == total { (201, "application/json", String::new()) } else { j(json!({"NextExpectedRanges": [format!("{}-", end + 1)]})) }
+        }
         ("GET", "/api/v2.0/me/messages/m1/attachments") => j(json!({"value": [{"Id": "a1", "Name": "Q3 report.pdf", "Size": 5}]})),
         ("GET", "/api/v2.0/me/messages/m1/attachments/a1") => {
             j(json!({"Id": "a1", "Name": "Q3 report.pdf", "ContentType": "application/pdf", "ContentBytes": "aGVsbG8="}))
@@ -314,6 +329,45 @@ fn the_server_end_to_end() {
         let d = tool(port, "email_send", json!({"account_id": "outlook:a@x.it", "to": ["b@x.it"], "subject": "s", "text": "x", "draft": true})).await;
         let ds = tool(port, "email_draft_send", json!({"account_id": "outlook:a@x.it", "draft_id": d["data"]["draft_id"]})).await;
         assert_eq!((ds["data"]["status"].as_str(), ds["data"]["to"].clone()), (Some("sent"), json!(["b@x.it"])));
+
+        // files from 3,000,000 bytes: a draft, the small file in one POST, the large one through an upload session in
+        // 3 MiB ranges sent without the token, then the send; the 5.3 MB request is over the old 4 MiB body limit
+        let b64 = |n: usize| {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode(vec![b'a'; n])
+        };
+        let files = json!([{"name": "small.txt", "mime_type": "text/plain", "data": b64(10)}, {"name": "big.docx", "mime_type": "application/x", "data": b64(4_000_000)}]);
+        log.lock().unwrap().clear();
+        let big = tool(port, "email_send", json!({"account_id": "outlook:a@x.it", "to": ["b@x.it"], "subject": "s", "text": "x", "files": files})).await;
+        assert_eq!(big["data"]["status"], json!("sent"));
+        let asked: Vec<(String, String, usize, String)> =
+            log.lock().unwrap().iter().filter(|e| !e.1.contains("token-posta")).map(|e| (e.0.clone(), e.1.clone(), e.2.len(), e.3.clone())).collect();
+        let calls: Vec<(&str, &str)> = asked.iter().map(|e| (e.0.as_str(), e.1.as_str())).collect();
+        assert_eq!(
+            calls,
+            [
+                ("POST", "/api/v2.0/me/messages"),
+                ("POST", "/api/v2.0/me/messages/d1/attachments"),
+                ("POST", "/api/v2.0/me/messages/d1/attachments/createUploadSession"),
+                ("PUT", "/upload/s1?authtoken=t"),
+                ("PUT", "/upload/s1?authtoken=t"),
+                ("POST", "/api/v2.0/me/messages/d1/send"),
+            ]
+        );
+        let session = log.lock().unwrap().iter().find(|e| e.1.ends_with("/createUploadSession")).map(|e| e.2.clone()).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&session).unwrap(), json!({"AttachmentItem": {"AttachmentType": "File", "Name": "big.docx", "Size": 4_000_000, "ContentType": "application/x"}}));
+        assert_eq!((asked[3].2, asked[3].3.as_str()), (3_145_728, "authorization=|range=bytes 0-3145727/4000000|cookie="));
+        assert_eq!((asked[4].2, asked[4].3.as_str()), (854_272, "authorization=|range=bytes 3145728-3999999/4000000|cookie="));
+        // an Outlook refusal comes back as the tool error with its status and message, and the half-built draft goes
+        log.lock().unwrap().clear();
+        let refused = tool(
+            port,
+            "email_send",
+            json!({"account_id": "outlook:a@x.it", "to": ["b@x.it"], "subject": "s", "text": "x", "draft": true, "files": [{"name": "refuse.bin", "mime_type": "", "data": b64(10)}]}),
+        )
+        .await;
+        assert_eq!(refused, json!({"code": "PROVIDER_ERROR", "message": "Outlook answered 413 on POST me/messages/d1/attachments: ErrorRequestEntityTooLarge: too big"}));
+        assert!(log.lock().unwrap().iter().any(|e| e.0 == "DELETE" && e.1 == "/api/v2.0/me/messages/d1"));
 
         // attachment download link: the link at once, the bytes on a GET without the MCP token
         let atts = tool(port, "email_attachments", json!({"account_id": "outlook:a@x.it", "message_id": items[0]["id"]})).await;

@@ -129,7 +129,7 @@ impl World {
                 return response(200, &[], &Value::Array(p).to_string());
             }
             if u.contains("48%3Anotifications") {
-                let messages: Vec<Value> = f.borrow().iter().map(|n| json!({ "properties": { "activity": n["activity"].to_string(), "isread": if n["read"] == json!(false) { "false" } else { "true" } } })).collect();
+                let messages: Vec<Value> = f.borrow().iter().map(|n| json!({ "id": n["mid"], "properties": { "activity": n["activity"].to_string(), "isread": if n["read"] == json!(false) { "false" } else { "true" } } })).collect();
                 return response(200, &[], &json!({ "messages": messages }).to_string());
             }
             if u.contains("48%3Anotes") || u.contains("pageSize=50") {
@@ -296,6 +296,30 @@ fn opens_a_chat_through_chatsvc_and_marks_it_read() {
         let id = w.l.store.enqueue("download", "x", "{}");
         w.commands().await;
         assert_eq!(w.l.store.command_status(id).as_deref(), Some("failed"));
+    });
+}
+
+#[test]
+fn an_open_chat_marks_its_unread_activity_items_read_on_teams() {
+    run(async {
+        let w = World::new(&[]);
+        *w.chats.borrow_mut() = vec![one_to_one("19:anna@unq.gbl.spaces", "anna", "hello", 1, true)];
+        read_list(&w.l).await;
+        let item = |id: i64, mid: &str, thread: &str, read: bool| json!({ "mid": mid, "read": read, "activity": { "activityId": id, "activityType": "mentionInChat", "activityTimestamp": iso(1), "sourceThreadId": thread, "sourceUserImDisplayName": "Person anna" } });
+        *w.feed.borrow_mut() =
+            vec![item(1, "m1", "19:anna@unq.gbl.spaces", false), item(2, "m2", "19:anna@unq.gbl.spaces", true), item(3, "m3", "19:other@thread.v2", false)];
+        read_feed(&w.l).await;
+        w.on(chatsvc(json!([{ "id": "1793690000000", "messagetype": "RichText/Html", "content": "<p>hello</p>", "imdisplayname": "Person anna", "from": format!("https://x/contacts/{}", mri("anna")) }])));
+        let id = w.l.store.enqueue("open", "Person anna", "");
+        w.commands().await;
+        assert_eq!(w.l.store.command_status(id).as_deref(), Some("done"));
+        settle().await;
+        let marks: Vec<(String, Value)> =
+            w.net.requests().into_iter().filter(|s| s.method == "PUT" && s.url.contains("name=isread")).map(|s| (s.url.clone(), s.json())).collect();
+        assert_eq!(marks.len(), 1);
+        assert!(marks[0].0.contains("/conversations/48%3Anotifications/messages/m1/properties?name=isread"), "{}", marks[0].0);
+        assert_eq!(marks[0].1, json!({ "isread": "true" }));
+        assert_eq!(w.l.store.unread_activity(), ["3"]);
     });
 }
 

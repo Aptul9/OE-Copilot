@@ -26,10 +26,11 @@ pub struct PersonPresence {
     pub activity: String,
 }
 
-/// An item of the Activity feed and whether it is read.
+/// An item of the Activity feed, the id of its message in 48:notifications and whether it is read.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Notification {
     pub activity: serde_json::Map<String, Value>,
+    pub mid: String,
     pub read: bool,
 }
 
@@ -63,7 +64,8 @@ pub fn notifications_of(j: &Value) -> Vec<Notification> {
         let isread = props.and_then(|p| p.get("isread"));
         if let Some(Value::Object(activity)) = activity {
             let read = !(isread == Some(&Value::Bool(false)) || isread == Some(&json!("false")));
-            out.push(Notification { activity, read });
+            let mid = m.get("id").filter(|v| crate::js::truthy(v)).map(|v| crate::js::string(Some(v))).unwrap_or_default();
+            out.push(Notification { activity, mid, read });
         }
     }
     out
@@ -386,12 +388,15 @@ mod tests {
     #[test]
     fn the_feed_and_its_read_flags() {
         let j = json!({ "messages": [
-            { "properties": { "isread": "false", "activity": r#"{"activityId":1,"activityType":"call"}"# } },
+            { "id": "1795600000001", "properties": { "isread": "false", "activity": r#"{"activityId":1,"activityType":"call"}"# } },
             { "properties": { "isread": true, "activity": { "activityId": 2 } } },
             { "properties": { "activity": "broken" } },
             {},
         ]});
         let n = notifications_of(&j);
-        assert_eq!(n.iter().map(|x| (x.activity["activityId"].clone(), x.read)).collect::<Vec<_>>(), [(json!(1), false), (json!(2), true)]);
+        assert_eq!(
+            n.iter().map(|x| (x.activity["activityId"].clone(), x.mid.as_str(), x.read)).collect::<Vec<_>>(),
+            [(json!(1), "1795600000001", false), (json!(2), "", true)]
+        );
     }
 }

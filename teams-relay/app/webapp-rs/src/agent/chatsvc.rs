@@ -652,12 +652,32 @@ impl ChatSvc {
                 crate::js::encode_uri_component(conv)
             );
             let r = self.call(http, auth, "PUT", &url, true, crate::js::stringify(&body).into_bytes(), 10_000).await?;
+            if !r.ok() {
+                warn("chatsvc", &format!("markConversationRead: HTTP {} {}", r.status, cut(&text(&r), 200)), &[("convId", conv.into())]);
+            }
             Ok::<bool, Fail>(r.ok())
         };
         match run.await {
             Ok(ok) => ok,
             Err(e) => {
                 warn("chatsvc", &format!("markConversationRead failed: {}", super::text_of(&e)), &[("convId", conv.into())]);
+                false
+            }
+        }
+    }
+
+    /// A message read on its own, as Teams marks an item of the Activity feed (48:notifications) read.
+    pub async fn mark_message_read(&self, http: &Http, auth: &TeamsAuth, conv: &str, mid: &str) -> bool {
+        let url = format!("{}/{}/properties?name=isread", messages_url(auth, conv), crate::js::encode_uri_component(mid));
+        let body = crate::js::stringify(&json!({ "isread": "true" })).into_bytes();
+        match self.call(http, auth, "PUT", &url, true, body, 10_000).await {
+            Ok(r) if r.ok() => true,
+            Ok(r) => {
+                warn("chatsvc", &format!("markMessageRead: HTTP {} {}", r.status, cut(&text(&r), 200)), &[("convId", conv.into()), ("mid", mid.into())]);
+                false
+            }
+            Err(e) => {
+                warn("chatsvc", &format!("markMessageRead failed: {}", super::text_of(&e)), &[("convId", conv.into()), ("mid", mid.into())]);
                 false
             }
         }

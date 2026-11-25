@@ -103,6 +103,8 @@ pub struct Light {
     pub authors_read: RefCell<HashMap<String, String>>,
     /// conversations with a mention of you the feed shows unread
     pub mentioned: RefCell<HashSet<String>>,
+    /// the items the feed shows unread, by conversation: activity id and message id in 48:notifications
+    pub unread_feed: RefCell<HashMap<String, Vec<(String, String)>>>,
     /// when the next chat list and Activity reads are due (ms), 0: at once
     pub due_list: Cell<i64>,
     pub due_activity: Cell<i64>,
@@ -149,6 +151,7 @@ impl Light {
             people: RefCell::new(IndexMap::new()),
             authors_read: RefCell::new(HashMap::new()),
             mentioned: RefCell::new(HashSet::new()),
+            unread_feed: RefCell::new(HashMap::new()),
             due_list: Cell::new(0),
             due_activity: Cell::new(0),
             scan_at: Cell::new(0),
@@ -575,6 +578,13 @@ pub async fn read_feed(l: &Rc<Light>) -> bool {
         .filter(|n| !n.read && mention.is_match(n.activity.get("activityType").and_then(Value::as_str).unwrap_or("")))
         .filter_map(|n| n.activity.get("sourceThreadId").and_then(Value::as_str).filter(|t| !t.is_empty()).map(String::from))
         .collect();
+    let mut unread: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for n in items.iter().filter(|n| !n.read && !n.mid.is_empty()) {
+        if let Some(thread) = n.activity.get("sourceThreadId").and_then(Value::as_str).filter(|t| !t.is_empty()) {
+            unread.entry(thread.to_string()).or_default().push((crate::js::string(n.activity.get("activityId")), n.mid.clone()));
+        }
+    }
+    *l.unread_feed.borrow_mut() = unread;
     if !feed.is_empty() {
         let _ = l.store.save_activity(&feed);
     }

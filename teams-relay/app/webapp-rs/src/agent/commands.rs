@@ -110,15 +110,25 @@ pub async fn save_chat(l: &Rc<Light>, chat: &str) -> R<bool> {
     Ok(true)
 }
 
-/// The chat read: in the app at once, on Teams at its last message.
+/// The chat read: in the app at once, on Teams at its last message, with the items of the Activity feed it has.
 pub async fn mark_read(l: &Rc<Light>, chat: &str) {
     let id = l.list.borrow().ids.get(chat).cloned();
     l.store.mark_chat_read(chat);
-    let Some(id) = id else { return };
+    let Some(id) = id else {
+        warn("light", "mark read: no conversation id", &[("chat", chat.into())]);
+        return;
+    };
+    let items = l.unread_feed.borrow_mut().remove(&id).unwrap_or_default();
+    for (activity, _) in &items {
+        l.store.mark_activity_read(activity);
+    }
     match l.auth().await {
         Ok(auth) => {
             let last = l.store.messages(chat).last().and_then(|m| m.get("mid").and_then(Value::as_str).map(String::from));
             l.chatsvc.mark_read(&l.http, &auth, &id, last.as_deref()).await;
+            for (_, mid) in &items {
+                l.chatsvc.mark_message_read(&l.http, &auth, "48:notifications", mid).await;
+            }
         }
         Err(e) => warn("light", &format!("mark read: {}", text_of(&e)), &[("chat", chat.into())]),
     }

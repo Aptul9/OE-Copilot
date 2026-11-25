@@ -112,6 +112,7 @@ async fn route(app: Arc<App>, req: Request<Incoming>, path: &str) -> Response<Bo
     let accept = header(&req, "accept").unwrap_or("").to_string();
     let content_type = header(&req, "content-type").map(String::from);
     let version = header(&req, "mcp-protocol-version").map(String::from);
+    let mirrored = Mirrored { method: header(&req, "mcp-method").map(String::from), name: header(&req, "mcp-name").map(String::from) };
     let mut body = req.into_body();
     let mut bytes: Vec<u8> = vec![];
     while let Some(frame) = body.frame().await {
@@ -123,10 +124,16 @@ async fn route(app: Arc<App>, req: Request<Incoming>, path: &str) -> Response<Bo
             }
         }
     }
-    post(app, &accept, content_type.as_deref(), version.as_deref(), &bytes)
+    post(app, &accept, content_type.as_deref(), version.as_deref(), &mirrored, &bytes)
 }
 
-fn post(app: Arc<App>, accept: &str, content_type: Option<&str>, version: Option<&str>, bytes: &[u8]) -> Response<Body> {
+/// Mcp-Method and Mcp-Name: the 2026-07-28 headers that repeat the body's method and tool name or resource URI.
+pub struct Mirrored {
+    pub method: Option<String>,
+    pub name: Option<String>,
+}
+
+fn post(app: Arc<App>, accept: &str, content_type: Option<&str>, version: Option<&str>, mirrored: &Mirrored, bytes: &[u8]) -> Response<Body> {
     if !json_content_type(content_type) {
         return json(415, &error_body(-32000, "Unsupported Media Type: Content-Type must be application/json"), &[]);
     }
@@ -167,6 +174,20 @@ fn post(app: Arc<App>, accept: &str, content_type: Option<&str>, version: Option
         return json(400, &error_body(-32600, &format!("Invalid Request: Batch must not exceed {} messages", mcp::MAX_BATCH)), &[]);
     }
     let requests: Vec<Value> = messages.iter().filter(|m| matches!(kind(m), Some(Kind::Request))).cloned().collect();
+    // 2026-07-28: one request per POST, checked against its mirrored headers before it runs
+    if requests.iter().any(mcp::is_modern) || version == Some(mcp::MODERN) {
+        if messages.len() > 1 {
+            return json(400, &error_body(-32600, &format!("Bad Request: a {} POST carries one message", mcp::MODERN)), &[]);
+        }
+        let Some(req) = requests.first() else { return empty(202, &[]) };
+        if !mcp::is_modern(req) {
+            return json(400, &mcp::header_missing(req), &[]);
+        }
+        if let Some((status, body)) = mcp::refuse_modern(req, version, mirrored.method.as_deref(), mirrored.name.as_deref()) {
+            return json(status, &body, &[]);
+        }
+        return sse(app, requests);
+    }
     let init = requests.iter().any(mcp::is_initialize);
     if init && messages.len() > 1 {
         return json(400, &error_body(-32600, "Invalid Request: Only one initialization request is allowed"), &[]);

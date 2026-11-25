@@ -188,7 +188,7 @@ fn the_server_end_to_end() {
         // the wire, as the TypeScript server answered
         let (s, t, body) = post(port, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}"#, &[]).await;
         assert_eq!((s, t.as_str()), (200, "text/event-stream"));
-        assert!(body.starts_with("event: message\ndata: {\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"communication\""));
+        assert!(body.starts_with("event: message\ndata: {\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{}},\"serverInfo\":{\"name\":\"communication\""));
         assert_eq!(post(port, r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#, &[]).await.2, "event: message\ndata: {\"result\":{},\"jsonrpc\":\"2.0\",\"id\":3}\n\n");
         assert_eq!(post(port, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, &[]).await.0, 202);
         assert_eq!(post(port, r#"{"jsonrpc":"2.0","id":4,"method":"boh"}"#, &[]).await.2, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":4,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}\n\n");
@@ -204,6 +204,70 @@ fn the_server_end_to_end() {
         assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 26);
         let v = data(&post(port, r#"{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"email_list","arguments":{}}}"#, &[]).await.2);
         assert_eq!(v["result"]["content"][0]["text"], json!("Input validation error: Invalid arguments for tool email_list: account_id: Invalid input: expected string, received undefined"));
+        // 2025-era clients read the skills as plain resources
+        let res = data(&post(port, r#"{"jsonrpc":"2.0","id":7,"method":"resources/list"}"#, &[]).await.2);
+        let uris: Vec<&str> = res["result"]["resources"].as_array().unwrap().iter().map(|r| r["uri"].as_str().unwrap()).collect();
+        assert_eq!(uris, ["skill://accounts/SKILL.md", "skill://chats/SKILL.md", "skill://mail-sweep/SKILL.md", "skill://safe-send/SKILL.md"]);
+        let read = data(&post(port, r#"{"jsonrpc":"2.0","id":8,"method":"resources/read","params":{"uri":"skill://chats/SKILL.md"}}"#, &[]).await.2);
+        assert!(read["result"]["contents"][0]["text"].as_str().unwrap().starts_with("---\nname: chats\n"));
+        assert!(read["result"].get("resultType").is_none());
+        let gone = data(&post(port, r#"{"jsonrpc":"2.0","id":9,"method":"resources/read","params":{"uri":"skill://x/SKILL.md"}}"#, &[]).await.2);
+        assert_eq!(gone["error"]["code"], json!(-32002));
+
+        // 2026-07-28: no initialize, version and capabilities in every request's _meta, mirrored headers checked
+        let modern = |id: u32, method: &str, params: Value| {
+            let mut p = params;
+            p["_meta"] = json!({"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": {"name": "t", "version": "1"}, "io.modelcontextprotocol/clientCapabilities": {}});
+            json!({"jsonrpc": "2.0", "id": id, "method": method, "params": p}).to_string()
+        };
+        let h = |method: &'static str| vec![("MCP-Protocol-Version", "2026-07-28"), ("Mcp-Method", method)];
+        let (s, _, body) = post(port, &modern(10, "server/discover", json!({})), &h("server/discover")).await;
+        let d = data(&body)["result"].clone();
+        assert_eq!(s, 200);
+        assert_eq!(d["resultType"], json!("complete"));
+        assert_eq!(d["supportedVersions"][0], json!("2026-07-28"));
+        assert_eq!(d["capabilities"]["extensions"], json!({"io.modelcontextprotocol/skills": {}}));
+        assert_eq!(d["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], json!("communication"));
+        assert_eq!((d["ttlMs"].as_u64(), d["cacheScope"].as_str()), (Some(300000), Some("private")));
+        let sk = data(&post(port, &modern(11, "skills/list", json!({})), &h("skills/list")).await.2)["result"].clone();
+        let entry = sk["skills"].as_array().unwrap().iter().find(|e| e["uri"] == "skill://mail-sweep/SKILL.md").unwrap().clone();
+        assert_eq!(entry["frontmatter"]["name"], json!("mail-sweep"));
+        assert!(entry["resources"][0]["digest"].as_str().unwrap().starts_with("sha256:"));
+        let got = data(&post(port, &modern(12, "skills/get", json!({"uri": "skill://mail-sweep/SKILL.md"})), &h("skills/get")).await.2)["result"].clone();
+        assert_eq!(got["skill"], entry);
+        let unknown = data(&post(port, &modern(13, "skills/get", json!({"uri": "skill://nope/SKILL.md"})), &h("skills/get")).await.2);
+        assert_eq!(unknown["error"]["code"], json!(-32602));
+        let mut hr = h("resources/read");
+        hr.push(("Mcp-Name", "skill://mail-sweep/SKILL.md"));
+        let text = data(&post(port, &modern(14, "resources/read", json!({"uri": "skill://mail-sweep/SKILL.md"})), &hr).await.2)["result"]["contents"][0]["text"].clone();
+        assert_eq!(text.as_str().unwrap().len() as u64, entry["resources"][0]["size"].as_u64().unwrap());
+        let mut ht = h("tools/call");
+        ht.push(("Mcp-Name", "=?base64?Y29tbXVuaWNhdGlvbl9hY2NvdW50cw==?="));
+        let call = data(&post(port, &modern(15, "tools/call", json!({"name": "communication_accounts", "arguments": {}})), &ht).await.2)["result"].clone();
+        assert_eq!((call["resultType"].as_str(), call["structuredContent"]["accounts"].as_array().map(Vec::len)), (Some("complete"), Some(4)));
+        assert!(call.get("ttlMs").is_none());
+        let tl = data(&post(port, &modern(16, "tools/list", json!({})), &h("tools/list")).await.2)["result"].clone();
+        assert!(tl["tools"][0]["description"].as_str().unwrap().contains("outlook:<address>"));
+        // refusals come as plain JSON with the status the transport names
+        let (s, t, body) = post(port, &modern(17, "ping", json!({})), &h("ping")).await;
+        assert_eq!((s, t.as_str(), serde_json::from_str::<Value>(&body).unwrap()["error"]["code"].clone()), (404, "application/json", json!(-32601)));
+        let (s, _, body) = post(port, &modern(18, "tools/list", json!({})), &h("tools/call")).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"]["code"].clone()), (400, json!(-32020)));
+        let mut bad_name = h("tools/call");
+        bad_name.push(("Mcp-Name", "email_send"));
+        let (s, _, _) = post(port, &modern(19, "tools/call", json!({"name": "communication_accounts", "arguments": {}})), &bad_name).await;
+        assert_eq!(s, 400);
+        let future = modern(20, "tools/list", json!({})).replace("2026-07-28", "2099-01-01");
+        let (s, _, body) = post(port, &future, &[("MCP-Protocol-Version", "2099-01-01")]).await;
+        let e = serde_json::from_str::<Value>(&body).unwrap()["error"].clone();
+        assert_eq!((s, e["code"].clone(), e["data"]["supported"][0].clone(), e["data"]["requested"].clone()), (400, json!(-32022), json!("2026-07-28"), json!("2099-01-01")));
+        let (s, _, body) = post(port, r#"{"jsonrpc":"2.0","id":21,"method":"tools/list"}"#, &[("MCP-Protocol-Version", "2026-07-28")]).await;
+        assert_eq!((s, serde_json::from_str::<Value>(&body).unwrap()["error"]["code"].clone()), (400, json!(-32020)));
+        let batch = format!("[{},{}]", modern(22, "tools/list", json!({})), modern(23, "tools/list", json!({})));
+        assert_eq!(post(port, &batch, &[]).await.0, 400);
+        // left-out mirrored headers are let through
+        assert_eq!(data(&post(port, &modern(24, "skills/list", json!({})), &[]).await.2)["result"]["resultType"], json!("complete"));
+
         let health = reqwest::get(format!("http://127.0.0.1:{port}/healthz")).await.unwrap();
         assert_eq!((health.status().as_u16(), health.text().await.unwrap()), (200, r#"{"ok":true}"#.to_string()));
 

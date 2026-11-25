@@ -17,6 +17,10 @@ MCP client --HTTPS, Bearer MCP_HTTP_TOKEN--> TeamsRelay Caddy --> communication-
 
 Streamable HTTP, stateless, as the TypeScript SDK 2.4 served 2025-era clients: every POST is one exchange, requests are answered on an SSE stream (one event per answer, a `: keepalive` comment every 15 s), notifications and responses get 202.
 
+Dual-era: a request whose `_meta` names `2026-07-28` is served by that revision (`src/mcp.rs`). `server/discover` advertises tools, resources and the skills extension (`io.modelcontextprotocol/skills`); results carry `resultType` and `serverInfo` in `_meta`, lists and reads `ttlMs` 300000 and `cacheScope: private`. One request per POST. Before it runs: an unsupported version is 400 `-32022`, an `MCP-Protocol-Version`, `Mcp-Method` or `Mcp-Name` header that disagrees with the body is 400 `-32020`, an unknown method is 404 `-32601`, all as plain JSON. A mirrored header the client leaves out is let through (nothing in front routes on them). Anything else, `initialize` included, gets the 2025-era answers.
+
+Skills: the guides in `src/skills/<name>/SKILL.md` (`accounts`, `mail-sweep`, `safe-send`, `chats`) are built into the binary (`src/skills.rs`) and served by `skills/list`, `skills/get` and `resources/read` as `skill://<name>/SKILL.md`, each manifest computed from the bytes served. 2025-era clients see them through `resources/list` and `resources/read`. A new skill is a directory there plus a line in `FILES`. Claude Code shows them as `communication:<name>` (v2.1.331 or later). `npx @modelcontextprotocol/inspector --cli <url>/mcp --protocol-era modern --header "Authorization: Bearer <token>" --method skills/list --verify` checks digests and frontmatter.
+
 | Path | Answer |
 |---|---|
 | `POST /mcp` | MCP. Needs `Authorization: Bearer <MCP_HTTP_TOKEN>` (constant-time compare), a `Host` listed in `MCP_HTTP_HOSTS` (421 otherwise: DNS rebinding), no `Origin` header (403: no browser callers), body up to 4 MiB (413), `Content-Type: application/json` (415), `Accept` with both `application/json` and `text/event-stream` (406) |
@@ -96,7 +100,7 @@ Slack: the calls slackcli 0.19.1 made, from the same workspace store (browser se
 - Slack without the slackcli subprocess: a failed Slack call reads `Slack request failed; write outcome may be unknown`; an uploaded file keeps its name (slackcli saw it as `0-<name>`).
 - `serverInfo.version` is `5.0.0`.
 - Download links (`download` on `email_attachment` and `chat_attachment`, `GET /files/*`) exist only here.
-- The 2026-07-28 protocol revision (per-request `_meta` envelope) is not served; no client uses it.
+- The 2026-07-28 protocol revision, skills and resources exist only here. Tool descriptions match (`NOTES` in `ts/src/communication.ts`).
 
 ## Checks
 

@@ -60,6 +60,14 @@ export function unPasso(a: CalendarApi, verso: 1 | -1) {
   else a.prev();
 }
 
+/** "Oggi": il giorno di oggi e, nelle viste a colonne, l'ora di adesso (con un'ora prima sopra), non l'altezza a cui si guardava. */
+export function aOggi(a: Pick<CalendarApi, "today" | "scrollToTime" | "view">, adesso = new Date()) {
+  a.today();
+  if (!a.view.type.startsWith("timeGrid")) return;
+  const minuti = Math.max(0, adesso.getHours() * 60 + adesso.getMinutes() - 60);
+  a.scrollToTime({ minutes: minuti });
+}
+
 export type ComandiCalendario = {
   oggi: () => void;
   prima: () => void;
@@ -161,7 +169,10 @@ export const Calendario = forwardRef<ComandiCalendario, Props>(function Calendar
   const api = () => fc.current?.getApi();
 
   useImperativeHandle(ref, () => ({
-    oggi: () => api()?.today(),
+    oggi: () => {
+      const a = api();
+      if (a) aOggi(a);
+    },
     prima: () => {
       const a = api();
       if (a) unPasso(a, -1);

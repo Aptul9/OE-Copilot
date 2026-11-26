@@ -2,8 +2,8 @@ import { Calendar } from "@fullcalendar/core";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import listPlugin from "@fullcalendar/list";
 import timeGridPlugin from "@fullcalendar/timegrid";
-import { describe, expect, it } from "vitest";
-import { VISTE_FC, unPasso } from "@/components/oe/Calendario";
+import { describe, expect, it, vi } from "vitest";
+import { VISTE_FC, aOggi, unPasso } from "@/components/oe/Calendario";
 import { chiaveGiorno, giorniTra } from "@/lib/oe/logic";
 
 // FullCalendar vero senza disegnare: le date passano dal suo riduttore con le viste della pagina. Il periodo disegnato di una vista che
@@ -43,5 +43,29 @@ describe("frecce della barra", () => {
     const agenda = calendario("listWeek");
     unPasso(agenda, 1);
     expect(chiaveGiorno(agenda.view.activeStart)).toBe("2026-10-26");
+  });
+});
+
+describe("Oggi", () => {
+  const adesso = new Date(2026, 10, 25, 14, 20);
+
+  it.each(["timeGridGiorno", "timeGridTreGiorni", "timeGridSettimana"])("%s: torna a oggi e all'ora di adesso, un'ora prima in cima", (vista) => {
+    vi.useFakeTimers({ now: adesso, toFake: ["Date"] });
+    try {
+      const cal = calendario(vista);
+      const scorri = vi.spyOn(cal, "scrollToTime");
+      aOggi(cal, adesso);
+      expect(chiaveGiorno(cal.getDate())).toBe("2026-11-25");
+      expect(scorri).toHaveBeenCalledWith({ minutes: 13 * 60 + 20 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Mese e Agenda: solo la data, niente ore da scorrere", () => {
+    const cal = calendario("dayGridMonth");
+    const scorri = vi.spyOn(cal, "scrollToTime");
+    aOggi(cal, adesso);
+    expect(scorri).not.toHaveBeenCalled();
   });
 });

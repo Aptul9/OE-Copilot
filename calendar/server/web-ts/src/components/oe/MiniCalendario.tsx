@@ -16,10 +16,13 @@ const stesso = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.ge
 export function MiniCalendario({ onVaiA }: { onVaiA: (d: Date) => void }) {
   const { periodo, infoGiorni, pubblico, config, salvaConfig } = useOe();
   const [mese, setMese] = useState<Date | null>(null);
+  // oggi solo nel browser: la pagina è disegnata in anticipo alla build, e l'idratazione non corregge le classi, quindi restava cerchiato il giorno della build
+  const [oggi, setOggi] = useState<Date | null>(null);
 
   // al primo periodo il mese è quello mostrato; poi lo cambiano le frecce (o un salto del calendario grande)
   const inizio = periodo?.start.getTime();
   useEffect(() => {
+    setOggi(new Date());
     // il mese del punto di mezzo: la vista Mese comincia con i giorni di quello prima
     if (periodo) {
       const metà = new Date((periodo.start.getTime() + periodo.end.getTime()) / 2);
@@ -29,7 +32,6 @@ export function MiniCalendario({ onVaiA }: { onVaiA: (d: Date) => void }) {
   }, [inizio]);
 
   const base = mese ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const oggi = new Date();
   const primo = new Date(base.getFullYear(), base.getMonth(), 1);
   const scarto = (primo.getDay() + 6) % 7;   // 0 = lunedì
   const giorni = Array.from({ length: 42 }, (_, i) => new Date(base.getFullYear(), base.getMonth(), 1 - scarto + i));
@@ -68,7 +70,7 @@ export function MiniCalendario({ onVaiA }: { onVaiA: (d: Date) => void }) {
                 fuori && "mc-off text-muted-foreground/55",
                 festivo && !fuori && "giorno-festivo text-red-600",
                 selezionato && "mc-sel bg-accent",
-                stesso(d, oggi) && "mc-today bg-primary font-semibold text-primary-foreground hover:bg-primary",
+                !!oggi && stesso(d, oggi) && "mc-today bg-primary font-semibold text-primary-foreground hover:bg-primary",
               )}
               onClick={() => onVaiA(d)}
             >
